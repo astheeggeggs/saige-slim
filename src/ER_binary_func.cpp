@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <cmath>
+#include <climits>
 #include "Binary_HyperGeo.hpp"
 #include "Binary_ComputeExact.hpp"
 #include "Binary_global.hpp"
@@ -76,18 +77,19 @@ void SKATExactBin_ComputeProb_Group(arma::uvec & idx, arma::uvec & idxCompVec, a
 }
 
 
-int fact(int n) {
-	if (n == 0 || n == 1){
-   		return 1;
-	}else{
-   		return n * fact(n - 1);
-   	}
-}
-
 int n_choose_r(int n, int r){
-	int comb;
-	comb = fact(n) / (fact(r) * fact(n-r));	
-	return(comb);
+	// LEDGER #1 fix: the old int factorial overflowed at n >= 13, making
+	// these counts garbage for carrier counts k >= 13. Multiplicative
+	// recurrence in double (exact for every value the old code computed
+	// correctly), clamped to INT_MAX — clamped values only ever feed
+	// threshold comparisons downstream.
+	double comb = 1.0;
+	for(int i = 1; i <= r; i++){
+		comb = comb * double(n - r + i) / double(i);
+	}
+	comb = std::round(comb);
+	if(comb > double(INT_MAX)) return INT_MAX;
+	return int(comb);
 }
 
 
@@ -116,7 +118,7 @@ void SKATExactBin_ComputProb_New(arma::uvec & idx, arma::uvec & idxCompVec, arma
 		
 	//Rcpp::List obj_total = Get_Total_K(k);
 	Get_Total_K(k, n_total_k);
-	n_total = std::accumulate(n_total_k.begin(),n_total_k.end(),0);
+	n_total = int(std::min(std::accumulate(n_total_k.begin(),n_total_k.end(),0LL), (long long)INT_MAX));
 	//std::vector<int> n_total_k = obj_total["n_total_k"];
 	Is_ExactP = true;
 	if(n_total > NResampling){
@@ -128,7 +130,7 @@ void SKATExactBin_ComputProb_New(arma::uvec & idx, arma::uvec & idxCompVec, arma
 		}
 		Is_ExactP = false;
 	}	
-	n_total = std::accumulate(n_total_k.begin(),n_total_k.end(),0);
+	n_total = int(std::min(std::accumulate(n_total_k.begin(),n_total_k.end(),0LL), (long long)INT_MAX));
 
 	//Rcpp::List re;
         //re["prob"] = prob;

@@ -10,7 +10,6 @@
 void GetProb_new(int k, int ngroup, int ncase, int* group, double* weight, double* prob);
 void SKATExactBin_ComputeProb_Group(arma::uvec & idx, arma::uvec & idxCompVec, arma::vec & pi1, uint32_t n, uint32_t ncase, int type_group, std::vector<double> & prob);
 
-int fact(int n);
 int n_choose_r(int n, int r);
 
 void Get_Total_K(int k, std::vector<int> & n_total_k);
