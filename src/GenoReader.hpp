@@ -10,10 +10,9 @@
 // formats by the genoType string ("plink", later "pgen", ...).
 //
 // Cursor/seek behavior is reader-private. gIndex addresses the 0-based row of
-// the variant metadata file (bim/pvar); random access must be supported.
-// KNOWN QUIRK preserved bug-for-bug (LEDGER.md #16): the PLINK implementation
-// does not seek for gIndex==0 after a prior read and returns the record under
-// the cursor. Scheduled for the Phase-3e fix.
+// the variant metadata file (bim/pvar); random access must be supported —
+// every implementation must return the requested record regardless of prior
+// read position (LEDGER.md #16 was exactly this contract being violated).
 
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>

@@ -14,9 +14,12 @@ Binary and quantitative traits are supported; survival-trait support was
 removed in Phase 3a of the refactor.
 
 **The working plan lives at `~/.claude/plans/rosy-munching-pudding.md`**:
-Phase 0 (baseline/harness) and Phase 1 (strip) are done; next are Phase 2
-(tests), Phase 3 (refactor; survival removed in 3a; reentrancy), Phase 4
-(speedup).
+Phases 0-3 are done (baseline/harness; strip; test suite; refactor — survival
+removed in 3a, GenoReader interface + de-globalized Step2Config/Step2Output/
+owned model in 3b-d, ten ledger fixes in 3e). Next: Phase 4 (speedup;
+includes the deferred BedIO and TestContext commits). LEDGER.md still-OPEN:
+#6 (PCG tolerance, deliberately deferred) and #14 (unverified suspicion).
+Step 1 now takes `--seed` (default 1).
 
 ## Rules of this branch
 
