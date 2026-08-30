@@ -46,6 +46,14 @@ test_that("chrom filter and include-file plumbing", {
                       idstoIncludeFile = ids)
   expect_true(obj$anyInclude)
   expect_identical(sort(obj$markerInfo$ID), c("rs13", "rs79"))
+
+  # LEDGER #11 fixed: ranges now actually select markers on the PLINK path
+  rng <- tempfile(); writeLines("1	10	20", rng)
+  obj <- setGenoInput(bedFile = bed100(), sampleInModel = fam_ids(),
+                      rangestoIncludeFile = rng)
+  expect_true(obj$anyInclude)
+  expect_identical(nrow(obj$markerInfo), 11L)  # POS 10..20 inclusive
+  expect_true(all(obj$markerInfo$POS >= 10 & obj$markerInfo$POS <= 20))
 })
 
 test_that("extract_genoIndex_condition resolves rsIDs in condition order", {

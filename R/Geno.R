@@ -131,6 +131,19 @@ setGenoInput = function(bedFile="",
     }
 
     colnames(RangesToInclude) = c("CHROM", "START", "END")
+    # LEDGER #11 fix: the ranges were previously never applied on the PLINK
+    # path (anyInclude was set with an empty include list, filtering
+    # everything out). Populate markersInclude from the ranges.
+    for(i in 1:nrow(RangesToInclude)){
+      CHROM1 = RangesToInclude$CHROM[i]
+      START = RangesToInclude$START[i]
+      END = RangesToInclude$END[i]
+      posRows = with(markerInfo, which(CHROM == CHROM1 & POS >= START & POS <= END))
+      if(length(posRows) != 0){
+        markersInclude = c(markersInclude, markerInfo$ID[posRows])
+      }
+      cat(length(posRows), " markers in range ", i, " are found in the geno file.\n")
+    }
     anyInclude = TRUE
   }
 
