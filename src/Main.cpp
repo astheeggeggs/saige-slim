@@ -67,16 +67,11 @@ struct Step2Config {
 static Step2Config g_cfg;
 
 
-std::ofstream OutFile;
-std::ofstream OutFile_singleInGroup;
-std::ofstream OutFile_single;
-std::ofstream OutFile_singleInGroup_temp;
-
-
-std::string g_outputFilePrefixGroup;
-std::string g_outputFilePrefixSingleInGroup;
-std::string g_outputFilePrefixSingleInGroup_temp;
-std::string g_outputFilePrefixSingle;
+struct Step2Output {
+  std::ofstream group, single, singleInGroup, singleInGroupTemp;
+  std::string prefixGroup, prefixSingle, prefixSingleInGroup, prefixSingleInGroupTemp;
+};
+static Step2Output g_out;
 
 
 
@@ -102,10 +97,10 @@ void setAssocTest_GlobalVarsInCPP(std::string t_impute_method,
   g_cfg.dosage_zerod_cutoff = t_dosage_zerod_cutoff;
   g_cfg.dosage_zerod_MAC_cutoff = t_dosage_zerod_MAC_cutoff;
   g_cfg.weights_beta = t_weights_beta;
-  g_outputFilePrefixGroup = t_outputFilePrefix;
-  g_outputFilePrefixSingleInGroup = t_outputFilePrefix + ".singleAssoc.txt";
-  g_outputFilePrefixSingleInGroup_temp = t_outputFilePrefix + ".singleAssoc.txt_temp";
-  g_outputFilePrefixSingle = t_outputFilePrefix;
+  g_out.prefixGroup = t_outputFilePrefix;
+  g_out.prefixSingleInGroup = t_outputFilePrefix + ".singleAssoc.txt";
+  g_out.prefixSingleInGroupTemp = t_outputFilePrefix + ".singleAssoc.txt_temp";
+  g_out.prefixSingle = t_outputFilePrefix;
   g_cfg.MACCutoffforER = t_MACCutoffforER;
 }
 
@@ -603,6 +598,16 @@ void mainMarkerInCPP(
 
 
 
+static void applyMaleXnonPAR(arma::vec& t_GVec, uint32_t& t_pd, double& t_altCounts, double& t_altFreq)
+{
+  if(g_cfg.is_rewrite_XnonPAR_forMales){
+  	processMale_XnonPAR(t_GVec, t_pd, g_cfg.X_PARregion_mat);
+	t_altCounts = arma::sum(t_GVec);
+	t_altFreq = arma::mean(t_GVec)/2.0;	
+  }
+}
+
+
 // a unified function to get single marker from genotype file
 
 
@@ -640,11 +645,7 @@ bool Unified_getOneMarker(std::string & t_genoType,   // "PLINK"
    t_missingRate = meta.missingRate; t_imputeInfo = meta.imputeInfo;
   }
 
-  if(g_cfg.is_rewrite_XnonPAR_forMales){
-  	processMale_XnonPAR(t_GVec, t_pd, g_cfg.X_PARregion_mat);
-	t_altCounts = arma::sum(t_GVec);
-	t_altFreq = arma::mean(t_GVec)/2.0;	
-  }
+  applyMaleXnonPAR(t_GVec, t_pd, t_altCounts, t_altFreq);
 
   return isBoolRead;
 }
@@ -1923,9 +1924,9 @@ if(iswriteOutput){
       N_case_hetVec,
       N_ctrl_homVec,
       N_Vec,
-      OutFile_singleInGroup);
+      g_out.singleInGroup);
  }else{
-  OutFile_singleInGroup_temp.open(g_outputFilePrefixSingleInGroup_temp.c_str(), std::ofstream::out);
+  g_out.singleInGroupTemp.open(g_out.prefixSingleInGroupTemp.c_str(), std::ofstream::out);
   numofUR0 = writeOutfile_singleInGroup(t_isMoreOutput,
       t_isImputation,
       isCondition,
@@ -1964,8 +1965,8 @@ if(iswriteOutput){
       N_case_hetVec,
       N_ctrl_homVec,
       N_Vec,
-      OutFile_singleInGroup_temp);
-  OutFile_singleInGroup_temp.close();
+      g_out.singleInGroupTemp);
+  g_out.singleInGroupTemp.close();
 
  }//iswriteOutput
  OutList.push_back(numofUR, "numofUR");
@@ -2266,23 +2267,23 @@ void closeGenoFile(std::string & t_genoType)
 bool openOutfile(std::string t_traitType, bool isappend){
 	bool isopen;
 	if(!isappend){
-	OutFile.open(g_outputFilePrefixGroup.c_str());
-	isopen = OutFile.is_open();
+	g_out.group.open(g_out.prefixGroup.c_str());
+	isopen = g_out.group.is_open();
 	if(isopen){
-		OutFile << "Region\tGroup\tmax_MAF\tPvalue_Burden\tBETA_Burden\tSE_Burden\t";
+		g_out.group << "Region\tGroup\tmax_MAF\tPvalue_Burden\tBETA_Burden\tSE_Burden\t";
 		if(ptr_gSAIGEobj->m_isCondition){
-			OutFile << "Pvalue_Burden_c\tBeta_Burden_c\tseBeta_Burden_c\t";
+			g_out.group << "Pvalue_Burden_c\tBeta_Burden_c\tseBeta_Burden_c\t";
 		}
-		OutFile << "MAC\t";
+		g_out.group << "MAC\t";
 		if(t_traitType == "binary"){	
-			OutFile << "MAC_case\tMAC_control\t";
+			g_out.group << "MAC_case\tMAC_control\t";
 		}
 
-		OutFile << "Number_rare\tNumber_ultra_rare\n";
+		g_out.group << "Number_rare\tNumber_ultra_rare\n";
 	}
      }else{
-	OutFile.open(g_outputFilePrefixGroup.c_str(), std::ofstream::out | std::ofstream::app) ;				
-	isopen = OutFile.is_open();
+	g_out.group.open(g_out.prefixGroup.c_str(), std::ofstream::out | std::ofstream::app) ;				
+	isopen = g_out.group.is_open();
      }
      return(isopen);
 }
@@ -2291,47 +2292,47 @@ bool openOutfile(std::string t_traitType, bool isappend){
 bool openOutfile_singleinGroup(std::string t_traitType, bool t_isImputation, bool isappend, bool t_isMoreOutput){
         bool isopen;
      if(!isappend){
-        OutFile_singleInGroup.open(g_outputFilePrefixSingleInGroup.c_str());
-	isopen = OutFile_singleInGroup.is_open();
+        g_out.singleInGroup.open(g_out.prefixSingleInGroup.c_str());
+	isopen = g_out.singleInGroup.is_open();
         if(isopen){
-                OutFile_singleInGroup << "CHR\tPOS\tMarkerID\tAllele1\tAllele2\tAC_Allele2\tAF_Allele2\t";
+                g_out.singleInGroup << "CHR\tPOS\tMarkerID\tAllele1\tAllele2\tAC_Allele2\tAF_Allele2\t";
 		if(t_isImputation){
-			OutFile_singleInGroup << "imputationInfo\t";
+			g_out.singleInGroup << "imputationInfo\t";
 		}else{
 			
-			OutFile_singleInGroup << "MissingRate\t";
+			g_out.singleInGroup << "MissingRate\t";
 		}
-		OutFile_singleInGroup << "BETA\tSE\tTstat\tvar\tp.value\t";
+		g_out.singleInGroup << "BETA\tSE\tTstat\tvar\tp.value\t";
 	        if(t_traitType == "binary"){
-                        OutFile_singleInGroup << "p.value.NA\tIs.SPA\t";
+                        g_out.singleInGroup << "p.value.NA\tIs.SPA\t";
                 }	
 
                 if(ptr_gSAIGEobj->m_isCondition){
-                        OutFile_singleInGroup << "BETA_c\tSE_c\tTstat_c\tvar_c\tp.value_c\t";
+                        g_out.singleInGroup << "BETA_c\tSE_c\tTstat_c\tvar_c\tp.value_c\t";
 			if(t_traitType == "binary"){
-				OutFile_singleInGroup << "p.value.NA_c\t";		
+				g_out.singleInGroup << "p.value.NA_c\t";		
 			}
                 }
 		
 	        if(t_traitType == "binary"){
-                        OutFile_singleInGroup << "AF_case\tAF_ctrl\tN_case\tN_ctrl";
+                        g_out.singleInGroup << "AF_case\tAF_ctrl\tN_case\tN_ctrl";
  			if(t_isMoreOutput){
-                                OutFile_singleInGroup << "\tN_case_hom\tN_case_het\tN_ctrl_hom\tN_ctrl_het";
+                                g_out.singleInGroup << "\tN_case_hom\tN_case_het\tN_ctrl_hom\tN_ctrl_het";
                         }
-			OutFile_singleInGroup << "\n";
+			g_out.singleInGroup << "\n";
                 }else if(t_traitType == "quantitative"){
-			OutFile_singleInGroup << "N\n";	
+			g_out.singleInGroup << "N\n";	
 			
 		}
 
         }
     }else{
-       OutFile_singleInGroup.open(g_outputFilePrefixSingleInGroup.c_str(), std::ofstream::out | std::ofstream::app);
-       isopen = OutFile_singleInGroup.is_open();
+       g_out.singleInGroup.open(g_out.prefixSingleInGroup.c_str(), std::ofstream::out | std::ofstream::app);
+       isopen = g_out.singleInGroup.is_open();
     }
 
     //if(t_testType != "BURDEN" && t_isfastTest){
-    //  OutFile_singleInGroup_temp.open(g_outputFilePrefixSingleInGroup_temp.c_str(), std::ofstream::out | std::ofstream::app);
+    //  g_out.singleInGroupTemp.open(g_out.prefixSingleInGroupTemp.c_str(), std::ofstream::out | std::ofstream::app);
     //}
       return(isopen);
 }
@@ -2341,25 +2342,25 @@ bool openOutfile_singleinGroup(std::string t_traitType, bool t_isImputation, boo
 bool openOutfile_single(std::string t_traitType, bool t_isImputation, bool isappend, bool t_isMoreOutput){
       bool isopen;
       if(!isappend){
-        OutFile_single.open(g_outputFilePrefixSingle.c_str());
-        isopen = OutFile_single.is_open();
+        g_out.single.open(g_out.prefixSingle.c_str());
+        isopen = g_out.single.is_open();
         if(isopen){
-                OutFile_single << "CHR\tPOS\tMarkerID\tAllele1\tAllele2\tAC_Allele2\tAF_Allele2\t";
+                g_out.single << "CHR\tPOS\tMarkerID\tAllele1\tAllele2\tAC_Allele2\tAF_Allele2\t";
                 if(t_isImputation){
-                        OutFile_single << "imputationInfo\t";
+                        g_out.single << "imputationInfo\t";
                 }else{
 
-                        OutFile_single << "MissingRate\t";
+                        g_out.single << "MissingRate\t";
                 }
-                OutFile_single << "BETA\tSE\tTstat\tvar\tp.value\t";
+                g_out.single << "BETA\tSE\tTstat\tvar\tp.value\t";
                 if(t_traitType == "binary"){
-                        OutFile_single << "p.value.NA\tIs.SPA\t";
+                        g_out.single << "p.value.NA\tIs.SPA\t";
                 }
 
                 if(ptr_gSAIGEobj->m_isCondition){
-                        OutFile_single << "BETA_c\tSE_c\tTstat_c\tvar_c\tp.value_c\t";
+                        g_out.single << "BETA_c\tSE_c\tTstat_c\tvar_c\tp.value_c\t";
 			if(t_traitType == "binary"){
-				OutFile_single << "p.value.NA_c\t";
+				g_out.single << "p.value.NA_c\t";
 			}
 
 
@@ -2368,22 +2369,22 @@ bool openOutfile_single(std::string t_traitType, bool t_isImputation, bool isapp
 		
 
                 if(t_traitType == "binary"){
-                        OutFile_single << "AF_case\tAF_ctrl\tN_case\tN_ctrl";
+                        g_out.single << "AF_case\tAF_ctrl\tN_case\tN_ctrl";
 
 			if(t_isMoreOutput){	
-				OutFile_single << "\tN_case_hom\tN_case_het\tN_ctrl_hom\tN_ctrl_het";
+				g_out.single << "\tN_case_hom\tN_case_het\tN_ctrl_hom\tN_ctrl_het";
 			}
-			OutFile_single << "\n";
+			g_out.single << "\n";
 
                 }else if(t_traitType == "quantitative"){
-                        OutFile_single << "N\n";
+                        g_out.single << "N\n";
 
                 }
 
         }
      }else{
-        OutFile_single.open(g_outputFilePrefixSingle.c_str(), std::ofstream::out | std::ofstream::app);
-        isopen = OutFile_single.is_open();
+        g_out.single.open(g_out.prefixSingle.c_str(), std::ofstream::out | std::ofstream::app);
+        isopen = g_out.single.is_open();
      }
 
      return(isopen);
@@ -2434,85 +2435,85 @@ void writeOutfile_single(bool t_isMoreOutput,
   for(unsigned int k = 0; k < pvalVec.size(); k++){
         if(pvalVec.at(k) != "NA"){
                 numtest = numtest + 1;
-                OutFile_single << chrVec.at(k);
-                OutFile_single << "\t";
-                OutFile_single << posVec.at(k);
-                OutFile_single << "\t";
-                OutFile_single << markerVec.at(k);
-                OutFile_single << "\t";
-                OutFile_single << refVec.at(k);
-                OutFile_single << "\t";
-                OutFile_single << altVec.at(k);
-                OutFile_single << "\t";
-                OutFile_single << altCountsVec.at(k);
-                OutFile_single << "\t";
-                OutFile_single << altFreqVec.at(k);
-                OutFile_single << "\t";
+                g_out.single << chrVec.at(k);
+                g_out.single << "\t";
+                g_out.single << posVec.at(k);
+                g_out.single << "\t";
+                g_out.single << markerVec.at(k);
+                g_out.single << "\t";
+                g_out.single << refVec.at(k);
+                g_out.single << "\t";
+                g_out.single << altVec.at(k);
+                g_out.single << "\t";
+                g_out.single << altCountsVec.at(k);
+                g_out.single << "\t";
+                g_out.single << altFreqVec.at(k);
+                g_out.single << "\t";
 
                 if(t_isImputation){
-                        OutFile_single << imputationInfoVec.at(k);
-                        OutFile_single << "\t";
+                        g_out.single << imputationInfoVec.at(k);
+                        g_out.single << "\t";
                 }else{
-                        OutFile_single << missingRateVec.at(k);
-                        OutFile_single << "\t";
+                        g_out.single << missingRateVec.at(k);
+                        g_out.single << "\t";
 
                 }
-                OutFile_single << BetaVec.at(k);
-                OutFile_single << "\t";
-                OutFile_single << seBetaVec.at(k);
-                OutFile_single << "\t";
-                OutFile_single << TstatVec.at(k);
-                OutFile_single << "\t";
-                OutFile_single << varTVec.at(k);
-                OutFile_single << "\t";
-                OutFile_single << pvalVec.at(k);
-                OutFile_single << "\t";
+                g_out.single << BetaVec.at(k);
+                g_out.single << "\t";
+                g_out.single << seBetaVec.at(k);
+                g_out.single << "\t";
+                g_out.single << TstatVec.at(k);
+                g_out.single << "\t";
+                g_out.single << varTVec.at(k);
+                g_out.single << "\t";
+                g_out.single << pvalVec.at(k);
+                g_out.single << "\t";
 
                 if(t_traitType == "binary"){
-                        OutFile_single << pvalNAVec.at(k);
-                        OutFile_single << "\t";
-                        OutFile_single << std::boolalpha << isSPAConvergeVec.at(k);
-                        OutFile_single << "\t";
+                        g_out.single << pvalNAVec.at(k);
+                        g_out.single << "\t";
+                        g_out.single << std::boolalpha << isSPAConvergeVec.at(k);
+                        g_out.single << "\t";
                 }
                 if(t_isCondition){
-                        OutFile_single << Beta_cVec.at(k);
-                        OutFile_single << "\t";
-                        OutFile_single << seBeta_cVec.at(k);
-                        OutFile_single << "\t";
-                        OutFile_single << Tstat_cVec.at(k);
-                        OutFile_single << "\t";
-                        OutFile_single << varT_cVec.at(k);
-                        OutFile_single << "\t";
-                        OutFile_single << pval_cVec.at(k);
-                        OutFile_single << "\t";
+                        g_out.single << Beta_cVec.at(k);
+                        g_out.single << "\t";
+                        g_out.single << seBeta_cVec.at(k);
+                        g_out.single << "\t";
+                        g_out.single << Tstat_cVec.at(k);
+                        g_out.single << "\t";
+                        g_out.single << varT_cVec.at(k);
+                        g_out.single << "\t";
+                        g_out.single << pval_cVec.at(k);
+                        g_out.single << "\t";
 			if(t_traitType == "binary"){	
-                        	OutFile_single << pvalNA_cVec.at(k);
-                        	OutFile_single << "\t";
+                        	g_out.single << pvalNA_cVec.at(k);
+                        	g_out.single << "\t";
 			}	
                 }
                 if(t_traitType == "binary"){
-                        OutFile_single << AF_caseVec.at(k);
-                        OutFile_single << "\t";
-                        OutFile_single << AF_ctrlVec.at(k);
-                        OutFile_single << "\t";
-                        OutFile_single << N_caseVec.at(k);
-                        OutFile_single << "\t";
-                        OutFile_single << N_ctrlVec.at(k);
+                        g_out.single << AF_caseVec.at(k);
+                        g_out.single << "\t";
+                        g_out.single << AF_ctrlVec.at(k);
+                        g_out.single << "\t";
+                        g_out.single << N_caseVec.at(k);
+                        g_out.single << "\t";
+                        g_out.single << N_ctrlVec.at(k);
 
                         if(t_isMoreOutput){
-                                OutFile_single << "\t";
-                                OutFile_single << N_case_homVec.at(k);
-                                OutFile_single << "\t";
-                                OutFile_single << N_case_hetVec.at(k);
-                                OutFile_single << "\t";
-                                OutFile_single << N_ctrl_homVec.at(k);
-                                OutFile_single << "\t";
-                                OutFile_single << N_ctrl_hetVec.at(k);
+                                g_out.single << "\t";
+                                g_out.single << N_case_homVec.at(k);
+                                g_out.single << "\t";
+                                g_out.single << N_case_hetVec.at(k);
+                                g_out.single << "\t";
+                                g_out.single << N_ctrl_homVec.at(k);
+                                g_out.single << "\t";
+                                g_out.single << N_ctrl_hetVec.at(k);
                         }
-                        OutFile_single << "\n";
+                        g_out.single << "\n";
                 }else if(t_traitType == "quantitative"){
-                        OutFile_single << N_Vec.at(k);
-                        OutFile_single << "\n";
+                        g_out.single << N_Vec.at(k);
+                        g_out.single << "\n";
 
                 }
         }
@@ -2585,56 +2586,56 @@ void writeOutfile_BURDEN(std::string regionName,
        for(unsigned int m = 0; m < q_maf; m++){
            i = j*q_maf+m;
 	   if(BURDEN_pval_Vec.at(i) != "NA"){
-           OutFile << regionName;
-           OutFile << "\t";
-           OutFile << BURDEN_AnnoName_Vec.at(i);
-           OutFile << "\t";
-           OutFile << BURDEN_maxMAFName_Vec.at(i);
-           OutFile << "\t";
-           OutFile << BURDEN_pval_Vec.at(i);
-           OutFile << "\t";
-           OutFile << BURDEN_Beta_Vec.at(i);
-           OutFile << "\t";
-           OutFile << BURDEN_seBeta_Vec.at(i);
-           OutFile << "\t";
+           g_out.group << regionName;
+           g_out.group << "\t";
+           g_out.group << BURDEN_AnnoName_Vec.at(i);
+           g_out.group << "\t";
+           g_out.group << BURDEN_maxMAFName_Vec.at(i);
+           g_out.group << "\t";
+           g_out.group << BURDEN_pval_Vec.at(i);
+           g_out.group << "\t";
+           g_out.group << BURDEN_Beta_Vec.at(i);
+           g_out.group << "\t";
+           g_out.group << BURDEN_seBeta_Vec.at(i);
+           g_out.group << "\t";
            if(isCondition){
-               OutFile << BURDEN_pval_cVec.at(i);
-               OutFile << "\t";
-               OutFile << BURDEN_Beta_cVec.at(i);
-               OutFile << "\t";
-               OutFile << BURDEN_seBeta_cVec.at(i);
-               OutFile << "\t";
+               g_out.group << BURDEN_pval_cVec.at(i);
+               g_out.group << "\t";
+               g_out.group << BURDEN_Beta_cVec.at(i);
+               g_out.group << "\t";
+               g_out.group << BURDEN_seBeta_cVec.at(i);
+               g_out.group << "\t";
 	   }
-	   OutFile << MAC_GroupVec(i);
-           OutFile << "\t";
+	   g_out.group << MAC_GroupVec(i);
+           g_out.group << "\t";
            if(t_traitType == "binary"){
-               OutFile << MACCase_GroupVec(i);
-               OutFile << "\t";
-               OutFile << MACControl_GroupVec(i);
-               OutFile << "\t";
+               g_out.group << MACCase_GroupVec(i);
+               g_out.group << "\t";
+               g_out.group << MACControl_GroupVec(i);
+               g_out.group << "\t";
            }
-           OutFile << NumRare_GroupVec(i);
-           OutFile << "\t";
-           OutFile << NumUltraRare_GroupVec(i);
-           OutFile << "\n";
+           g_out.group << NumRare_GroupVec(i);
+           g_out.group << "\t";
+           g_out.group << NumUltraRare_GroupVec(i);
+           g_out.group << "\n";
 	}
      }
    }  
-     OutFile << regionName;
-     OutFile << "\tCauchy\tNA\t";
-     OutFile << cctpval;
-     OutFile << "\tNA\tNA\t";	
+     g_out.group << regionName;
+     g_out.group << "\tCauchy\tNA\t";
+     g_out.group << cctpval;
+     g_out.group << "\tNA\tNA\t";	
      if(isCondition){
-	OutFile << cctpval_cond;
-	OutFile << "\tNA\tNA\t";
+	g_out.group << cctpval_cond;
+	g_out.group << "\tNA\tNA\t";
      }
-     OutFile << "NA\t";
+     g_out.group << "NA\t";
      if(t_traitType == "binary"){
-        OutFile << "NA\t";
-        OutFile << "NA\t";
+        g_out.group << "NA\t";
+        g_out.group << "NA\t";
      }
-     OutFile << "NA\t";
-     OutFile << "NA\n";	
+     g_out.group << "NA\t";
+     g_out.group << "NA\n";	
 }
 
 
@@ -2775,7 +2776,7 @@ int writeOutfile_singleInGroup(bool t_isMoreOutput,
 // [[Rcpp::export]]
 void copy_singleInGroup(){
   std::ifstream ini_file;
-  ini_file.open(g_outputFilePrefixSingleInGroup_temp.c_str());
+  ini_file.open(g_out.prefixSingleInGroupTemp.c_str());
   if (!ini_file)
   {
     std::cout << "Error in Opening the temp file!" << std::endl;
@@ -2783,7 +2784,7 @@ void copy_singleInGroup(){
   std::string str;
   while (getline(ini_file, str))
   {
-    OutFile_singleInGroup << str << "\n"; 	
+    g_out.singleInGroup << str << "\n"; 	
   }
   ini_file.close();
 }
