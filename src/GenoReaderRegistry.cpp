@@ -34,13 +34,8 @@ public:
                     bool t_isOutputIndexForMissing, std::vector<uint>& t_indexForMissing,
                     bool t_isOnlyOutputNonZero, std::vector<uint>& t_indexForNonZero,
                     arma::vec& t_GVec) override {
-    // prev=0 makes PlinkClass take the absolute-seek branch for every
-    // t_gIndex > 0 — position-identical to the historical relative-skip mix —
-    // and preserves the LEDGER.md #16 no-seek-at-row-0 quirk byte-for-byte.
-    // The 3e fix replaces this with an unconditional absolute seek.
-    uint64_t prev = 0;
     bool isTrueGenotype = true;  // PLINK-private; always true on the step-2 path
-    m_impl.getOneMarker(prev, t_gIndex, t_meta.ref, t_meta.alt, t_meta.id,
+    m_impl.getOneMarker(t_gIndex, t_meta.ref, t_meta.alt, t_meta.id,
                         t_meta.pos, t_meta.chr,
                         t_meta.altFreq, t_meta.altCounts, t_meta.missingRate,
                         t_meta.imputeInfo,

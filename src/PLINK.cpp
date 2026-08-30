@@ -161,8 +161,7 @@ void PlinkClass::closegenofile(){
 }
 
 
-void PlinkClass::getOneMarker(uint64_t & t_gIndex_prev,
-				uint64_t & t_gIndex,        // different meanings for different genoType
+void PlinkClass::getOneMarker(				uint64_t & t_gIndex,        // different meanings for different genoType
                                    std::string& t_ref,       // REF allele
                                    std::string& t_alt,       // ALT allele (should probably be minor allele, otherwise, computation time will increase)
                                    std::string& t_marker,    // marker ID extracted from genotype file
@@ -190,21 +189,13 @@ void PlinkClass::getOneMarker(uint64_t & t_gIndex_prev,
     if(t_isOnlyOutputNonZero)
       Rcpp::stop("Check PlinkClass::getOneMarker, if t_isTrueGenotype = FALSE, then t_isOnlyOutputNonZero should be FALSE.");
   }
- 
-  uint64_t posSeek;
- if(t_gIndex > 0){
-    if(t_gIndex_prev == 0){ //if it is the first element
-	  posSeek = 3 + m_numBytesofEachMarker0 * t_gIndex;
-	  fseek(m_fin, posSeek, SEEK_SET);
-	  //m_ibedFile.seekg(posSeek, ios_base::beg);
-     }else{
-	  posSeek = m_numBytesofEachMarker0 * (t_gIndex-t_gIndex_prev-1);
-	  if(posSeek > 0){
-		//m_ibedFile.seekg(posSeek, ios_base::cur);
-	  	fseek(m_fin, posSeek, SEEK_CUR);
-	  }
-   }
-  }
+
+  // LEDGER #16 fix: seek unconditionally to the requested record. The old
+  // gate (if t_gIndex > 0) skipped the seek for bim row 0, so a mid-stream
+  // request for row 0 decoded whatever record the cursor sat on and reported
+  // it under row 0's marker ID (demonstrated via conditional analysis).
+  uint64_t posSeek = 3 + m_numBytesofEachMarker0 * t_gIndex;
+  fseek(m_fin, posSeek, SEEK_SET);
   /*
   uint64_t posSeek = 3 + m_numBytesofEachMarker0 * t_gIndex;
   if(t_gIndex > 0){

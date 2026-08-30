@@ -1,15 +1,10 @@
-# Characterization of LEDGER.md #16 (CONFIRMED bug, preserved bug-for-bug):
-# a mid-stream request for bim row 0 performs no seek in the PLINK reader and
-# reads whatever record the cursor sits on. Reachable via conditional analysis
-# (conditioning markers are read before the marker loop).
-#
-# This test PINS THE WRONG BEHAVIOR on purpose: conditioning on rs80 parks the
-# cursor on rs81's record (AC=314); the loop then requests rs1 (bim row 0,
-# truly monomorphic) and reports it with rs81's genotypes. When the 3e fix
-# lands, update this test together with the ledger entry: rs1 must then be
-# absent from the conditional output too.
+# Regression test for LEDGER.md #16 (FIXED in Phase 3e): a mid-stream request
+# for bim row 0 used to perform no seek and decode whatever record the cursor
+# sat on (conditioning on rs80 made monomorphic rs1 appear carrying rs81's
+# AC=314). The reader now seeks unconditionally: rs1 must be absent from BOTH
+# runs (it is truly monomorphic and filtered).
 
-test_that("LEDGER #16: mid-stream bim-row-0 read returns the cursor's record", {
+test_that("LEDGER #16 fixed: mid-stream bim-row-0 reads return the true record", {
   skip_unless_level("standard")
   skip_if_no_goldens()
   ids <- tempfile(); writeLines(c("rs1", "rs79", "rs80"), ids)
@@ -34,9 +29,11 @@ test_that("LEDGER #16: mid-stream bim-row-0 read returns the cursor's record", {
                               c(base_args, "--condition=rs80",
                                 paste0("--SAIGEOutputFile=", out2))))
   cond <- read_saige_table(out2)
-  rs1 <- cond[cond$MarkerID == "rs1", ]
-  expect_identical(nrow(rs1), 1L)               # the phantom appears...
-  expect_identical(rs1$AC_Allele2, "314")       # ...carrying rs81's allele count
+  expect_false("rs1" %in% cond$MarkerID)  # no phantom: true (monomorphic) rs1 is filtered
+  # and the conditioning did not disturb any other marker's unconditional stats
+  shared <- intersect(colnames(fresh), colnames(cond))
+  expect_identical(fresh[fresh$MarkerID == "rs79", shared],
+                   cond[cond$MarkerID == "rs79", shared])
 })
 
 test_that("LEDGER #10 fixed: marker run without null_noXadj VR rows stops cleanly", {
