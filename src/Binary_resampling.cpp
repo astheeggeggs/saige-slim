@@ -2,6 +2,7 @@
 
     #include <R.h>
     #include <Rmath.h>
+    #include <Rcpp.h>
 
 #endif
 #include <math.h>
@@ -51,6 +52,14 @@ void  SL_setseed(int seed){
     #ifdef _STAND_ALONE_
         srand ( seed );
     #else
+        // LEDGER #2 fix: honor the seed in the R build. Previously this only
+        // called GetRNGstate(), so the resampling branch drew from whatever
+        // .Random.seed held — unbound (clock+pid) in fresh step-2 processes
+        // and in mclapply children. Seed R's own stream so resampling results
+        // are reproducible, then sync the C-level RNG state.
+        Rcpp::Environment base_env("package:base");
+        Rcpp::Function set_seed_r = base_env["set.seed"];
+        set_seed_r(seed);
         GetRNGstate();
     #endif
 }
