@@ -31,6 +31,12 @@ Step 1 now takes `--seed` (default 1).
 - After adding/removing any `[[Rcpp::export]]` or `.cpp` file: update the
   explicit `OBJECTS` list in `src/Makevars` and re-run
   `pixi run Rscript -e 'Rcpp::compileAttributes(".")'`.
+- **After ANY header (`.hpp`) change, delete `src/*.o` before `R CMD INSTALL`.**
+  R's make has no header dependency tracking: a class-layout change in a
+  header with stale dependents' objects produces intermittent memory
+  corruption (learned the hard way in Phase 4: two members added to
+  `PlinkClass`, `GenoReaderRegistry.o` stale → segfaults in `readFamFile`).
+  `harness/run_tests.sh` does not build; gate scripts should always clean.
 
 ## Build
 

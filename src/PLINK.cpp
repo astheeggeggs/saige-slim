@@ -7,6 +7,10 @@
 #include <boost/algorithm/string.hpp>
 #include "PLINK.hpp"
 #include "UTIL.hpp"
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include <RcppArmadilloExtensions/sample.h> // sample
 #include <string>
@@ -53,6 +57,19 @@ void PlinkClass::setPlinkobj(std::string t_bimFile,
   char magicNumber3;
   fread(&magicNumber3, 1, 1, m_fin);
   fseek(m_fin, 3, SEEK_SET);    
+
+  // Phase 4: map the whole .bed read-only. Falls back to fread on failure.
+  {
+    int fd = fileno(m_fin);
+    struct stat st;
+    if(fstat(fd, &st) == 0 && st.st_size > 3){
+      void* p = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+      if(p != MAP_FAILED){
+        m_map = (const unsigned char*)p;
+        m_mapLen = (size_t)st.st_size;
+      }
+    }
+  }
 
 /* 
   m_ibedFile.open(m_bedFile.c_str(), std::ios::binary);
@@ -156,6 +173,7 @@ void PlinkClass::setPosSampleInPlink(std::vector<std::string> & t_SampleInModel)
 // }
 
 void PlinkClass::closegenofile(){
+        if(m_map){ munmap((void*)m_map, m_mapLen); m_map = NULL; m_mapLen = 0; }
         fclose(m_fin);
 	//m_ibedFile.close();
 }
@@ -195,7 +213,11 @@ void PlinkClass::getOneMarker(				uint64_t & t_gIndex,        // different meani
   // request for row 0 decoded whatever record the cursor sat on and reported
   // it under row 0's marker ID (demonstrated via conditional analysis).
   uint64_t posSeek = 3 + m_numBytesofEachMarker0 * t_gIndex;
-  fseek(m_fin, posSeek, SEEK_SET);
+  const unsigned char* src;
+  if(m_map){
+    src = m_map + posSeek;               // no syscalls, no copy
+  }else{
+    fseek(m_fin, posSeek, SEEK_SET);
   /*
   uint64_t posSeek = 3 + m_numBytesofEachMarker0 * t_gIndex;
   if(t_gIndex > 0){
@@ -204,7 +226,9 @@ void PlinkClass::getOneMarker(				uint64_t & t_gIndex,        // different meani
   */
   //m_ibedFile.seekg(posSeek);
   //m_ibedFile.read((char*)(&m_OneMarkerG4[0]), m_numBytesofEachMarker0);
-  fread((char*)(&m_OneMarkerG4[0]), 1, m_numBytesofEachMarker0 , m_fin);
+    fread((char*)(&m_OneMarkerG4[0]), 1, m_numBytesofEachMarker0 , m_fin);
+    src = &m_OneMarkerG4[0];
+  }
 
   t_indexForMissing.clear();
   t_indexForNonZero.clear();
@@ -214,18 +238,18 @@ void PlinkClass::getOneMarker(				uint64_t & t_gIndex,        // different meani
   t_chr = m_chr[t_gIndex];
   
   //std::map<int8_t, int8_t> genoMaps;
-  std::vector<int8_t> genoMaps;
+  const int8_t* genoMaps = m_genoMaps_alt_first.data();  // Phase 4: no per-marker vector copy
   
   if(m_AlleleOrder == "alt-first"){
     t_ref = m_ref[t_gIndex];
     t_alt = m_alt[t_gIndex];
-    genoMaps = m_genoMaps_alt_first;
+    genoMaps = m_genoMaps_alt_first.data();
   }
     
   if(m_AlleleOrder == "ref-first"){
     t_ref = m_alt[t_gIndex];
     t_alt = m_ref[t_gIndex];
-    genoMaps = m_genoMaps_ref_first;
+    genoMaps = m_genoMaps_ref_first.data();
   }
  //arma::vec timeoutput2 = getTime();
   uint j = 0;
@@ -233,7 +257,7 @@ void PlinkClass::getOneMarker(				uint64_t & t_gIndex,        // different meani
   for(uint32_t i = 0; i < m_N; i++)
   {
     auto ind = m_posSampleInPlink[i];             // C++ start from 0
-    unsigned char bufferG4 = m_OneMarkerG4[ind/4];    // unsigned char: 1 byte for 4 genotypes (4 samples)
+    unsigned char bufferG4 = src[ind/4];    // unsigned char: 1 byte for 4 genotypes (4 samples)
     size_t bufferG1;                                     // int: 1 genotype (1 sample)
     
     // https://www.cog-genomics.org/plink/1.9/formats#bed

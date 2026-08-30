@@ -583,29 +583,27 @@ public:
 
 		float freq = alleleFreqVec[SNPIdx];
 		float invStd = invstdvVec[SNPIdx];
-		float lut[3];
 		float mafVal2 = 2*freq;
-		lut[0] = (0-mafVal2)*invStd;
-		lut[1] = (1-mafVal2)*invStd;
-		lut[2] = (2-mafVal2)*invStd;
 
+		// Phase 4 batch 2: two-pass, auto-vectorizable form. Pass 1 unpacks
+		// the 2-bit codes (4 per byte) into a thread-local byte scratch;
+		// pass 2 applies the SAME per-element expression the old lookup
+		// table used, (float(code) - mafVal2) * invStd, so results are
+		// bit-identical while the compiler can vectorize the convert/sub/mul.
+		// Thread-local: CorssProd workers call this concurrently.
+		static thread_local std::vector<unsigned char> codes;
+		if(codes.size() < m_size_of_esi * 4) codes.resize(m_size_of_esi * 4);
 		const unsigned char* bytes = genoVecofPointers[indexOfVectorPointer]->data() + Start_idx;
 		const ByteCodes& bc = byteCodes();
-		float* o = out->memptr();
-		size_t nFull = Nnomissing / 4;
-		size_t rem = Nnomissing % 4;
-		size_t ind = 0;
-		for(size_t i = 0; i < nFull; i++){
+		unsigned char* cp = codes.data();
+		for(size_t i = 0; i < m_size_of_esi; i++){
 			const unsigned char* c = bc.c[bytes[i]];
-			o[ind]   = lut[c[0]];
-			o[ind+1] = lut[c[1]];
-			o[ind+2] = lut[c[2]];
-			o[ind+3] = lut[c[3]];
-			ind += 4;
+			cp[4*i] = c[0]; cp[4*i+1] = c[1]; cp[4*i+2] = c[2]; cp[4*i+3] = c[3];
 		}
-		if(rem){
-			const unsigned char* c = bc.c[bytes[nFull]];
-			for(size_t k = 0; k < rem; k++) o[ind+k] = lut[c[k]];
+		float* o = out->memptr();
+		const size_t N = Nnomissing;
+		for(size_t j = 0; j < N; j++){
+			o[j] = ((float)cp[j] - mafVal2) * invStd;
 		}
 		return 1;
  	}

@@ -32,6 +32,11 @@ private:
   // input file stream of .bed file
   //std::ifstream m_ibedFile;
   FILE *m_fin; 
+  // Phase 4: read-only memory map of the .bed file (NULL if mmap failed;
+  // the fread path below is the fallback). Avoids a seek+read syscall pair
+  // and a buffer copy per marker.
+  const unsigned char* m_map = NULL;
+  size_t m_mapLen = 0;
 
   // PLINK files
   std::string m_bimFile, m_famFile, m_bedFile;
