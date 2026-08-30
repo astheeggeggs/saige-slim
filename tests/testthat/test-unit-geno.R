@@ -26,12 +26,11 @@ test_that("setGenoInput builds the plink markerInfo contract", {
   expect_false(obj$anyInclude)
   mi <- obj$markerInfo
   expect_identical(nrow(mi), 100L)
-  expect_identical(colnames(mi), c("CHROM", "ID", "POS", "genoIndex", "genoIndex_prev"))
+  expect_identical(colnames(mi), c("CHROM", "ID", "POS", "genoIndex"))
   expect_identical(data.table::key(mi), "ID")
   # C-locale sort by ID; genoIndex is the 0-based bim row
   expect_identical(mi$ID[1:3], c("rs1", "rs10", "rs100"))
   expect_identical(mi$genoIndex[1:3], c(0, 9, 99))
-  expect_true(all(mi$genoIndex_prev == 0))
 
   # second call replaces the C++ reader and returns identical results
   obj2 <- setGenoInput(bedFile = bed100(), sampleInModel = fam_ids())
@@ -53,7 +52,6 @@ test_that("extract_genoIndex_condition resolves rsIDs in condition order", {
   mi <- setGenoInput(bedFile = bed100(), sampleInModel = fam_ids())$markerInfo
   out <- extract_genoIndex_condition("rs13,rs79", mi, "plink")
   expect_equal(out$cond_genoIndex, c(12, 78))
-  expect_equal(out$cond_genoIndex_prev, c(0, 0))
   # order follows the condition string, not genoIndex
   expect_equal(extract_genoIndex_condition("rs79,rs13", mi, "plink")$cond_genoIndex,
                c(78, 12))

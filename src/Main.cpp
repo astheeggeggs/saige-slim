@@ -157,7 +157,6 @@ void setRegion_GlobalVarsInCPP(
 void mainMarkerInCPP(
                            std::string & t_genoType,     // "PLINK"
 			   std::string & t_traitType,
-			   std::vector<std::string> & t_genoIndex_prev,
 			   std::vector<std::string> & t_genoIndex,
 			   bool & t_isMoreOutput,
 			   bool & t_isImputation,
@@ -256,15 +255,6 @@ void mainMarkerInCPP(
     char* end;
     uint64_t gIndex = std::strtoull( t_genoIndex_str.c_str(), &end,10 );
 
-    uint64_t gIndex_prev = 0;
-    if(i == 0){
-        gIndex_prev = 0;
-    }else{
-        char* end_prev;
-	std::string t_genoIndex_prev_str;
-        t_genoIndex_prev_str = t_genoIndex.at(i-1);
-        gIndex_prev = std::strtoull(t_genoIndex_prev_str.c_str(), &end_prev,10 );
-    }
 
 
 
@@ -282,7 +272,7 @@ void mainMarkerInCPP(
    //t_GVec0.clear();
    //t_GVec.clear();
    //arma::vec timeoutput1 = getTime();
-   bool isReadMarker = Unified_getOneMarker(t_genoType, gIndex_prev, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
+   bool isReadMarker = Unified_getOneMarker(t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
                                           isOutputIndexForMissing, // bool t_isOutputIndexForMissing,
                                           indexForMissing,
                                           isOnlyOutputNonZero, // bool t_isOnlyOutputNonZero,
@@ -615,8 +605,7 @@ void mainMarkerInCPP(
 
 // [[Rcpp::export]]
 bool Unified_getOneMarker(std::string & t_genoType,   // "PLINK"
-                               uint64_t & t_gIndex_prev,        // different meanings for different genoType
-                               uint64_t & t_gIndex,        // different meanings for different genoType
+                               uint64_t & t_gIndex,        // 0-based row of the variant metadata file
                                std::string& t_ref,       // REF allele
                                std::string& t_alt,       // ALT allele (should probably be minor allele, otherwise, computation time will increase)
                                std::string& t_marker,    // marker ID extracted from genotype file
@@ -637,11 +626,15 @@ bool Unified_getOneMarker(std::string & t_genoType,   // "PLINK"
   //arma::vec GVec(ptr_gSAIGEobj->m_n);
   bool isBoolRead = true;
   if(t_genoType == "plink"){
-   //t_gIndex_prev is after reading the last marker
-
-   isBoolRead = g_reader->getOneMarker(t_gIndex_prev, t_gIndex, t_ref, t_alt, t_marker, t_pd, t_chr, t_altFreq, t_altCounts, t_missingRate, t_imputeInfo,
-                                       t_isOutputIndexForMissing, t_indexForMissing, t_isOnlyOutputNonZero, t_indexForNonZero,
+   Geno::MarkerMeta meta;
+   isBoolRead = g_reader->getOneMarker(t_gIndex, meta,
+                                       t_isOutputIndexForMissing, t_indexForMissing,
+                                       t_isOnlyOutputNonZero, t_indexForNonZero,
                                        t_GVec);
+   t_ref = meta.ref; t_alt = meta.alt; t_marker = meta.id;
+   t_pd = meta.pos; t_chr = meta.chr;
+   t_altFreq = meta.altFreq; t_altCounts = meta.altCounts;
+   t_missingRate = meta.missingRate; t_imputeInfo = meta.imputeInfo;
   }
 
   if(g_is_rewrite_XnonPAR_forMales){
@@ -866,7 +859,6 @@ Rcpp::List RegionSetUpConditional_binary_InCPP(arma::vec & t_weight_cond){
 // [[Rcpp::export]]
 Rcpp::List mainRegionInCPP(
                            std::string t_genoType,     // "PLINK"
-                           std::vector<std::string> & t_genoIndex_prev,
                            std::vector<std::string> & t_genoIndex,
 			   arma::mat & annoIndicatorMat,
 			   arma::vec & maxMAFVec, 
@@ -1061,18 +1053,9 @@ Rcpp::List mainRegionInCPP(
     char* end;
     uint64_t gIndex = std::strtoull( t_genoIndex_str.c_str(), &end,10 );
 
-    uint64_t gIndex_prev = 0;
-    if(i == 0){
-        gIndex_prev = 0;
-    }else{
-        char* end_prev;
-        std::string t_genoIndex_prev_str;
-        t_genoIndex_prev_str = t_genoIndex.at(i-1);
-        gIndex_prev = std::strtoull( t_genoIndex_prev_str.c_str(), &end_prev,10 );
-    }
 
 
-    bool isReadMarker = Unified_getOneMarker(t_genoType, gIndex_prev, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
+    bool isReadMarker = Unified_getOneMarker(t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
                                           isOutputIndexForMissing, // bool t_isOutputIndexForMissing,
                                           indexForMissing,
                                           isOnlyOutputNonZero, // bool t_isOnlyOutputNonZero,
@@ -2014,7 +1997,6 @@ OutList.push_back(iswriteOutput, "iswriteOutput");
 // [[Rcpp::export]]
 void assign_conditionMarkers_factors(
                            std::string t_genoType,     // "plink"
-			   std::vector<std::string> & t_genoIndex_prev,
                            std::vector<std::string> & t_genoIndex,
                            unsigned int t_n, 
 			   arma::vec & t_weight_cond
@@ -2073,17 +2055,8 @@ void assign_conditionMarkers_factors(
     char* end;
     uint64_t gIndex = std::strtoull( t_genoIndex_str.c_str(), &end,10 );
 
-    uint64_t gIndex_prev = 0;
-    if(i == 0){
-        gIndex_prev = 0;
-    }else{
-        char* end_prev;
-	std::string t_genoIndex_prev_str;
-        t_genoIndex_prev_str = t_genoIndex.at(i-1);
-        gIndex_prev = std::strtoull( t_genoIndex_prev_str.c_str(), &end_prev,10 );
-    }
 
-    bool isReadMarker = Unified_getOneMarker(t_genoType, gIndex_prev, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
+    bool isReadMarker = Unified_getOneMarker(t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
                                           isOutputIndexForMissing, // bool t_isOutputIndexForMissing,
                                           indexForMissing,
                                           isOnlyOutputNonZero, // bool t_isOnlyOutputNonZero,

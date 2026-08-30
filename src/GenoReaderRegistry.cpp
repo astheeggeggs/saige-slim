@@ -30,17 +30,20 @@ public:
   uint32_t getN0() const override { return const_cast<PLINK::PlinkClass&>(m_impl).getN0(); }
   uint32_t getN() const override { return const_cast<PLINK::PlinkClass&>(m_impl).getN(); }
 
-  bool getOneMarker(uint64_t& t_gIndex_prev, uint64_t& t_gIndex,
-                    std::string& t_ref, std::string& t_alt, std::string& t_marker,
-                    uint32_t& t_pd, std::string& t_chr,
-                    double& t_altFreq, double& t_altCounts, double& t_missingRate,
-                    double& t_imputeInfo,
+  bool getOneMarker(uint64_t t_gIndex, MarkerMeta& t_meta,
                     bool t_isOutputIndexForMissing, std::vector<uint>& t_indexForMissing,
                     bool t_isOnlyOutputNonZero, std::vector<uint>& t_indexForNonZero,
                     arma::vec& t_GVec) override {
+    // prev=0 makes PlinkClass take the absolute-seek branch for every
+    // t_gIndex > 0 — position-identical to the historical relative-skip mix —
+    // and preserves the LEDGER.md #16 no-seek-at-row-0 quirk byte-for-byte.
+    // The 3e fix replaces this with an unconditional absolute seek.
+    uint64_t prev = 0;
     bool isTrueGenotype = true;  // PLINK-private; always true on the step-2 path
-    m_impl.getOneMarker(t_gIndex_prev, t_gIndex, t_ref, t_alt, t_marker, t_pd, t_chr,
-                        t_altFreq, t_altCounts, t_missingRate, t_imputeInfo,
+    m_impl.getOneMarker(prev, t_gIndex, t_meta.ref, t_meta.alt, t_meta.id,
+                        t_meta.pos, t_meta.chr,
+                        t_meta.altFreq, t_meta.altCounts, t_meta.missingRate,
+                        t_meta.imputeInfo,
                         t_isOutputIndexForMissing, t_indexForMissing,
                         t_isOnlyOutputNonZero, t_indexForNonZero,
                         isTrueGenotype, t_GVec);

@@ -40,14 +40,12 @@ void setRegion_GlobalVarsInCPP(
 void mainMarkerInCPP(
                            std::string & t_genoType,     // "PLINK"
                            std::string & t_traitType,
-			   std::vector<std::string> & t_genoIndex_prev,
                            std::vector<std::string>  & t_genoIndex,
                            bool & t_isMoreOutput,
                            bool & t_isImputation,
 			   bool & t_isFirth);
 
 bool Unified_getOneMarker(std::string & t_genoType,   // "PLINK"
-				uint64_t & t_gIndex_prev,
                                uint64_t & t_gIndex,        // different meanings for different genoType
                                std::string& t_ref,       // REF allele
                                std::string& t_alt,       // ALT allele (should probably be minor allele, otherwise, computation time will increase)
@@ -100,7 +98,6 @@ void Unified_getMarkerPval(
 
 Rcpp::List mainRegionInCPP(
                            std::string t_genoType,     // "PLINK"
-			   std::vector<std::string> & t_genoIndex_prev,
                            std::vector<std::string> & t_genoIndex,
                            arma::mat & annoIndicatorMat,
                            arma::vec & maxMAFVec,
@@ -166,7 +163,6 @@ void setSAIGEobjInCPP(arma::mat & t_XVX,
 
 void assign_conditionMarkers_factors(
                            std::string t_genoType,     // "plink"
-                           std::vector<std::string> & t_genoIndex_prev,
                            std::vector<std::string> & t_genoIndex,
                            unsigned int t_n,
                            arma::vec & t_weight_cond

@@ -9,10 +9,11 @@
 // CLAUDE.md and the Phase-3 design notes). The R layer keeps addressing
 // formats by the genoType string ("plink", later "pgen", ...).
 //
-// NOTE (transitional, until the cursor-internalization commit): getOneMarker
-// still carries t_gIndex_prev, the PLINK sequential-read optimization leaked
-// into the old call signature. It is slated to become reader-private cursor
-// state; do not build new callers against it.
+// Cursor/seek behavior is reader-private. gIndex addresses the 0-based row of
+// the variant metadata file (bim/pvar); random access must be supported.
+// KNOWN QUIRK preserved bug-for-bug (LEDGER.md #16): the PLINK implementation
+// does not seek for gIndex==0 after a prior read and returns the record under
+// the cursor. Scheduled for the Phase-3e fix.
 
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
@@ -22,6 +23,13 @@
 #include <vector>
 
 namespace Geno {
+
+// Per-marker metadata filled by getOneMarker.
+struct MarkerMeta {
+  std::string chr, id, ref, alt;
+  uint32_t pos = 0;
+  double altFreq = 0, altCounts = 0, missingRate = 0, imputeInfo = 1;
+};
 
 class GenoReader {
 public:
@@ -33,17 +41,8 @@ public:
 
   // gIndex addresses the 0-based row of the variant metadata file (bim).
   // Returns false when no marker could be read (end of stream).
-  virtual bool getOneMarker(uint64_t& t_gIndex_prev,
-                            uint64_t& t_gIndex,
-                            std::string& t_ref,
-                            std::string& t_alt,
-                            std::string& t_marker,
-                            uint32_t& t_pd,
-                            std::string& t_chr,
-                            double& t_altFreq,
-                            double& t_altCounts,
-                            double& t_missingRate,
-                            double& t_imputeInfo,
+  virtual bool getOneMarker(uint64_t t_gIndex,
+                            MarkerMeta& t_meta,
                             bool t_isOutputIndexForMissing,
                             std::vector<uint>& t_indexForMissing,
                             bool t_isOnlyOutputNonZero,

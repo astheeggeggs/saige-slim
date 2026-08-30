@@ -442,8 +442,7 @@ SPAGMMATtest = function(
 	}	
 
 	condition_genoIndex_a = as.character(format(condition_genoIndex$cond_genoIndex, scientific = FALSE))
-	condition_genoIndex_prev_a = as.character(format(condition_genoIndex$cond_genoIndex_prev, scientific = FALSE)) 
-	assign_conditionMarkers_factors(genoType, condition_genoIndex_prev_a, condition_genoIndex_a,  n, condition_weights)
+	assign_conditionMarkers_factors(genoType, condition_genoIndex_a,  n, condition_weights)
 	if(obj.model$traitType == "binary" & isGroupTest){
 		outG2cond = RegionSetUpConditional_binary_InCPP(condition_weights)
 
@@ -488,7 +487,6 @@ SPAGMMATtest = function(
 		   genoType,
 		   idstoIncludeFile,
 		   rangestoIncludeFile,
-                   objGeno$markerInfo$genoIndex_prev,
                    objGeno$markerInfo$genoIndex,
                    objGeno$markerInfo$CHROM,
                    OutputFile,

@@ -59,7 +59,6 @@ test_that("SAIGE.getRegionList_new builds regions from the bundled fixtures", {
   # genoIndex is character, format()-padded to common width (leading spaces!)
   expect_identical(g1$genoIndex[1], " 0")
   expect_identical(g1$genoIndex[50], "49")
-  expect_identical(g1$genoIndex_prev, rep("0", 50))
 
   g2 <- rl$GENE2
   expect_identical(unname(colSums(g2$annoIndicatorMat)), c(20, 50))

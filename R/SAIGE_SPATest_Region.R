@@ -317,7 +317,6 @@ SAIGE.Region = function(mu,
         }
         outList = mainRegionInCPP(
           genoType,
-          region$genoIndex_prev,
           region$genoIndex,
           annoIndicatorMat,
           maxMAFlist,
@@ -349,7 +348,6 @@ SAIGE.Region = function(mu,
 
               outList = mainRegionInCPP(
                 genoType,
-                region$genoIndex_prev,
                 region$genoIndex,
                 annoIndicatorMat,
                 maxMAFlist,
@@ -647,7 +645,6 @@ SAIGE.Region = function(mu,
 
                 outList = mainRegionInCPP(
                   genoType,
-                  region$genoIndex_prev,
                   region$genoIndex,
                   annoIndicatorMat,
                   maxMAFlist,
@@ -1275,12 +1272,6 @@ SAIGE.getRegionList_new = function(marker_group_line,
         setnames(RegionData, "POS.x", "POS")
         setnames(RegionData, "POS.y", "POS2")
         
-        if (!is.null(RegionData$genoIndex_prev.y)) {
-          setnames(RegionData, "genoIndex_prev.x", "genoIndex_prev")
-          setnames(RegionData, "genoIndex_prev.y", "genoIndex_prev2")
-          #markerInfo[,genoIndex_prev.y:=NULL]
-          
-        }
         posNA = which(is.na(RegionData$genoIndex) &
                         !is.na(RegionData$genoIndex2))
         
@@ -1288,9 +1279,6 @@ SAIGE.getRegionList_new = function(marker_group_line,
           RegionData$genoIndex[posNA] = RegionData$genoIndex2[posNA]
           RegionData$CHROM[posNA] = RegionData$CHROM2[posNA]
           RegionData$POS[posNA] = RegionData$POS2[posNA]
-          if (!is.null(RegionData$genoIndex_prev)) {
-            RegionData$genoIndex_prev[posNA] = RegionData$genoIndex_prev2[posNA]
-          }
         }
         #RegionData$genoIndex2 = NULL
       }
@@ -1344,9 +1332,6 @@ SAIGE.getRegionList_new = function(marker_group_line,
         
         if (!is.null(markerInfo)) {
           genoIndex = as.numeric(RegionData$genoIndex[posSNP])
-          if (!is.null(RegionData$genoIndex_prev)) {
-            genoIndex_prev = as.numeric(RegionData$genoIndex_prev[posSNP])
-          }
           chrom = RegionData$CHROM[posSNP]
           #uchrom = unique(chrom)
           #if(length(uchrom) != 1)
@@ -1401,9 +1386,6 @@ SAIGE.getRegionList_new = function(marker_group_line,
                                                 F]
           if (!is.null(markerInfo)) {
             genoIndex = genoIndex[-annoIndicatorMat_rmind]
-            if (!is.null(RegionData$genoIndex_prev)) {
-              genoIndex_prev = genoIndex_prev[-annoIndicatorMat_rmind]
-            }
             
           }
         }
@@ -1421,11 +1403,6 @@ SAIGE.getRegionList_new = function(marker_group_line,
             #                           chrom = uchrom,
             annoVec = annoVecNew
           )
-          if (!is.null(RegionData$genoIndex_prev)) {
-            RegionList[[r]]$genoIndex_prev = as.character(format(genoIndex_prev, scientific = FALSE))
-          } else {
-            RegionList[[r]]$genoIndex_prev = c("-1")
-          }
 
         }
         

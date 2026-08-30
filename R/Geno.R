@@ -70,7 +70,6 @@ setGenoInput = function(bedFile="",
     if(AlleleOrder == "ref-first")
       names(markerInfo) = c("CHROM", "ID", "POS", "REF", "ALT")
       markerInfo$genoIndex = 1:nrow(markerInfo) - 1  # -1 is to convert 'R' to 'C++' 
-      markerInfo$genoIndex_prev = rep(0, length(markerInfo$genoIndex))
     if(chrom != ""){
       markerInfo = markerInfo[which(markerInfo[,1] == chrom), ]
     }
@@ -248,7 +247,6 @@ extract_genoIndex_condition = function(condition, markerInfo, genoType){
 		#if(length(posInd) == length(condition_original)){
 		if(nrow(markerInfo_conditionDat) == length(condition_original)){
 			cond_genoIndex = markerInfo_conditionDat$genoIndex
-			cond_genoIndex_prev = markerInfo_conditionDat$genoIndex_prev
        			#cond_genoIndex = genoIndex[posInd]
 		}else{
 
@@ -257,5 +255,5 @@ extract_genoIndex_condition = function(condition, markerInfo, genoType){
    }else{
 	stop("condition is empty!")
    }
-   return(list(cond_genoIndex = cond_genoIndex, cond_genoIndex_prev = cond_genoIndex_prev ))
+   return(list(cond_genoIndex = cond_genoIndex))
 }

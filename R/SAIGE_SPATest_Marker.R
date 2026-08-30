@@ -2,7 +2,6 @@ SAIGE.Marker = function(traitType,
 			genoType,
                         idstoIncludeFile,
                         rangestoIncludeFile,
-			genoIndex_prev,
                         genoIndex,
 			CHROM,
                         OutputFile,
@@ -42,9 +41,6 @@ SAIGE.Marker = function(traitType,
       #markerInfo = objGeno$markerInfo
     if(LOCO){
       genoIndex = genoIndex[which(CHROM == chrom)]
-      if(!is.null(genoIndex_prev)){
-	genoIndex_prev = genoIndex_prev[which(CHROM == chrom)]
-      }
       CHROM = CHROM[which(CHROM == chrom)]  
       #markerInfo = markerInfo[which(markerInfo$CHROM == chrom),]  
     }
@@ -55,7 +51,7 @@ SAIGE.Marker = function(traitType,
     #print(markerInfo[1:10,])
     #print(genoIndex[1:10])    
 
-    genoIndexList = splitMarker(genoIndex, genoIndex_prev, nMarkersEachChunk, CHROM);
+    genoIndexList = splitMarker(genoIndex, nMarkersEachChunk, CHROM);
     nChunks = length(genoIndexList)
 
     if(nChunks == 0){
@@ -87,11 +83,6 @@ SAIGE.Marker = function(traitType,
       tempList = genoIndexList[[i]]
       genoIndex = as.character(format(tempList$genoIndex, scientific = FALSE))
       tempChrom = tempList$chrom
-      if(!is.null(genoIndex_prev)){
-      	genoIndex_prev = as.character(format(tempList$genoIndex_prev, scientific = FALSE))
-      }else{
-	genoIndex_prev = c("-1")
-      }
     }
 
 
@@ -119,7 +110,7 @@ SAIGE.Marker = function(traitType,
    #resMarker = as.data.frame(mainMarkerInCPP(genoType, traitType, genoIndex_prev, genoIndex, isMoreOutput, isImputation)) 
    #resMarker = resMarker[which(!is.na(resMarker$BETA)), ]
 
-  mainMarkerInCPP(genoType, traitType, genoIndex_prev, genoIndex, isMoreOutput, isImputation, isFirth)
+  mainMarkerInCPP(genoType, traitType, genoIndex, isMoreOutput, isImputation, isFirth)
 
     #timeoutput=system.time({writeOutputFile(Output = list(resMarker),
   #if(nrow(resMarker) > 0){
@@ -168,7 +159,7 @@ SAIGE.Marker = function(traitType,
 }
 
 
-splitMarker = function(genoIndex, genoIndex_prev, nMarkersEachChunk, CHROM)
+splitMarker = function(genoIndex, nMarkersEachChunk, CHROM)
 {
   genoIndexList = list()
   iTot = 1;
@@ -177,9 +168,6 @@ splitMarker = function(genoIndex, genoIndex_prev, nMarkersEachChunk, CHROM)
   for(chrom in uCHROM){
     pos = which(CHROM == chrom)
     gIdx = genoIndex[pos]
-    if(!is.null(genoIndex_prev)){
-	gIndprev = genoIndex_prev[pos]
-    }
     M = length(gIdx)
 
     idxStart = seq(1, M, nMarkersEachChunk)
@@ -192,8 +180,6 @@ splitMarker = function(genoIndex, genoIndex_prev, nMarkersEachChunk, CHROM)
       idxMarker = idxStart[i]:idxEnd[i]
       genoIndexList[[iTot]] = list(chrom = chrom,
                                    genoIndex = gIdx[idxMarker])
-      if(!is.null(genoIndex_prev)){
-	genoIndexList[[iTot]]$genoIndex_prev = gIndprev[idxMarker] 	     }
 
       iTot = iTot + 1;
     }
