@@ -75,29 +75,6 @@ SAIGE.Marker = function(traitType,
       i = outIndex    
     }
     
-  }else if(genoType == "vcf"){
-   if(!isAnyInclude){	  
-    if(chrom == ""){
-      stop("chrom needs to be specified for single-variant assoc tests when using VCF as input\n")
-    }else{
-      set_iterator_inVcf("", chrom, 1, 250000000)
-    }
-   }
-    if(outIndex > 1){
-	move_forward_iterator_Vcf(outIndex*nMarkersEachChunk)    
-    }
-    isVcfEnd =  check_Vcf_end()
-    if(!isVcfEnd){
-    	#outIndex = 1
-    	genoIndex = rep("0", nMarkersEachChunk) 
-    	genoIndex_prev = rep("0", nMarkersEachChunk) 
-	#nChunks = outIndex + 1
-	is_marker_test = TRUE
-        i = outIndex
-    }else{
-	is_marker_test = FALSE    
-	stop("No markers are left in VCF")
-    }
   }else if(genoType == "bgen"){
     IDsToInclude=NULL
     RangesToInclude=NULL
@@ -427,11 +404,7 @@ query <- paste0("SELECT chromosome, position, rsid, allele1, allele2, file_start
     #print(ptm)
     #print("gc()")
     #print(gc())
-    if(genoType != "vcf"){
-      cat(paste0("(",Sys.time(),") ---- Analyzing Chunk ", i, "/", nChunks, ": chrom ", chrom," ---- \n"))
-    }else{
-      cat(paste0("(",Sys.time(),") ---- Analyzing Chunk ", i, " :  chrom ", chrom," ---- \n"))
-    }	    
+    cat(paste0("(",Sys.time(),") ---- Analyzing Chunk ", i, "/", nChunks, ": chrom ", chrom," ---- \n"))
     # main function to calculate summary statistics for markers in one chunk
    
    #resMarker = as.data.frame(mainMarkerInCPP(genoType, traitType, genoIndex_prev, genoIndex, isMoreOutput, isImputation)) 
@@ -442,11 +415,7 @@ query <- paste0("SELECT chromosome, position, rsid, allele1, allele2, file_start
     #timeoutput=system.time({writeOutputFile(Output = list(resMarker),
   #if(nrow(resMarker) > 0){
 
-  if(genoType == "vcf"){
-    isEnd_Output =  check_Vcf_end()
-  }else{
-    isEnd_Output = (i==nChunks)	
-  }
+  isEnd_Output = (i==nChunks)
   
   #}
 
@@ -477,17 +446,9 @@ query <- paste0("SELECT chromosome, position, rsid, allele1, allele2, file_start
 
     
     i = i + 1
-  if(genoType == "vcf"){
-    isVcfEnd =  check_Vcf_end()
-    cat("isVcfEnd ", isVcfEnd, "\n")
-    if(isVcfEnd){
-	is_marker_test = FALSE	     
-    }
-  }else{
     if(i > nChunks){
       is_marker_test = FALSE
-    }	    
-  }
+    }
 	  
   } #while(is_marker_test){
 

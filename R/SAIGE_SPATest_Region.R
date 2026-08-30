@@ -328,30 +328,6 @@ SAIGE.Region = function(mu,
       i = i + 1
       if (!is.null(region$SNP) & length(annolistsub) > 0) {
         SNP = region$SNP
-        if (genoType == "vcf") {
-          SNPlist = paste(c(regionName, SNP), collapse = "\t")
-          if (length(SNP) == 1) {
-            fakem = strsplit(SNP, split = ":")[[1]]
-            fakemb = paste(c(fakem[1], as.numeric(fakem[2]) + 2, "N", "N"), collapse =
-                             ":")
-            SNPlisttemp = paste(c(SNPlist, fakemb), collapse = "\t")
-            set_iterator_inVcf(SNPlisttemp, chrom1, 1, 250000000)
-          } else {
-            set_iterator_inVcf(SNPlist, chrom1, 1, 250000000)
-          }
-          
-          isVcfEnd =  check_Vcf_end()
-          if (!isVcfEnd) {
-            region$genoIndex = rep("0", length(SNP))
-            region$genoIndex_prev = rep("0", length(SNP))
-          } else {
-            warning("No markers in region ",
-                    regionName,
-                    " are found in the VCF file")
-            next
-          }
-        }
-        
         if (is_no_weight_in_groupTest) {
           WEIGHT = rep(1, length(SNP))
         } else {
@@ -408,34 +384,6 @@ SAIGE.Region = function(mu,
           if (!is.null(outList$iswriteOutput)) {
             if (!(outList$iswriteOutput)) {
               set_flagSparseGRM_cur_SAIGE(TRUE)
-
-        ##reset VCF file for genotype reading again for the same region
-        if (genoType == "vcf") {
-          SNPlist = paste(c(regionName, SNP), collapse = "\t")
-          if (length(SNP) == 1) {
-            fakem = strsplit(SNP, split = ":")[[1]]
-            fakemb = paste(c(fakem[1], as.numeric(fakem[2]) + 2, "N", "N"), collapse =
-                             ":")
-            SNPlisttemp = paste(c(SNPlist, fakemb), collapse = "\t")
-            set_iterator_inVcf(SNPlisttemp, chrom1, 1, 250000000)
-          } else {
-            set_iterator_inVcf(SNPlist, chrom1, 1, 250000000)
-          }
-
-          isVcfEnd =  check_Vcf_end()
-          if (!isVcfEnd) {
-            region$genoIndex = rep("0", length(SNP))
-            region$genoIndex_prev = rep("0", length(SNP))
-          } 
-	#else {
-        #    warning("No markers in region ",
-        #            regionName,
-        #            " are found in the VCF file")
-        #    next
-        #  }
-        }	
-
-
 
 
               outList = mainRegionInCPP(
@@ -735,34 +683,6 @@ SAIGE.Region = function(mu,
                 pval.Region = NULL
                 cat("Non-fast test is performed\n")
                 set_flagSparseGRM_cur_SAIGE(TRUE)
-
-        ##reset VCF file for genotype reading again for the same region
-        if (genoType == "vcf") {
-          SNPlist = paste(c(regionName, SNP), collapse = "\t")
-          if (length(SNP) == 1) {
-            fakem = strsplit(SNP, split = ":")[[1]]
-            fakemb = paste(c(fakem[1], as.numeric(fakem[2]) + 2, "N", "N"), collapse =
-                             ":")
-            SNPlisttemp = paste(c(SNPlist, fakemb), collapse = "\t")
-            set_iterator_inVcf(SNPlisttemp, chrom1, 1, 250000000)
-          } else {
-            set_iterator_inVcf(SNPlist, chrom1, 1, 250000000)
-          }
-
-          isVcfEnd =  check_Vcf_end()
-          if (!isVcfEnd) {
-            region$genoIndex = rep("0", length(SNP))
-            region$genoIndex_prev = rep("0", length(SNP))
-          }
-        #else {
-        #    warning("No markers in region ",
-        #            regionName,
-        #            " are found in the VCF file")
-        #    next
-        #  }
-        }
-
-
 
                 outList = mainRegionInCPP(
                   genoType,

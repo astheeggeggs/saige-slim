@@ -19,7 +19,6 @@
 #include "Main.hpp"
 #include "PLINK.hpp"
 #include "BGEN.hpp"
-#include "VCF.hpp"
 #include "SAIGE_test.hpp"
 #include "UTIL.hpp"
 #include "CCT.hpp"
@@ -33,7 +32,6 @@
 
 static PLINK::PlinkClass* ptr_gPLINKobj = NULL;
 static BGEN::BgenClass* ptr_gBGENobj = NULL;
-static VCF::VcfClass* ptr_gVCFobj = NULL;
 // global objects for different analysis methods
 static SAIGE::SAIGEClass* ptr_gSAIGEobj = NULL;
 //single, SAIGE
@@ -310,7 +308,6 @@ void mainMarkerInCPP(
    if(!isReadMarker){
       //std::cout << "isReadMarker " << isReadMarker << std::endl;
       g_markerTestEnd = true;
-      bool isEndFile = check_Vcf_end();
       break;
     }
 
@@ -633,7 +630,7 @@ void mainMarkerInCPP(
 
 
 // [[Rcpp::export]]
-bool Unified_getOneMarker(std::string & t_genoType,   // "PLINK", "BGEN", "Vcf"
+bool Unified_getOneMarker(std::string & t_genoType,   // "PLINK", "BGEN"
                                uint64_t & t_gIndex_prev,        // different meanings for different genoType
                                uint64_t & t_gIndex,        // different meanings for different genoType
                                std::string& t_ref,       // REF allele
@@ -674,12 +671,6 @@ bool Unified_getOneMarker(std::string & t_genoType,   // "PLINK", "BGEN", "Vcf"
    //printTime(timeoutput1, timeoutput2, "Unified_getOneMarker a");
   }
 
-  if(t_genoType == "vcf"){
-    ptr_gVCFobj->getOneMarker(t_ref, t_alt, t_marker, t_pd, t_chr, t_altFreq, t_altCounts, t_missingRate, t_imputeInfo,
-                                      t_isOutputIndexForMissing, t_indexForMissing, t_isOnlyOutputNonZero, t_indexForNonZero, isBoolRead, t_GVec, t_isImputation);
-    ptr_gVCFobj->move_forward_iterator(1);
-  }	  
- 
   if(g_is_rewrite_XnonPAR_forMales){
   	processMale_XnonPAR(t_GVec, t_pd, g_X_PARregion_mat);
 	t_altCounts = arma::sum(t_GVec);
@@ -714,9 +705,6 @@ uint32_t Unified_getSampleSizeinGeno(std::string & t_genoType){
 	N0 = ptr_gBGENobj->getN0();
     }	    
 
-    if(t_genoType == "vcf"){
-       N0 = ptr_gVCFobj->getN0();
-    }
     return(N0);
 }	
 
@@ -730,9 +718,6 @@ uint32_t Unified_getSampleSizeinAnalysis(std::string & t_genoType){
         N = ptr_gBGENobj->getN();
     }
 
-    if(t_genoType == "vcf"){
-       N = ptr_gVCFobj->getN();
-    }
     return(N);
 }
 
@@ -816,25 +801,6 @@ void setBGENobjInCPP(std::string t_bgenFileName,
 				     false,
                                      t_AlleleOrder);
   //int n = ptr_gBGENobj->getN();
-}
-
-
-// [[Rcpp::export]]
-void setVCFobjInCPP(std::string t_vcfFileName,
-            std::string t_vcfFileIndex,
-            std::string t_vcfField,
-            std::string t_vcfFilters,
-            std::vector<std::string> & t_SampleInModel)
-{
-  ptr_gVCFobj = new VCF::VcfClass(t_vcfFileName,
-		  	t_vcfFileIndex,
-				t_vcfField,
-				t_vcfFilters,
-				false,
-				t_SampleInModel);
-
-bool isEnd = ptr_gVCFobj->check_iterator_end();
-
 }
 
 
@@ -2113,7 +2079,7 @@ OutList.push_back(iswriteOutput, "iswriteOutput");
 
 // [[Rcpp::export]]
 void assign_conditionMarkers_factors(
-                           std::string t_genoType,     // "plink", "bgen", "vcf"
+                           std::string t_genoType,     // "plink", "bgen"
 			   std::vector<std::string> & t_genoIndex_prev,
                            std::vector<std::string> & t_genoIndex,
                            unsigned int t_n, 
@@ -2187,7 +2153,6 @@ void assign_conditionMarkers_factors(
             t_genoIndex_prev_str = t_genoIndex.at(i-1);
             gIndex_prev = std::strtoull( t_genoIndex_prev_str.c_str(), &end_prev,10 );
         }
-	//else if(t_genoType == "vcf"){
          //   gIndex_prev = 0;	
 	//}
 	std::remove(end_prev);
@@ -2298,29 +2263,6 @@ void assign_conditionMarkers_factors_binary_region(
 	ptr_gSAIGEobj->assignConditionFactors_scalefactor(scalefactor_G2_cond);
 }
 
-// [[Rcpp::export]]
-void set_iterator_inVcf(std::string & variantList, std::string & chrom, int & beg_pd, int & end_pd){
-   if(!variantList.empty()){
-	ptr_gVCFobj->set_iterator(variantList);	
-   }else{
-	ptr_gVCFobj->set_iterator(chrom, beg_pd, end_pd);
-   }	   
-}	
-
-// [[Rcpp::export]]
-bool check_Vcf_end(){
-	bool isEnd = false;
-	isEnd = ptr_gVCFobj->check_iterator_end();
-	return(isEnd);
-}
-
-
-// [[Rcpp::export]]
-void move_forward_iterator_Vcf(int i){
-	ptr_gVCFobj->move_forward_iterator(i);
-}
-
-
 
 // [[Rcpp::export]]
 arma::vec fast_logistf_fit(arma::mat & x,
@@ -2416,8 +2358,6 @@ void closeGenoFile(std::string & t_genoType)
 {
   if(t_genoType == "bgen"){
     ptr_gBGENobj->closegenofile();
-  }else if(t_genoType == "vcf"){
-    ptr_gVCFobj->closegenofile();
   }else if(t_genoType == "plink"){
     ptr_gPLINKobj->closegenofile();
   }

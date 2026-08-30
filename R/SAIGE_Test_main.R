@@ -3,12 +3,6 @@
 #' @param bgenFile character. Path to bgen file. Currently version 1.2 with 8 bit compression is supported
 #' @param bgenFileIndex character. Path to the .bgi file (index of the bgen file)
 #' @param sampleFile character. Path to the file that contains one column for IDs of samples in the bgen file. The file does not contain header lines. 
-#' @param vcfFile character. Path to vcf file
-#' @param vcfFileIndex character. Path to vcf index file. Indexed by tabix. Path to index for vcf file by tabix, .csi file using 'tabix --csi -p vcf file.vcf.gz'
-#' @param vcfField character. genotype field in vcf file to use. "DS" for dosages or "GT" for genotypes. By default, "DS".
-#' @param vcfFilters character. Comma-delimited list of FORMAT field filters for per-sample filtering. Genotypes failing any filter are treated as missing. Supports comparisons: >, <, >=, <=, ==. e.g. "DP>10,GQ>=30". By default, "" (no filtering).
-#' @param savFile character. Path to sav file
-#' @param savFileIndex character. Path to index for sav file .s1r
 #' @param bedFile character. Path to bed file (PLINK)
 #' @param bimFile character. Path to bim file (PLINK)
 #' @param famFile character. Path to fam file (PLINK)
@@ -62,12 +56,6 @@
 SPAGMMATtest = function(bgenFile = "",
                  bgenFileIndex = "",
                  sampleFile = "",
-                 vcfFile = "",
-                 vcfFileIndex = "",
-                 vcfField = "DS",
-                 vcfFilters = "", #new: comma-delimited list of filters, e.g. "DP>10,GQ<=30"
-                 savFile = "",
-                 savFileIndex = "",
                  bedFile="",
                  bimFile="",
                  famFile="",
@@ -376,12 +364,6 @@ SPAGMMATtest = function(bgenFile = "",
     #in Geno.R
     objGeno = setGenoInput(bgenFile = bgenFile,
                  bgenFileIndex = bgenFileIndex,
-                 vcfFile = vcfFile,   #not activate yet
-                 vcfFileIndex = vcfFileIndex,
-                 vcfField = vcfField,
-                 vcfFilters = vcfFilters,
-                 savFile = savFile,
-                 savFileIndex = savFileIndex,
                  sampleFile = sampleFile,
                  bedFile=bedFile,
                  bimFile=bimFile,

@@ -53,10 +53,6 @@ setBGENobjInCPP <- function(t_bgenFileName, t_bgenFileIndex, t_SampleInBgen, t_S
     invisible(.Call('_SAIGE_setBGENobjInCPP', PACKAGE = 'SAIGE', t_bgenFileName, t_bgenFileIndex, t_SampleInBgen, t_SampleInModel, t_AlleleOrder))
 }
 
-setVCFobjInCPP <- function(t_vcfFileName, t_vcfFileIndex, t_vcfField, t_vcfFilters, t_SampleInModel) {
-    invisible(.Call('_SAIGE_setVCFobjInCPP', PACKAGE = 'SAIGE', t_vcfFileName, t_vcfFileIndex, t_vcfField, t_vcfFilters, t_SampleInModel))
-}
-
 setSAIGEobjInCPP <- function(t_XVX, t_XXVX_inv, t_XV, t_XVX_inv_XV, t_Sigma_iXXSigma_iX, t_X, t_S_a, t_res, t_mu2, t_mu, t_varRatio_sparse, t_varRatio_null, t_varRatio_null_noXadj, t_cateVarRatioMinMACVecExclude, t_cateVarRatioMaxMACVecInclude, t_SPA_Cutoff, t_tauvec, t_traitType, t_y, t_impute_method, t_flagSparseGRM, t_isFastTest, t_isnoadjCov, t_pval_cutoff_for_fastTest, t_locationMat, t_valueVec, t_dimNum, t_isCondition, t_condition_genoIndex, t_is_Firth_beta, t_pCutoffforFirth, t_offset, t_resout) {
     invisible(.Call('_SAIGE_setSAIGEobjInCPP', PACKAGE = 'SAIGE', t_XVX, t_XXVX_inv, t_XV, t_XVX_inv_XV, t_Sigma_iXXSigma_iX, t_X, t_S_a, t_res, t_mu2, t_mu, t_varRatio_sparse, t_varRatio_null, t_varRatio_null_noXadj, t_cateVarRatioMinMACVecExclude, t_cateVarRatioMaxMACVecInclude, t_SPA_Cutoff, t_tauvec, t_traitType, t_y, t_impute_method, t_flagSparseGRM, t_isFastTest, t_isnoadjCov, t_pval_cutoff_for_fastTest, t_locationMat, t_valueVec, t_dimNum, t_isCondition, t_condition_genoIndex, t_is_Firth_beta, t_pCutoffforFirth, t_offset, t_resout))
 }
@@ -75,18 +71,6 @@ assign_conditionMarkers_factors <- function(t_genoType, t_genoIndex_prev, t_geno
 
 assign_conditionMarkers_factors_binary_region <- function(scalefactor_G2_cond) {
     invisible(.Call('_SAIGE_assign_conditionMarkers_factors_binary_region', PACKAGE = 'SAIGE', scalefactor_G2_cond))
-}
-
-set_iterator_inVcf <- function(variantList, chrom, beg_pd, end_pd) {
-    invisible(.Call('_SAIGE_set_iterator_inVcf', PACKAGE = 'SAIGE', variantList, chrom, beg_pd, end_pd))
-}
-
-check_Vcf_end <- function() {
-    .Call('_SAIGE_check_Vcf_end', PACKAGE = 'SAIGE')
-}
-
-move_forward_iterator_Vcf <- function(i) {
-    invisible(.Call('_SAIGE_move_forward_iterator_Vcf', PACKAGE = 'SAIGE', i))
 }
 
 fast_logistf_fit <- function(x, y, weight, offset, firth, col_fit, init, maxit, maxstep, maxhs, lconv, gconv, xconv, isfirthconverge) {

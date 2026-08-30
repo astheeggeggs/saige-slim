@@ -11,18 +11,6 @@ library(parallel)
 print(sessionInfo())
 
 option_list <- list(
-  make_option("--vcfFile", type="character",default="",
-    help="Path to vcf file."),
-  make_option("--vcfFileIndex", type="character",default="",
-    help="Path to vcf index file. Indexed by tabix. Path to index for vcf file by tabix, .csi file by tabix -p vcf csi file.vcf.gz"),
-  make_option("--vcfField", type="character",default="DS",
-    help="DS or GT, [default=DS]"),
-  make_option("--vcfFilters", type="character",default="",
-    help="Comma-separated list of filters to be applied to the vcf file. e.g. 'DS<10' or 'DS>10,GQ>=30,DS<15'. (default = empty string)"),
-  make_option("--savFile", type="character",default="",
-    help="Path to the sav file."),
-  make_option("--savFileIndex", type="character",default="",
-    help="Path to the .s1r file (index of the sav file)."),
   make_option("--bgenFile", type="character",default="",
     help="Path to bgen file. Path to bgen file. Currently version 1.2 with 8 bit compression is supported"),
   make_option("--bgenFileIndex", type="character",default="",
@@ -195,12 +183,7 @@ print(opt$r.corr)
 
 nThreads = opt$nThreads
 if(nThreads == 1){
-  SPAGMMATtest(vcfFile=opt$vcfFile,
-             vcfFileIndex=opt$vcfFileIndex,
-             vcfField=opt$vcfField,
-             savFile=opt$savFile,
-             vcfFilters=opt$vcfFilters,
-             savFileIndex=opt$savFileIndex,
+  SPAGMMATtest(
              bgenFile=opt$bgenFile,
              bgenFileIndex=opt$bgenFileIndex,
              sampleFile=opt$sampleFile,
@@ -278,12 +261,7 @@ if(nThreads == 1){
     })
 
     output_files = paste0(opt$SAIGEOutputFile, suffixes)
-    fixed_params <- list(vcfFile=opt$vcfFile,
-             vcfFileIndex=opt$vcfFileIndex,
-             vcfField=opt$vcfField,
-             vcfFilters=opt$vcfFilters,
-             savFile=opt$savFile,
-             savFileIndex=opt$savFileIndex,
+    fixed_params <- list(
              bgenFile=opt$bgenFile,
              bgenFileIndex=opt$bgenFileIndex,
              sampleFile=opt$sampleFile,

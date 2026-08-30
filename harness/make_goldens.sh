@@ -198,28 +198,9 @@ run step2_bgen_marker_binary.log R2 step2_SPAtests.R \
   $BIN_MODEL \
   --is_output_moreDetails=TRUE
 
-# V1: single-variant conditional, vcf, quantitative (cmd.sh:128 with a working model;
-# output verified identical to the PLINK counterpart P4)
-run step2_vcf_marker_cond.log R2 step2_SPAtests.R \
-  --vcfFile=./input/genotype_100markers.vcf.gz \
-  --vcfFileIndex=./input/genotype_100markers.vcf.gz.csi \
-  --vcfField=GT \
-  --SAIGEOutputFile="$GOLD/step2/vcf_marker_cond_quantitative.txt" \
-  --chrom=1 --minMAF=0 --minMAC=20 --LOCO=FALSE \
-  $QUANT_MODEL \
-  --is_output_moreDetails=TRUE \
-  --condition=1:13:A:C,1:79:A:C
-
-# V2: single-variant, vcf, binary, minMAC=1 (ER path; cmd.sh:162 minus the broken
-# ranges flag)
-run step2_vcf_marker_ER.log R2 step2_SPAtests.R \
-  --vcfFile=./input/genotype_100markers.vcf.gz \
-  --vcfFileIndex=./input/genotype_100markers.vcf.gz.csi \
-  --vcfField=GT \
-  --SAIGEOutputFile="$GOLD/step2/vcf_marker_ER_binary.txt" \
-  --chrom=1 --minMAF=0 --minMAC=1 --LOCO=FALSE \
-  $BIN_MODEL \
-  --is_output_moreDetails=TRUE
+# V1/V2 (vcf marker runs) retired to harness/goldens_retired/ when the VCF/SAV
+# reader was stripped (Strip 5). Their PLINK counterparts P1/P4 continue; the
+# vcf conditional output had been verified identical to P4's.
 
 if [ "${#FAILED_RUNS[@]}" -gt 0 ]; then
   echo "=== COMPLETE WITH FAILURES ($GOLD):"

@@ -21,12 +21,6 @@ checkIfSampleIDsExist = function(bgenFile)
 
 checkGenoInput = function(bgenFile = "",
                  bgenFileIndex = "",
-                 vcfFile = "",
-		 vcfFileIndex = "",
-                 vcfField = "DS",
-                 vcfFilters = "",
-                 savFile = "",
-		 savFileIndex = "",
                  sampleFile = "",
                  bedFile="",
                  bimFile="",
@@ -41,47 +35,6 @@ checkGenoInput = function(bgenFile = "",
         Check_File_Exist(bgenFile, "bgenFile")
         Check_File_Exist(bgenFileIndex, "bgenFileIndex")
         dosageFileType = "bgen"
-    }else if (vcfFile != "") {
-        Check_File_Exist(vcfFile, "vcfFile")
-
-	vcfFileIndex_require = paste(vcfFile, ".csi", sep = "")
-        if(vcfFileIndex != ""){
-                if(vcfFileIndex != vcfFileIndex_require){
-                        stop("ERROR! vcfFileIndex is specfied. Please note it must be ", vcfFileIndex_require, "\n")
-                }else{
-			cat("Please note the argument vcfFileIndex will not be used in future versions because the vcf index file must has the name 'vcfFile'.csi\n")
-		}	
-        }else{
-                cat("vcfFileIndex is not specified. ", vcfFileIndex_require, " will be used\n")
-        }
-    	vcfFileIndex = vcfFileIndex_require
-
-        if (!file.exists(paste(vcfFile, ".csi", sep = ""))) {
-            stop("ERROR! vcfFileIndex ", vcfFileIndex, " does not exist\n")
-        }
-        dosageFileType = "vcf"
-
-    }else if (savFile != "") {
-        Check_File_Exist(savFile, "savFile")
-	#Check_File_Exist(savFileIndex, "savFileIndex")
-	savFileIndex_require = paste(savFile, ".s1r", sep = "")
-	if(savFileIndex != ""){
-		if(savFileIndex != paste(savFile, ".s1r", sep = "")){
-			stop("ERROR! savFileIndex is specfied. Please note it must be ", savFileIndex_require, "\n") 
-		}else{
-			cat("Please note the argument savFileIndex will not be used in future versions because the sav index file must has the name 'savFile'.s1r\n")
-		}	
-	}else{
-		cat("savFileIndex is not specified. ", savFileIndex_require, " will be used\n")
-	}	
-	savFileIndex = savFileIndex_require
-	if (!file.exists(savFileIndex)) {
-            stop("ERROR! savFileIndex ", savFileIndex, " does not exist\n")
-        }
-	vcfFile = savFile
-	vcfFileIndex = savFileIndex
-        dosageFileType = "vcf"
-
     }else if(bedFile != ""){
 	Check_File_Exist(bedFile, "bedFile")
 	if(bimFile == ""){
@@ -98,15 +51,6 @@ checkGenoInput = function(bgenFile = "",
     
     cat("dosageFile type is ", dosageFileType, "\n")
 
-    if(dosageFileType == "vcf"){
-        #if (chrom == "") {
-        #    stop("ERROR! chrom needs to be specified for the vcf file\n")
-        #}
-	if(vcfField != "DS" & vcfField != "GT"){
-	    stop("vcfField has to be DS or GT\n")	
-	}
-    }
-
     return(dosageFileType)
 }	
 
@@ -122,12 +66,6 @@ splitreformatMarkerIDinBgen = function(x){
 
 setGenoInput = function(bgenFile = "",
                  bgenFileIndex = "",
-                 vcfFile = "",
-                 vcfFileIndex = "",
-                 vcfField = "DS",
-                 vcfFilters = "",
-                 savFile = "",
-                 savFileIndex = "",
                  sampleFile = "",
                  bedFile="",
                  bimFile="",
@@ -143,11 +81,6 @@ setGenoInput = function(bgenFile = "",
 
   dosageFileType = checkGenoInput(bgenFile = bgenFile,
                  bgenFileIndex = bgenFileIndex,
-                 vcfFile = vcfFile,
-                 vcfFileIndex = vcfFileIndex,
-                 vcfField = vcfField,
-                 savFile = savFile,
-                 savFileIndex = savFileIndex,
                  bedFile = bedFile,
                  bimFile = bimFile,
                  famFile = famFile,
@@ -299,17 +232,6 @@ setGenoInput = function(bgenFile = "",
     # cat("time_geno_2 - time_geno_1\n")
      #  print(time_geno_2 - time_geno_1)
 
-  if(dosageFileType == "vcf"){
-    if(idstoIncludeFile != "" & rangestoIncludeFile != ""){
-      stop("We currently do not support both 'idstoIncludeFile' and 'rangestoIncludeFile' at the same time for vcf files\n")
-    }
-    #if(chrom==""){
-    #  stop("chrom needs to be specified for VCF/BCF/SAV input\n")
-    #}
-    #markerInfo = NULL
-  }
-
-
   #Files = c("idstoIncludeFile", "idstoExcludeFile", "rangestoIncludeFile", "rangestoExcludeFile")
 
   anyInclude = FALSE
@@ -355,19 +277,6 @@ setGenoInput = function(bgenFile = "",
     }
 
     colnames(RangesToInclude) = c("CHROM", "START", "END")
- if(dosageFileType == "vcf"){ 
-   if(nrow(RangesToInclude) > 0){
-    for(i in 1:nrow(RangesToInclude)){
-      CHROM1 = RangesToInclude$CHROM[i]
-      START = RangesToInclude$START[i]
-      END = RangesToInclude$END[i]
-      posRows = with(markerInfo, which(CHROM == CHROM1 & POS >= START & POS <= END))
-      if(length(posRows) != 0)
-        markersInclude = c(markersInclude, markerInfo$ID[posRows])
-	cat(length(markerInfo$ID[posRows]), " markers in the range ", i, " are found in the geno/dosage file.\n")
-    }
-   }
-  } 
     anyInclude = TRUE
   }
 
@@ -424,44 +333,6 @@ if(FALSE){
 
 #  anyQueue = anyInclude | anyExclude
 
-  if(dosageFileType == "vcf"){
-
-    if(vcfFile != ""){
-	vcfFileIndex = paste(vcfFile, ".csi", sep = "") 
-    }else if(savFile != ""){	    
-	vcfFile = savFile
-        vcfFileIndex = paste(vcfFile, ".s1r", sep = "")
-    }
-	    
-    setVCFobjInCPP(vcfFile, vcfFileIndex, vcfField, vcfFilters, t_SampleInModel = sampleInModel)
-    if(!is.null(IDsToInclude)){
-      SNPlist = paste(c("set1", IDsToInclude), collapse = "\t")
-      in_chrom="fake_chrom"
-      in_beg_pd=1
-      in_end_pd=250000000
-      set_iterator_inVcf(SNPlist, in_chrom, in_beg_pd, in_end_pd)
-      anyInclude = TRUE
-    }
-
-    if(!is.null(RangesToInclude)){
-      CHROM1 = RangesToInclude$CHROM
-      START = RangesToInclude$START
-      END = RangesToInclude$END
-      if(length(CHROM1) > 1){
-        stop("We do not support query with multiple regions for vcf file. Please only include one region in the ", rangestoIncludeFile, "\n")
-      }else{
-	inSNPlist=""
-        in_chrom=CHROM1[1]
-  	in_beg_pd=START[1]
-	in_end_pd=END[1]
-	cat("Tests will be performed for chromosome: ",in_chrom, ", start: ", in_beg_pd," end: ", in_end_pd,"\n")	
-        set_iterator_inVcf(inSNPlist, in_chrom, in_beg_pd, in_end_pd)
-	anyInclude = TRUE
-      }
-    } 
-    #markerInfo = data.table(CHROM=NULL, POS=NULL, genoIndex_prev=NULL, genoIndex=NULL)
-    markerInfo = NULL
-  }
   #genoList = list(genoType = genoType, markerInfo = markerInfo, SampleIDs = SampleIDs, AlleleOrder = AlleleOrder, GenoFile = GenoFile, GenoFileIndex = GenoFileIndex, anyQueue = anyQueue)
   #genoList = list(dosageFileType = dosageFileType, markerInfo = markerInfo, anyQueue = anyQueue, genoType = dosageFileType)
   #genoList = list(dosageFileType = dosageFileType, markerInfo = markerInfo, genoType = dosageFileType)
@@ -537,7 +408,6 @@ extract_genoIndex_condition = function(condition, markerInfo, genoType){
 		#print(head(markerInfo))
 		#CHROM POS    ID genoIndex       ID2 genoIndex_prev
 
-	if(genoType != "vcf"){
 		markerInfo_conditionDat = merge(conditionDat, markerInfo, by.x="SNP", by.y="ID", sort = F, all.x=T)
 		#print(markerInfo_conditionDat)
 		#print("markerInfo_conditionDat")
@@ -577,23 +447,8 @@ extract_genoIndex_condition = function(condition, markerInfo, genoType){
        			#cond_genoIndex = genoIndex[posInd]
 		}else{
 
-			stop(length(condition_original)-nrow(markerInfo_conditionDat), " conditioning markers are not found in the geno file. Please Check.\n")	
-		}	
-       }else{
-	        condition_group_line = paste(c("condition", condition_original), collapse = "\t")
-
-		if(length(condition_original) == 1){
-			fakem = strsplit(condition_original, split=":")[[1]]
-			fakemb = paste(c(fakem[1], as.numeric(fakem[2])+2, "N", "N"), collapse=":")
-			condition_group_linetemp = paste(c(condition_group_line, fakemb), collapse = "\t")
-			set_iterator_inVcf(condition_group_linetemp, "1", 1, 250000000)
-		}else{	
-
-			set_iterator_inVcf(condition_group_line, "1", 1, 250000000)
+			stop(length(condition_original)-nrow(markerInfo_conditionDat), " conditioning markers are not found in the geno file. Please Check.\n")
 		}
-		cond_genoIndex = rep("0", length(condition_original))
-		cond_genoIndex_prev = rep("0", length(condition_original))
-       }
    }else{
 	stop("condition is empty!")
    }

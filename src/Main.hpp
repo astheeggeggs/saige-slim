@@ -135,13 +135,6 @@ void setBGENobjInCPP(std::string t_bgenFileName,
                      std::vector<std::string> & t_SampleInModel,
                      std::string t_AlleleOrder);
 
-void setVCFobjInCPP(std::string t_vcfFileName,
-            std::string t_vcfFileIndex,
-            std::string t_vcfField,
-            std::string t_vcfFilters,
-            std::vector<std::string> & t_SampleInModel);
-
-
 void setSAIGEobjInCPP(arma::mat & t_XVX,
         arma::mat & t_XXVX_inv,
         arma::mat & t_XV,
@@ -178,7 +171,7 @@ void setSAIGEobjInCPP(arma::mat & t_XVX,
 
 
 void assign_conditionMarkers_factors(
-                           std::string t_genoType,     // "plink", "bgen", "vcf"
+                           std::string t_genoType,     // "plink", "bgen"
                            std::vector<std::string> & t_genoIndex_prev,
                            std::vector<std::string> & t_genoIndex,
                            unsigned int t_n,
@@ -188,10 +181,6 @@ void assign_conditionMarkers_factors(
 
 void assign_conditionMarkers_factors_binary_region(
                            arma::vec & scalefactor_G2_cond);
-
-void set_iterator_inVcf(std::string & variantList);
-
-bool check_Vcf_end();
 
 arma::vec fast_logistf_fit(arma::mat & x,
                 arma::vec & y,
