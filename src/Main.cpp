@@ -17,7 +17,7 @@
 // // [[Rcpp::plugins(openmp)]]]
 
 #include "Main.hpp"
-#include "PLINK.hpp"
+#include "GenoReader.hpp"
 #include "SAIGE_test.hpp"
 #include "UTIL.hpp"
 #include "CCT.hpp"
@@ -27,9 +27,9 @@
 
 #include <boost/math/distributions/beta.hpp>
 
-// global objects for different genotype formats
+// the genotype reader for the current analysis (see GenoReader.hpp)
 
-static PLINK::PlinkClass* ptr_gPLINKobj = NULL;
+static std::unique_ptr<Geno::GenoReader> g_reader;
 // global objects for different analysis methods
 static SAIGE::SAIGEClass* ptr_gSAIGEobj = NULL;
 //single, SAIGE
@@ -637,12 +637,11 @@ bool Unified_getOneMarker(std::string & t_genoType,   // "PLINK"
   //arma::vec GVec(ptr_gSAIGEobj->m_n);
   bool isBoolRead = true;
   if(t_genoType == "plink"){
-   bool isTrueGenotype = true;
    //t_gIndex_prev is after reading the last marker
 
-   ptr_gPLINKobj->getOneMarker(t_gIndex_prev, t_gIndex, t_ref, t_alt, t_marker, t_pd, t_chr, t_altFreq, t_altCounts, t_missingRate, t_imputeInfo, 
+   isBoolRead = g_reader->getOneMarker(t_gIndex_prev, t_gIndex, t_ref, t_alt, t_marker, t_pd, t_chr, t_altFreq, t_altCounts, t_missingRate, t_imputeInfo,
                                        t_isOutputIndexForMissing, t_indexForMissing, t_isOnlyOutputNonZero, t_indexForNonZero,
-                                       isTrueGenotype, t_GVec);   // t_isTrueGenotype, only used for PLINK format.
+                                       t_GVec);
   }
 
   if(g_is_rewrite_XnonPAR_forMales){
@@ -673,7 +672,7 @@ void processMale_XnonPAR(arma::vec & t_GVec,  uint32_t& t_pd , arma::umat & t_XP
 uint32_t Unified_getSampleSizeinGeno(std::string & t_genoType){
     uint32_t N0;
     if(t_genoType == "plink"){
-	N0 = ptr_gPLINKobj->getN0();
+	N0 = g_reader->getN0();
     }
     return(N0);
 }	
@@ -682,7 +681,7 @@ uint32_t Unified_getSampleSizeinGeno(std::string & t_genoType){
 uint32_t Unified_getSampleSizeinAnalysis(std::string & t_genoType){
     uint32_t N;
     if(t_genoType == "plink"){
-        N = ptr_gPLINKobj->getN();
+        N = g_reader->getN();
     }
     return(N);
 }
@@ -742,13 +741,11 @@ void setPLINKobjInCPP(std::string t_bimFile,
                       std::vector<std::string> & t_SampleInModel,
                       std::string t_AlleleOrder)
 {
-  ptr_gPLINKobj = new PLINK::PlinkClass(t_bimFile,
-                                        t_famFile,
-                                        t_bedFile,
-                                        //t_SampleInModel,
-                                        t_AlleleOrder);
-  ptr_gPLINKobj->setPosSampleInPlink(t_SampleInModel);
-  
+  Rcpp::List spec = Rcpp::List::create(Rcpp::Named("bimFile") = t_bimFile,
+                                       Rcpp::Named("famFile") = t_famFile,
+                                       Rcpp::Named("bedFile") = t_bedFile,
+                                       Rcpp::Named("AlleleOrder") = t_AlleleOrder);
+  g_reader = Geno::makeReader("plink", spec, t_SampleInModel);
 }
 
 //////// ---------- Main functions to set objects for different analysis methods --------- ////////////
@@ -2285,7 +2282,7 @@ arma::vec fast_logistf_fit(arma::mat & x,
 void closeGenoFile(std::string & t_genoType)
 {
   if(t_genoType == "plink"){
-    ptr_gPLINKobj->closegenofile();
+    g_reader->close();
   }
 }
 
