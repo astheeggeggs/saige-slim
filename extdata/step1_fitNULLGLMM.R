@@ -10,6 +10,8 @@ print(sessionInfo())
 
 ## set list of cmd line arguments
 option_list <- list(
+  make_option("--seed", type="integer", default=1,
+    help="Random seed for the run; also decouples variance-ratio marker selection from model-fitting convergence (default 1) [LEDGER #8]"),
   make_option("--plinkFile", type="character",default="",
     help="Path to plink file for creating the genetic relationship matrix (GRM). minMAFforGRM can be used to specify the minimum MAF and maxMissingRate can be used to specify the maximum missing rates  of markers in the plink file to be used for constructing GRM. Genetic markers are also randomly selected from the plink file to estimate the variance ratios"),
   make_option("--bedFile", type="character",default="",
@@ -144,10 +146,11 @@ cateVarRatioMaxMACVecInclude <- convertoNumeric(x=strsplit(opt$cateVarRatioMaxMA
 
 
 #set seed
-set.seed(1)
+set.seed(opt$seed)
 if(packageVersion("SAIGE")<"1.1.3"){
 
 fitNULLGLMM(plinkFile=opt$plinkFile,
+            seed=opt$seed,
 	    bedFile=opt$bedFile,
 	    bimFile=opt$bimFile,
 	    famFile=opt$famFile,
@@ -200,6 +203,7 @@ fitNULLGLMM(plinkFile=opt$plinkFile,
 	)
 }else if(packageVersion("SAIGE")>="1.4.0" & packageVersion("SAIGE")<"1.4.5"){
 fitNULLGLMM(plinkFile=opt$plinkFile,
+            seed=opt$seed,
             bedFile=opt$bedFile,
             bimFile=opt$bimFile,
             famFile=opt$famFile,
@@ -253,6 +257,7 @@ fitNULLGLMM(plinkFile=opt$plinkFile,
         )
 }else if (packageVersion("SAIGE")>="1.4.5"){
 fitNULLGLMM(plinkFile=opt$plinkFile,
+            seed=opt$seed,
             bedFile=opt$bedFile,
             bimFile=opt$bimFile,
             famFile=opt$famFile,
@@ -312,6 +317,7 @@ fitNULLGLMM(plinkFile=opt$plinkFile,
 
 }else{
 fitNULLGLMM(plinkFile=opt$plinkFile,
+            seed=opt$seed,
 	    bedFile=opt$bedFile,
 	    bimFile=opt$bimFile,
 	    famFile=opt$famFile,

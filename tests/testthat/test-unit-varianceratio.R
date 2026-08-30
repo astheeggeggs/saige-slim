@@ -10,8 +10,8 @@ test_that("modern 3-column file: categorical null + null_noXadj, no sparse", {
   skip_if_no_goldens()
   out <- Get_Variance_Ratio(vr_file("binary_sparseGRM_a"), c(10, 20), c(20), FALSE, FALSE, FALSE)
   expect_identical(out$ratioVec_sparse, c(-1))
-  expect_equal(out$ratioVec_null, c(0.947747869047814, 0.942377359586025), tolerance = 1e-14)
-  expect_equal(out$ratioVec_null_noXadj, c(0.939781574541214, 0.932242806034484), tolerance = 1e-14)
+  expect_equal(out$ratioVec_null, c(0.948661317135906, 0.942713872154952), tolerance = 1e-14)
+  expect_equal(out$ratioVec_null_noXadj, c(0.939556503863059, 0.932272959819397), tolerance = 1e-14)
 })
 
 test_that("isSparseGRM=TRUE with no sparse rows is a hard error", {

@@ -657,6 +657,7 @@ solveSpMatrixUsingArma = function(sparseGRMtest){
 #' @return a file ended with .rda that contains the glmm model information, a file ended with .varianceRatio.txt that contains the variance ratio values, and a file ended with #markers.SPAOut.txt that contains the SPAGMMAT tests results for the markers used for estimating the variance ratio.
 #' @export
 fitNULLGLMM = function(plinkFile = "",
+		 seed = 1,
 		bedFile="",
 		bimFile="",
 		famFile="",
@@ -1353,6 +1354,7 @@ fitNULLGLMM = function(plinkFile = "",
             cat("Start estimating variance ratios\n")
 	    load(modelOut)
 	    extractVarianceRatio(obj.glmm.null = modglmm,
+			seed = seed,
                 obj.glm.null = fit0, maxiterPCG = maxiterPCG,
                 tolPCG = tolPCG, numMarkers = numMarkersForVarRatio, varRatioOutFile = varRatioFile,
                 ratioCVcutoff = ratioCVcutoff, testOut = SPAGMMATOut,
@@ -1589,6 +1591,7 @@ fitNULLGLMM = function(plinkFile = "",
             cat("Start estimating variance ratios\n")
 	  load(modelOut)
           extractVarianceRatio(obj.glmm.null = modglmm,
+			seed = seed,
                 obj.glm.null = fit0, maxiterPCG = maxiterPCG,
                 tolPCG = tolPCG, numMarkers = numMarkersForVarRatio, varRatioOutFile = varRatioFile,
                 ratioCVcutoff = ratioCVcutoff, testOut = SPAGMMATOut,
@@ -2157,6 +2160,7 @@ ScoreTest_NULL_Model_binary=function (mu, y, X1){
 }
 
 extractVarianceRatio = function(obj.glmm.null,
+			seed = 1,
                                                     obj.glm.null,
                                                     maxiterPCG = 500,
                                                     tolPCG = 0.01,
@@ -2245,6 +2249,11 @@ extractVarianceRatio = function(obj.glmm.null,
   }else{
          MACdata = data.frame(MACvector = MACvector, geno_ind = rep(0, length(MACvector)), indexInGeno = seq(1,length(MACvector)))
   }
+
+  # LEDGER #8 fix: reseed here so variance-ratio marker selection depends
+  # only on --seed, not on how many trace/AI-REML iterations reset and
+  # advanced the global RNG stream (GetTrace calls set_seed(200) internally).
+  set.seed(seed + 1)
 
   if(!isCateVarianceRatio){
     cat("Only one variance ratio will be estimated using randomly selected markers with MAC >= 20\n")
