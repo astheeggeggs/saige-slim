@@ -626,13 +626,8 @@ SAIGE.Region = function(mu,
     method = NULL
     cat("BURDEN test will be performed\n")
     regionTestType = "BURDEN"
-    
-    #output the result from Rcpp
-    cat("isappend ", isappend, "\n")
-    isOpenOutFile = openOutfile(traitType, isappend)
-    if (!isOpenOutFile) {
-      stop("Output file ", OutputFile, " can't be opened\n")
-    }
+    #the BURDEN output file (written from Rcpp) is opened after the group
+    #file check below: its header needs the number of weight sets K
   } else {
     stop("r.corr needs to be either 1 (BURDEN test) or 0 (SKAT-O test)\n")
   }
@@ -678,13 +673,6 @@ SAIGE.Region = function(mu,
   if (isMultiWeightRun) {
     cat(nWeightSetsUsed, " weight sets are used in the group test: ",
         paste(weightSetNames, collapse = ", "), "\n")
-    if (regionTestType == "BURDEN") {
-      stop(
-        "Multiple weight sets (",
-        nWeightSetsUsed,
-        " weight lines in the group file) are not yet supported for the BURDEN test (--r.corr=1); the BURDEN output writer gains the Weight column in a later commit. Please use --r.corr=0 or a group file with a single weight line.\n"
-      )
-    }
     if (isCondition) {
       stop(
         "Multiple weight sets (",
@@ -710,6 +698,17 @@ SAIGE.Region = function(mu,
         nWeightSetsUsed,
         " weight set(s). Please restart with the same group file and options, or use another 'OutputFile' (or --is_overwrite_output=TRUE).\n"
       )
+    }
+  }
+
+  if (regionTestType == "BURDEN") {
+    #output the result from Rcpp (moved after checkGroupFile: at K > 1 the
+    #C++-written header gains the Weight column right after max_MAF; at
+    #K = 1 it is byte-identical to the legacy header)
+    cat("isappend ", isappend, "\n")
+    isOpenOutFile = openOutfile(traitType, isappend, nWeightSetsUsed)
+    if (!isOpenOutFile) {
+      stop("Output file ", OutputFile, " can't be opened\n")
     }
   }
 

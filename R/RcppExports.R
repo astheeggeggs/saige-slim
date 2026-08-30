@@ -77,8 +77,8 @@ closeGenoFile <- function(t_genoType) {
     invisible(.Call('_SAIGE_closeGenoFile', PACKAGE = 'SAIGE', t_genoType))
 }
 
-openOutfile <- function(t_traitType, isappend) {
-    .Call('_SAIGE_openOutfile', PACKAGE = 'SAIGE', t_traitType, isappend)
+openOutfile <- function(t_traitType, isappend, t_nWeightSets) {
+    .Call('_SAIGE_openOutfile', PACKAGE = 'SAIGE', t_traitType, isappend, t_nWeightSets)
 }
 
 openOutfile_singleinGroup <- function(t_traitType, t_isImputation, isappend, t_isMoreOutput) {

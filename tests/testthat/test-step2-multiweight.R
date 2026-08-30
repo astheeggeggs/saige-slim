@@ -35,24 +35,31 @@ MW_ARGS <- function(groupFile, out) c(
   paste0("--SAIGEOutputFile=", out)
 )
 
-# One CLI run per group file, cached across the test_that blocks below.
+# One CLI run per (group file, extra args) pair, cached across the test_that
+# blocks below.
 mw_cache <- new.env(parent = emptyenv())
-mw_run <- function(groupFile) {
+mw_run <- function(groupFile, extra = character(0)) {
   skip_unless_level("standard")
-  key <- groupFile
+  key <- paste(c(groupFile, extra), collapse = " ")
   if (!is.null(mw_cache[[key]])) return(mw_cache[[key]])
   out <- file.path(tempfile("step2_mw_"), "region.txt")
   dir.create(dirname(out), recursive = TRUE)
-  status <- run_saige_cli("step2_SPAtests.R", MW_ARGS(groupFile, out))
+  status <- run_saige_cli("step2_SPAtests.R", c(MW_ARGS(groupFile, out), extra))
   expect_cli_ok(status)
+  # BURDEN-only runs do not emit the single-variant file
+  single_path <- paste0(out, ".singleAssoc.txt")
   res <- list(region = read_saige_table(out),
-              single = read_saige_table(paste0(out, ".singleAssoc.txt")))
+              single = if (file.exists(single_path)) read_saige_table(single_path) else NULL)
   mw_cache[[key]] <- res
   res
 }
 
 multi_run <- function() mw_run("group_new_snpid_multiWeights.txt")
 single_run <- function() mw_run("group_new_snpid_withWeights.txt")
+# BURDEN-only (--r.corr=1): the region file is written from C++
+# (openOutfile/writeOutfile_BURDEN), not the R SKAT-O post-processing
+burden_multi_run <- function() mw_run("group_new_snpid_multiWeights.txt", "--r.corr=1")
+burden_single_run <- function() mw_run("group_new_snpid_withWeights.txt", "--r.corr=1")
 
 WSETS <- c("CADD", "REVEL")
 pnum <- function(x) suppressWarnings(as.numeric(x))
@@ -138,6 +145,43 @@ test_that("K=1 keeps the legacy schema: no Weight/ACATV/ACATO columns", {
   expect_identical(s$Region, g$Region)
   expect_identical(s$Group, g$Group)
   expect_identical(s$max_MAF, g$max_MAF)
+})
+
+# Legacy BURDEN header written by openOutfile for a binary trait, no
+# conditioning (Region.txt is C++-written when --r.corr=1)
+BURDEN_HDR_K1 <- c("Region", "Group", "max_MAF", "Pvalue_Burden", "BETA_Burden",
+                   "SE_Burden", "MAC", "MAC_case", "MAC_control",
+                   "Number_rare", "Number_ultra_rare")
+
+test_that("BURDEN K>1: Weight column after max_MAF, every set named, weight-innermost rows", {
+  d <- burden_multi_run()$region
+  # additive schema: the legacy columns with Weight inserted right after max_MAF
+  expect_identical(colnames(d), append(BURDEN_HDR_K1, "Weight", after = 3L))
+  r <- d[d$Group != "Cauchy", ]
+  s <- burden_single_run()$region
+  sr <- s[s$Group != "Cauchy", ]
+  # every set name appears, and rows cycle weight-innermost within each
+  # (annotation, max_MAF) cell
+  expect_true(all(WSETS %in% r$Weight))
+  expect_identical(r$Weight, rep(WSETS, nrow(r) / 2L))
+  expect_identical(nrow(r), 2L * nrow(sr))
+  expect_identical(r$Group, rep(sr$Group, each = 2L))
+  expect_identical(r$max_MAF, rep(sr$max_MAF, each = 2L))
+  # exactly one pooled Cauchy row per region, not tied to any weight set
+  cauchy <- d[d$Group == "Cauchy", ]
+  expect_identical(nrow(cauchy), length(unique(d$Region)))
+  expect_true(all(cauchy$Weight == "NA"))
+  expect_true(all(cauchy$max_MAF == "NA"))
+  # sanity on the numbers: burden p-values in (0, 1]
+  p <- pnum(d$Pvalue_Burden)
+  expect_false(anyNA(p))
+  expect_true(all(p > 0 & p <= 1))
+})
+
+test_that("BURDEN K=1 keeps the legacy header exactly", {
+  s <- burden_single_run()$region
+  expect_identical(colnames(s), BURDEN_HDR_K1)
+  expect_false(any(c("Weight", "Pvalue_ACATV", "Pvalue_ACATO") %in% colnames(s)))
 })
 
 test_that("real markers are tested once regardless of K; only UR pseudo-markers are per set", {

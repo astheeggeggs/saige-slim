@@ -318,14 +318,15 @@ BEGIN_RCPP
 END_RCPP
 }
 // openOutfile
-bool openOutfile(std::string t_traitType, bool isappend);
-RcppExport SEXP _SAIGE_openOutfile(SEXP t_traitTypeSEXP, SEXP isappendSEXP) {
+bool openOutfile(std::string t_traitType, bool isappend, unsigned int t_nWeightSets);
+RcppExport SEXP _SAIGE_openOutfile(SEXP t_traitTypeSEXP, SEXP isappendSEXP, SEXP t_nWeightSetsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< std::string >::type t_traitType(t_traitTypeSEXP);
     Rcpp::traits::input_parameter< bool >::type isappend(isappendSEXP);
-    rcpp_result_gen = Rcpp::wrap(openOutfile(t_traitType, isappend));
+    Rcpp::traits::input_parameter< unsigned int >::type t_nWeightSets(t_nWeightSetsSEXP);
+    rcpp_result_gen = Rcpp::wrap(openOutfile(t_traitType, isappend, t_nWeightSets));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -1876,7 +1877,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_assign_conditionMarkers_factors_binary_region", (DL_FUNC) &_SAIGE_assign_conditionMarkers_factors_binary_region, 1},
     {"_SAIGE_fast_logistf_fit", (DL_FUNC) &_SAIGE_fast_logistf_fit, 14},
     {"_SAIGE_closeGenoFile", (DL_FUNC) &_SAIGE_closeGenoFile, 1},
-    {"_SAIGE_openOutfile", (DL_FUNC) &_SAIGE_openOutfile, 2},
+    {"_SAIGE_openOutfile", (DL_FUNC) &_SAIGE_openOutfile, 3},
     {"_SAIGE_openOutfile_singleinGroup", (DL_FUNC) &_SAIGE_openOutfile_singleinGroup, 4},
     {"_SAIGE_openOutfile_single", (DL_FUNC) &_SAIGE_openOutfile_single, 4},
     {"_SAIGE_set_flagSparseGRM_cur_SAIGE", (DL_FUNC) &_SAIGE_set_flagSparseGRM_cur_SAIGE, 1},

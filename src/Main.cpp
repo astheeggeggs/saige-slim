@@ -2003,6 +2003,7 @@ if(t_regionTestType == "BURDEN"){
 			q_anno,
 			q_maf,
 			q_weight,
+			t_weightNames,
 			isCondition,
 			t_traitType);
 	   }else{
@@ -2438,13 +2439,21 @@ void closeGenoFile(std::string & t_genoType)
 }
 
 // [[Rcpp::export]]
-bool openOutfile(std::string t_traitType, bool isappend){
+bool openOutfile(std::string t_traitType, bool isappend, unsigned int t_nWeightSets){
 	bool isopen;
 	if(!isappend){
 	g_out.group.open(g_out.prefixGroup.c_str());
 	isopen = g_out.group.is_open();
 	if(isopen){
-		g_out.group << "Region\tGroup\tmax_MAF\tPvalue_Burden\tBETA_Burden\tSE_Burden\t";
+		g_out.group << "Region\tGroup\tmax_MAF\t";
+		// additive multi-weight schema (design D3): the Weight label column
+		// sits right after max_MAF and exists only when more than one weight
+		// set is in play; at t_nWeightSets == 1 the emitted bytes are exactly
+		// the legacy header.
+		if(t_nWeightSets > 1){
+			g_out.group << "Weight\t";
+		}
+		g_out.group << "Pvalue_Burden\tBETA_Burden\tSE_Burden\t";
 		if(g_model->m_isCondition){
 			g_out.group << "Pvalue_Burden_c\tBeta_Burden_c\tseBeta_Burden_c\t";
 		}
@@ -2754,14 +2763,15 @@ void writeOutfile_BURDEN(std::string regionName,
 			unsigned int q_anno,
 			unsigned int q_maf,
 			unsigned int q_weight,
+			std::vector<std::string> & t_weightNames,
 			bool isCondition,
 			std::string t_traitType){
      unsigned int i;
      for(unsigned int j = 0; j < q_anno; j++){
        for(unsigned int m = 0; m < q_maf; m++){
          for(unsigned int r = 0; r < q_weight; r++){
-           // jmr index, weight fastest; q_weight == 1 emits the legacy rows
-           // (the Weight column itself arrives in a later commit)
+           // jmr index, weight fastest -> rows come out weight-innermost;
+           // q_weight == 1 emits the legacy rows byte for byte
            i = (j*q_maf+m)*q_weight + r;
 	   if(BURDEN_pval_Vec.at(i) != "NA"){
            g_out.group << regionName;
@@ -2770,6 +2780,12 @@ void writeOutfile_BURDEN(std::string regionName,
            g_out.group << "\t";
            g_out.group << BURDEN_maxMAFName_Vec.at(i);
            g_out.group << "\t";
+           if(q_weight > 1){
+             // per-set Weight label right after max_MAF (design D3); same
+             // name fallback as the UR pseudo-marker suffix in mainRegionInCPP
+             g_out.group << ((r < t_weightNames.size()) ? t_weightNames.at(r) : ("W" + std::to_string(r + 1)));
+             g_out.group << "\t";
+           }
            g_out.group << BURDEN_pval_Vec.at(i);
            g_out.group << "\t";
            g_out.group << BURDEN_Beta_Vec.at(i);
@@ -2802,6 +2818,10 @@ void writeOutfile_BURDEN(std::string regionName,
    }
      g_out.group << regionName;
      g_out.group << "\tCauchy\tNA\t";
+     if(q_weight > 1){
+       // the single pooled Cauchy row is not tied to one weight set
+       g_out.group << "NA\t";
+     }
      g_out.group << cctpval;
      g_out.group << "\tNA\tNA\t";	
      if(isCondition){
