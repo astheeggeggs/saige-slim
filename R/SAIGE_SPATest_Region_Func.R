@@ -70,36 +70,66 @@ check_close= function(groupFile){
 
 
 #check Group file format and count the number of regions
-checkGroupFile<-function(groupFile){
+#With detail = FALSE (the default) the return value is exactly
+#list(nRegions, is_weight_included), the historical contract.
+#With detail = TRUE two fields are appended: nWeightSets (K, the number of
+#weight lines per region, defined by region 1) and weightSetNames (character
+#vector of length K; a bare 'weight' type is named "WEIGHT").
+checkGroupFile<-function(groupFile, detail = FALSE){
 
-  cat("Start extracting marker-level information from 'groupFile' of", groupFile, "....\n")	
-  Check_File_Exist(groupFile, "RegionFile")	
+  cat("Start extracting marker-level information from 'groupFile' of", groupFile, "....\n")
+  Check_File_Exist(groupFile, "RegionFile")
+
+  #the 2nd field of a weight line is 'weight' (set name "WEIGHT"),
+  #'weight:NAME' or 'weight,NAME' (set name NAME); returns NULL for
+  #non-weight lines
+  parse_weight_type = function(type){
+    type_parts = strsplit(type, split="[,:]")[[1]]
+    if(length(type_parts) == 0 || type_parts[1] != "weight"){
+      return(NULL)
+    }
+    if(length(type_parts) >= 2 && nzchar(type_parts[2])){
+      return(type_parts[2])
+    }
+    return("WEIGHT")
+  }
+
+  #region 1 defines the format: a var line, an anno line, then K >= 0
+  #consecutive weight lines; every region must follow the same layout
   gf = file(groupFile, "r")
   marker_group_line = readLines(gf, n = 1)
   marker_group_line = readLines(gf, n = 1)
   is_weight_included = FALSE
-  a = 2
-  marker_group_line = readLines(gf, n = 1)
-  if(length(marker_group_line) == 1){
+  weightSetNames = character(0)
+  repeat {
+    marker_group_line = readLines(gf, n = 1)
     if (length(marker_group_line) == 0) {
-      line = line - 1
-      stop("Error, group file has emply lines\n")
+      break
     }
     marker_group_line_list = strsplit(marker_group_line, split="[\ \t]+")[[1]]
     if (length(marker_group_line_list) < 3) {
-      check_close(gf)
-      stop("Error, group file line:",line ,"Each line should have a region name and a catergory (var, anno or weight) \n")
+      break
     }
-    geneID = marker_group_line_list[1]
-    type = marker_group_line_list[2]
-    if(type == "weight"){
-        is_weight_included = TRUE
-        print("weights are included for markers")
-        a = 3
+    setName = parse_weight_type(marker_group_line_list[2])
+    if(is.null(setName)){
+      break
     }
+    if(!is_weight_included){
+      is_weight_included = TRUE
+      print("weights are included for markers")
+    }
+    weightSetNames = c(weightSetNames, setName)
   }
-
   close(gf)
+
+  nWeightSets = length(weightSetNames)
+  if(anyDuplicated(weightSetNames) > 0){
+    stop("Error! Duplicate weight set name '", weightSetNames[duplicated(weightSetNames)][1], "' in region 1 of the group file\n")
+  }
+  if("Cauchy" %in% weightSetNames){
+    stop("Error! 'Cauchy' is a reserved weight set name and cannot be used in the group file\n")
+  }
+  a = 2 + nWeightSets
 
   gf = file(groupFile, "r")
   line=0
@@ -132,6 +162,9 @@ checkGroupFile<-function(groupFile){
     type = marker_group_line_list[2]
 
     if(type != "var"){
+	if(!is.null(parse_weight_type(type))){
+		stop("Error! Region ", geneID, " has more weight lines than region 1: every region must have the same ", nWeightSets, " weight line(s) in the same order\n")
+	}
 	stop("Error! No var is specified for ", geneID, "\n")
     }
     geneID0 = geneID
@@ -156,25 +189,34 @@ checkGroupFile<-function(groupFile){
 	stop("The length of annotations for markers in region ", geneID, " is not equal to the length of marker IDs\n")
     }	
 
-    if(is_weight_included){
-
-   	marker_group_line_list = strsplit(marker_group_line[3], split="[\ \t]+")[[1]]
+    if(nWeightSets > 0){
+      for(k in 1:nWeightSets){
+        marker_group_line_list = strsplit(marker_group_line[2 + k], split="[\ \t]+")[[1]]
         line = line + 1
-	if (length(marker_group_line_list) < 3) {
-        	stop("Error, group file line:",line ," is incomplete.\n")
-    	}
-	geneID = marker_group_line_list[1]
-    	type = marker_group_line_list[2]
-	if(type != "weight"){
-        	stop("Error! No weight is specified for ", geneID, "\n")
-    	}
-    	if(geneID != geneID0){
-        	stop("weight for ", geneID0, " is missing.\n")
-    	}
-	numWeights = length(marker_group_line_list) - 2
-        if(numWeights != numMarkers){
-                stop("The length of weights for markers in region ", geneID, " is not equal to the length of marker IDs\n")
+        if (length(marker_group_line_list) < 3) {
+          stop("Error, group file line:",line ," is incomplete.\n")
         }
+        geneID = marker_group_line_list[1]
+        type = marker_group_line_list[2]
+        setName = parse_weight_type(type)
+        if(is.null(setName)){
+          stop("Error! No weight is specified for ", geneID, "\n")
+        }
+        if(geneID != geneID0){
+          stop("weight for ", geneID0, " is missing.\n")
+        }
+        if(setName != weightSetNames[k]){
+          stop("Error! Weight set name '", setName, "' in region ", geneID0, " does not match weight set name '", weightSetNames[k], "' in region 1: weight lines must appear in the same order in every region\n")
+        }
+        numWeights = length(marker_group_line_list) - 2
+        if(numWeights != numMarkers){
+          stop("The length of weights for markers in region ", geneID, " is not equal to the length of marker IDs\n")
+        }
+        weightValues = suppressWarnings(as.numeric(marker_group_line_list[-c(1:2)]))
+        if(anyNA(weightValues)){
+          stop("Error! Non-numeric weight values in weight set '", weightSetNames[k], "' for region ", geneID, "\n")
+        }
+      }
     }
    nregion = nregion + 1
    }    
@@ -183,9 +225,14 @@ checkGroupFile<-function(groupFile){
     #}
     #group_info_list[[geneID]][[type]] = marker_group_line_list[-c(1:2)]
 
-  close(gf)	
-  return(list(nRegions = nregion, is_weight_included = is_weight_included))
-}	
+  close(gf)
+  res = list(nRegions = nregion, is_weight_included = is_weight_included)
+  if(detail){
+    res$nWeightSets = nWeightSets
+    res$weightSetNames = weightSetNames
+  }
+  return(res)
+}
 
 SPA_ER_kernel_related_Phiadj_fast_new<-function(p.new, Score, Phi, p.value_burden, regionTestType){ 
 	p.m = length(Score)
