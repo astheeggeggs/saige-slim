@@ -505,22 +505,20 @@ SAIGE.Region = function(mu,
   
   
   ##check group file
-  region_list = checkGroupFile(groupFile)
+  region_list = checkGroupFile(groupFile, detail = TRUE)
   nRegions = region_list$nRegions
   is_weight_included = region_list$is_weight_included
+  nWeightSets = region_list$nWeightSets
+  weightSetNames = region_list$weightSetNames
   if (is_no_weight_in_groupTest & is_weight_included) {
     stop("is_no_weight_in_groupTest = TRUE but weights are found in the group file.\n")
   }
-  
+
   if (is_no_weight_in_groupTest) {
     cat("No weights are used in the group test\n")
   }
-  
-  if (is_weight_included) {
-    nline_per_gene = 3
-  } else {
-    nline_per_gene = 2
-  }
+
+  nline_per_gene = 2 + nWeightSets
   
   gf = file(groupFile, "r")
   
@@ -600,7 +598,9 @@ SAIGE.Region = function(mu,
                                            nline_per_gene,
                                            annolist,
                                            markerInfo,
-                                           chrom)
+                                           chrom,
+                                           nWeightSets,
+                                           weightSetNames)
       #print(RegionList)
       cat("Read in ",
           nregions_ro_read,
@@ -622,8 +622,14 @@ SAIGE.Region = function(mu,
         SNP = region$SNP
         if (is_no_weight_in_groupTest) {
           WEIGHT = rep(1, length(SNP))
-        } else {
+        } else if (nWeightSets <= 1) {
+          #K = 0: region$WEIGHT is the c(0) sentinel and as.numeric() keeps
+          #it, so the sum(WEIGHT) > 0 branches downstream still see 0.
+          #K = 1: collapse the 1-column numeric matrix to the plain unnamed
+          #vector the legacy path produced (as.numeric drops dim/dimnames).
           WEIGHT = as.numeric(region$WEIGHT)
+        } else {
+          stop("Multi-weight group files (K>1 weight sets) are parsed but not yet supported by the region test engine; this arrives in a later commit.\n")
         }
         
         annoIndicatorMat = region$annoIndicatorMat
@@ -1027,8 +1033,41 @@ SAIGE.getRegionList_new = function(marker_group_line,
                                    annoVec,
                                    #c("lof","lof;missense"
                                    markerInfo,
-                                   chrom = "")
+                                   chrom = "",
+                                   nWeightSets = NULL,
+                                   weightSetNames = NULL)
 {
+  if (is.null(nWeightSets)) {
+    #legacy callers: infer the weight layout from nline_per_gene
+    #(2 -> no weights; 3 -> one bare weight line, set name "WEIGHT")
+    if (nline_per_gene == 2) {
+      nWeightSets = 0L
+      weightSetNames = character(0)
+    } else if (nline_per_gene == 3) {
+      nWeightSets = 1L
+      weightSetNames = "WEIGHT"
+    } else {
+      stop("nWeightSets must be provided when nline_per_gene is not 2 or 3\n")
+    }
+  }
+  if (nline_per_gene != 2 + nWeightSets) {
+    stop("nline_per_gene (", nline_per_gene,
+         ") must equal 2 + nWeightSets (nWeightSets = ", nWeightSets, ")\n")
+  }
+  if (nWeightSets > 0 & length(weightSetNames) != nWeightSets) {
+    stop("weightSetNames must contain one name per weight set\n")
+  }
+  #weight columns live inside RegionData under sanitized internal names so
+  #they follow every merge/filter/sort below; a user-facing set name such as
+  #"POS", "CHROM", "ID", "SNP" or "genoIndex" must never collide with
+  #markerInfo columns in the merges
+  #paste0 recycles zero-length args to "" (recycle0=FALSE default), so the
+  #K=0 case must be explicit or this becomes a length-1 "SAIGEWT_"
+  weightColNames = if (nWeightSets > 0) {
+    paste0("SAIGEWT_", seq_len(nWeightSets))
+  } else {
+    character(0)
+  }
   chrom_nochr = gsub("CHR", "", chrom, ignore.case = T)
   # read group file
   ngroup <- length(marker_group_line) / nline_per_gene
@@ -1043,12 +1082,17 @@ SAIGE.getRegionList_new = function(marker_group_line,
     marker_group_line_list_anno = strsplit(marker_group_line[2 + (i -
                                                                     1) * nline_per_gene], split = "[\ \t]+")[[1]]
     anno = marker_group_line_list_anno[3:length(marker_group_line_list_anno)]
-    if (nline_per_gene == 3) {
-      marker_group_line_list_weight = strsplit(marker_group_line[3 + (i - 1) *
-                                                                   nline_per_gene], split = "[\ \t]+")[[1]]
-      weight = marker_group_line_list_weight[3:length(marker_group_line_list_weight)]
+    if (nWeightSets > 0) {
+      weight = NULL
+      for (k in 1:nWeightSets) {
+        marker_group_line_list_weight = strsplit(marker_group_line[2 + k + (i - 1) *
+                                                                     nline_per_gene], split = "[\ \t]+")[[1]]
+        weight = cbind(weight,
+                       marker_group_line_list_weight[3:length(marker_group_line_list_weight)])
+      }
+      colnames(weight) = weightColNames
       RegionData = rbind(RegionData, cbind(rep(gene, length(var)), var, anno, weight))
-    } else if (nline_per_gene == 2) {
+    } else {
       RegionData = rbind(RegionData, cbind(rep(gene, length(var)), var, anno))
     }
     
@@ -1058,11 +1102,7 @@ SAIGE.getRegionList_new = function(marker_group_line,
       geneList = c(geneList, gene)
     }
   }
-  if (nline_per_gene == 2) {
-    colnames(RegionData) = c("REGION", "SNP", "ANNO")
-  } else if (nline_per_gene == 3) {
-    colnames(RegionData) = c("REGION", "SNP", "ANNO", "WEIGHT")
-  }
+  colnames(RegionData) = c("REGION", "SNP", "ANNO", weightColNames)
   RegionData = as.data.frame(RegionData)
   setDT(RegionData)
   uRegion0 = unique(RegionData$REGION)
@@ -1153,8 +1193,9 @@ SAIGE.getRegionList_new = function(marker_group_line,
       if (length(posSNP) > 0) {
         SNP = RegionData$SNP[posSNP]
         
-        if (nline_per_gene == 3) {
-          WEIGHT = RegionData$WEIGHT[posSNP]
+        if (nWeightSets > 0) {
+          #character matrix, one column per weight set, rows aligned to SNP
+          WEIGHT = as.matrix(RegionData[posSNP, weightColNames, with = FALSE])
         }
         
         if (any(duplicated(SNP)))
@@ -1210,8 +1251,8 @@ SAIGE.getRegionList_new = function(marker_group_line,
         if (length(annoIndicatorMat_rmind) > 0) {
           SNP = SNP[-annoIndicatorMat_rmind]
           
-          if (nline_per_gene == 3) {
-            WEIGHT = WEIGHT[-annoIndicatorMat_rmind]
+          if (nWeightSets > 0) {
+            WEIGHT = WEIGHT[-annoIndicatorMat_rmind, , drop = FALSE]
           }
           
           annoIndicatorMat = annoIndicatorMat[-annoIndicatorMat_rmind, , drop =
@@ -1222,8 +1263,16 @@ SAIGE.getRegionList_new = function(marker_group_line,
           }
         }
         
-        if (nline_per_gene != 3) {
+        if (nWeightSets == 0) {
           WEIGHT = c(0)
+        } else {
+          #numeric matrix with the user-facing set names, in group-file
+          #order; for a single set the caller collapses this back to the
+          #legacy unnamed numeric vector
+          WEIGHT = matrix(as.numeric(WEIGHT),
+                          nrow = nrow(WEIGHT),
+                          ncol = nWeightSets,
+                          dimnames = list(NULL, weightSetNames))
         }
         
         if (!is.null(markerInfo)) {
