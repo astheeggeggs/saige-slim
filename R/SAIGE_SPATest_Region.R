@@ -97,6 +97,310 @@ setSparseSigma_new = function(sparseGRMFile,
 
 
 
+# Shared SKAT-path post-processing that runs after mainRegionInCPP in
+# SAIGE.Region. Extracted verbatim from the two near-identical copies that
+# used to live there (the primary pass and the fastTest re-run). The real
+# differences between the two copies are parameterized by is_rerun:
+#   - the re-run copy assigned annoMAFIndicatorMat inside the
+#     is_single_in_groupTest block; the primary copy assigned it right after
+#     that block, unconditionally
+#   - the primary copy gated the core on
+#     (sum(NumUltraRare_GroupVec) + sum(NumRare_GroupVec)) > 0 and
+#     regionTestType != "BURDEN"; the re-run copy ran unguarded (it was
+#     already nested inside those guards)
+#   - only the primary copy set cctpval = 1 when the Cauchy combination is
+#     skipped (single annotation and single max MAF)
+# resultDF_carryover reproduces the re-run copy's visibility of the primary
+# pass's resultDF (pass list(resultDF), or NULL when it does not exist).
+# The returned list carries pval.Region plus cctpval/resultDF only when they
+# were bound, so the caller can reproduce the exact frame state the inline
+# blocks used to leave behind.
+region_postprocess = function(outList,
+                              mu,
+                              WEIGHT,
+                              traitType,
+                              r.corr,
+                              regionTestType,
+                              isCondition,
+                              annolistsub,
+                              maxMAFlist,
+                              regionName,
+                              is_single_in_groupTest,
+                              is_rerun,
+                              resultDF_carryover = NULL) {
+  if (!is.null(resultDF_carryover)) {
+    resultDF = resultDF_carryover[[1]]
+  }
+  pval.Region = NULL
+  if (is_single_in_groupTest) {
+    #convert string p-value to log(p)
+    pvalVec_new = unlist(lapply(outList$pvalVec, convert_str_to_log))
+    outList$pvalVec = pvalVec_new  ##log of p-values
+    noNAIndices = which(!is.na(outList$pvalVec))
+    if (is_rerun) {
+      annoMAFIndicatorMat = outList$annoMAFIndicatorMat
+    }
+    if (sum(WEIGHT) > 0) {
+      AnnoWeights = c(WEIGHT, rep(1, outList$numofUR))
+    }
+  }
+  if (!is_rerun) {
+    annoMAFIndicatorMat = outList$annoMAFIndicatorMat
+  }
+
+  run_core = is_rerun
+  if (!run_core) {
+    if ((sum(outList$NumUltraRare_GroupVec) + sum(outList$NumRare_GroupVec)) > 0) {
+      if (regionTestType != "BURDEN") {
+        run_core = TRUE
+      }
+    }
+  }
+  if (run_core) {
+    if (traitType == "binary") {
+      outList$gyVec = outList$gyVec[noNAIndices]
+    }
+    
+    if (isCondition) {
+      outList$VarMatAdjCond = outList$VarMatAdjCond[noNAIndices, noNAIndices]
+      outList$TstatAdjCond = outList$TstatAdjCond[noNAIndices]
+      outList$G1tilde_P_G2tilde_Weighted_Mat = outList$G1tilde_P_G2tilde_Weighted_Mat[noNAIndices, , drop =
+                                                                                        F]
+      weightMat_G2_G2 = outList$G2_Weight_cond %*% t(outList$G2_Weight_cond)
+    }
+    
+    ### Get annotation maf indicators
+    
+    ### 3. Adjust for saddlepoint approximation
+    #notNAindice = which(!is.na(outList$TstatVec_flip))
+    #print("notNAindice")
+    #print(notNAindice)
+    StatVec = outList$TstatVec_flip[noNAIndices]
+    VarSVec = diag(outList$VarMat)
+    VarSVec = VarSVec[!is.na(VarSVec)]
+    adjPVec = outList$pvalVec[!is.na(outList$pvalVec)]  ##adjPVec contains log(p)
+    
+    #varTestedIndices = which(apply(annoMAFIndicatorMat, 1, isContainValue, val=1))
+    #print("varTestedIndices")
+    #print(varTestedIndices)
+    #varTestedIndices = which(rowSums(annoMAFIndicatorMat) > 0)
+    #annoMAFIndicatorMat = annoMAFIndicatorMat[varTestedIndices, , drop=F]
+    #MAFVec = outList$MAFVec[varTestedIndices]
+    annoMAFIndicatorMat = annoMAFIndicatorMat[noNAIndices, , drop = F]
+    MAFVec = outList$MAFVec[noNAIndices]
+    #AnnoWeights = dbeta(MAFVec,1,25)
+    
+    if (sum(WEIGHT) > 0) {
+      #AnnoWeights = AnnoWeights[varTestedIndices]
+      AnnoWeights = AnnoWeights[noNAIndices]
+    } else {
+      AnnoWeights = dbeta(MAFVec, 1, 25)
+    }
+    weightMat = AnnoWeights %*% t(AnnoWeights)
+    
+    
+    if (isCondition) {
+      weightMat_G1_G2 = AnnoWeights %*% t(outList$G2_Weight_cond)
+    }
+    wStatVec = StatVec * AnnoWeights
+    
+    wadjVarSMat = outList$VarMat * weightMat
+    
+    if (isCondition) {
+      wStatVec_cond = wStatVec - outList$TstatAdjCond
+      wadjVarSMat_cond = wadjVarSMat - outList$VarMatAdjCond
+    }
+    
+    #gc()
+    
+    annoMAFIndVec = c()
+    for (j in 1:length(annolistsub)) {
+      AnnoName = annolistsub[j]
+      maxMAF0 = outList$q_maf_for_annoVec[j]
+      isPolyRegion = TRUE
+      for (m in 1:length(maxMAFlist)) {
+        jm = (j - 1) * (length(maxMAFlist)) + m
+        maxMAFName = maxMAFlist[m]
+        if (m <= maxMAF0) {
+
+		
+
+          tempPos = which(annoMAFIndicatorMat[, jm] == 1)
+          if (length(tempPos) > 0) {
+            isPolyRegion = TRUE
+            annoMAFIndVec = c(annoMAFIndVec, jm)
+            Phi = wadjVarSMat[tempPos, tempPos, drop = F]
+            Score = wStatVec[tempPos]
+            if (traitType == "binary") {
+              p.new = adjPVec[tempPos]
+              g.sum = outList$genoSumMat[, jm]
+              q.sum <- sum(outList$gyVec[tempPos] * AnnoWeights[tempPos])
+              mu.a = mu
+              
+              #re_phi = get_newPhi_scaleFactor(q.sum,
+              re_phi = get_newPhi_scaleFactor_traitType(q.sum,
+                                              mu.a,
+                                              g.sum,
+                                              p.new,
+                                              Score,
+                                              Phi,
+                                              regionTestType,
+						      traitType)
+              Phi = re_phi$val
+
+            }
+            groupOutList = get_SKAT_pvalue(Score, Phi, r.corr, regionTestType)
+            resultDF = data.frame(
+              Region = regionName,
+              Group = AnnoName,
+              max_MAF = maxMAFName,
+              Pvalue = groupOutList$Pvalue_SKATO,
+              Pvalue_Burden = groupOutList$Pvalue_Burden,
+              Pvalue_SKAT = groupOutList$Pvalue_SKAT,
+              BETA_Burden = groupOutList$BETA_Burden,
+              SE_Burden = groupOutList$SE_Burden
+            )
+
+            if (isCondition) {
+              if (traitType == "binary") {
+                G1tilde_P_G2tilde_Mat_scaled = t(t((
+                  outList$G1tilde_P_G2tilde_Weighted_Mat[tempPos, , drop = F]
+                ) * sqrt(as.vector(
+                  re_phi$scaleFactor
+                ))
+                ) * sqrt(
+                  as.vector(outList$scalefactor_G2_cond)
+                ))
+                #t(t(b * sqrt(a1)) * sqrt(a2))
+                adjCondTemp = G1tilde_P_G2tilde_Mat_scaled %*% outList$VarInvMat_G2_cond_scaled
+                VarMatAdjCond = adjCondTemp %*% t(G1tilde_P_G2tilde_Mat_scaled)
+                TstatAdjCond = adjCondTemp %*% (outList$Tstat_G2_cond * outList$G2_Weight_cond)
+                Phi_cond = re_phi$val - diag(VarMatAdjCond)
+                Score_cond = Score - TstatAdjCond
+                
+              } else {
+                Score_cond = wStatVec_cond[tempPos]
+                Phi_cond = wadjVarSMat_cond[tempPos, tempPos]
+              }
+              
+              groupOutList_cond = get_SKAT_pvalue(Score_cond,
+                                                  Phi_cond,
+                                                  r.corr,
+                                                  regionTestType)
+              
+              
+              resultDF$Pvalue_cond = groupOutList_cond$Pvalue_SKATO
+              resultDF$Pvalue_Burden_cond = groupOutList_cond$Pvalue_Burden
+              resultDF$Pvalue_SKAT_cond = groupOutList_cond$Pvalue_SKAT
+              resultDF$BETA_Burden_cond = groupOutList_cond$BETA_Burden
+              resultDF$SE_Burden_cond = groupOutList_cond$SE_Burden
+            }#if(isCondition){
+            pval.Region = rbind.data.frame(pval.Region, resultDF)
+            
+          } else {
+            #if(length(tempPos) > 0){
+            isPolyRegion = FALSE
+          }
+          
+        } else {
+          #if(m <= maxMAF0){
+          if (isPolyRegion) {
+            annoMAFIndVec = c(annoMAFIndVec, jm)
+            resultDF$Region = regionName
+            resultDF$Group = AnnoName
+            resultDF$max_MAF = maxMAFName
+            pval.Region = rbind.data.frame(pval.Region, resultDF)
+            #pval.Region_temp = rbind.data.frame(pval.Region_temp, resultDF)
+          }
+        }#if(m <= maxMAF0){
+        
+      }#for(m in 1:length(maxMAFlist)){
+    }#for(j in 1:length(annolist)){
+    
+    
+    # (per-iteration gc() removed in Phase 4: it dominated the profile; R collects on demand)
+    #}
+    
+    
+    
+    #if(regionTestType != "BURDEN"){
+    
+    if (length(annoMAFIndVec) > 0) {
+      pval.Region$MAC = outList$MAC_GroupVec[annoMAFIndVec]
+      if (traitType == "binary") {
+        pval.Region$MAC_case = outList$MACCase_GroupVec[annoMAFIndVec]
+        pval.Region$MAC_control = outList$MACCtrl_GroupVec[annoMAFIndVec]
+      }
+      pval.Region$Number_rare = outList$NumRare_GroupVec[annoMAFIndVec]
+      pval.Region$Number_ultra_rare = outList$NumUltraRare_GroupVec[annoMAFIndVec]
+    }
+    
+    if (length(annolistsub) > 1 | length(maxMAFlist) > 1) {
+      cctpval_Burden = get_CCT_pvalue(pval.Region$Pvalue_Burden)
+      if (regionTestType != "BURDEN") {
+        #print(pval.Region$Pvalue)
+        cctpval = get_CCT_pvalue(pval.Region$Pvalue)
+        cctpval_SKAT = get_CCT_pvalue(pval.Region$Pvalue_SKAT)
+        cctVec = c(
+          regionName,
+          "Cauchy",
+          NA,
+          cctpval,
+          cctpval_Burden,
+          cctpval_SKAT,
+          NA,
+          NA
+        )
+      } else {
+        cctVec = c(regionName,
+                   "Cauchy",
+                   NA,
+                   cctpval_Burden,
+                   NA,
+                   NA)
+      }
+      if (isCondition) {
+        cctpval_Burden = get_CCT_pvalue(pval.Region$Pvalue_Burden_cond)
+        
+        if (regionTestType != "BURDEN") {
+          cctpval = get_CCT_pvalue(pval.Region$Pvalue_cond)
+          cctpval_SKAT = get_CCT_pvalue(pval.Region$Pvalue_SKAT_cond)
+          cctVec = c(cctVec,
+                     cctpval,
+                     cctpval_Burden,
+                     cctpval_SKAT,
+                     NA,
+                     NA)
+        } else {
+          cctVec = c(cctVec, cctpval_Burden, NA, NA)
+          
+        }
+      }
+      cctVec = c(cctVec, NA)
+      if (traitType == "binary") {
+        cctVec = c(cctVec, NA, NA)
+      }
+      cctVec = c(cctVec, NA, NA)
+      
+      pval.Region = rbind(pval.Region, cctVec)
+    } else {
+      if (!is_rerun) {
+        cctpval = 1
+      }
+    }
+  }
+
+  ret = list(pval.Region = pval.Region)
+  if (exists("cctpval", inherits = FALSE)) {
+    ret$cctpval = cctpval
+  }
+  if (exists("resultDF", inherits = FALSE)) {
+    ret$resultDF = resultDF
+  }
+  return(ret)
+}
+
+
 #DosageCutoff_for_UltraRarePresence,
 #method_to_CollapseUltraRare,
 ##working
@@ -255,6 +559,33 @@ SAIGE.Region = function(mu,
   iswriteMarkerList = FALSE 
   i = indexChunk + 1
   nEachChunk = numberRegionsInChunk
+
+  # All three mainRegionInCPP call sites passed an identical argument list;
+  # the only per-site difference (which sparse-GRM flag was set beforehand)
+  # stays at each call site.
+  run_mainRegionInCPP = function() {
+    mainRegionInCPP(
+      genoType,
+      region$genoIndex,
+      annoIndicatorMat,
+      maxMAFlist,
+      OutputFile,
+      traitType,
+      n,
+      P1Mat,
+      P2Mat,
+      regionTestType,
+      isImputation,
+      WEIGHT,
+      weight_cond,
+      is_single_in_groupTest,
+      is_output_markerList_in_groupTest,
+      annolistsub,
+      regionName,
+      is_fastTest,
+      is_output_moreDetails
+    )
+  }
   while (i <= nRegions) {
     #for(i in (indexChunk+1):nRegions){
     if (mth ==  numberRegionsInChunk) {
@@ -315,27 +646,7 @@ SAIGE.Region = function(mu,
         } else {
           set_flagSparseGRM_cur_SAIGE(FALSE)
         }
-        outList = mainRegionInCPP(
-          genoType,
-          region$genoIndex,
-          annoIndicatorMat,
-          maxMAFlist,
-          OutputFile,
-          traitType,
-          n,
-          P1Mat,
-          P2Mat,
-          regionTestType,
-          isImputation,
-          WEIGHT,
-          weight_cond,
-          is_single_in_groupTest,
-          is_output_markerList_in_groupTest,
-          annolistsub,
-          regionName,
-          is_fastTest,
-          is_output_moreDetails
-        )
+        outList = run_mainRegionInCPP()
         
         #print("outList$VarMat 1 ")
         #print(outList$VarMat)
@@ -346,27 +657,7 @@ SAIGE.Region = function(mu,
               set_flagSparseGRM_cur_SAIGE(TRUE)
 
 
-              outList = mainRegionInCPP(
-                genoType,
-                region$genoIndex,
-                annoIndicatorMat,
-                maxMAFlist,
-                OutputFile,
-                traitType,
-                n,
-                P1Mat,
-                P2Mat,
-                regionTestType,
-                isImputation,
-                WEIGHT,
-                weight_cond,
-                is_single_in_groupTest,
-                is_output_markerList_in_groupTest,
-                annolistsub,
-                regionName,
-                is_fastTest,
-                is_output_moreDetails
-              )
+              outList = run_mainRegionInCPP()
             }
           }
         }
@@ -380,255 +671,30 @@ SAIGE.Region = function(mu,
         #gc()
         #tb0 = proc.time()
         
-        if (is_single_in_groupTest) {
-          #convert string p-value to log(p)
-          pvalVec_new = unlist(lapply(outList$pvalVec, convert_str_to_log))
-          outList$pvalVec = pvalVec_new  ##log of p-values
-          noNAIndices = which(!is.na(outList$pvalVec))
-          
-          if (sum(WEIGHT) > 0) {
-            AnnoWeights = c(WEIGHT, rep(1, outList$numofUR))
-          }
+        res_postprocess = region_postprocess(
+          outList,
+          mu,
+          WEIGHT,
+          traitType,
+          r.corr,
+          regionTestType,
+          isCondition,
+          annolistsub,
+          maxMAFlist,
+          regionName,
+          is_single_in_groupTest,
+          is_rerun = FALSE
+        )
+        pval.Region = res_postprocess$pval.Region
+        if ("cctpval" %in% names(res_postprocess)) {
+          cctpval = res_postprocess$cctpval
         }
-        
-        
-        
-        annoMAFIndicatorMat = outList$annoMAFIndicatorMat
-       
-
+        if ("resultDF" %in% names(res_postprocess)) {
+          resultDF = res_postprocess$resultDF
+        }
 
         if ((sum(outList$NumUltraRare_GroupVec) + sum(outList$NumRare_GroupVec)) > 0) {
           if (regionTestType != "BURDEN") {
-            #ta0 = proc.time()
-            if (traitType == "binary") {
-              outList$gyVec = outList$gyVec[noNAIndices]
-            }
-            
-            if (isCondition) {
-              outList$VarMatAdjCond = outList$VarMatAdjCond[noNAIndices, noNAIndices]
-              outList$TstatAdjCond = outList$TstatAdjCond[noNAIndices]
-              outList$G1tilde_P_G2tilde_Weighted_Mat = outList$G1tilde_P_G2tilde_Weighted_Mat[noNAIndices, , drop =
-                                                                                                F]
-              weightMat_G2_G2 = outList$G2_Weight_cond %*% t(outList$G2_Weight_cond)
-            }
-            
-            ### Get annotation maf indicators
-            
-            ### 3. Adjust for saddlepoint approximation
-            #notNAindice = which(!is.na(outList$TstatVec_flip))
-            #print("notNAindice")
-            #print(notNAindice)
-            StatVec = outList$TstatVec_flip[noNAIndices]
-            VarSVec = diag(outList$VarMat)
-            VarSVec = VarSVec[!is.na(VarSVec)]
-            adjPVec = outList$pvalVec[!is.na(outList$pvalVec)]  ##adjPVec contains log(p)
-            
-            #varTestedIndices = which(apply(annoMAFIndicatorMat, 1, isContainValue, val=1))
-            #print("varTestedIndices")
-            #print(varTestedIndices)
-            #varTestedIndices = which(rowSums(annoMAFIndicatorMat) > 0)
-            #annoMAFIndicatorMat = annoMAFIndicatorMat[varTestedIndices, , drop=F]
-            #MAFVec = outList$MAFVec[varTestedIndices]
-            annoMAFIndicatorMat = annoMAFIndicatorMat[noNAIndices, , drop = F]
-            MAFVec = outList$MAFVec[noNAIndices]
-            #AnnoWeights = dbeta(MAFVec,1,25)
-            
-            if (sum(WEIGHT) > 0) {
-              #AnnoWeights = AnnoWeights[varTestedIndices]
-              AnnoWeights = AnnoWeights[noNAIndices]
-            } else {
-              AnnoWeights = dbeta(MAFVec, 1, 25)
-            }
-            weightMat = AnnoWeights %*% t(AnnoWeights)
-            
-            
-            if (isCondition) {
-              weightMat_G1_G2 = AnnoWeights %*% t(outList$G2_Weight_cond)
-            }
-            wStatVec = StatVec * AnnoWeights
-            
-            wadjVarSMat = outList$VarMat * weightMat
-            
-            if (isCondition) {
-              wStatVec_cond = wStatVec - outList$TstatAdjCond
-              wadjVarSMat_cond = wadjVarSMat - outList$VarMatAdjCond
-            }
-            
-            #gc()
-            
-            annoMAFIndVec = c()
-            for (j in 1:length(annolistsub)) {
-              AnnoName = annolistsub[j]
-              maxMAF0 = outList$q_maf_for_annoVec[j]
-              isPolyRegion = TRUE
-              for (m in 1:length(maxMAFlist)) {
-                jm = (j - 1) * (length(maxMAFlist)) + m
-                maxMAFName = maxMAFlist[m]
-                if (m <= maxMAF0) {
-
-		
-
-                  tempPos = which(annoMAFIndicatorMat[, jm] == 1)
-                  if (length(tempPos) > 0) {
-                    isPolyRegion = TRUE
-                    annoMAFIndVec = c(annoMAFIndVec, jm)
-                    Phi = wadjVarSMat[tempPos, tempPos, drop = F]
-                    Score = wStatVec[tempPos]
-                    if (traitType == "binary") {
-                      p.new = adjPVec[tempPos]
-                      g.sum = outList$genoSumMat[, jm]
-                      q.sum <- sum(outList$gyVec[tempPos] * AnnoWeights[tempPos])
-                      mu.a = mu
-                      
-                      #re_phi = get_newPhi_scaleFactor(q.sum,
-                      re_phi = get_newPhi_scaleFactor_traitType(q.sum,
-                                                      mu.a,
-                                                      g.sum,
-                                                      p.new,
-                                                      Score,
-                                                      Phi,
-                                                      regionTestType,
-						      traitType)
-                      Phi = re_phi$val
-
-                    }
-                    groupOutList = get_SKAT_pvalue(Score, Phi, r.corr, regionTestType)
-                    resultDF = data.frame(
-                      Region = regionName,
-                      Group = AnnoName,
-                      max_MAF = maxMAFName,
-                      Pvalue = groupOutList$Pvalue_SKATO,
-                      Pvalue_Burden = groupOutList$Pvalue_Burden,
-                      Pvalue_SKAT = groupOutList$Pvalue_SKAT,
-                      BETA_Burden = groupOutList$BETA_Burden,
-                      SE_Burden = groupOutList$SE_Burden
-                    )
-
-                    if (isCondition) {
-                      if (traitType == "binary") {
-                        G1tilde_P_G2tilde_Mat_scaled = t(t((
-                          outList$G1tilde_P_G2tilde_Weighted_Mat[tempPos, , drop = F]
-                        ) * sqrt(as.vector(
-                          re_phi$scaleFactor
-                        ))
-                        ) * sqrt(
-                          as.vector(outList$scalefactor_G2_cond)
-                        ))
-                        #t(t(b * sqrt(a1)) * sqrt(a2))
-                        adjCondTemp = G1tilde_P_G2tilde_Mat_scaled %*% outList$VarInvMat_G2_cond_scaled
-                        VarMatAdjCond = adjCondTemp %*% t(G1tilde_P_G2tilde_Mat_scaled)
-                        TstatAdjCond = adjCondTemp %*% (outList$Tstat_G2_cond * outList$G2_Weight_cond)
-                        Phi_cond = re_phi$val - diag(VarMatAdjCond)
-                        Score_cond = Score - TstatAdjCond
-                        
-                      } else {
-                        Score_cond = wStatVec_cond[tempPos]
-                        Phi_cond = wadjVarSMat_cond[tempPos, tempPos]
-                      }
-                      
-                      groupOutList_cond = get_SKAT_pvalue(Score_cond,
-                                                          Phi_cond,
-                                                          r.corr,
-                                                          regionTestType)
-                      
-                      
-                      resultDF$Pvalue_cond = groupOutList_cond$Pvalue_SKATO
-                      resultDF$Pvalue_Burden_cond = groupOutList_cond$Pvalue_Burden
-                      resultDF$Pvalue_SKAT_cond = groupOutList_cond$Pvalue_SKAT
-                      resultDF$BETA_Burden_cond = groupOutList_cond$BETA_Burden
-                      resultDF$SE_Burden_cond = groupOutList_cond$SE_Burden
-                    }#if(isCondition){
-                    pval.Region = rbind.data.frame(pval.Region, resultDF)
-                    
-                  } else {
-                    #if(length(tempPos) > 0){
-                    isPolyRegion = FALSE
-                  }
-                  
-                } else {
-                  #if(m <= maxMAF0){
-                  if (isPolyRegion) {
-                    annoMAFIndVec = c(annoMAFIndVec, jm)
-                    resultDF$Region = regionName
-                    resultDF$Group = AnnoName
-                    resultDF$max_MAF = maxMAFName
-                    pval.Region = rbind.data.frame(pval.Region, resultDF)
-                    #pval.Region_temp = rbind.data.frame(pval.Region_temp, resultDF)
-                  }
-                }#if(m <= maxMAF0){
-                
-              }#for(m in 1:length(maxMAFlist)){
-            }#for(j in 1:length(annolist)){
-            
-            
-            # (per-iteration gc() removed in Phase 4: it dominated the profile; R collects on demand)
-            #}
-            
-            
-            
-            #if(regionTestType != "BURDEN"){
-            
-            if (length(annoMAFIndVec) > 0) {
-              pval.Region$MAC = outList$MAC_GroupVec[annoMAFIndVec]
-              if (traitType == "binary") {
-                pval.Region$MAC_case = outList$MACCase_GroupVec[annoMAFIndVec]
-                pval.Region$MAC_control = outList$MACCtrl_GroupVec[annoMAFIndVec]
-              }
-              pval.Region$Number_rare = outList$NumRare_GroupVec[annoMAFIndVec]
-              pval.Region$Number_ultra_rare = outList$NumUltraRare_GroupVec[annoMAFIndVec]
-            }
-            
-            if (length(annolistsub) > 1 | length(maxMAFlist) > 1) {
-              cctpval_Burden = get_CCT_pvalue(pval.Region$Pvalue_Burden)
-              if (regionTestType != "BURDEN") {
-                #print(pval.Region$Pvalue)
-                cctpval = get_CCT_pvalue(pval.Region$Pvalue)
-                cctpval_SKAT = get_CCT_pvalue(pval.Region$Pvalue_SKAT)
-                cctVec = c(
-                  regionName,
-                  "Cauchy",
-                  NA,
-                  cctpval,
-                  cctpval_Burden,
-                  cctpval_SKAT,
-                  NA,
-                  NA
-                )
-              } else {
-                cctVec = c(regionName,
-                           "Cauchy",
-                           NA,
-                           cctpval_Burden,
-                           NA,
-                           NA)
-              }
-              if (isCondition) {
-                cctpval_Burden = get_CCT_pvalue(pval.Region$Pvalue_Burden_cond)
-                
-                if (regionTestType != "BURDEN") {
-                  cctpval = get_CCT_pvalue(pval.Region$Pvalue_cond)
-                  cctpval_SKAT = get_CCT_pvalue(pval.Region$Pvalue_SKAT_cond)
-                  cctVec = c(cctVec,
-                             cctpval,
-                             cctpval_Burden,
-                             cctpval_SKAT,
-                             NA,
-                             NA)
-                } else {
-                  cctVec = c(cctVec, cctpval_Burden, NA, NA)
-                  
-                }
-              }
-              cctVec = c(cctVec, NA)
-              if (traitType == "binary") {
-                cctVec = c(cctVec, NA, NA)
-              }
-              cctVec = c(cctVec, NA, NA)
-              
-              pval.Region = rbind(pval.Region, cctVec)
-            } else {
-              cctpval = 1
-            }
             #ta1 = proc.time()
             #print("ta0 - tb0")
             #print(ta0 - tb0)
@@ -643,262 +709,28 @@ SAIGE.Region = function(mu,
                 cat("Non-fast test is performed\n")
                 set_flagSparseGRM_cur_SAIGE(TRUE)
 
-                outList = mainRegionInCPP(
-                  genoType,
-                  region$genoIndex,
-                  annoIndicatorMat,
-                  maxMAFlist,
-                  OutputFile,
-                  traitType,
-                  n,
-                  P1Mat,
-                  P2Mat,
-                  regionTestType,
-                  isImputation,
+                outList = run_mainRegionInCPP()
+                res_postprocess = region_postprocess(
+                  outList,
+                  mu,
                   WEIGHT,
-                  weight_cond,
-                  is_single_in_groupTest,
-                  is_output_markerList_in_groupTest,
+                  traitType,
+                  r.corr,
+                  regionTestType,
+                  isCondition,
                   annolistsub,
+                  maxMAFlist,
                   regionName,
-                  is_fastTest,
-                  is_output_moreDetails
+                  is_single_in_groupTest,
+                  is_rerun = TRUE,
+                  resultDF_carryover = if (exists("resultDF", inherits = FALSE)) list(resultDF) else NULL
                 )
-                if (is_single_in_groupTest) {
-                  #OutList = as.data.frame(outList$OUT_DF)
-                  
-                  #        #convert string p-value to log(p)
-                  pvalVec_new = unlist(lapply(outList$pvalVec, convert_str_to_log))
-                  outList$pvalVec = pvalVec_new  ##log of p-values
-                  
-                  
-                  noNAIndices = which(!is.na(outList$pvalVec))
-                  #print(noNAIndices)
-                  annoMAFIndicatorMat = outList$annoMAFIndicatorMat
-                  if (sum(WEIGHT) > 0) {
-                    AnnoWeights = c(WEIGHT, rep(1, outList$numofUR))
-                  }
+                pval.Region = res_postprocess$pval.Region
+                if ("cctpval" %in% names(res_postprocess)) {
+                  cctpval = res_postprocess$cctpval
                 }
-                
-                if (traitType == "binary") {
-                  outList$gyVec = outList$gyVec[noNAIndices]
-                }
-                
-                if (isCondition) {
-                  outList$VarMatAdjCond = outList$VarMatAdjCond[noNAIndices, noNAIndices]
-                  outList$TstatAdjCond = outList$TstatAdjCond[noNAIndices]
-                  outList$G1tilde_P_G2tilde_Weighted_Mat = outList$G1tilde_P_G2tilde_Weighted_Mat[noNAIndices, , drop =
-                                                                                                    F]
-                  weightMat_G2_G2 = outList$G2_Weight_cond %*% t(outList$G2_Weight_cond)
-                }
-                
-                ### Get annotation maf indicators
-                
-                ### 3. Adjust for saddlepoint approximation
-                #notNAindice = which(!is.na(outList$TstatVec_flip))
-                #print("notNAindice")
-                #print(notNAindice)
-                StatVec = outList$TstatVec_flip[noNAIndices]
-                VarSVec = diag(outList$VarMat)
-                VarSVec = VarSVec[!is.na(VarSVec)]
-                adjPVec = outList$pvalVec[!is.na(outList$pvalVec)]
-                
-                #varTestedIndices = which(apply(annoMAFIndicatorMat, 1, isContainValue, val=1))
-                #print("varTestedIndices")
-                #print(varTestedIndices)
-                #varTestedIndices = which(rowSums(annoMAFIndicatorMat) > 0)
-                #annoMAFIndicatorMat = annoMAFIndicatorMat[varTestedIndices, , drop=F]
-                #MAFVec = outList$MAFVec[varTestedIndices]
-                annoMAFIndicatorMat = annoMAFIndicatorMat[noNAIndices, , drop = F]
-                MAFVec = outList$MAFVec[noNAIndices]
-                #AnnoWeights = dbeta(MAFVec,1,25)
-                
-                if (sum(WEIGHT) > 0) {
-                  #AnnoWeights = AnnoWeights[varTestedIndices]
-                  AnnoWeights = AnnoWeights[noNAIndices]
-                } else {
-                  AnnoWeights = dbeta(MAFVec, 1, 25)
-                }
-                weightMat = AnnoWeights %*% t(AnnoWeights)
-                
-                
-                if (isCondition) {
-                  weightMat_G1_G2 = AnnoWeights %*% t(outList$G2_Weight_cond)
-                }
-                wStatVec = StatVec * AnnoWeights
-                
-                wadjVarSMat = outList$VarMat * weightMat
-                
-                if (isCondition) {
-                  wStatVec_cond = wStatVec - outList$TstatAdjCond
-                  wadjVarSMat_cond = wadjVarSMat - outList$VarMatAdjCond
-                }
-                
-                #gc()
-                
-                
-                annoMAFIndVec = c()
-                for (j in 1:length(annolistsub)) {
-                  AnnoName = annolistsub[j]
-                  maxMAF0 = outList$q_maf_for_annoVec[j]
-                  isPolyRegion = TRUE
-                  for (m in 1:length(maxMAFlist)) {
-                    jm = (j - 1) * (length(maxMAFlist)) + m
-                    maxMAFName = maxMAFlist[m]
-                    if (m <= maxMAF0) {
-                      tempPos = which(annoMAFIndicatorMat[, jm] == 1)
-                      if (length(tempPos) > 0) {
-                        isPolyRegion = TRUE
-                        annoMAFIndVec = c(annoMAFIndVec, jm)
-                        Phi = wadjVarSMat[tempPos, tempPos, drop = F]
-                        Score = wStatVec[tempPos]
-                        if (traitType == "binary") {
-                          p.new = adjPVec[tempPos]
-                          g.sum = outList$genoSumMat[, jm]
-                          q.sum <- sum(outList$gyVec[tempPos] * AnnoWeights[tempPos])
-                          mu.a = mu
-                          #re_phi = get_newPhi_scaleFactor(q.sum,
-                          re_phi = get_newPhi_scaleFactor_traitType(q.sum,
-                                                          mu.a,
-                                                          g.sum,
-                                                          p.new,
-                                                          Score,
-                                                          Phi,
-                                                          regionTestType,
-							  traitType)
-                          Phi = re_phi$val
-                        }
-                        groupOutList = get_SKAT_pvalue(Score, Phi, r.corr, regionTestType)
-                        
-                        resultDF = data.frame(
-                          Region = regionName,
-                          Group = AnnoName,
-                          max_MAF = maxMAFName,
-                          Pvalue = groupOutList$Pvalue_SKATO,
-                          Pvalue_Burden = groupOutList$Pvalue_Burden,
-                          Pvalue_SKAT = groupOutList$Pvalue_SKAT,
-                          BETA_Burden = groupOutList$BETA_Burden,
-                          SE_Burden = groupOutList$SE_Burden
-                        )
-                        if (isCondition) {
-                          if (traitType == "binary") {
-                            G1tilde_P_G2tilde_Mat_scaled = t(t((
-                              outList$G1tilde_P_G2tilde_Weighted_Mat[tempPos, , drop = F]
-                            ) * sqrt(as.vector(
-                              re_phi$scaleFactor
-                            ))
-                            ) * sqrt(
-                              as.vector(outList$scalefactor_G2_cond)
-                            ))
-                            #t(t(b * sqrt(a1)) * sqrt(a2))
-                            adjCondTemp = G1tilde_P_G2tilde_Mat_scaled %*% outList$VarInvMat_G2_cond_scaled
-                            VarMatAdjCond = adjCondTemp %*% t(G1tilde_P_G2tilde_Mat_scaled)
-                            TstatAdjCond = adjCondTemp %*% (outList$Tstat_G2_cond * outList$G2_Weight_cond)
-                            Phi_cond = re_phi$val - diag(VarMatAdjCond)
-                            Score_cond = Score - TstatAdjCond
-                            
-                          } else {
-                            Score_cond = wStatVec_cond[tempPos]
-                            Phi_cond = wadjVarSMat_cond[tempPos, tempPos]
-                          }
-                          
-                          groupOutList_cond = get_SKAT_pvalue(Score_cond,
-                                                              Phi_cond,
-                                                              r.corr,
-                                                              regionTestType)
-                          
-                          resultDF$Pvalue_cond = groupOutList_cond$Pvalue_SKATO
-                          resultDF$Pvalue_Burden_cond = groupOutList_cond$Pvalue_Burden
-                          resultDF$Pvalue_SKAT_cond = groupOutList_cond$Pvalue_SKAT
-                          resultDF$BETA_Burden_cond = groupOutList_cond$BETA_Burden
-                          resultDF$SE_Burden_cond = groupOutList_cond$SE_Burden
-                        }#if(isCondition){
-                        pval.Region = rbind.data.frame(pval.Region, resultDF)
-                        
-                      } else {
-                        #if(length(tempPos) > 0){
-                        isPolyRegion = FALSE
-                      }
-                      
-                    } else {
-                      #if(m <= maxMAF0){
-                      if (isPolyRegion) {
-                        annoMAFIndVec = c(annoMAFIndVec, jm)
-                        resultDF$Region = regionName
-                        resultDF$Group = AnnoName
-                        resultDF$max_MAF = maxMAFName
-                        pval.Region = rbind.data.frame(pval.Region, resultDF)
-                      }
-                    }#if(m <= maxMAF0){
-                    
-                  }#for(m in 1:length(maxMAFlist)){
-                }#for(j in 1:length(annolist)){
-                
-                
-            # (per-iteration gc() removed in Phase 4: it dominated the profile; R collects on demand)
-                #}
-                
-                
-                
-                #if(regionTestType != "BURDEN"){
-                
-                if (length(annoMAFIndVec) > 0) {
-                  pval.Region$MAC = outList$MAC_GroupVec[annoMAFIndVec]
-                  if (traitType == "binary") {
-                    pval.Region$MAC_case = outList$MACCase_GroupVec[annoMAFIndVec]
-                    pval.Region$MAC_control = outList$MACCtrl_GroupVec[annoMAFIndVec]
-                  }
-                  pval.Region$Number_rare = outList$NumRare_GroupVec[annoMAFIndVec]
-                  pval.Region$Number_ultra_rare = outList$NumUltraRare_GroupVec[annoMAFIndVec]
-                }
-                
-                if (length(annolistsub) > 1 | length(maxMAFlist) > 1) {
-                  cctpval_Burden = get_CCT_pvalue(pval.Region$Pvalue_Burden)
-                  if (regionTestType != "BURDEN") {
-                    cctpval = get_CCT_pvalue(pval.Region$Pvalue)
-                    cctpval_SKAT = get_CCT_pvalue(pval.Region$Pvalue_SKAT)
-                    cctVec = c(
-                      regionName,
-                      "Cauchy",
-                      NA,
-                      cctpval,
-                      cctpval_Burden,
-                      cctpval_SKAT,
-                      NA,
-                      NA
-                    )
-                  } else {
-                    cctVec = c(regionName,
-                               "Cauchy",
-                               NA,
-                               cctpval_Burden,
-                               NA,
-                               NA)
-                  }
-                  if (isCondition) {
-                    cctpval_Burden = get_CCT_pvalue(pval.Region$Pvalue_Burden_cond)
-                    
-                    if (regionTestType != "BURDEN") {
-                      cctpval = get_CCT_pvalue(pval.Region$Pvalue_cond)
-                      cctpval_SKAT = get_CCT_pvalue(pval.Region$Pvalue_SKAT_cond)
-                      cctVec = c(cctVec,
-                                 cctpval,
-                                 cctpval_Burden,
-                                 cctpval_SKAT,
-                                 NA,
-                                 NA)
-                    } else {
-                      cctVec = c(cctVec, cctpval_Burden, NA, NA)
-                      
-                    }
-                  }
-                  cctVec = c(cctVec, NA)
-                  if (traitType == "binary") {
-                    cctVec = c(cctVec, NA, NA)
-                  }
-                  cctVec = c(cctVec, NA, NA)
-                  
-                  pval.Region = rbind(pval.Region, cctVec)
+                if ("resultDF" %in% names(res_postprocess)) {
+                  resultDF = res_postprocess$resultDF
                 }
                 
                 
