@@ -27,10 +27,10 @@ createSparseGRM = function(bedFile = "",
 		isWritetoFiles=TRUE
                 ){
 
-  if(nThreads > 1){
-    RcppParallel:::setThreadOptions(numThreads = nThreads)
-    cat(nThreads, " threads are set to be used ", "\n")
-  }
+  # LEDGER #7 fix: always pin the TBB pool — nThreads=1 previously left
+  # RcppParallel on all hardware threads (nondeterministic float reductions).
+  RcppParallel:::setThreadOptions(numThreads = nThreads)
+  cat(nThreads, " threads are set to be used ", "\n")
   #cat("numRandomMarkerforSparseKin is ", numRandomMarkerforSparseKin, "\n")
   cat("sparse GRM will be created\n")
   setminMAFforGRM(minMAFforGRM)

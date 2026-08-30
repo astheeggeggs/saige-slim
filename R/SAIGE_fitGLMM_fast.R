@@ -787,10 +787,9 @@ fitNULLGLMM = function(plinkFile = "",
     }
 
 
-    if (nThreads > 1) {
-        RcppParallel:::setThreadOptions(numThreads = nThreads)
-        cat(nThreads, " threads will be used ", "\n")
-    }
+    # LEDGER #7 fix: always pin the TBB pool (see harness/env.sh history).
+    RcppParallel:::setThreadOptions(numThreads = nThreads)
+    cat(nThreads, " threads will be used ", "\n")
 
     if (FemaleOnly & MaleOnly) {
         stop("Both FemaleOnly and MaleOnly are TRUE. Please specify only one of them as TRUE to run the sex-specific job\n")
