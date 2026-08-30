@@ -29,9 +29,8 @@ RUN curl -L https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-a.6.16
 
 RUN pixi run R CMD INSTALL .
 
-RUN mv extdata/step1_fitNULLGLMM.R extdata/step2_SPAtests.R extdata/step3_LDmat.R extdata/createSparseGRM.R /usr/local/bin/ && \
-   chmod a+x /usr/local/bin/step1_fitNULLGLMM.R /usr/local/bin/step2_SPAtests.R /usr/local/bin/step3_LDmat.R /usr/local/bin/createSparseGRM.R && \
+RUN mv extdata/step1_fitNULLGLMM.R extdata/step2_SPAtests.R extdata/createSparseGRM.R /usr/local/bin/ && \
+   chmod a+x /usr/local/bin/step1_fitNULLGLMM.R /usr/local/bin/step2_SPAtests.R /usr/local/bin/createSparseGRM.R && \
    createSparseGRM.R --help && \
    step1_fitNULLGLMM.R --help && \
-   step2_SPAtests.R --help && \
-   step3_LDmat.R --help
+   step2_SPAtests.R --help

@@ -5,30 +5,6 @@ CCT_cpp <- function(pval) {
     .Call('_SAIGE_CCT_cpp', PACKAGE = 'SAIGE', pval)
 }
 
-setGlobalVarsInCPP_LDmat <- function(t_impute_method, t_dosage_zerod_cutoff, t_dosage_zerod_MAC_cutoff, t_missing_cutoff, t_maxMAFLimit, t_min_maf_marker, t_min_mac_marker, t_min_info_marker, t_max_markers_region, t_outputFile) {
-    invisible(.Call('_SAIGE_setGlobalVarsInCPP_LDmat', PACKAGE = 'SAIGE', t_impute_method, t_dosage_zerod_cutoff, t_dosage_zerod_MAC_cutoff, t_missing_cutoff, t_maxMAFLimit, t_min_maf_marker, t_min_mac_marker, t_min_info_marker, t_max_markers_region, t_outputFile))
-}
-
-LDmatRegionInCPP <- function(t_genoType, t_genoIndex_prev, t_genoIndex, annoIndicatorMat, t_outputFile, t_n, t_isImputation, annoStringVec, regionName) {
-    invisible(.Call('_SAIGE_LDmatRegionInCPP', PACKAGE = 'SAIGE', t_genoType, t_genoIndex_prev, t_genoIndex, annoIndicatorMat, t_outputFile, t_n, t_isImputation, annoStringVec, regionName))
-}
-
-openOutfile_single_LDmat <- function(isappend) {
-    .Call('_SAIGE_openOutfile_single_LDmat', PACKAGE = 'SAIGE', isappend)
-}
-
-openOutfile_LDmat <- function(isappend) {
-    .Call('_SAIGE_openOutfile_LDmat', PACKAGE = 'SAIGE', isappend)
-}
-
-openOutfile_index_LDmat <- function(isappend) {
-    .Call('_SAIGE_openOutfile_index_LDmat', PACKAGE = 'SAIGE', isappend)
-}
-
-closeOutfile_single_LDmat <- function() {
-    invisible(.Call('_SAIGE_closeOutfile_single_LDmat', PACKAGE = 'SAIGE'))
-}
-
 setAssocTest_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_min_info_marker, t_dosage_zerod_cutoff, t_dosage_zerod_MAC_cutoff, t_weights_beta, t_outputFilePrefix, t_MACCutoffforER) {
     invisible(.Call('_SAIGE_setAssocTest_GlobalVarsInCPP', PACKAGE = 'SAIGE', t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_min_info_marker, t_dosage_zerod_cutoff, t_dosage_zerod_MAC_cutoff, t_weights_beta, t_outputFilePrefix, t_MACCutoffforER))
 }
