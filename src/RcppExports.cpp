@@ -2982,53 +2982,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// mult_sp_sp_to_sp
-arma::sp_mat mult_sp_sp_to_sp(const arma::sp_mat& a, const arma::sp_mat& b);
-RcppExport SEXP _SAIGE_mult_sp_sp_to_sp(SEXP aSEXP, SEXP bSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::sp_mat& >::type a(aSEXP);
-    Rcpp::traits::input_parameter< const arma::sp_mat& >::type b(bSEXP);
-    rcpp_result_gen = Rcpp::wrap(mult_sp_sp_to_sp(a, b));
-    return rcpp_result_gen;
-END_RCPP
-}
-// mult_sp_den_to_sp
-arma::sp_mat mult_sp_den_to_sp(const arma::sp_mat& a, const arma::mat& b);
-RcppExport SEXP _SAIGE_mult_sp_den_to_sp(SEXP aSEXP, SEXP bSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::sp_mat& >::type a(aSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type b(bSEXP);
-    rcpp_result_gen = Rcpp::wrap(mult_sp_den_to_sp(a, b));
-    return rcpp_result_gen;
-END_RCPP
-}
-// mult_den_sp_to_sp
-arma::sp_mat mult_den_sp_to_sp(const arma::mat& a, const arma::sp_mat& b);
-RcppExport SEXP _SAIGE_mult_den_sp_to_sp(SEXP aSEXP, SEXP bSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::mat& >::type a(aSEXP);
-    Rcpp::traits::input_parameter< const arma::sp_mat& >::type b(bSEXP);
-    rcpp_result_gen = Rcpp::wrap(mult_den_sp_to_sp(a, b));
-    return rcpp_result_gen;
-END_RCPP
-}
-// gen_sp
-arma::sp_mat gen_sp(const arma::sp_mat& a);
-RcppExport SEXP _SAIGE_gen_sp(SEXP aSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::sp_mat& >::type a(aSEXP);
-    rcpp_result_gen = Rcpp::wrap(gen_sp(a));
-    return rcpp_result_gen;
-END_RCPP
-}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_CCT_cpp", (DL_FUNC) &_SAIGE_CCT_cpp, 1},
@@ -3237,10 +3190,6 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_SPA_survival_fast", (DL_FUNC) &_SAIGE_SPA_survival_fast, 13},
     {"_SAIGE_sum_arma1", (DL_FUNC) &_SAIGE_sum_arma1, 1},
     {"_SAIGE_add_logp", (DL_FUNC) &_SAIGE_add_logp, 2},
-    {"_SAIGE_mult_sp_sp_to_sp", (DL_FUNC) &_SAIGE_mult_sp_sp_to_sp, 2},
-    {"_SAIGE_mult_sp_den_to_sp", (DL_FUNC) &_SAIGE_mult_sp_den_to_sp, 2},
-    {"_SAIGE_mult_den_sp_to_sp", (DL_FUNC) &_SAIGE_mult_den_sp_to_sp, 2},
-    {"_SAIGE_gen_sp", (DL_FUNC) &_SAIGE_gen_sp, 1},
     {NULL, NULL, 0}
 };
 

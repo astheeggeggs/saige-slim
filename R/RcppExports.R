@@ -825,19 +825,3 @@ add_logp <- function(p1, p2) {
     .Call('_SAIGE_add_logp', PACKAGE = 'SAIGE', p1, p2)
 }
 
-mult_sp_sp_to_sp <- function(a, b) {
-    .Call('_SAIGE_mult_sp_sp_to_sp', PACKAGE = 'SAIGE', a, b)
-}
-
-mult_sp_den_to_sp <- function(a, b) {
-    .Call('_SAIGE_mult_sp_den_to_sp', PACKAGE = 'SAIGE', a, b)
-}
-
-mult_den_sp_to_sp <- function(a, b) {
-    .Call('_SAIGE_mult_den_sp_to_sp', PACKAGE = 'SAIGE', a, b)
-}
-
-gen_sp <- function(a) {
-    .Call('_SAIGE_gen_sp', PACKAGE = 'SAIGE', a)
-}
-
