@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Negative control: permuted phenotype through the full step1 -> step2 pipeline.
+# The pipeline must NOT fabricate signal: step-2 p-values should be ~Uniform(0,1).
+#   bash harness/make_controls.sh <golden-dir>
+# Outputs land in <golden-dir>/control/. Also byte-comparable across versions
+# (the permutation seed is fixed), so the control doubles as a regression fixture.
+
+set -euo pipefail
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+GOLD="$(mkdir -p "$1" && cd "$1" && pwd)"
+cd "$REPO/extdata"
+source "$REPO/harness/env.sh"
+mkdir -p "$GOLD/control" "$GOLD/logs"
+
+run() { local log="$GOLD/logs/$1"; shift; echo "=== $log"
+  "$@" >"$log" 2>&1 || { echo "FAILED: see $log"; tail -20 "$log"; exit 1; }; }
+R2() { pixi run --manifest-path "$REPO/pixi.toml" Rscript "$@"; }
+
+# 1. permuted phenotype (fixed seed; regenerated identically every time)
+R2 -e '
+  set.seed(42)
+  d <- read.table("./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt",
+                  header = TRUE, stringsAsFactors = FALSE)
+  d$y_binary <- sample(d$y_binary)
+  write.table(d, "'"$GOLD"'/control/pheno_permuted.txt",
+              quote = FALSE, row.names = FALSE, sep = " ")
+'
+
+# 2. step 1 on the permuted phenotype (same flags as golden step1 run "a")
+run control_step1.log R2 step1_fitNULLGLMM.R \
+  --plinkFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr \
+  --sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx \
+  --sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt \
+  --useSparseGRMtoFitNULL=TRUE \
+  --phenoFile="$GOLD/control/pheno_permuted.txt" \
+  --phenoCol=y_binary \
+  --covarColList=x1,x2,a9,a10 \
+  --qCovarColList=a9,a10 \
+  --sampleIDColinphenoFile=IID \
+  --traitType=binary \
+  --IsOverwriteVarianceRatioFile=TRUE \
+  --isCateVarianceRatio=TRUE \
+  --outputPrefix="$GOLD/control/null_binary"
+
+# 3. step 2, PLINK single-variant, on the permuted-phenotype model
+run control_step2.log R2 step2_SPAtests.R \
+  --bedFile=./input/genotype_100markers.bed \
+  --bimFile=./input/genotype_100markers.bim \
+  --famFile=./input/genotype_100markers.fam \
+  --AlleleOrder=alt-first \
+  --SAIGEOutputFile="$GOLD/control/null_marker.txt" \
+  --chrom=1 --minMAF=0 --minMAC=1 \
+  --GMMATmodelFile="$GOLD/control/null_binary.rda" \
+  --varianceRatioFile="$GOLD/control/null_binary.varianceRatio.txt" \
+  --LOCO=FALSE
+
+# 4. uniformity check
+R2 "$REPO/harness/check_null.R" "$GOLD/control/null_marker.txt"
+echo "=== controls complete: $GOLD/control"
