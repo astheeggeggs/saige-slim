@@ -1,150 +1,16 @@
-GetIndexofCases = function(status, time){
-  timedata = data.frame(time=time, orgIndex=seq(1,length(time)), status=status)
-  timedata = timedata[order(timedata$time),]
-  timedata$newIndex = seq(1,length(time))
-  caseIndex = which(timedata$status == 1)
-  caseIndexwithTies = caseIndex
-  for(i in 2:length(caseIndex)){
-    if(timedata$time[caseIndex[i]] == timedata$time[caseIndex[i-1]]){
-      caseIndexwithTies[i] = caseIndexwithTies[i-1]
-    }
-  }
-
-  uniqTimeIndex = unique(caseIndexwithTies)
-  uniqTimeVec = timedata$time[uniqTimeIndex]
-  uniqTimeData = data.frame(uniqTimeVec = uniqTimeVec, uniqTimeIndex = uniqTimeIndex)
-  timedata$newIndexWithTies = timedata$newIndex
-
-  for(i in 1:nrow(timedata)){
-    if(timedata$time[i] %in% uniqTimeVec){
-      timedata$newIndexWithTies[i] = uniqTimeIndex[which(uniqTimeVec == timedata$time[i])]
-    }
-  }
-
-  return(list(timedata = timedata, caseIndex = caseIndex, caseIndexwithTies = caseIndexwithTies, uniqTimeIndex = uniqTimeIndex))
-}
-
-
-
-GetdenominN = function(uniqTimeIndex, lin.pred.new, newIndexWithTies, caseIndexwithTies , orgIndex){
-  explin<-exp(lin.pred.new)
-
-  getdenominN = function(i,uniqTimeIndex, explin, newIndexWithTies, caseIndexwithTies, orgIndex){
-    nc = length(explin)
-    ntie = sum(caseIndexwithTies == uniqTimeIndex[i])
-    x = ntie/(sum(explin[orgIndex[which(newIndexWithTies >= uniqTimeIndex[i])]]))^2
-    return(x)
-  }
-  demonVec = sapply(seq(1,length(uniqTimeIndex)), getdenominN, uniqTimeIndex, explin, newIndexWithTies, caseIndexwithTies, orgIndex)
-  #cat("demonVec: ", demonVec, "\n")
-  return(demonVec)
-}
-
-
-Getrmat = function(i,inC){
-    orgi = inC$timedata[,"orgIndex"][i]
-    x = inC$timedata$time[i]
-    a = rep(0, length(inC$uniqTimeIndex))
-    uniqTimeIndexVec = inC$timedata$time[inC$uniqTimeIndex]
-    a[which(uniqTimeIndexVec <= x)] = 1
-    b = c(orgi, a)
-    return(b)
-}
-
-
-Getrmat_indexvec = function(i,inC){
-    orgi = inC$timedata[,"orgIndex"][i]
-    x = inC$timedata$time[i]
-    a = rep(0, length(inC$uniqTimeIndex))
-    uniqTimeIndexVec = inC$timedata$time[inC$uniqTimeIndex]
-    #a[which(uniqTimeIndexVec <= x)] = 1
-    #b = c(orgi, a)
-    a = which(uniqTimeIndexVec <= x)
-    b = cbind(rep(orgi, length(a)), a)
-    return(b)
-}
-
-
-Getrmat_indexvec_new = function(i,inC){
-    orgi = inC$timedata[,"orgIndex"][i]
-    x = inC$timedata$time[i]
-    a = rep(0, length(inC$uniqTimeIndex))
-    uniqTimeIndexVec = inC$timedata$time[inC$uniqTimeIndex]
-    a = which(uniqTimeIndexVec <= x)
-    b = c(orgi, a[length(a)])
-    return(b)
-}
-
-
-GetdenominLambda0 = function(caseIndexwithTies, lin.pred.new, newIndexWithTies){
-  #demonVec = rep(0, length(caseIndex))
-  explin<-exp(lin.pred.new)
-  #print("explin")
-  #print(explin[1:10])
-  getdenom = function(i,caseIndexwithTies, explin, newIndexWithTies){
-    nc = length(explin)
-    x = 1/sum(explin[which(newIndexWithTies >= caseIndexwithTies[i])])
-    return(x)
-  }
-  demonVec = sapply(seq(1,length(caseIndexwithTies)), getdenom, caseIndexwithTies, explin, newIndexWithTies)
-  #print("demonVec")
-  #print(demonVec[1:10])
-  #cat("demonVec: ", demonVec, "\n")
-  return(demonVec)
-}
-
-GetLambda0<-function(lin.pred,inC)
-{
-    #inC = GetIndexofCases(status, time)
-  lin.pred.new = lin.pred[inC$timedata$orgIndex]
-  #cat("lin.pred.new: ", lin.pred.new, "\n")
-  demonVec = GetdenominLambda0(inC$caseIndexwithTies, lin.pred.new, inC$timedata$newIndexWithTies)
-  #cat("demonVec: ", demonVec, "\n")
-  #cat("inC$caseIndexwithTies: ", inC$caseIndexwithTies, "\n")
-  #timeC = inC$timedata$time[inC$caseIndex]
-  Lambda0<-rep(0,length(lin.pred))
-  lambda0 = 0
-  for(i in 1:length(lin.pred))
-  {
-    j = inC$timedata$newIndexWithTies[i]
-    lambda0 = sum(demonVec[which(inC$caseIndexwithTies <= j)])
-    Lambda0[inC$timedata$orgIndex[i]] = lambda0
-  }
-  return(Lambda0)
-}
-
 # Run iterations to get converged alpha and eta
-Get_Coef = function(y, X, tau, family, alpha0, eta0,  offset, maxiterPCG, tolPCG,maxiter, verbose=FALSE, inC = NULL, tol.coef=0.1){
+Get_Coef = function(y, X, tau, family, alpha0, eta0,  offset, maxiterPCG, tolPCG,maxiter, verbose=FALSE, tol.coef=0.1){
   #tol.coef = 0.1
   #eta = eta0
-  
-  #if(!is.null(inC)){
-  #  Lambda0 = GetLambda0(eta0, inC)
-  #  mu = Lambda0*exp(eta0)
-  #  Y = eta0 + (y - mu)/mu
-  #  W = as.vector(mu)
-  #}else{
-  if(is.null(inC)){
-    mu = family$linkinv(eta0)
-    mu.eta = family$mu.eta(eta0)
-    Y = eta0 - offset + (y - mu)/mu.eta
-    sqrtW = mu.eta/sqrt(family$variance(mu))
-    W = sqrtW^2
-  }else{
-    eta = eta0	
-  }
+
+  mu = family$linkinv(eta0)
+  mu.eta = family$mu.eta(eta0)
+  Y = eta0 - offset + (y - mu)/mu.eta
+  sqrtW = mu.eta/sqrt(family$variance(mu))
+  W = sqrtW^2
 
 
   for(i in 1:maxiter){
-    if(!is.null(inC)){
-      Lambda0 = GetLambda0(eta, inC)
-      mu = Lambda0*exp(eta)
-      Y = eta + (y - mu)/mu
-      W = as.vector(mu)
-    }
-
-
-
     re.coef = getCoefficients(Y, X, W, tau, maxiter=maxiterPCG, tol=tolPCG)
     alpha = re.coef$alpha
     eta = re.coef$eta + offset
@@ -156,13 +22,11 @@ Get_Coef = function(y, X, tau, family, alpha0, eta0,  offset, maxiterPCG, tolPCG
       print(alpha)
     }
 
-    if(is.null(inC)){
-      mu = family$linkinv(eta)
-      mu.eta = family$mu.eta(eta)
-      Y = eta - offset + (y - mu)/mu.eta
-      sqrtW = mu.eta/sqrt(family$variance(mu))
-      W = sqrtW^2
-    }
+    mu = family$linkinv(eta)
+    mu.eta = family$mu.eta(eta)
+    Y = eta - offset + (y - mu)/mu.eta
+    sqrtW = mu.eta/sqrt(family$variance(mu))
+    W = sqrtW^2
 
     if( max(abs(alpha - alpha0)/(abs(alpha) + abs(alpha0) + tol.coef))< tol.coef){
 	break
@@ -170,11 +34,7 @@ Get_Coef = function(y, X, tau, family, alpha0, eta0,  offset, maxiterPCG, tolPCG
       alpha0 = alpha
     }
 
-    if(!is.null(inC)){
-      re = list(Y=Y, alpha=alpha, eta=eta, W=W, cov=re.coef$cov, Sigma_iY = re.coef$Sigma_iY, Sigma_iX = re.coef$Sigma_iX, mu=mu, Lambda0 = Lambda0)
-    }else{
-      re = list(Y=Y, alpha=alpha, eta=eta, W=W, cov=re.coef$cov, sqrtW=sqrtW, Sigma_iY = re.coef$Sigma_iY, Sigma_iX = re.coef$Sigma_iX, mu=mu)
-    }
+    re = list(Y=Y, alpha=alpha, eta=eta, W=W, cov=re.coef$cov, sqrtW=sqrtW, Sigma_iY = re.coef$Sigma_iY, Sigma_iX = re.coef$Sigma_iX, mu=mu)
 }
 
 
@@ -182,20 +42,13 @@ Get_Coef = function(y, X, tau, family, alpha0, eta0,  offset, maxiterPCG, tolPCG
 # Functon to get working vector and fixed & random coefficients when LOCO is TRUE
 # getCoefficients_LOCO is used
 # Run iterations to get converged alpha and eta
-Get_Coef_LOCO = function(y, X, tau, family, alpha0, eta0,  offset, maxiterPCG, tolPCG, maxiter, verbose=FALSE, inC = NULL, tol.coef=0.1){
+Get_Coef_LOCO = function(y, X, tau, family, alpha0, eta0,  offset, maxiterPCG, tolPCG, maxiter, verbose=FALSE, tol.coef=0.1){
   #tol.coef = 0.1
-  if(!is.null(inC)){
-    Lambda0 = GetLambda0(eta0, inC)
-    mu = Lambda0*exp(eta0)
-    Y = eta0 + (y - mu)/mu
-    W = as.vector(mu) 
-  }else{
-    mu = family$linkinv(eta0)
-    mu.eta = family$mu.eta(eta0)
-    Y = eta0 - offset + (y - mu)/mu.eta
-    sqrtW = mu.eta/sqrt(family$variance(mu))
-    W = sqrtW^2
-  }
+  mu = family$linkinv(eta0)
+  mu.eta = family$mu.eta(eta0)
+  Y = eta0 - offset + (y - mu)/mu.eta
+  sqrtW = mu.eta/sqrt(family$variance(mu))
+  W = sqrtW^2
 
   for(i in 1:maxiter){
     re.coef = getCoefficients_LOCO(Y, X, W, tau, maxiter=maxiterPCG, tol=tolPCG)
@@ -209,36 +62,25 @@ Get_Coef_LOCO = function(y, X, tau, family, alpha0, eta0,  offset, maxiterPCG, t
       print(alpha)
     }
 
-    if(!is.null(inC)){
-      Lambda0 = GetLambda0(eta, inC)
-      mu = Lambda0*exp(eta)
-      Y = eta + (y - mu)/mu
-      W = as.vector(mu)
-    }else{
-      mu = family$linkinv(eta)
-      mu.eta = family$mu.eta(eta)
-      Y = eta - offset + (y - mu)/mu.eta
-      sqrtW = mu.eta/sqrt(family$variance(mu))
-      W = sqrtW^2
-    }
+    mu = family$linkinv(eta)
+    mu.eta = family$mu.eta(eta)
+    Y = eta - offset + (y - mu)/mu.eta
+    sqrtW = mu.eta/sqrt(family$variance(mu))
+    W = sqrtW^2
 
     if( max(abs(alpha - alpha0)/(abs(alpha) + abs(alpha0) + tol.coef))< tol.coef) break
       alpha0 = alpha
     }
 
-    if(!is.null(inC)){
-      re = list(Y=Y, alpha=alpha, eta=eta, W=W, cov=re.coef$cov, Sigma_iY = re.coef$Sigma_iY, Sigma_iX = re.coef$Sigma_iX, mu=mu, Lambda0 = Lambda0)
-    }else{
-      re = list(Y=Y, alpha=alpha, eta=eta, W=W, cov=re.coef$cov, sqrtW=sqrtW, Sigma_iY = re.coef$Sigma_iY, Sigma_iX = re.coef$Sigma_iX, mu=mu)
-    }
+    re = list(Y=Y, alpha=alpha, eta=eta, W=W, cov=re.coef$cov, sqrtW=sqrtW, Sigma_iY = re.coef$Sigma_iY, Sigma_iX = re.coef$Sigma_iX, mu=mu)
 
 }
 
 
 
 
-#Fits the null glmm for binary and survival traits
-glmmkin.ai_PCG_Rcpp_Binary = function(bedFile, bimFile, famFile, Xorig, isCovariateOffset, fit0, tau=c(0,0), fixtau = c(0,0), maxiter =20, tol = 0.02, verbose = TRUE, nrun=30, tolPCG = 1e-5, maxiterPCG = 500, subPheno, indicatorGenoSamplesWithPheno, obj.noK, out.transform, tauInit, memoryChunk, LOCO, chromosomeStartIndexVec, chromosomeEndIndexVec, traceCVcutoff, isCovariateTransform, isDiagofKinSetAsOne, isLowMemLOCO, eventTime = NULL) {
+#Fits the null glmm for binary traits
+glmmkin.ai_PCG_Rcpp_Binary = function(bedFile, bimFile, famFile, Xorig, isCovariateOffset, fit0, tau=c(0,0), fixtau = c(0,0), maxiter =20, tol = 0.02, verbose = TRUE, nrun=30, tolPCG = 1e-5, maxiterPCG = 500, subPheno, indicatorGenoSamplesWithPheno, obj.noK, out.transform, tauInit, memoryChunk, LOCO, chromosomeStartIndexVec, chromosomeEndIndexVec, traceCVcutoff, isCovariateTransform, isDiagofKinSetAsOne, isLowMemLOCO) {
   #Fits the null generalized linear mixed model for a binary trait
   #Args:
   #  genofile: string. Plink file for the M1 markers to be used to construct the genetic relationship matrix 
@@ -290,12 +132,6 @@ glmmkin.ai_PCG_Rcpp_Binary = function(bedFile, bimFile, famFile, Xorig, isCovari
   n = length(y)
   X = model.matrix(fit0)
 
-  if(!is.null(eventTime)){
-    X = X[,-1,drop=FALSE]
-  } 
-
-
-
   offset = fit0$offset
   if(is.null(offset)){
     offset = rep(0, n)
@@ -304,22 +140,14 @@ glmmkin.ai_PCG_Rcpp_Binary = function(bedFile, bimFile, famFile, Xorig, isCovari
   family = fit0$family
   eta = fit0$linear.predictors
  
-  if(is.null(eventTime)){
-    mu = fit0$fitted.values
-    mu.eta = family$mu.eta(eta)
-    Y = eta - offset + (y - mu)/mu.eta
-    inC = NULL
-  }else{
-    inC = GetIndexofCases(y, eventTime)
-  }
+  mu = fit0$fitted.values
+  mu.eta = family$mu.eta(eta)
+  Y = eta - offset + (y - mu)/mu.eta
 
   #mu = fit0$fitted.values
   #mu.eta = family$mu.eta(eta)
   #Y = eta - offset + (y - mu)/mu.eta
   alpha0 = fit0$coef
-  if(!is.null(eventTime)){
-    alpha0 = alpha0[-1]
-  }
   eta0 = eta
 
   if(family$family %in% c("poisson", "binomial")) {
@@ -338,7 +166,7 @@ glmmkin.ai_PCG_Rcpp_Binary = function(bedFile, bimFile, famFile, Xorig, isCovari
   cat("inital tau is ", tau,"\n")
   tau0=tau
 
-  re.coef = Get_Coef(y, X, tau, family, alpha0, eta0,  offset,verbose=verbose, maxiterPCG=maxiterPCG, tolPCG = tolPCG, maxiter=maxiter, inC = inC, tol.coef=tol)
+  re.coef = Get_Coef(y, X, tau, family, alpha0, eta0,  offset,verbose=verbose, maxiterPCG=maxiterPCG, tolPCG = tolPCG, maxiter=maxiter, tol.coef=tol)
   re = getAIScore(re.coef$Y, X, re.coef$W, tau, re.coef$Sigma_iY, re.coef$Sigma_iX, re.coef$cov, nrun, maxiterPCG,tolPCG = tolPCG, traceCVcutoff = traceCVcutoff)
 
 
@@ -358,7 +186,7 @@ glmmkin.ai_PCG_Rcpp_Binary = function(bedFile, bimFile, famFile, Xorig, isCovari
     eta0 = eta
     # use Get_Coef before getAIScore       
     t_begin_Get_Coef = proc.time()
-    re.coef = Get_Coef(y, X, tau, family, alpha0, eta0,  offset,verbose=verbose, maxiterPCG=maxiterPCG, tolPCG = tolPCG, maxiter=maxiter,inC = inC, tol.coef=tol)
+    re.coef = Get_Coef(y, X, tau, family, alpha0, eta0,  offset,verbose=verbose, maxiterPCG=maxiterPCG, tolPCG = tolPCG, maxiter=maxiter, tol.coef=tol)
    t_end_Get_Coef =  proc.time()
    #cat("t_end_Get_Coef - t_begin_Get_Coef\n")
    cat("Updating fix effect coeffcieints took\n")
@@ -396,25 +224,16 @@ glmmkin.ai_PCG_Rcpp_Binary = function(bedFile, bimFile, famFile, Xorig, isCovari
   if(verbose) cat("\nFinal " ,tau, ":\n")
 
     #added these steps after tau is estimated 04-14-2018
-  re.coef = Get_Coef(y, X, tau, family, alpha, eta,  offset,verbose=verbose, maxiterPCG=maxiterPCG, tolPCG = tolPCG, maxiter=maxiter,inC = inC, tol.coef=tol)
+  re.coef = Get_Coef(y, X, tau, family, alpha, eta,  offset,verbose=verbose, maxiterPCG=maxiterPCG, tolPCG = tolPCG, maxiter=maxiter, tol.coef=tol)
   cov = re.coef$cov
   alpha = re.coef$alpha
   eta = re.coef$eta
 
-  if(!is.null(inC)){
-    Lambda0 = GetLambda0(eta, inC)
-    mu = Lambda0*exp(eta)
-    Y = eta - offset + (y - mu)/mu
-    W = as.vector(mu)
-  }else{
-    Y = re.coef$Y
-    mu = re.coef$mu
-  }
+  Y = re.coef$Y
+  mu = re.coef$mu
 
   converged = ifelse(i < maxiter, TRUE, FALSE)
   res = y - mu
-
-  if(is.null(inC)){
 
   mu2 = mu * (1-mu)
   if(!isCovariateOffset){
@@ -424,17 +243,7 @@ glmmkin.ai_PCG_Rcpp_Binary = function(bedFile, bimFile, famFile, Xorig, isCovari
   obj.noK = ScoreTest_NULL_Model(mu, mu2, y, Xorig)
   glmmResult = list(theta=tau, coefficients=alpha, linear.predictors=eta, fitted.values=mu, Y=Y, residuals=res, cov=cov, converged=converged,sampleID = subPheno$IID, obj.noK=obj.noK, y = y, X = Xorig, traitType="binary", isCovariateOffset = isCovariateOffset)
   }
-}else{ #if(is.null(inC)){
- mu2 = mu
- if(!isCovariateOffset){
-   obj.noK = ScoreTest_NULL_Model_survival(mu, y, X)
-   glmmResult = list(theta=tau, coefficients=alpha, linear.predictors=eta, fitted.values=mu, Y=Y, residuals=res, cov=cov, converged=converged,sampleID = subPheno$IID, obj.noK=obj.noK,  y = y, X = obj.noK$X1_fg, traitType="survival", isCovariateOffset = isCovariateOffset, Lambda0 = Lambda0, eventTime = eventTime)
- }else{
-   obj.noK = ScoreTest_NULL_Model_survival(mu, y, Xorig)
-   glmmResult = list(theta=tau, coefficients=alpha, linear.predictors=eta, fitted.values=mu, Y=Y, residuals=res, cov=cov, converged=converged,sampleID = subPheno$IID, obj.noK=obj.noK,  y = y, X = Xorig, traitType="survival", isCovariateOffset = isCovariateOffset, Lambda0 = Lambda0, eventTime = eventTime)
- }
-}
-  #LOCO: estimate fixed effect coefficients, random effects, and residuals for each chromoosme  
+  #LOCO: estimate fixed effect coefficients, random effects, and residuals for each chromoosme
 
   glmmResult$LOCO = LOCO
   t_end_null = proc.time()
@@ -453,7 +262,7 @@ glmmkin.ai_PCG_Rcpp_Binary = function(bedFile, bimFile, famFile, Xorig, isCovari
         cat("leave chromosome ", j, " out\n")
         setStartEndIndex(startIndex, endIndex, j-1)
 	t_begin_Get_Coef_LOCO = proc.time()
-        re.coef_LOCO = Get_Coef_LOCO(y, X, tau, family, alpha, eta,  offset,verbose=verbose, maxiterPCG=maxiterPCG, tolPCG = tolPCG, maxiter=maxiter, inC = inC, tol.coef=tol)
+        re.coef_LOCO = Get_Coef_LOCO(y, X, tau, family, alpha, eta,  offset,verbose=verbose, maxiterPCG=maxiterPCG, tolPCG = tolPCG, maxiter=maxiter, tol.coef=tol)
         t_end_Get_Coef_LOCO = proc.time()
       #cat("t_end_Get_Coef_LOCO - t_begin_Get_Coef_LOCO\n")
         cat("Updating fix effect coeffcieints and model residuals took\n")
@@ -461,21 +270,9 @@ glmmkin.ai_PCG_Rcpp_Binary = function(bedFile, bimFile, famFile, Xorig, isCovari
         cov = re.coef_LOCO$cov
         alpha = re.coef_LOCO$alpha
         eta = re.coef_LOCO$eta
-        if(!is.null(inC)){
-          Lambda0 = GetLambda0(eta, inC)
-          mu = Lambda0*exp(eta)
-          Y = eta - offset + (y - mu)/mu
-          W = as.vector(mu)
-        }else{
-          Y = re.coef_LOCO$Y
-          mu = re.coef_LOCO$mu
-	  mu2 = mu * (1-mu)
-          #mu = family$linkinv(eta)
-          #mu.eta = family$mu.eta(eta)
-          #Y = eta - offset + (y - mu)/mu.eta
-          #sqrtW = mu.eta/sqrt(family$variance(mu))
-          #W = sqrtW^2
-        }
+        Y = re.coef_LOCO$Y
+        mu = re.coef_LOCO$mu
+	mu2 = mu * (1-mu)
 
 	res = y - mu
         
@@ -487,22 +284,12 @@ glmmkin.ai_PCG_Rcpp_Binary = function(bedFile, bimFile, famFile, Xorig, isCovari
 
 
 
-      if(!is.null(inC)){
-	if(!isCovariateOffset){
-  	  obj.noK = ScoreTest_NULL_Model_survival(mu, y, X)
- 	}else{
-  	  obj.noK = ScoreTest_NULL_Model_survival(mu, y, Xorig)
-  	}
-        glmmResult$LOCOResult[[j]] = list(isLOCO = TRUE, coefficients=coef.alpha, linear.predictors=eta, fitted.values=mu, Y=Y, residuals=res, cov=cov, obj.noK = obj.noK, alpha0 = alpha, Lambda0 = Lambda0)
-
-      }else{
 	if(!isCovariateOffset){
   	  obj.noK = ScoreTest_NULL_Model(mu, mu2, y, X)
  	}else{
   	  obj.noK = ScoreTest_NULL_Model(mu, mu2, y, Xorig)
   	}
         glmmResult$LOCOResult[[j]] = list(isLOCO = TRUE, coefficients=coef.alpha, linear.predictors=eta, fitted.values=mu, Y=Y, residuals=res, cov=cov, obj.noK = obj.noK, alpha0 = alpha)
-      }
 
 	#obj.noK = ScoreTest_NULL_Model(mu, mu2, y, X)
         #obj.noK = ScoreTest_NULL_Model_binary(mu, y, X)
@@ -813,40 +600,6 @@ ScoreTest_NULL_Model = function(mu, mu2, y, X){
   return(re) 
 }	
 
-ScoreTest_NULL_Model_survival=function (mu, y, X1){
-  #X1 = model.matrix(formula, data = data)
-  #X1 = SPAtest:::ScoreTest_wSaddleApprox_Get_X1(X1)
-  #glmfit = glm(formula, data = data, family=gaussian(link = "identity"))
-  #mu = glmfit$fitted.values
-  #glmfit = glm(formula, data = data, family = "binomial")
-  V = as.vector(mu)
-  #res = glmfit$y - mu
-  res = as.vector(y - mu)
-  n1 = length(res)
-  #cat("dim(X1): ", dim(X1), "\n")
-  #cat("length(V): ", length(V), "\n")
-  XV = t(X1 * V)
-  #XVX_inv = solve(t(X1) %*% (X1 * V))
-  XVX = t(X1) %*% (t(XV))
-  XVX_inv = solve(XVX)
-  XXVX_inv = X1 %*% XVX_inv
-  XVX_inv_XV = XXVX_inv * V
-  ###for G_tilde_c
-  X1_fg = cbind(X1, 1)
-  XV_fg = t(X1_fg * V)
-  XVX_fg = t(X1_fg) %*% (t(XV_fg)) 
-  XVX_inv_fg = solve(XVX_fg)
-  XXVX_inv_fg = X1_fg %*% XVX_inv_fg
-  XVX_inv_XV_fg = XXVX_inv_fg * V
-
-  S_a =  colSums(X1_fg * res)
-
-  re = list(y = y, mu = mu, res = res, V = V, X1 = X1, XV = XV, XVX = XVX, XXVX_inv = XXVX_inv, XVX_inv = XVX_inv, XVX_inv_XV = XVX_inv_XV, X1_fg = X1_fg, XV_fg = XV_fg, XVX_fg = XVX_fg, XXVX_inv_fg = XXVX_inv_fg, XVX_inv_fg = XVX_inv_fg, XVX_inv_XV_fg = XVX_inv_XV_fg, S_a = S_a)
-  #re = list(y = y, mu = mu, res = res, V = V, X1 = X1, XV = XV, XXVX_inv = XXVX_inv, XVX_inv = XVX_inv)
-  class(re) = "SA_NULL"
-  return(re)
-}
-
 solveSpMatrixUsingArma = function(sparseGRMtest){
   m4 = gen_sp_v2(sparseGRMtest)
   return(m4)
@@ -909,9 +662,6 @@ fitNULLGLMM = function(plinkFile = "",
 		famFile="",
                 phenoFile = "",
                 phenoCol = "",
-                eventTimeCol = "",
-                eventTimeBinSize = NULL,
-                pcgforUhatforSurvAnalysis = TRUE,
                 traitType = "binary",
                 invNormalize = FALSE,
                 covarColList = NULL,
@@ -961,21 +711,6 @@ fitNULLGLMM = function(plinkFile = "",
 		skipVarianceRatioEstimation = FALSE, 
 		nrun = 30)
 {
-
-    #if traitType != "survival", ignore eventTimeCol
-    if(eventTimeCol != "" & traitType != "survival"){
-       stop("WARNING: eventTimeCol is specified but the traitType is not survival, survival analysis is NOT performed\n")
-    }
-
-    if(traitType != "survival"){
-    	eventTimeCol = ""
-    }else{
-	isCovariateOffset = FALSE
-	cat("trait type is survival. Covariates are not included as offset\n")
-    }
-
-
-
 
     ##set up output files
     modelOut = paste0(outputPrefix, ".rda")
@@ -1139,24 +874,7 @@ fitNULLGLMM = function(plinkFile = "",
 	}    
 	
 	
-		if(eventTimeCol != ""){
-                    if(!(eventTimeCol %in% colnames(data))){
-                        stop("ERROR! eventTimeCol does not exsit in the phenoFile \n")
-                    }
-
-                    if(!is.null(eventTimeBinSize)){
-                        cat("eventTimeBinSize is specified, so event time will be grouped by bins with size ", eventTimeBinSize, "\n")
-                        minEventTime = min(data[,eventTimeCol])
-			cat("minEventTime ", minEventTime, "\n")
-                        data$eventTimeNew = (data[,eventTimeCol] - minEventTime) %/% eventTimeBinSize + 1
-                        data$eventTimeOrg = data[,eventTimeCol]
-                        data[,eventTimeCol] = data$eventTimeNew
-                    }
-		    data = data[,which(colnames(data) %in% c(phenoCol, covarColList, sampleIDColinphenoFile, eventTimeCol)), drop=F]	
-                }else{
-		    data = data[,which(colnames(data) %in% c(phenoCol, covarColList, sampleIDColinphenoFile)), drop=F]	
-
-		}
+		data = data[,which(colnames(data) %in% c(phenoCol, covarColList, sampleIDColinphenoFile)), drop=F]
 
 		data = data[complete.cases(data),,drop=F]
 
@@ -1214,29 +932,18 @@ fitNULLGLMM = function(plinkFile = "",
 
 
         if (length(covarColList) > 0) {
-            formula = paste0(phenoCol, "~", paste0(covarColList, 
+            formula = paste0(phenoCol, "~", paste0(covarColList,
                 collapse = "+"))
-            if(eventTimeCol != ""){
-                formula_withTime = paste0(phenoCol,"~", paste0(c(covarColList,eventTimeCol),collapse="+"))
-            }		
             hasCovariate = TRUE
         }
         else {
             formula = paste0(phenoCol, "~ 1")
-            if(eventTimeCol != ""){
-                formula_withTime = paste0(phenoCol,"~", eventTimeCol)
-            }
             hasCovariate = FALSE
         }
 
         cat("formula is ", formula, "\n")
         formula.null = as.formula(formula)
-        if(eventTimeCol != ""){
-	    formula.null_withTime = as.formula(formula_withTime)
-            mmat = model.matrix(formula.null_withTime, data, na.action = NULL)
-	}else{    
-            mmat = model.matrix(formula.null, data, na.action = NULL)
-        }
+        mmat = model.matrix(formula.null, data, na.action = NULL)
 	mmat = data.frame(mmat)
         mmat = cbind(mmat,  data[, which(colnames(data) == phenoCol), drop=F])
 	colnames(mmat)[ncol(mmat)] = phenoCol
@@ -1244,29 +951,16 @@ fitNULLGLMM = function(plinkFile = "",
 
 	if (length(covarColList) > 0) {
 	    if(length(qCovarCol) > 0){
-                if(eventTimeCol != ""){
-		    covarColList = colnames(mmat)[2:(ncol(mmat)-2)]
-                }else{
-                    covarColList = colnames(mmat)[2:(ncol(mmat)-1)]
-                }
-		formula = paste0(phenoCol, "~", paste0(covarColList, collapse = "+")) 
+                covarColList = colnames(mmat)[2:(ncol(mmat)-1)]
+		formula = paste0(phenoCol, "~", paste0(covarColList, collapse = "+"))
 		formula.null = as.formula(formula)
             }
 	}
 
         mmat$IID = data[, which(sampleIDColinphenoFile == colnames(data))]
         mmat_nomissing = mmat[complete.cases(mmat),, drop=F]
-        mmat_nomissing$IndexPheno = seq(1, nrow(mmat_nomissing), 
+        mmat_nomissing$IndexPheno = seq(1, nrow(mmat_nomissing),
             by = 1)
-        if(eventTimeCol != ""){
-            pheVec = mmat_nomissing[,which(colnames(mmat_nomissing) == phenoCol)]
-            minTime = min(mmat_nomissing[which(pheVec == 1),eventTimeCol])
-            rmCensor = which(pheVec == 0 & mmat_nomissing[,eventTimeCol] < minTime)
-            if(length(rmCensor) > 0){
-                mmat_nomissing = mmat_nomissing[-rmCensor,]
-                cat(length(rmCensor)," individuals that are censored before the first event is removed\n")
-            }
-        }
         cat(nrow(mmat_nomissing), " samples have non-missing phenotypes\n")
         if(nrow(mmat_nomissing) == 0){
             stop("No individuals left in the analysis. Exiting...\n")
@@ -1283,22 +977,10 @@ fitNULLGLMM = function(plinkFile = "",
 	}
 
 
-        dataMerge = merge(mmat_nomissing, sampleListwithGeno, 
+        dataMerge = merge(mmat_nomissing, sampleListwithGeno,
             by.x = "IID", by.y = "IIDgeno")
 
-        if(eventTimeCol != ""){
-            pheVec = dataMerge[,which(colnames(dataMerge) == phenoCol)]
-            minTime = min(dataMerge[which(pheVec == 1),eventTimeCol])
-            rmCensor = which(pheVec == 0 & dataMerge[,eventTimeCol] < minTime)
-            if(length(rmCensor) > 0){
-                dataMerge = dataMerge[-rmCensor,]
-		cat("After subsetting to samples with genotypes avaialble, ")
-                cat(length(rmCensor)," individuals that are censored before the first event is removed\n")
-            }
-        }
-
-
-        dataMerge_sort = dataMerge[with(dataMerge, order(IndexGeno)), 
+        dataMerge_sort = dataMerge[with(dataMerge, order(IndexGeno)),
             ]
 
         rm(mmat)
@@ -1322,7 +1004,7 @@ fitNULLGLMM = function(plinkFile = "",
         dataMerge_sort[, which(colnames(dataMerge_sort) == phenoCol)] = invPheno
     }
     print(head(dataMerge_sort))
-    if ((traitType == "binary"| traitType == "survival") & (length(covarColList) > 0)) {
+    if (traitType == "binary" & (length(covarColList) > 0)) {
         out_checksep = checkPerfectSep(formula.null, data = dataMerge_sort, 
             minCovariateCount)
         covarColList <- covarColList[!(covarColList %in% out_checksep)]
@@ -1355,16 +1037,9 @@ fitNULLGLMM = function(plinkFile = "",
             }
         }
         formulaNewList = paste0(formulaNewList, collapse = "")
-        if(traitType != "survival"){
-            formulaNewList = paste0(formulaNewList, "-1")
-        }
+        formulaNewList = paste0(formulaNewList, "-1")
         formula.new = as.formula(paste0(formulaNewList, collapse = ""))
         data.new = data.frame(cbind(out.transform$Y, out.transform$X1))
-        if(eventTimeCol != ""){
-            eventTime = dataMerge_sort[,which(colnames(dataMerge_sort) == eventTimeCol)]
-        }else{
-            eventTime=NULL
-        }
 
         colnames(data.new) = c(phenoCol, out.transform$Param.transform$X_name)
         cat("colnames(data.new) is ", colnames(data.new), "\n")
@@ -1373,18 +1048,13 @@ fitNULLGLMM = function(plinkFile = "",
     }else{
         formula.new = formula.null
         data.new = dataMerge_sort
-        if(eventTimeCol != ""){
-            eventTime = dataMerge_sort[,which(colnames(dataMerge_sort) == eventTimeCol)]
-        }else{
-            eventTime=NULL
-        }
         out.transform = NULL
     }
 
     mmat = model.matrix(formula.new, data=data.new, na.action = NULL)
 
-    if (traitType == "binary" | traitType == "survival") {
-            modwitcov = glm(formula.new, data = data.new, 
+    if (traitType == "binary") {
+            modwitcov = glm(formula.new, data = data.new,
                 family = binomial)
     }else {
 	    modwitcov = glm(formula.new, data = data.new,
@@ -1447,20 +1117,9 @@ fitNULLGLMM = function(plinkFile = "",
 
 
 
-    if (traitType == "binary" | traitType == "survival") {
+    if (traitType == "binary") {
 
-        if(traitType == "survival"){
-            cat("Survival analysis will be performed\n")
-            if(is.null(eventTime)){
-                stop("ERROR! event time is NULL\n")
-            }else{
-                if( sum(eventTime < 0) ){
-                    stop("ERROR! event time value needs to be greater than or equal to 0 \n")
-                }
-            }
-        }else{
-            cat(phenoCol, " is a binary trait\n")
-        }
+        cat(phenoCol, " is a binary trait\n")
 
         uniqPheno = sort(unique(dataMerge_sort[, which(colnames(dataMerge_sort) == phenoCol)]))
         if (uniqPheno[1] != 0 | uniqPheno[2] != 1) {
@@ -1508,7 +1167,7 @@ fitNULLGLMM = function(plinkFile = "",
                 chromosomeEndIndexVec = chromosomeEndIndexVec, 
                 traceCVcutoff = traceCVcutoff, isCovariateTransform = isCovariateTransform, 
                 isDiagofKinSetAsOne = isDiagofKinSetAsOne,
-		isLowMemLOCO = isLowMemLOCO, eventTime = eventTime))
+		isLowMemLOCO = isLowMemLOCO))
                 modglmm$obj.glm.null$model <- data.frame(modglmm$obj.glm.null$model)
             
 	    for (x in names(modglmm$obj.glm.null)) {
@@ -1523,23 +1182,12 @@ fitNULLGLMM = function(plinkFile = "",
 		        #data.new = data.new[,-c(1,2), drop=F]
 			#data.new = as.matrix(data.new[,-ncol(data.new), drop=F])
 			data.new.X = model.matrix(fit0)[,-1,drop=F]
-			if(traitType != "survival"){
-	    			modglmm$offset = data.new.X%*%(as.vector(modglmm$coefficients[-1]))
-			}else{
-				modglmm$offset = data.new.X%*%(as.vector(modglmm$coefficients))
-			}
+	    		modglmm$offset = data.new.X%*%(as.vector(modglmm$coefficients[-1]))
 			if(LOCO & !isLowMemLOCO){
 				for(j in 1:22){	
 					if(modglmm$LOCOResult[[j]]$isLOCO){
-					if(traitType != "survival"){
 						modglmm$LOCOResult[[j]]$offset = data.new.X %*%(as.vector(modglmm$LOCOResult[[j]]$alpha0[-1]))
-					}else{
-						modglmm$LOCOResult[[j]]$offset = data.new.X %*%(as.vector(modglmm$LOCOResult[[j]]$alpha0))
-
-
 					}
-						
-					}		       
 				}
 			}
 
@@ -1552,18 +1200,10 @@ fitNULLGLMM = function(plinkFile = "",
 	    if(skipVarianceRatioEstimation & useSparseGRMtoFitNULL){
 		family = fit0$family
 		eta = modglmm$linear.predictors
-		if(is.null(eventTime)){
-		  mu = modglmm$fitted.values
-		  mu.eta = family$mu.eta(eta)
-		  sqrtW = mu.eta/sqrt(family$variance(mu))
-		  W = sqrtW^2
-		  inC=NULL
-		}else{
-		  inC = GetIndexofCases(y, modglmm$eventTime)
-		  Lambda0 = GetLambda0(eta, inC)
-		  mu = Lambda0*exp(eta)
-		  W = as.vector(mu)
-		}
+		mu = modglmm$fitted.values
+		mu.eta = family$mu.eta(eta)
+		sqrtW = mu.eta/sqrt(family$variance(mu))
+		W = sqrtW^2
 		tauVecNew = modglmm$theta
 		Sigma_iX =  getSigma_X(W, tauVecNew, modglmm$X, maxiterPCG, tolPCG)
 		Sigma_iXXSigma_iX = Sigma_iX%*%(solve(t(modglmm$X)%*%Sigma_iX))
@@ -1571,12 +1211,7 @@ fitNULLGLMM = function(plinkFile = "",
 
 	    }
 
-	if(!is.null(eventTime)){
-	   modglmm$minEventTime = minEventTime
-	   modglmm$eventTimeBinSize = eventTimeBinSize
-	}
-
-            modglmm$useSparseGRMtoFitNULL = useSparseGRMtoFitNULL 
+            modglmm$useSparseGRMtoFitNULL = useSparseGRMtoFitNULL
             #save(modglmm, file = modelOut)
             tau = modglmm$theta
       
@@ -1587,11 +1222,6 @@ fitNULLGLMM = function(plinkFile = "",
 	    	modglmm$coefficients = coef.alpha
   	    }
 
-
-	    if(eventTimeCol != ""){
-		modglmm$minEventTime = minEventTime
-		modglmm$eventTimeBinSize = eventTimeBinSize	
-            }
 
             if(LOCO & isLowMemLOCO){
                 modglmm$LOCOResult = NULL
@@ -1633,20 +1263,13 @@ fitNULLGLMM = function(plinkFile = "",
                         if(!is.na(startIndex) && !is.na(endIndex)){
                         	cat("leave chromosome ", j, " out\n")
                                 setStartEndIndex(startIndex, endIndex, j-1)
-				re.coef_LOCO = Get_Coef_LOCO(y, X=model.matrix(fit0), tau, family = fit0$family, alpha = alpha0, eta = eta0,  offset =  offset0, verbose=TRUE, maxiterPCG=maxiterPCG, tolPCG = tolPCG, maxiter=maxiter, inC = inC, tol.coef=tol)
+				re.coef_LOCO = Get_Coef_LOCO(y, X=model.matrix(fit0), tau, family = fit0$family, alpha = alpha0, eta = eta0,  offset =  offset0, verbose=TRUE, maxiterPCG=maxiterPCG, tolPCG = tolPCG, maxiter=maxiter, tol.coef=tol)
       				cov = re.coef_LOCO$cov
         			alpha = re.coef_LOCO$alpha
         			eta = re.coef_LOCO$eta
-				if(is.null(inC)){
-        			  Y = re.coef_LOCO$Y
-        			  mu = re.coef_LOCO$mu
-        			  mu2 = mu * (1-mu)
-				}else{
-				  Lambda0 = GetLambda0(eta, inC)
-                                  mu = Lambda0*exp(eta)
-                                  Y = eta - offset + (y - mu)/mu
-                                  mu2 = mu 
-				}
+        			Y = re.coef_LOCO$Y
+        			mu = re.coef_LOCO$mu
+        			mu2 = mu * (1-mu)
         			res = y - mu
 
                                 if(!is.null(out.transform) & is.null(fit0$offset)){
@@ -1656,8 +1279,6 @@ fitNULLGLMM = function(plinkFile = "",
                                 }
 
 
-				if(is.null(inC)){
-
                                 if(!isCovariateOffset){
                                         obj.noK = ScoreTest_NULL_Model(mu, mu2, y, X=model.matrix(fit0))
                                 }else{
@@ -1665,25 +1286,10 @@ fitNULLGLMM = function(plinkFile = "",
                                 }
 
                                 modglmm$LOCOResult[[j]] = list(isLOCO = TRUE, coefficients=coef.alpha, linear.predictors=eta, fitted.values=mu, Y=Y, residuals=res, cov=cov, obj.noK = obj.noK)
-				}else{ # if(is.null(inC)){
-					if(!isCovariateOffset){
-					  obj.noK = ScoreTest_NULL_Model_survival(mu, y, X=model.matrix(fit0))	
-					}else{
-					  obj.noK = ScoreTest_NULL_Model_survival(mu, y, Xorig)	
-					}
-					 modglmm$LOCOResult[[j]] = list(isLOCO = TRUE, coefficients=coef.alpha, linear.predictors=eta, fitted.values=mu, Y=Y, residuals=res, cov=cov, obj.noK = obj.noK, Lambda0 = Lambda0)
-				}	
 
 				if(!isCovariateOffset & hasCovariate){
 			         data.new.X = model.matrix(fit0)[,-1,drop=F]
-				 if(traitType != "survival"){
-					
-					 modglmm$LOCOResult[[j]]$offset = data.new.X %*%(as.vector(alpha[-1]))
-				  }else{
-					 modglmm$LOCOResult[[j]]$offset = data.new.X %*%(as.vector(alpha))
-
-
-				  }
+				 modglmm$LOCOResult[[j]]$offset = data.new.X %*%(as.vector(alpha[-1]))
 				}
                                 modelOutbychr = paste(c(outputPrefix,"_chr",j,".rda"), collapse="")
 				if(j!=22){
@@ -1761,8 +1367,7 @@ fitNULLGLMM = function(plinkFile = "",
                 nThreads = nThreads, cateVarRatioMinMACVecExclude = cateVarRatioMinMACVecExclude,
                 cateVarRatioMaxMACVecInclude = cateVarRatioMaxMACVecInclude,
                 minMAFforGRM = minMAFforGRM, isDiagofKinSetAsOne = isDiagofKinSetAsOne,
-                includeNonautoMarkersforVarRatio = includeNonautoMarkersforVarRatio,
-		pcgforUhatforSurvAnalysis = pcgforUhatforSurvAnalysis)
+                includeNonautoMarkersforVarRatio = includeNonautoMarkersforVarRatio)
 
 	#print(gc(v=T))
 	gc()
@@ -1822,12 +1427,7 @@ fitNULLGLMM = function(plinkFile = "",
                         #data.new = data.new[,-c(1,2), drop=F]
                         #data.new = as.matrix(data.new[,-ncol(data.new), drop=F])
 			data.new.X = model.matrix(fit0)[,-1,drop=F]
-			if(traitType != "survival"){
                         modglmm$offset = data.new.X%*%(as.vector(modglmm$coefficients[-1]))
-			}else{
-                        modglmm$offset = data.new.X%*%(as.vector(modglmm$coefficients))
-
-			}
                         if(LOCO & !isLowMemLOCO){
                                for(j in 1:22){
                                        if(modglmm$LOCOResult[[j]]$isLOCO){
@@ -1926,12 +1526,7 @@ fitNULLGLMM = function(plinkFile = "",
 
 				if(!isCovariateOffset & hasCovariate){
 					data.new.X = model.matrix(fit0)[,-1,drop=F]
-					if(traitType != "survival"){
 					modglmm$LOCOResult[[j]]$offset = data.new.X %*%(as.vector(alpha[-1]))
-				}else{
-					modglmm$LOCOResult[[j]]$offset = data.new.X %*%(as.vector(alpha))
-
-				}
 				}
 		
 				modelOutbychr = paste(c(outputPrefix,"_chr",j,".rda"), collapse="")
@@ -2008,14 +1603,15 @@ fitNULLGLMM = function(plinkFile = "",
                 nThreads = nThreads, cateVarRatioMinMACVecExclude = cateVarRatioMinMACVecExclude,
                 cateVarRatioMaxMACVecInclude = cateVarRatioMaxMACVecInclude,
                 minMAFforGRM = minMAFforGRM, isDiagofKinSetAsOne = isDiagofKinSetAsOne,
-                includeNonautoMarkersforVarRatio = includeNonautoMarkersforVarRatio,
-		pcgforUhatforSurvAnalysis = pcgforUhatforSurvAnalysis)
+                includeNonautoMarkersforVarRatio = includeNonautoMarkersforVarRatio)
 
 
         }else{
             cat("Skip estimating variance ratios\n")
         }
         closeGenoFile_plink()
+    }else{
+        stop("traitType must be binary or quantitative")
     }
 }
 
@@ -2045,11 +1641,6 @@ Covariate_Transform<-function(formula, data, traitType){
     X_name[1] = "minus1"
   }
 
- if(traitType == "survival"){
-   X_name = X_name[-1]
-   X1 = X1[,-1,drop=FALSE]
- }
-	
  # QR decomposition
   Xqr = qr(X1)
   X1_Q = qr.Q(Xqr)
@@ -2592,8 +2183,7 @@ extractVarianceRatio = function(obj.glmm.null,
                                                     cateVarRatioMaxMACVecInclude,
                                                     minMAFforGRM,
                                                     isDiagofKinSetAsOne,
-                                                    includeNonautoMarkersforVarRatio,
-						    pcgforUhatforSurvAnalysis){
+                                                    includeNonautoMarkersforVarRatio){
 
   obj.noK = obj.glmm.null$obj.noK
   if(file.exists(testOut)){file.remove(testOut)}
@@ -2610,91 +2200,12 @@ extractVarianceRatio = function(obj.glmm.null,
   y = obj.glm.null$y
   tauVecNew = obj.glmm.null$theta
   
-  if(obj.glmm.null$traitType != "survival"){ 
-    mu.eta = family$mu.eta(eta)
-    sqrtW = mu.eta/sqrt(obj.glm.null$family$variance(mu))
-    W = sqrtW^2   ##(mu*(1-mu) for binary)
-  }else{
-     W = as.vector(mu)
-     inC = GetIndexofCases(y, obj.glmm.null$eventTime)
-     gc()
-     Lambda0 = obj.glmm.null$Lambda0
-     Dvec = GetdenominN(inC$uniqTimeIndex, eta, inC$timedata$newIndexWithTies, inC$caseIndexwithTies, inC$timedata$orgIndex)
-     #print(gc())
-     #print(nrow(inC$timedata))
-     #print(length(inC$uniqTimeIndex))
-     RmatIndex = t(sapply(1:nrow(inC$timedata), Getrmat_indexvec_new, inC))
-     RmatIndex = RmatIndex[order(RmatIndex[,1]),]
-     RvecIndex =  RmatIndex[order(RmatIndex[,1]),2]
-     rm(RmatIndex)
-     DvecCumSum = cumsum(Dvec)
-     diagofWminusUinv = ((((exp(eta))^2) * (DvecCumSum[RvecIndex]))*(1/W) + 1)*(1/W)
-
-     Nvec = exp(eta)
-     print(pcgforUhatforSurvAnalysis)
-     if(pcgforUhatforSurvAnalysis){
-       WinvNvec = 1/(Lambda0)
-       W0 = W + (1e-4)
-       sqrtWinvNVec = sqrt(1/W0)*Nvec
-     }else{
-       Rmat = t(sapply(1:nrow(inC$timedata), Getrmat, inC))
-       Rmat = Rmat[order(Rmat[,1]),-1]
-       Rmat = as(Rmat, "sparseMatrix")
-       cat("dim(Rmat): ", dim(Rmat), "\n")
-       sqrtWinvN = Matrix:::Diagonal(length(Lambda0), x = sqrt(1/W)*Nvec)
-       cat("dim(sqrtWinvN): ", dim(sqrtWinvN), "\n")
-       #dim(sqrtWinvN):  1000 1000
-       sqrtWinvNR = sqrtWinvN%*%Rmat
-       cat("dim(sqrtWinvNR): ", dim(sqrtWinvNR), "\n")
-       #dim(sqrtWinvNR):  1000 46
-       Dinv =  diag(1/(-Dvec))
-       cat("dim(Dinv): ", dim(Dinv), "\n")
-       RNWNR=t(sqrtWinvNR)%*%sqrtWinvNR
-       ACm = Dinv + RNWNR
-       cat("dim(RNWNR): ", dim(RNWNR), "\n")
-       cat("dim(ACm): ", dim(ACm), "\n")
-       #xlist=list(W = W, sqrtWinvNR=sqrtWinvNR, Dvec=Dvec, RNWNR=RNWNR, X = X1)
-       #save(x, file = "/net/hunt/disk2/zhowei/share/Rounak/computationcost/x.rda")
-       #ACinv = MASS::ginv(ACm)
-       #ACinv = solve(ACm)
-       ACm = Matrix::forceSymmetric(ACm)
-       ACinv = lintools::pinv(ACm)
-       rm(Dinv)
-       rm(sqrtWinvNR)
-       rm(sqrtWinvN)
-       WinvN = Matrix:::Diagonal(length(Lambda0), x = 1/(Lambda0))
-       cat("dim(WinvN): ", dim(WinvN), "\n")
-       cat("dim(Rmat): ", dim(Rmat), "\n")
-       WinvNRt = WinvN%*%Rmat
-       WinvNRt = as.matrix(WinvNRt)
-       ACinv =as.matrix(ACinv)
-       cat("dim(WinvNRt): ", dim(WinvNRt), "\n")
-       cat("dim(ACinv): ", dim(ACinv), "\n")
-       sqrtDRN = (Matrix:::Diagonal(length(Dvec), x = sqrt(Dvec))) %*% t(Rmat) %*% (Matrix:::Diagonal(length(Nvec), x = Nvec))
-       sqrtDRN = as.matrix(sqrtDRN)
-       #xlist$sqrtDRN = sqrtDRN
-     }
- 
+  mu.eta = family$mu.eta(eta)
+  sqrtW = mu.eta/sqrt(obj.glm.null$family$variance(mu))
+  W = sqrtW^2   ##(mu*(1-mu) for binary)
 
 
-  }
-
-
-  if(obj.glmm.null$traitType != "survival"){
-    Sigma_iX_noLOCO = getSigma_X(W, tauVecNew, X, maxiterPCG, tolPCG)
-  }else{
-    print("head(X)")
-    print(head(X)) 
-
-    if(pcgforUhatforSurvAnalysis){
-      Sigma_iX_noLOCO = getSigma_X_Surv_new(W, tauVecNew, X, RvecIndex, sqrtWinvNVec, WinvNvec, Dvec, diagofWminusUinv, Nvec, maxiterPCG, tolPCG)
-    }else{
-      Sigma_iX_noLOCO = getSigma_X_Surv(W, tauVecNew, X,WinvNRt, ACinv, diagofWminusUinv, sqrtDRN, maxiterPCG, tolPCG)
-      print("head(Sigma_iX_noLOCO)")
-      print(head(Sigma_iX_noLOCO))
-
-    } 
-  }
+  Sigma_iX_noLOCO = getSigma_X(W, tauVecNew, X, maxiterPCG, tolPCG)
 
 
 
@@ -2830,11 +2341,7 @@ extractVarianceRatio = function(obj.glmm.null,
           }else{
                autoMarker=FALSE
           }
-	  if(is.null(obj.glmm.null$eventTime)){
-          	G = G0  -  obj.noK$XXVX_inv %*%  (obj.noK$XV %*% G0) # G1 is X adjusted
-	  }else{
-		G = G0 - obj.noK$XXVX_inv_fg %*%  (obj.noK$XV_fg %*% G0) #G1 is X and intercept adjusted
-	  }
+          G = G0  -  obj.noK$XXVX_inv %*%  (obj.noK$XV %*% G0) # G1 is X adjusted
           g = G/sqrt(AC)
           q = innerProduct(g,y)
           #eta = obj.glmm.null$linear.predictors
@@ -2846,15 +2353,7 @@ extractVarianceRatio = function(obj.glmm.null,
 	  g_noXadj = G_noXadj/sqrt(AC)          
 
 
-          if(obj.glmm.null$traitType != "survival"){
-            Sigma_iG = getSigma_G(W, tauVecNew, G, maxiterPCG, tolPCG)
-	  }else{
-           if(pcgforUhatforSurvAnalysis){
-             Sigma_iG = getSigma_G_Surv_new(W, tauVecNew, G, RvecIndex, sqrtWinvNVec, WinvNvec, Dvec, diagofWminusUinv, Nvec, maxiterPCG, tolPCG)
-           }else{
-             Sigma_iG = getSigma_G_Surv(W, tauVecNew, G, WinvNRt, ACinv, diagofWminusUinv, sqrtDRN, maxiterPCG, tolPCG)
-           } 
-	  }
+          Sigma_iG = getSigma_G(W, tauVecNew, G, maxiterPCG, tolPCG)
 
           Sigma_iX = Sigma_iX_noLOCO
 
@@ -2888,9 +2387,6 @@ extractVarianceRatio = function(obj.glmm.null,
     }else if(obj.glmm.null$traitType == "quantitative"){
          var2null = innerProduct(g, g)
 	var2null_noXadj = innerProduct(g_noXadj,g_noXadj)
-    }else if(obj.glmm.null$traitType == "survival"){
-         var2null = innerProduct(mu, g*g)
-	var2null_noXadj = innerProduct(mu, g_noXadj*g_noXadj)
     }
 
     varRatio_NULL_vec = c(varRatio_NULL_vec, var1/var2null)

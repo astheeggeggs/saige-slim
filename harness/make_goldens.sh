@@ -91,28 +91,6 @@ run step1_quant_sparseGRM.log R2 step1_fitNULLGLMM.R \
   --isCateVarianceRatio=TRUE \
   --outputPrefix="$GOLD/step1/quant_sparseGRM"
 
-# cmd.sh line 177: survival (kept through the strip). nThreads forced 1 (was 4):
-# setThreadOptions(4) would override the pinned RCPP_PARALLEL_NUM_THREADS.
-# --eventTimeBinSize=1 added: without it survival step 1 crashes at HEAD
-# ("object 'minEventTime' not found") — LEDGER.md #9.
-run step1_survival.log R2 step1_fitNULLGLMM.R \
-  --eventTimeBinSize=1 \
-  --plinkFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly \
-  --phenoFile=./input/pheno_1000samples_survival.txt \
-  --phenoCol=casecontrol \
-  --covarColList=X \
-  --eventTimeCol=AgeOfEventFinal \
-  --sampleIDColinphenoFile=IND_ID \
-  --traitType=survival \
-  --outputPrefix="$GOLD/step1/survival" \
-  --nThreads=1 \
-  --LOCO=FALSE \
-  --minMAFforGRM=0.01 \
-  --skipModelFitting=FALSE \
-  --tol=0.01 \
-  --isCovariateOffset=FALSE \
-  --IsOverwriteVarianceRatioFile=TRUE
-
 ##################### step 2: association tests (frozen inputs) #####################
 SG="--sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx --sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt"
 

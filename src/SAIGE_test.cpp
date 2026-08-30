@@ -247,7 +247,7 @@ void SAIGEClass::scoreTestFast(arma::vec & t_GVec,
     arma::vec S_a2;
     double Bmu2;
     arma::mat  ZtXVXZ = Z.t() * m_XVX * Z;
-    if(m_traitType == "binary" || m_traitType == "survival"){
+    if(m_traitType == "binary"){
       mu21  = m_mu2.elem(t_indexForNonZero);
       g1tildemu2 = dot(square(g1_tilde), mu21);
       Bmu2 = arma::dot(square(B),  mu21);
@@ -628,17 +628,6 @@ if(!t_isER){
 		if(p_iIndexComVecSize >= 0.5){
            		NAsigma = t_var2 - arma::sum(muNB % (1-muNB) % arma::pow(gNB,2));
 		}
-        }else if(m_traitType == "survival"){
-                q = t_Tstat/sqrt(t_var1/t_var2);
-                qinv = -q;
-  		if(p_iIndexComVecSize >= 0.5){
-           		NAsigma = t_var2 - arma::sum(muNB % arma::pow(gNB,2));
-		}
-/*		std::cout << "NAsigma is " << NAsigma << std::endl;
-		std::cout << "t_var2 is " << t_var2 << std::endl;
-		muNB.print("muNB");
-		gNB.print("gNB");
-  */
   }
     	//bool logp=false;
 	double tol0 = std::numeric_limits<double>::epsilon();
@@ -849,9 +838,6 @@ if(!t_isER){
                 }else{
                         qinv_c = std::abs(q_c-m1) + m1;
                 }
-        }else if(m_traitType == "survival"){
-                q_c = t_Tstat_c/sqrt(t_varT_c/t_var2);
-                qinv = -q_c;
         }
 
 

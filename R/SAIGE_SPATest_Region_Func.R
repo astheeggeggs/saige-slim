@@ -297,10 +297,6 @@ get_newPhi_scaleFactor_traitType = function(q.sum, mu.a, g.sum, p.new, Score, Ph
 	if(traitType == "binary"){
         	var1 <- sum(mu.a * (1 - mu.a) * g.sum^2)
         	qinv = -sign(q.sum - m1) * abs(q.sum - m1) + m1
-	}else if(traitType == "survival"){
-		var1 <- sum(mu.a * g.sum^2)
-		q = q.sum - m1
-	        qinv = -q	
 	}
         pval_noadj <- pchisq((q.sum - m1)^2/var1, lower.tail = FALSE, df = 1, log.p = TRUE)
         isSPAConverge = TRUE

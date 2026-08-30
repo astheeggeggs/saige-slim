@@ -23,12 +23,13 @@ test_that("isSparseGRM=TRUE with no sparse rows is a hard error", {
 })
 
 test_that("single-ratio file skips categorical validation", {
-  skip_if_no_goldens()
-  out <- Get_Variance_Ratio(vr_file("survival"), c(10), c(), FALSE, FALSE, FALSE)
+  f <- tempfile(fileext = ".txt")
+  writeLines(c("0.871784619442486 null 1", "0.868978655998129 null_noXadj 1"), f)
+  out <- Get_Variance_Ratio(f, c(10), c(), FALSE, FALSE, FALSE)
   expect_equal(out$ratioVec_null, 0.871784619442486, tolerance = 1e-14)
   expect_identical(out$ratioVec_sparse, c(-1))
   # wrong-length cate vecs must NOT error when there is only one ratio
-  expect_no_error(Get_Variance_Ratio(vr_file("survival"), c(1, 2, 3), c(1, 2), FALSE, FALSE, FALSE))
+  expect_no_error(Get_Variance_Ratio(f, c(1, 2, 3), c(1, 2), FALSE, FALSE, FALSE))
 })
 
 test_that("categorical count validation", {

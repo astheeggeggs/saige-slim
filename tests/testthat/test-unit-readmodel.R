@@ -28,18 +28,6 @@ test_that("ReadModel on the binary golden (needs SKAT)", {
   expect_equal(m$obj_cc$mu, m$mu)
 })
 
-test_that("ReadModel on the survival golden renames the _fg fields", {
-  skip_if_no_goldens()
-  m <- ReadModel(golden_rda("survival"), chrom = "", LOCO = FALSE)
-  expect_identical(m$mu2, m$mu)
-  # XVX_inv_fg is the one _fg field NOT cleaned up — pinned as characterization
-  expect_setequal(names(m$obj.noK),
-                  c("y", "mu", "res", "V", "X1", "XV", "XVX", "XXVX_inv",
-                    "XVX_inv", "XVX_inv_XV", "XVX_inv_fg", "S_a"))
-  expect_null(m$obj.noK$XVX_fg)
-  expect_identical(ncol(m$X), 2L)  # X replaced by former X1_fg
-})
-
 test_that("ReadModel argument and LOCO validation", {
   skip_if_no_goldens()
   expect_error(ReadModel("/nope.rda"), "does not exsit")  # typo verbatim

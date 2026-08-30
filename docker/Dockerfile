@@ -18,8 +18,7 @@ COPY . .
 RUN curl -fsSL https://pixi.sh/install.sh | sh && \
     mv /root/.pixi/bin/pixi /bin && \
     pixi install && \
-    rm -rf /root/.cache && \
-    pixi run Rscript -e 'install.packages("lintools", repos="https://cloud.r-project.org")'
+    rm -rf /root/.cache
 
 
 RUN pixi run R CMD INSTALL .

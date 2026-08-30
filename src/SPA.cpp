@@ -13,7 +13,6 @@
 #include <stdint.h>
 #include <boost/math/distributions/normal.hpp>
 #include "SPA_binary.hpp"
-#include "SPA_survival.hpp"
 #include "UTIL.hpp"
 
 // [[Rcpp::export]]
@@ -27,9 +26,6 @@ void SPA(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_noadj
         if( traitType == "binary"){
           outuni1 = getroot_K1_Binom(0, mu, g, q, tol);
           outuni2 = getroot_K1_Binom(0, mu, g, qinv, tol);
-        }else if(traitType == "survival"){
-          outuni1 = getroot_K1_Poi(0, mu, g, q, tol);
-          outuni2 = getroot_K1_Poi(0, mu, g, qinv, tol);
         }
 
 /*
@@ -51,20 +47,6 @@ void SPA(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_noadj
                 if( traitType == "binary"){
                   getSaddle = Get_Saddle_Prob_Binom(outuni1["root"], mu, g, q, logp);
                   getSaddle2 = Get_Saddle_Prob_Binom(outuni2["root"], mu, g, qinv, logp);
-                }else if(traitType == "survival"){
-		/*
-		std::cout << "q " << q << std::endl;
-		std::cout << "qinv " << qinv << std::endl;
-		mu.print("mu");
-		g.print("g");
-		*/
-                  getSaddle = Get_Saddle_Prob_Poi(outuni1["root"], mu, g, q, logp);
-                  getSaddle2 = Get_Saddle_Prob_Poi(outuni2["root"], mu, g, qinv, logp);
-		/*bool isSaddleprint = getSaddle["isSaddle"];
-		bool isSaddle2print = getSaddle2["isSaddle"];
-		std::cout << "isSaddle " << isSaddleprint << std::endl;
-		std::cout << "isSaddle2 " << isSaddle2print << std::endl;
-		*/
                 }
 
 
@@ -137,9 +119,6 @@ void SPA_fast(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_
           outuni2 = getroot_K1_fast_Binom(0, mu, g, qinv, gNA,gNB,muNA,muNB,NAmu, NAsigma, tol);
 	 // arma::vec timeoutput3 = getTime();
  	//printTime(timeoutput2, timeoutput3, "getroot_K1_fast_Binom");
-        }else if(traitType == "survival"){
-          outuni1 = getroot_K1_fast_Poi(0, mu, g, q, gNA,gNB,muNA,muNB,NAmu, NAsigma, tol);
-          outuni2 = getroot_K1_fast_Poi(0, mu, g, qinv, gNA,gNB,muNA,muNB,NAmu, NAsigma, tol);
         }
 
 /*	double outuni1root = outuni1["root"];
@@ -165,9 +144,6 @@ void SPA_fast(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_
 	//	arma::vec timeoutput6 = getTime();
 	//printTime(timeoutput4, timeoutput5, "Get_Saddle_Prob_fast_Binom");
  //printTime(timeoutput5, timeoutput6, "Get_Saddle_Prob_fast_Binom");
-          }else if(traitType == "survival"){
-                getSaddle  = Get_Saddle_Prob_fast_Poi(outuni1["root"], mu, g, q, gNA,gNB,muNA,muNB,NAmu, NAsigma, logp);
-                getSaddle2 = Get_Saddle_Prob_fast_Poi(outuni2["root"], mu, g, qinv, gNA,gNB,muNA,muNB,NAmu, NAsigma, logp);
           }
                 if(getSaddle["isSaddle"]){
                         p1 = getSaddle["pval"];
@@ -225,9 +201,6 @@ double SPA_pval(arma::vec & mu, arma::vec & g, double q, double qinv, double pva
         if( traitType == "binary"){
           outuni1 = getroot_K1_Binom(0, mu, g, q, tol);
           outuni2 = getroot_K1_Binom(0, mu, g, qinv, tol);
-        }else if(traitType == "survival"){
-          outuni1 = getroot_K1_Poi(0, mu, g, q, tol);
-          outuni2 = getroot_K1_Poi(0, mu, g, qinv, tol);
         }
 
 
@@ -250,9 +223,6 @@ double SPA_pval(arma::vec & mu, arma::vec & g, double q, double qinv, double pva
                 if( traitType == "binary"){
                   getSaddle = Get_Saddle_Prob_Binom(outuni1["root"], mu, g, q, logp);
                   getSaddle2 = Get_Saddle_Prob_Binom(outuni2["root"], mu, g, qinv, logp);
-                }else if(traitType == "survival"){
-                  getSaddle = Get_Saddle_Prob_Poi(outuni1["root"], mu, g, q, logp);
-                  getSaddle2 = Get_Saddle_Prob_Poi(outuni2["root"], mu, g, qinv, logp);
                 }
 
                 if(getSaddle["isSaddle"]){

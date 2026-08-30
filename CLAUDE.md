@@ -10,12 +10,13 @@ with **PLINK bed/bim/fam as the only genotype input**. The BGEN/VCF/SAV/PGEN
 readers, step 3 (LD matrices), and RareEffect were stripped in commits
 "Strip 1"–"Strip 7", each verified byte-exact against `main`-HEAD goldens.
 `main` holds the full upstream fork (docs: https://saigegit.github.io/SAIGE-doc/).
-Binary, quantitative, and survival traits are all still supported (survival's
-fate is a refactor-phase decision).
+Binary and quantitative traits are supported; survival-trait support was
+removed in Phase 3a of the refactor.
 
 **The working plan lives at `~/.claude/plans/rosy-munching-pudding.md`**:
 Phase 0 (baseline/harness) and Phase 1 (strip) are done; next are Phase 2
-(tests), Phase 3 (refactor; survival decision; reentrancy), Phase 4 (speedup).
+(tests), Phase 3 (refactor; survival removed in 3a; reentrancy), Phase 4
+(speedup).
 
 ## Rules of this branch
 
@@ -32,10 +33,10 @@ Phase 0 (baseline/harness) and Phase 1 (strip) are done; next are Phase 2
 
 ```sh
 pixi install
-# lintools is a CRAN LinkingTo dep (linear systems, not a linter), not in conda:
-pixi run Rscript -e 'install.packages("lintools", repos="https://cloud.r-project.org")'
 pixi run R CMD INSTALL .
 ```
+
+(The former CRAN `lintools` step left with survival support in Phase 3a.)
 
 Works natively on macOS and linux (no plink-ng step anymore — it died with the
 PGEN reader). `src/Makevars` still hardcodes `-I../.pixi/envs/default/include`,
@@ -72,8 +73,8 @@ update the ledger and the test together in the dedicated fix phase.
   Without it, full-GRM step-1 fits are nondeterministic (TBB float
   `parallel_reduce`; empirically confirmed — see LEDGER.md #7). Sparse-GRM
   fits are byte-stable either way.
-- `bash harness/make_goldens.sh <dir>` — regenerates the 12 runs (step0 sparse
-  GRM; step1 binary ×2 / quantitative / survival; step2 PLINK marker, group
+- `bash harness/make_goldens.sh <dir>` — regenerates the 8 runs (step0 sparse
+  GRM; step1 binary ×2 / quantitative; step2 PLINK marker, group
   fastTest, group conditional, marker conditional). Step-2 runs consume frozen
   model inputs: our committed step-1 goldens plus
   `extdata/output/example_binary_sparseGRM.{rda,varianceRatio.txt}` (the only
@@ -115,9 +116,9 @@ long-running `main*InCPP()` loop that writes output files from C++
 - `src/SAIGE_fitGLMM_fast.cpp` (~7400 lines) — step-1 engine, separate from
   Main.cpp. Single **global** `genoClass geno` holds the bit-packed GRM
   genotypes; there is a second, independent PLINK reader (`src/PLINK.cpp` /
-  `PlinkClass`) for step 2. Algorithms exist as 4–6 near-duplicates: base,
-  `_LOCO`, `_q` (quantitative), `_Surv` (survival) — survival removal is
-  ~110 edit sites across 8 files (deferred to refactor phase by design).
+  `PlinkClass`) for step 2. Algorithms exist as near-duplicate families —
+  base, `_LOCO`, `_q` (quantitative) — after the `_Surv` variants were
+  removed with survival support in Phase 3a.
 - `src/SAIGE_test.cpp` — `SAIGEClass`: `getMarkerPval` cascade (score → SPA if
   |Z| > cutoff → ER exact test if binary & MAC ≤ `max_MAC_for_ER` → Firth),
   per-MAC variance-ratio selection. `src/Binary_*`/`src/ER_binary_func.cpp`

@@ -78,7 +78,7 @@ setSparseSigma_new = function(sparseGRMFile,
   
   sparseGRM@x = sparseGRM@x * tauVec[2]
   #sparseSigma = sparseGRM * tauVec[2]
-  if (traitType == "binary" | traitType == "survival") {
+  if (traitType == "binary") {
     sparseGRM@x[which(sparseGRM@i == sparseGRM@j)] = sparseGRM@x[which(sparseGRM@i == sparseGRM@j)] + 1 / W
     #diag(sparseSigma) = W + diag(sparseSigma)
   } else if (traitType == "quantitative") {
@@ -402,7 +402,7 @@ SAIGE.Region = function(mu,
         if ((sum(outList$NumUltraRare_GroupVec) + sum(outList$NumRare_GroupVec)) > 0) {
           if (regionTestType != "BURDEN") {
             #ta0 = proc.time()
-            if (traitType == "binary" | traitType == "survival") {
+            if (traitType == "binary") {
               outList$gyVec = outList$gyVec[noNAIndices]
             }
             
@@ -476,7 +476,7 @@ SAIGE.Region = function(mu,
                     annoMAFIndVec = c(annoMAFIndVec, jm)
                     Phi = wadjVarSMat[tempPos, tempPos, drop = F]
                     Score = wStatVec[tempPos]
-                    if (traitType == "binary" | traitType == "survival") {
+                    if (traitType == "binary") {
                       p.new = adjPVec[tempPos]
                       g.sum = outList$genoSumMat[, jm]
                       q.sum <- sum(outList$gyVec[tempPos] * AnnoWeights[tempPos])
@@ -507,7 +507,7 @@ SAIGE.Region = function(mu,
                     )
 
                     if (isCondition) {
-                      if (traitType == "binary" | traitType == "survival") {
+                      if (traitType == "binary") {
                         G1tilde_P_G2tilde_Mat_scaled = t(t((
                           outList$G1tilde_P_G2tilde_Weighted_Mat[tempPos, , drop = F]
                         ) * sqrt(as.vector(
@@ -572,7 +572,7 @@ SAIGE.Region = function(mu,
             
             if (length(annoMAFIndVec) > 0) {
               pval.Region$MAC = outList$MAC_GroupVec[annoMAFIndVec]
-              if (traitType == "binary" | traitType == "survival") {
+              if (traitType == "binary") {
                 pval.Region$MAC_case = outList$MACCase_GroupVec[annoMAFIndVec]
                 pval.Region$MAC_control = outList$MACCtrl_GroupVec[annoMAFIndVec]
               }
@@ -622,7 +622,7 @@ SAIGE.Region = function(mu,
                 }
               }
               cctVec = c(cctVec, NA)
-              if (traitType == "binary" | traitType == "survival") {
+              if (traitType == "binary") {
                 cctVec = c(cctVec, NA, NA)
               }
               cctVec = c(cctVec, NA, NA)
@@ -683,7 +683,7 @@ SAIGE.Region = function(mu,
                   }
                 }
                 
-                if (traitType == "binary" | traitType == "survival") {
+                if (traitType == "binary") {
                   outList$gyVec = outList$gyVec[noNAIndices]
                 }
                 
@@ -755,7 +755,7 @@ SAIGE.Region = function(mu,
                         annoMAFIndVec = c(annoMAFIndVec, jm)
                         Phi = wadjVarSMat[tempPos, tempPos, drop = F]
                         Score = wStatVec[tempPos]
-                        if (traitType == "binary" | traitType == "survival") {
+                        if (traitType == "binary") {
                           p.new = adjPVec[tempPos]
                           g.sum = outList$genoSumMat[, jm]
                           q.sum <- sum(outList$gyVec[tempPos] * AnnoWeights[tempPos])
@@ -784,7 +784,7 @@ SAIGE.Region = function(mu,
                           SE_Burden = groupOutList$SE_Burden
                         )
                         if (isCondition) {
-                          if (traitType == "binary" | traitType == "survival") {
+                          if (traitType == "binary") {
                             G1tilde_P_G2tilde_Mat_scaled = t(t((
                               outList$G1tilde_P_G2tilde_Weighted_Mat[tempPos, , drop = F]
                             ) * sqrt(as.vector(
@@ -847,7 +847,7 @@ SAIGE.Region = function(mu,
                 
                 if (length(annoMAFIndVec) > 0) {
                   pval.Region$MAC = outList$MAC_GroupVec[annoMAFIndVec]
-                  if (traitType == "binary" | traitType == "survival") {
+                  if (traitType == "binary") {
                     pval.Region$MAC_case = outList$MACCase_GroupVec[annoMAFIndVec]
                     pval.Region$MAC_control = outList$MACCtrl_GroupVec[annoMAFIndVec]
                   }
@@ -896,7 +896,7 @@ SAIGE.Region = function(mu,
                     }
                   }
                   cctVec = c(cctVec, NA)
-                  if (traitType == "binary" | traitType == "survival") {
+                  if (traitType == "binary") {
                     cctVec = c(cctVec, NA, NA)
                   }
                   cctVec = c(cctVec, NA, NA)
