@@ -105,11 +105,14 @@ Rcpp::List mainRegionInCPP(
                            std::string t_outputFile,
                            std::string t_traitType,
                            unsigned int t_n,           // sample size
-                           arma::mat P1Mat,            // edited on 2021-08-19: to avoid repeated memory allocation of P1Mat and P2Mat
-                           arma::mat P2Mat,
+                           arma::mat & P1Mat,          // edited on 2021-08-19: to avoid repeated memory allocation of P1Mat and P2Mat
+                           arma::mat & P2Mat,
                            std::string t_regionTestType,
 			   bool t_isImputation,
-			   arma::vec & t_weight,
+			   arma::mat & t_weight,       // q0 x Kc custom (group-file) weight sets; 0-matrix sentinel when none
+			   arma::mat & t_beta_params,  // Kb x 2 beta(a,b) parameter pairs; 0-matrix sentinel when none
+			   bool t_includeNoWeights,
+			   std::vector<std::string> & t_weightNames,
 			   arma::vec & t_weight_cond,
 			   bool t_isSingleinGroupTest,
 			   bool t_isOutputMarkerList,
@@ -266,6 +269,7 @@ void writeOutfile_BURDEN(std::string regionName,
                         double cctpval_cond,
                         unsigned int q_anno,
                         unsigned int q_maf,
+                        unsigned int q_weight,
                         bool isCondition,
                         std::string t_traitType);
 

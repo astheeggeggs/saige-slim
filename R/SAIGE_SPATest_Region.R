@@ -519,7 +519,18 @@ SAIGE.Region = function(mu,
   }
 
   nline_per_gene = 2 + nWeightSets
-  
+
+  # Per-set labels handed to mainRegionInCPP; inert at K <= 1 (C++ only
+  # consumes them for per-set output labels when more than one weight set is
+  # in play).
+  region_weight_names = if (is_no_weight_in_groupTest) {
+    "No_Weights"
+  } else if (nWeightSets >= 1) {
+    weightSetNames
+  } else {
+    "Beta"
+  }
+
   gf = file(groupFile, "r")
   
   cat("indexChunk is ", indexChunk, "\n")
@@ -561,6 +572,21 @@ SAIGE.Region = function(mu,
   # All three mainRegionInCPP call sites passed an identical argument list;
   # the only per-site difference (which sparse-GRM flag was set beforehand)
   # stays at each call site.
+  #
+  # C++ weight-set boundary (jmr extension; the normative flat index is
+  # jmr = j*q_maf*q_weight + m*q_weight + r, weight fastest — see the
+  # matching comment in src/Main.cpp mainRegionInCPP). The legacy WEIGHT
+  # object is canonicalized into the K-set matrix form without touching any
+  # numeric value:
+  #   - c(0) sentinel (unweighted file) -> 1x1 zero matrix: C++ sees no
+  #     custom sets and falls back to the implicit beta set parameterized by
+  #     weights.beta via setAssocTest_GlobalVarsInCPP, exactly the legacy
+  #     beta-weights path
+  #   - length-q0 numeric vector (weighted file, or is_no_weight's
+  #     rep(1, q0)) -> q0 x 1 matrix: one custom set (all-ones still counts
+  #     as "equal weights" for the per-set ER gate)
+  # t_beta_params stays the 0-matrix sentinel and t_includeNoWeights FALSE:
+  # explicit beta sets / No_Weights composition arrive in a later commit.
   run_mainRegionInCPP = function() {
     mainRegionInCPP(
       genoType,
@@ -574,7 +600,10 @@ SAIGE.Region = function(mu,
       P2Mat,
       regionTestType,
       isImputation,
-      WEIGHT,
+      matrix(as.numeric(WEIGHT), ncol = 1),
+      matrix(0, nrow = 1, ncol = 2),
+      FALSE,
+      region_weight_names,
       weight_cond,
       is_single_in_groupTest,
       is_output_markerList_in_groupTest,
