@@ -75,6 +75,38 @@ test_that("step2 group conditional binary (rs30,rs79) matches golden", {
     extra_outputs = ".singleAssoc.txt")
 })
 
+test_that("step2 group BURDEN (r.corr=1) matches golden", {
+  run_step2_case("plink_group_burden.txt",
+    c(PLINK_ARGS(), "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
+      GRP_MODEL, SG_ARGS,
+      "--groupFile=./input/group_new_snpid.txt",
+      "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+      "--maxMAF_in_groupTest=0.0001,0.001,0.01",
+      "--r.corr=1", "--is_fastTest=FALSE"))
+  # BURDEN-only runs emit no .singleAssoc.txt (only SKAT-O forces singles on)
+})
+
+test_that("step2 group non-fastTest (sparse-GRM org path) matches golden", {
+  run_step2_case("plink_group_nofast.txt",
+    c(PLINK_ARGS(), "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
+      GRP_MODEL, SG_ARGS,
+      "--groupFile=./input/group_new_snpid.txt",
+      "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+      "--maxMAF_in_groupTest=0.0001,0.001,0.01",
+      "--is_fastTest=FALSE"),
+    extra_outputs = ".singleAssoc.txt")
+})
+
+test_that("step2 chunked single-variant (multi-chunk append) matches golden", {
+  run_step2_case("plink_marker_chunked.txt",
+    c("--bedFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.bed",
+      "--bimFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.bim",
+      "--famFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.fam",
+      "--AlleleOrder=alt-first",
+      "--chrom=1", "--minMAF=0", "--minMAC=1", "--LOCO=FALSE",
+      bin_model(), "--markers_per_chunk=1000"))
+})
+
 test_that("step2 single-variant conditional quantitative (rs13,rs79) matches golden", {
   run_step2_case("plink_marker_cond_quantitative.txt",
     c(PLINK_ARGS(), "--chrom=1", "--minMAF=0", "--minMAC=20", "--LOCO=FALSE",

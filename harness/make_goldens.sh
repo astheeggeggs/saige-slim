@@ -151,6 +151,46 @@ run step2_plink_marker_cond.log R2 step2_SPAtests.R \
   --is_output_moreDetails=TRUE \
   --condition=rs13,rs79
 
+# P5-P7 (added Phase 3 commit 0): coverage for output paths that the
+# de-globalization commits relocate — the BURDEN OutFile stream (r.corr=1),
+# the non-fastTest sparse-GRM region path, and chunked marker append.
+
+# P5: group test, BURDEN only (r.corr=1) — exercises openOutfile/OutFile
+run step2_plink_group_burden.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_burden.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --r.corr=1 --is_fastTest=FALSE
+
+# P6: group test, SKAT-O, is_fastTest=FALSE — exercises the org sparse-GRM path
+run step2_plink_group_nofast.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_nofast.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --is_fastTest=FALSE
+
+# P7: single-variant, binary, multi-chunk (markers_per_chunk has a floor of
+# 1000, so chunking needs a big marker set: the 128k-marker step-1 bed filtered
+# to chr1 gives ~6 chunks) — exercises per-chunk append on OutFile_single and
+# the index-file chunk records
+run step2_plink_marker_chunked.log R2 step2_SPAtests.R \
+  --bedFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.bed \
+  --bimFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.bim \
+  --famFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.fam \
+  --AlleleOrder=alt-first \
+  --SAIGEOutputFile="$GOLD/step2/plink_marker_chunked.txt" \
+  --chrom=1 --minMAF=0 --minMAC=1 --LOCO=FALSE \
+  $BIN_MODEL \
+  --markers_per_chunk=1000
+
 # B1/B2 (bgen runs) and V1/V2 (vcf runs) retired to harness/goldens_retired/
 # when the BGEN (Strip 6) and VCF/SAV (Strip 5) readers were stripped. Their
 # PLINK counterparts P1-P4 continue; before retirement, the bgen group
