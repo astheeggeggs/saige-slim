@@ -31,7 +31,7 @@
 
 static std::unique_ptr<Geno::GenoReader> g_reader;
 // global objects for different analysis methods
-static SAIGE::SAIGEClass* ptr_gSAIGEobj = NULL;
+static std::unique_ptr<SAIGE::SAIGEClass> g_model;
 //single, SAIGE
 //Region, SAIGE-GENE+
 
@@ -183,7 +183,7 @@ void mainMarkerInCPP(
   //std::vector<double> pvalNAVec(q, arma::datum::nan);
   std::vector<std::string> pvalNAVec(q, "NA");
 
-  bool isCondition = ptr_gSAIGEobj->m_isCondition;
+  bool isCondition = g_model->m_isCondition;
   //if(isCondition){
   std::vector<double> Beta_cVec(q, arma::datum::nan);         // beta value for ALT allele
   std::vector<double> seBeta_cVec(q, arma::datum::nan);
@@ -194,7 +194,7 @@ void mainMarkerInCPP(
   //std::vector<double> pvalNA_cVec(q, arma::datum::nan);
   std::vector<std::string> pvalNA_cVec(q, "NA");
   //}
-  arma::rowvec G1tilde_P_G2tilde_Vec(ptr_gSAIGEobj->m_numMarker_cond);
+  arma::rowvec G1tilde_P_G2tilde_Vec(g_model->m_numMarker_cond);
 
   std::vector<bool>  isSPAConvergeVec(q);
   std::vector<double>  AF_caseVec(q);
@@ -211,24 +211,24 @@ void mainMarkerInCPP(
   std::vector<uint> indexNonZeroVec;
   std::vector<uint> indexForMissing;
 
-  int n = ptr_gSAIGEobj->m_n;
+  int n = g_model->m_n;
   arma::vec t_GVec(n);
   arma::vec gtildeVec(n);
   arma::vec t_P2Vec;
   /*
-  if(ptr_gSAIGEobj->m_isFastTest){
-    ptr_gSAIGEobj->set_flagSparseGRM_cur(false);
-    ptr_gSAIGEobj->set_isnoadjCov_cur(ptr_gSAIGEobj->m_isnoadjCov);
+  if(g_model->m_isFastTest){
+    g_model->set_flagSparseGRM_cur(false);
+    g_model->set_isnoadjCov_cur(g_model->m_isnoadjCov);
   }else{
-    ptr_gSAIGEobj->set_flagSparseGRM_cur(ptr_gSAIGEobj->m_flagSparseGRM); 
-    ptr_gSAIGEobj->set_isnoadjCov_cur(false);
+    g_model->set_flagSparseGRM_cur(g_model->m_flagSparseGRM); 
+    g_model->set_isnoadjCov_cur(false);
   }
 */
   bool hasVarRatio = true;;
   bool isSingleVarianceRatio = true;
-  if((ptr_gSAIGEobj->m_varRatio_null).n_elem == 1){
-        ptr_gSAIGEobj->assignSingleVarianceRatio(ptr_gSAIGEobj->m_flagSparseGRM, ptr_gSAIGEobj->m_isnoadjCov);
-        //ptr_gSAIGEobj->assignSingleVarianceRatio(false);
+  if((g_model->m_varRatio_null).n_elem == 1){
+        g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM, g_model->m_isnoadjCov);
+        //g_model->assignSingleVarianceRatio(false);
   }else{		
 	isSingleVarianceRatio = false;
   }
@@ -386,22 +386,22 @@ void mainMarkerInCPP(
 
     //set_varianceRatio(MAC, isSingleVarianceRatio);
 
-    if(ptr_gSAIGEobj->m_isFastTest){
-      ptr_gSAIGEobj->set_flagSparseGRM_cur(false);
+    if(g_model->m_isFastTest){
+      g_model->set_flagSparseGRM_cur(false);
     }else{
-      ptr_gSAIGEobj->set_flagSparseGRM_cur(ptr_gSAIGEobj->m_flagSparseGRM);	
+      g_model->set_flagSparseGRM_cur(g_model->m_flagSparseGRM);	
     }
       if(isSingleVarianceRatio){
-        ptr_gSAIGEobj->assignSingleVarianceRatio(ptr_gSAIGEobj->m_flagSparseGRM_cur, ptr_gSAIGEobj->m_isnoadjCov);
+        g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM_cur, g_model->m_isnoadjCov);
       }else{	
-        hasVarRatio = ptr_gSAIGEobj->assignVarianceRatio(MAC, ptr_gSAIGEobj->m_flagSparseGRM_cur, ptr_gSAIGEobj->m_isnoadjCov);
+        hasVarRatio = g_model->assignVarianceRatio(MAC, g_model->m_flagSparseGRM_cur, g_model->m_isnoadjCov);
       }
       
     //}else{
     //  if(!isSingleVarianceRatio){
-    //    hasVarRatio = ptr_gSAIGEobj->assignVarianceRatio(MAC, ptr_gSAIGEobj->m_flagSparseGRM, ptr_gSAIGEobj->m_isnoadjCov);
+    //    hasVarRatio = g_model->assignVarianceRatio(MAC, g_model->m_flagSparseGRM, g_model->m_isnoadjCov);
     //  }else{
-    //	ptr_gSAIGEobj->assignSingleVarianceRatio(ptr_gSAIGEobj->m_flagSparseGRM, ptr_gSAIGEobj->m_isnoadjCov);	
+    //	g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM, g_model->m_isnoadjCov);	
     //  }
    //}
     //check 'Main.cpp'
@@ -413,13 +413,13 @@ void mainMarkerInCPP(
 		    t_GVec, 
                           false, // bool t_isOnlyOutputNonZero, 
                           indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT,   
-			  altFreq, isSPAConverge, gtildeVec, is_gtilde, is_region, t_P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, ptr_gSAIGEobj->m_isnoadjCov, ptr_gSAIGEobj->m_flagSparseGRM_cur);
+			  altFreq, isSPAConverge, gtildeVec, is_gtilde, is_region, t_P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, g_model->m_isnoadjCov, g_model->m_flagSparseGRM_cur);
     }else{
       Unified_getMarkerPval( 
 		    t_GVec, 
                           false, // bool t_isOnlyOutputNonZero, 
                           indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT,   
-			  altFreq, isSPAConverge, gtildeVec, is_gtilde, is_region, t_P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, ptr_gSAIGEobj->m_isnoadjCov, ptr_gSAIGEobj->m_flagSparseGRM_cur);
+			  altFreq, isSPAConverge, gtildeVec, is_gtilde, is_region, t_P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, g_model->m_isnoadjCov, g_model->m_flagSparseGRM_cur);
     }
     double pval_num;
   
@@ -437,21 +437,21 @@ void mainMarkerInCPP(
 
 
 
-    if(ptr_gSAIGEobj->m_isFastTest && pval_num < (ptr_gSAIGEobj->m_pval_cutoff_for_fastTest)){
-      //ptr_gSAIGEobj->set_flagSparseGRM_cur(true);
-     if(MAC > ptr_gSAIGEobj->m_cateVarRatioMinMACVecExclude.back()){
-	ptr_gSAIGEobj->set_flagSparseGRM_cur(false);
+    if(g_model->m_isFastTest && pval_num < (g_model->m_pval_cutoff_for_fastTest)){
+      //g_model->set_flagSparseGRM_cur(true);
+     if(MAC > g_model->m_cateVarRatioMinMACVecExclude.back()){
+	g_model->set_flagSparseGRM_cur(false);
       }else{
         //std::cout << "MAC " << MAC << std::endl;
         //std::cout << "pval_num " << pval_num << std::endl;
-        ptr_gSAIGEobj->set_flagSparseGRM_cur(ptr_gSAIGEobj->m_flagSparseGRM);
+        g_model->set_flagSparseGRM_cur(g_model->m_flagSparseGRM);
       }
-      ptr_gSAIGEobj->set_isnoadjCov_cur(false);
+      g_model->set_isnoadjCov_cur(false);
       
       if(!isSingleVarianceRatio){ 
-        hasVarRatio = ptr_gSAIGEobj->assignVarianceRatio(MAC, ptr_gSAIGEobj->m_flagSparseGRM_cur, ptr_gSAIGEobj->m_isnoadjCov_cur);
+        hasVarRatio = g_model->assignVarianceRatio(MAC, g_model->m_flagSparseGRM_cur, g_model->m_isnoadjCov_cur);
       }else{ 
-        ptr_gSAIGEobj->assignSingleVarianceRatio(ptr_gSAIGEobj->m_flagSparseGRM_cur, ptr_gSAIGEobj->m_isnoadjCov_cur);
+        g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM_cur, g_model->m_isnoadjCov_cur);
       }
 
 
@@ -460,7 +460,7 @@ void mainMarkerInCPP(
                     t_GVec,
                           false, // bool t_isOnlyOutputNonZero,
                           indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT,
-                          altFreq, isSPAConverge, gtildeVec, is_gtilde, is_region, t_P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, ptr_gSAIGEobj->m_isnoadjCov_cur, ptr_gSAIGEobj->m_flagSparseGRM_cur);
+                          altFreq, isSPAConverge, gtildeVec, is_gtilde, is_region, t_P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, g_model->m_isnoadjCov_cur, g_model->m_flagSparseGRM_cur);
      //}else{
       //std::cout << "ER " << std::endl;
    /*
@@ -468,7 +468,7 @@ void mainMarkerInCPP(
                     t_GVec,
                           false, // bool t_isOnlyOutputNonZero,
                           indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT,
-                          altFreq, isSPAConverge, gtildeVec, is_gtilde, is_region, t_P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, ptr_gSAIGEobj->m_isnoadjCov_cur, ptr_gSAIGEobj->m_flagSparseGRM_cur);
+                          altFreq, isSPAConverge, gtildeVec, is_gtilde, is_region, t_P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, g_model->m_isnoadjCov_cur, g_model->m_flagSparseGRM_cur);
  */
  
       //}     
@@ -507,8 +507,8 @@ void mainMarkerInCPP(
     }
 	
     if(t_traitType == "binary"){ 
-	    arma::vec dosage_case = t_GVec.elem(ptr_gSAIGEobj->m_case_indices);
-	    arma::vec dosage_ctrl = t_GVec.elem(ptr_gSAIGEobj->m_ctrl_indices);
+	    arma::vec dosage_case = t_GVec.elem(g_model->m_case_indices);
+	    arma::vec dosage_ctrl = t_GVec.elem(g_model->m_ctrl_indices);
       AF_case = arma::mean(dosage_case) /2;
       AF_ctrl = arma::mean(dosage_ctrl) /2;
       N_case = dosage_case.n_elem;
@@ -631,7 +631,7 @@ bool Unified_getOneMarker(std::string & t_genoType,   // "PLINK"
 			       bool t_isImputation 
 			       )     // the index of non-zero genotype in the all subjects. Only valid if t_isOnlyOutputNonZero == true.
 {
-  //arma::vec GVec(ptr_gSAIGEobj->m_n);
+  //arma::vec GVec(g_model->m_n);
   bool isBoolRead = true;
   if(t_genoType == "plink"){
    Geno::MarkerMeta meta;
@@ -723,7 +723,7 @@ void Unified_getMarkerPval(
       Rcpp::stop("When using SAIGE method to calculate marker-level p-values, 't_isOnlyOutputNonZero' should be false.");   
 
 
-    ptr_gSAIGEobj->getMarkerPval(t_GVec, t_indexForNonZero_vec, t_indexForZero_vec, t_Beta, t_seBeta, t_pval, t_pval_noSPA, t_altFreq, t_Tstat, t_gy, t_varT, t_isSPAConverge, t_gtilde, is_gtilde, is_region, t_P2Vec, t_isCondition, t_Beta_c, t_seBeta_c, t_pval_c, t_pval_noSPA_c, t_Tstat_c, t_varT_c, t_G1tilde_P_G2tilde_Vec, t_isFirth, t_isFirthConverge, t_isER, t_isnoadjCov, t_isSparseGRM); //SAIGE_new.cpp
+    g_model->getMarkerPval(t_GVec, t_indexForNonZero_vec, t_indexForZero_vec, t_Beta, t_seBeta, t_pval, t_pval_noSPA, t_altFreq, t_Tstat, t_gy, t_varT, t_isSPAConverge, t_gtilde, is_gtilde, is_region, t_P2Vec, t_isCondition, t_Beta_c, t_seBeta_c, t_pval_c, t_pval_noSPA_c, t_Tstat_c, t_varT_c, t_G1tilde_P_G2tilde_Vec, t_isFirth, t_isFirthConverge, t_isER, t_isnoadjCov, t_isSparseGRM); //SAIGE_new.cpp
     
     //t_indexForNonZero_vec.clear();
   
@@ -783,7 +783,7 @@ void setSAIGEobjInCPP(arma::mat & t_XVX,
 	arma::vec & t_resout)
 {
   // check SAIGE.cpp
-  ptr_gSAIGEobj = new SAIGE::SAIGEClass(
+  g_model.reset(new SAIGE::SAIGEClass(
 	t_XVX,
         t_XXVX_inv,
         t_XV,
@@ -815,9 +815,9 @@ void setSAIGEobjInCPP(arma::mat & t_XVX,
 	t_condition_genoIndex,
 	t_is_Firth_beta,
         t_pCutoffforFirth,
-	t_offset, 
-	t_resout);
-  //ptr_gSAIGEobj->m_flagSparseGRM = false;
+	t_offset,
+	t_resout));
+  //g_model->m_flagSparseGRM = false;
 }
 
 
@@ -825,15 +825,15 @@ void setSAIGEobjInCPP(arma::mat & t_XVX,
 // [[Rcpp::export]]
 void setSparseSigmaInCPP(int r, arma::umat & t_locationMatinR, arma::vec & t_valueVecinR)
 {
-  ptr_gSAIGEobj->setupSparseMat(r, t_locationMatinR, t_valueVecinR);
-  ptr_gSAIGEobj->m_flagSparseGRM = true;
+  g_model->setupSparseMat(r, t_locationMatinR, t_valueVecinR);
+  g_model->m_flagSparseGRM = true;
 }
 */
 
 // [[Rcpp::export]]
 Rcpp::List RegionSetUpConditional_binary_InCPP(arma::vec & t_weight_cond){
 
-	unsigned int q_cond = (ptr_gSAIGEobj->m_VarInvMat_cond).n_rows;
+	unsigned int q_cond = (g_model->m_VarInvMat_cond).n_rows;
   	boost::math::beta_distribution<> beta_dist(g_cfg.weights_beta[0], g_cfg.weights_beta[1]);
   	arma::vec w0G2Vec_cond(q_cond);
   	double w0G2_cond, MAFG2_cond;
@@ -841,18 +841,18 @@ Rcpp::List RegionSetUpConditional_binary_InCPP(arma::vec & t_weight_cond){
 		if(!(t_weight_cond.is_zero())){
 			w0G2_cond = t_weight_cond(ci);
 		}else{
-                	MAFG2_cond = (ptr_gSAIGEobj->m_MAF_cond)[ci];
+                	MAFG2_cond = (g_model->m_MAF_cond)[ci];
                 	w0G2_cond = boost::math::pdf(beta_dist, MAFG2_cond);
 		}
                 w0G2Vec_cond.at(ci) = w0G2_cond;
         }
-	arma::mat m_VarMat_weighted_cond = (w0G2Vec_cond * (w0G2Vec_cond.t())) % (ptr_gSAIGEobj->m_VarMat_cond);
+	arma::mat m_VarMat_weighted_cond = (w0G2Vec_cond * (w0G2Vec_cond.t())) % (g_model->m_VarMat_cond);
 
 	 Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("VarMat_G2_cond") = m_VarMat_weighted_cond,
-                                          Rcpp::Named("Score_G2_cond") = ptr_gSAIGEobj->m_Tstat_cond,
-                                          Rcpp::Named("pval_G2_cond") = ptr_gSAIGEobj->m_p_cond,
-                                          Rcpp::Named("gsum_G2_cond") = ptr_gSAIGEobj->m_gsum_cond,
-                                          Rcpp::Named("qsum_G2_cond") = ptr_gSAIGEobj->m_qsum_cond
+                                          Rcpp::Named("Score_G2_cond") = g_model->m_Tstat_cond,
+                                          Rcpp::Named("pval_G2_cond") = g_model->m_p_cond,
+                                          Rcpp::Named("gsum_G2_cond") = g_model->m_gsum_cond,
+                                          Rcpp::Named("qsum_G2_cond") = g_model->m_qsum_cond
 					  );
 	 return(OutList);
 
@@ -913,11 +913,11 @@ Rcpp::List mainRegionInCPP(
 
 
   //setting up conditional markers  
-  unsigned int q_cond = (ptr_gSAIGEobj->m_VarInvMat_cond).n_rows;	
+  unsigned int q_cond = (g_model->m_VarInvMat_cond).n_rows;	
   arma::rowvec G1tilde_P_G2tilde_Vec(q_cond);
   boost::math::beta_distribution<> beta_dist(g_cfg.weights_beta[0], g_cfg.weights_beta[1]);
 
-  bool isCondition = ptr_gSAIGEobj->m_isCondition;
+  bool isCondition = g_model->m_isCondition;
   arma::vec w0G2Vec_cond(q_cond);
   double w0G2_cond, MAFG2_cond;
   if(isCondition){
@@ -925,7 +925,7 @@ Rcpp::List mainRegionInCPP(
 		if(!(t_weight_cond.is_zero())){
 			w0G2_cond = t_weight_cond(ci);
 		}else{	
-			MAFG2_cond = (ptr_gSAIGEobj->m_MAF_cond)[ci];	
+			MAFG2_cond = (g_model->m_MAF_cond)[ci];	
   			w0G2_cond = boost::math::pdf(beta_dist, MAFG2_cond);
 		}	
 		w0G2Vec_cond.at(ci) = w0G2_cond;
@@ -1023,10 +1023,10 @@ Rcpp::List mainRegionInCPP(
   bool hasVarRatio = true;;
   bool isSingleVarianceRatio = true;
 
-  if((ptr_gSAIGEobj->m_varRatio_null).n_elem > 1){
+  if((g_model->m_varRatio_null).n_elem > 1){
     isSingleVarianceRatio = false;
   }else{
-    ptr_gSAIGEobj->assignSingleVarianceRatio(ptr_gSAIGEobj->m_flagSparseGRM_cur);
+    g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM_cur);
   }  
   // initiate chunk information
   unsigned int nchunks = 0; //number of chunks
@@ -1119,16 +1119,16 @@ Rcpp::List mainRegionInCPP(
         std::cout << "Start analyzing chunk " << ichunk << "....." << std::endl;
       }
 
-      if(MAC > ptr_gSAIGEobj->m_cateVarRatioMinMACVecExclude.back()){
-        ptr_gSAIGEobj->set_flagSparseGRM_cur(false);
+      if(MAC > g_model->m_cateVarRatioMinMACVecExclude.back()){
+        g_model->set_flagSparseGRM_cur(false);
       }else{
-        ptr_gSAIGEobj->set_flagSparseGRM_cur(ptr_gSAIGEobj->m_flagSparseGRM);
+        g_model->set_flagSparseGRM_cur(g_model->m_flagSparseGRM);
       } 
 
       if(!isSingleVarianceRatio){
-        hasVarRatio = ptr_gSAIGEobj->assignVarianceRatio(MAC, ptr_gSAIGEobj->m_flagSparseGRM_cur, false);
+        hasVarRatio = g_model->assignVarianceRatio(MAC, g_model->m_flagSparseGRM_cur, false);
       }else{
-        ptr_gSAIGEobj->assignSingleVarianceRatio(ptr_gSAIGEobj->m_flagSparseGRM_cur, false);
+        g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM_cur, false);
       }
 
 
@@ -1139,13 +1139,13 @@ Rcpp::List mainRegionInCPP(
           Unified_getMarkerPval(
                     GVec,
                     false, // bool t_isOnlyOutputNonZero,
-          indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, false, ptr_gSAIGEobj->m_flagSparseGRM_cur);
+          indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, false, g_model->m_flagSparseGRM_cur);
 
 	}else{	
           Unified_getMarkerPval(
                     GVec,
                     false, // bool t_isOnlyOutputNonZero,
-          indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, false, ptr_gSAIGEobj->m_flagSparseGRM_cur);
+          indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, false, g_model->m_flagSparseGRM_cur);
 	}
 
 
@@ -1173,8 +1173,8 @@ Rcpp::List mainRegionInCPP(
 
 
         if(t_regionTestType != "BURDEN"){
-          P1Mat.row(i1InChunk) = sqrt(ptr_gSAIGEobj->m_varRatioVal)*gtildeVec.t();
-          P2Mat.col(i1InChunk) = sqrt(ptr_gSAIGEobj->m_varRatioVal)*P2Vec;
+          P1Mat.row(i1InChunk) = sqrt(g_model->m_varRatioVal)*gtildeVec.t();
+          P2Mat.col(i1InChunk) = sqrt(g_model->m_varRatioVal)*P2Vec;
 	}
      }//if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){ 
 
@@ -1184,8 +1184,8 @@ Rcpp::List mainRegionInCPP(
      //printTime(timeoutput3a, timeoutput3aa, "Unified_getOneMarker 3a");
      arma::vec dosage_case, dosage_ctrl;
      if(t_traitType == "binary"){
-        dosage_case = GVec.elem(ptr_gSAIGEobj->m_case_indices);
-        dosage_ctrl = GVec.elem(ptr_gSAIGEobj->m_ctrl_indices);
+        dosage_case = GVec.elem(g_model->m_case_indices);
+        dosage_ctrl = GVec.elem(g_model->m_ctrl_indices);
         MACcasegroup = arma::accu(dosage_case);
         MACcontrolgroup = arma::accu(dosage_ctrl);	
     }
@@ -1355,7 +1355,7 @@ if(i2 > 0){
   }
 
   arma::mat XV, XXVX_inv;
-  ptr_gSAIGEobj->extract_XV_XXVX_inv(XV, XXVX_inv);
+  g_model->extract_XV_XXVX_inv(XV, XXVX_inv);
   //the last chunk for UR
   unsigned int i;
   for(unsigned int j = 0; j < q_anno; j++){
@@ -1409,16 +1409,16 @@ if(i2 > 0){
 	  MAC = MAF * 2 * t_n * (1 - missingRate);   // checked on 08-10-2021
 if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
 
-      if(MAC > ptr_gSAIGEobj->m_cateVarRatioMinMACVecExclude.back()){
-        ptr_gSAIGEobj->set_flagSparseGRM_cur(false);
+      if(MAC > g_model->m_cateVarRatioMinMACVecExclude.back()){
+        g_model->set_flagSparseGRM_cur(false);
       }else{
-        ptr_gSAIGEobj->set_flagSparseGRM_cur(ptr_gSAIGEobj->m_flagSparseGRM);
+        g_model->set_flagSparseGRM_cur(g_model->m_flagSparseGRM);
       }
 
       if(!isSingleVarianceRatio){
-        hasVarRatio = ptr_gSAIGEobj->assignVarianceRatio(MAC, ptr_gSAIGEobj->m_flagSparseGRM_cur, false);
+        hasVarRatio = g_model->assignVarianceRatio(MAC, g_model->m_flagSparseGRM_cur, false);
       }else{
-        ptr_gSAIGEobj->assignSingleVarianceRatio(ptr_gSAIGEobj->m_flagSparseGRM_cur, false);
+        g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM_cur, false);
       }
 
 
@@ -1440,9 +1440,9 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
 
 
 	    if(MAC <= g_cfg.MACCutoffforER && t_traitType == "binary" && (!isWeightCustomized || isEqualWeights)){	
-              ptr_gSAIGEobj->getMarkerPval(genoURVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, false, ptr_gSAIGEobj->m_flagSparseGRM_cur);
+              g_model->getMarkerPval(genoURVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, false, g_model->m_flagSparseGRM_cur);
 	    }else{
-              ptr_gSAIGEobj->getMarkerPval(genoURVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, false, ptr_gSAIGEobj->m_flagSparseGRM_cur);
+              g_model->getMarkerPval(genoURVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, false, g_model->m_flagSparseGRM_cur);
 	    }
 
             BetaVec.at(i) = Beta* (1 - 2*flip);
@@ -1477,8 +1477,8 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
             arma::vec dosage_case, dosage_ctrl;
             MAC_GroupVec(jm) = MAC_GroupVec(jm) + MAC;
             if(t_traitType == "binary"){
-                        dosage_case = genoURVec.elem(ptr_gSAIGEobj->m_case_indices);
-                        dosage_ctrl = genoURVec.elem(ptr_gSAIGEobj->m_ctrl_indices);
+                        dosage_case = genoURVec.elem(g_model->m_case_indices);
+                        dosage_ctrl = genoURVec.elem(g_model->m_ctrl_indices);
                         MACcasegroup = arma::accu(dosage_case);
                         MACcontrolgroup = arma::accu(dosage_ctrl);
                         MACCase_GroupVec(jm) = MACCase_GroupVec(jm) + MACcasegroup;
@@ -1517,9 +1517,9 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
           N_Vec.at(i) = n;
         }
       if(t_regionTestType != "BURDEN"){	
-        P1Mat.row(i1InChunk) = sqrt(ptr_gSAIGEobj->m_varRatioVal)*gtildeVec.t();
+        P1Mat.row(i1InChunk) = sqrt(g_model->m_varRatioVal)*gtildeVec.t();
 	//gtildeVec.print("gtildeVec");
-        P2Mat.col(i1InChunk) = sqrt(ptr_gSAIGEobj->m_varRatioVal)*P2Vec;
+        P2Mat.col(i1InChunk) = sqrt(g_model->m_varRatioVal)*P2Vec;
 	//P2Vec.print("P2Vec");
 
       } //if(t_regionTestType != "BURDEN"){
@@ -1527,8 +1527,8 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
             MAC_GroupVec(jm) = MAC_GroupVec(jm) + MAC;
 	                arma::vec dosage_case, dosage_ctrl;
             if(t_traitType == "binary"){
-                        dosage_case = genoURVec.elem(ptr_gSAIGEobj->m_case_indices);
-                        dosage_ctrl = genoURVec.elem(ptr_gSAIGEobj->m_ctrl_indices);
+                        dosage_case = genoURVec.elem(g_model->m_case_indices);
+                        dosage_ctrl = genoURVec.elem(g_model->m_ctrl_indices);
                         MACcasegroup = arma::accu(dosage_case);
                         MACcontrolgroup = arma::accu(dosage_ctrl);
                         MACCase_GroupVec(jm) = MACCase_GroupVec(jm) + MACcasegroup;
@@ -1664,7 +1664,7 @@ std::vector<double> BURDEN_seBeta_cVec(q_anno_maf);
 
 bool iswriteOutput = false;
 bool isregion = true;
-if(!ptr_gSAIGEobj->m_flagSparseGRM){
+if(!g_model->m_flagSparseGRM){
 	isregion = false;
 }
 //Rcpp::DataFrame OUT_BURDEN = Rcpp::DataFrame::create();
@@ -1714,27 +1714,27 @@ if(t_regionTestType == "BURDEN"){
           isPolyMarker = true;   
 	  std::vector<uint32_t> indexForMissing;
 
-      if(MAC > ptr_gSAIGEobj->m_cateVarRatioMinMACVecExclude.back()){
-        ptr_gSAIGEobj->set_flagSparseGRM_cur(false);
+      if(MAC > g_model->m_cateVarRatioMinMACVecExclude.back()){
+        g_model->set_flagSparseGRM_cur(false);
       }else{
-        ptr_gSAIGEobj->set_flagSparseGRM_cur(ptr_gSAIGEobj->m_flagSparseGRM);
+        g_model->set_flagSparseGRM_cur(g_model->m_flagSparseGRM);
       }
 
       if(!isSingleVarianceRatio){
-        hasVarRatio = ptr_gSAIGEobj->assignVarianceRatio(MAC, ptr_gSAIGEobj->m_flagSparseGRM_cur, false);
+        hasVarRatio = g_model->assignVarianceRatio(MAC, g_model->m_flagSparseGRM_cur, false);
       }else{
-        ptr_gSAIGEobj->assignSingleVarianceRatio(ptr_gSAIGEobj->m_flagSparseGRM_cur, false);
+        g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM_cur, false);
       }
           //if(!isSingleVarianceRatio){
-           // hasVarRatio = ptr_gSAIGEobj->assignVarianceRatio(MAC, ptr_gSAIGEobj->m_flagSparseGRM_cur, false);
+           // hasVarRatio = g_model->assignVarianceRatio(MAC, g_model->m_flagSparseGRM_cur, false);
           //}
 
 
 	  //arma::vec timeoutput_getp = getTime();
 	  if(MAC <= g_cfg.MACCutoffforER && t_traitType == "binary" && (!isWeightCustomized || isEqualWeights) ){
-          ptr_gSAIGEobj->getMarkerPval(genoSumVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, isregion, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, false, ptr_gSAIGEobj->m_flagSparseGRM_cur);
+          g_model->getMarkerPval(genoSumVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, isregion, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, false, g_model->m_flagSparseGRM_cur);
 	  }else{
-          ptr_gSAIGEobj->getMarkerPval(genoSumVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, isregion, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, false, ptr_gSAIGEobj->m_flagSparseGRM_cur);
+          g_model->getMarkerPval(genoSumVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, isregion, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, false, g_model->m_flagSparseGRM_cur);
 	  }	  
 	  //arma::vec timeoutput_getp2 = getTime();
 	  //printTime(timeoutput_getp, timeoutput_getp2, "get p  done");
@@ -1801,7 +1801,7 @@ if(t_regionTestType == "BURDEN"){
 	   if(!t_isFastTest){
 		iswriteOutput = true;
 	   }else{
-		if(ptr_gSAIGEobj->m_flagSparseGRM_cur){
+		if(g_model->m_flagSparseGRM_cur){
 			iswriteOutput = true;
 		}else{
 		  if(cctpval >= 0.1){
@@ -1857,14 +1857,14 @@ if(t_regionTestType == "BURDEN"){
   //arma::mat scaled_m_VarInvMat_cond;
     if(isCondition){
   //std::cout << "okk5" << std::endl;
-      arma::mat AdjCondMat = G1tilde_P_G2tilde_Weighted_Mat * (ptr_gSAIGEobj->m_VarInvMat_cond / (w0G2Mat_cond));
+      arma::mat AdjCondMat = G1tilde_P_G2tilde_Weighted_Mat * (g_model->m_VarInvMat_cond / (w0G2Mat_cond));
       arma::mat VarMatAdjCond = AdjCondMat * (G1tilde_P_G2tilde_Weighted_Mat.t());
-      arma::vec TstatAdjCond = AdjCondMat * (ptr_gSAIGEobj->m_Tstat_cond % w0G2Vec_cond ); 
+      arma::vec TstatAdjCond = AdjCondMat * (g_model->m_Tstat_cond % w0G2Vec_cond ); 
       OutList.push_back(G1tilde_P_G2tilde_Weighted_Mat, "G1tilde_P_G2tilde_Weighted_Mat"); 
-      OutList.push_back(ptr_gSAIGEobj->m_scalefactor_G2_cond, "scalefactor_G2_cond");
-      OutList.push_back(ptr_gSAIGEobj->m_VarInvMat_cond_scaled_weighted, "VarInvMat_G2_cond_scaled"); 
-      OutList.push_back(ptr_gSAIGEobj->m_Tstat_cond, "Tstat_G2_cond"); //m_Tstat_cond is weighted
-      OutList.push_back(ptr_gSAIGEobj->m_G2_Weight_cond, "G2_Weight_cond");
+      OutList.push_back(g_model->m_scalefactor_G2_cond, "scalefactor_G2_cond");
+      OutList.push_back(g_model->m_VarInvMat_cond_scaled_weighted, "VarInvMat_G2_cond_scaled"); 
+      OutList.push_back(g_model->m_Tstat_cond, "Tstat_G2_cond"); //m_Tstat_cond is weighted
+      OutList.push_back(g_model->m_G2_Weight_cond, "G2_Weight_cond");
       OutList.push_back(TstatAdjCond, "TstatAdjCond");
       OutList.push_back(VarMatAdjCond, "VarMatAdjCond"); 
     }
@@ -1872,7 +1872,7 @@ if(t_regionTestType == "BURDEN"){
     if(!t_isFastTest){
             iswriteOutput = true;
      }else{
-        if(ptr_gSAIGEobj->m_flagSparseGRM_cur){
+        if(g_model->m_flagSparseGRM_cur){
             iswriteOutput = true;
         }
      }
@@ -2006,7 +2006,7 @@ void assign_conditionMarkers_factors(
 			   arma::vec & t_weight_cond
 			   )           // sample size
 {
-  ptr_gSAIGEobj->set_flagSparseGRM_cur(ptr_gSAIGEobj->m_flagSparseGRM);
+  g_model->set_flagSparseGRM_cur(g_model->m_flagSparseGRM);
   bool isImpute = false;	
   unsigned int q = t_genoIndex.size();
   arma::mat P1Mat(q, t_n);
@@ -2077,10 +2077,10 @@ void assign_conditionMarkers_factors(
   double MAC = MAF * 2 * t_n * (1 - missingRate);
 
   bool hasVarRatio;
-  if((ptr_gSAIGEobj->m_varRatio_null).n_elem == 1){
-	ptr_gSAIGEobj->assignSingleVarianceRatio(ptr_gSAIGEobj->m_flagSparseGRM,false);	
+  if((g_model->m_varRatio_null).n_elem == 1){
+	g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM,false);	
   }else{
-	hasVarRatio = ptr_gSAIGEobj->assignVarianceRatio(MAC, ptr_gSAIGEobj->m_flagSparseGRM, false);
+	hasVarRatio = g_model->assignVarianceRatio(MAC, g_model->m_flagSparseGRM, false);
 	//if(!hasVarRatio){
 	//	std::cout << "Error! Conditioning marker " << info << " has MAC " << MAC << " and does not have variance ratio estimated." << std::endl;
 	//	exit(EXIT_FAILURE);
@@ -2100,20 +2100,20 @@ void assign_conditionMarkers_factors(
 
   arma::vec gtildeVec;
 
-  if(MAC <=  g_cfg.MACCutoffforER && ptr_gSAIGEobj->m_traitType == "binary"){
+  if(MAC <=  g_cfg.MACCutoffforER && g_model->m_traitType == "binary"){
      Unified_getMarkerPval(
                     GVec,
                     false, // bool t_isOnlyOutputNonZero,
-                    indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, false, ptr_gSAIGEobj->m_flagSparseGRM);
+                    indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, false, g_model->m_flagSparseGRM);
   }else{
      Unified_getMarkerPval(
                     GVec,
                     false, // bool t_isOnlyOutputNonZero,
-                    indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, false, ptr_gSAIGEobj->m_flagSparseGRM);
+                    indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, false, g_model->m_flagSparseGRM);
 
   }
-      P1Mat.row(i) = sqrt(ptr_gSAIGEobj->m_varRatioVal)*gtildeVec.t();
-      P2Mat.col(i) = sqrt(ptr_gSAIGEobj->m_varRatioVal)*P2Vec;
+      P1Mat.row(i) = sqrt(g_model->m_varRatioVal)*gtildeVec.t();
+      P2Mat.col(i) = sqrt(g_model->m_varRatioVal)*P2Vec;
       //P1Mat.row(i) = gtildeVec.t();
       //P2Mat.col(i) = P2Vec;
       MAFVec(i) = MAF;
@@ -2144,8 +2144,8 @@ void assign_conditionMarkers_factors(
   arma::vec gsumtildeVec;
 
 
-  ptr_gSAIGEobj->getadjG(gsumVec, gsumtildeVec);
-  ptr_gSAIGEobj->assignConditionFactors(
+  g_model->getadjG(gsumVec, gsumtildeVec);
+  g_model->assignConditionFactors(
 		   			P2Mat,
 					VarInvMat,
 					VarMat,
@@ -2162,7 +2162,7 @@ void assign_conditionMarkers_factors(
 void assign_conditionMarkers_factors_binary_region(
 			   arma::vec & scalefactor_G2_cond){
 	//std::cout << "assign_conditionMarkers_factors_binary_region" << std::endl;
-	ptr_gSAIGEobj->assignConditionFactors_scalefactor(scalefactor_G2_cond);
+	g_model->assignConditionFactors_scalefactor(scalefactor_G2_cond);
 }
 
 
@@ -2271,7 +2271,7 @@ bool openOutfile(std::string t_traitType, bool isappend){
 	isopen = g_out.group.is_open();
 	if(isopen){
 		g_out.group << "Region\tGroup\tmax_MAF\tPvalue_Burden\tBETA_Burden\tSE_Burden\t";
-		if(ptr_gSAIGEobj->m_isCondition){
+		if(g_model->m_isCondition){
 			g_out.group << "Pvalue_Burden_c\tBeta_Burden_c\tseBeta_Burden_c\t";
 		}
 		g_out.group << "MAC\t";
@@ -2307,7 +2307,7 @@ bool openOutfile_singleinGroup(std::string t_traitType, bool t_isImputation, boo
                         g_out.singleInGroup << "p.value.NA\tIs.SPA\t";
                 }	
 
-                if(ptr_gSAIGEobj->m_isCondition){
+                if(g_model->m_isCondition){
                         g_out.singleInGroup << "BETA_c\tSE_c\tTstat_c\tvar_c\tp.value_c\t";
 			if(t_traitType == "binary"){
 				g_out.singleInGroup << "p.value.NA_c\t";		
@@ -2357,7 +2357,7 @@ bool openOutfile_single(std::string t_traitType, bool t_isImputation, bool isapp
                         g_out.single << "p.value.NA\tIs.SPA\t";
                 }
 
-                if(ptr_gSAIGEobj->m_isCondition){
+                if(g_model->m_isCondition){
                         g_out.single << "BETA_c\tSE_c\tTstat_c\tvar_c\tp.value_c\t";
 			if(t_traitType == "binary"){
 				g_out.single << "p.value.NA_c\t";
@@ -2529,31 +2529,31 @@ void writeOutfile_single(bool t_isMoreOutput,
 
 // [[Rcpp::export]]
 void set_flagSparseGRM_cur_SAIGE(bool t_flagSparseGRM_cur){
-	ptr_gSAIGEobj->set_flagSparseGRM_cur(t_flagSparseGRM_cur);
+	g_model->set_flagSparseGRM_cur(t_flagSparseGRM_cur);
 }
 
 // [[Rcpp::export]]
 void set_flagSparseGRM_cur_SAIGE_org(){
-	ptr_gSAIGEobj->set_flagSparseGRM_cur(ptr_gSAIGEobj->m_flagSparseGRM);
+	g_model->set_flagSparseGRM_cur(g_model->m_flagSparseGRM);
 }
 
 
 
 void set_varianceRatio(double MAC, bool isSingleVarianceRatio){
     bool hasVarRatio;
-    if(!ptr_gSAIGEobj->m_isFastTest){
-       ptr_gSAIGEobj->set_flagSparseGRM_cur(ptr_gSAIGEobj->m_flagSparseGRM);
+    if(!g_model->m_isFastTest){
+       g_model->set_flagSparseGRM_cur(g_model->m_flagSparseGRM);
        if(!isSingleVarianceRatio){
-         hasVarRatio = ptr_gSAIGEobj->assignVarianceRatio(MAC, ptr_gSAIGEobj->m_flagSparseGRM);
+         hasVarRatio = g_model->assignVarianceRatio(MAC, g_model->m_flagSparseGRM);
        }else{
-         ptr_gSAIGEobj->assignSingleVarianceRatio(ptr_gSAIGEobj->m_flagSparseGRM);
+         g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM);
        }
      }else{
-       ptr_gSAIGEobj->set_flagSparseGRM_cur(false);
+       g_model->set_flagSparseGRM_cur(false);
        if(!isSingleVarianceRatio){
-         hasVarRatio = ptr_gSAIGEobj->assignVarianceRatio(MAC, false);
+         hasVarRatio = g_model->assignVarianceRatio(MAC, false);
        }else{
-         ptr_gSAIGEobj->assignSingleVarianceRatio(false);
+         g_model->assignSingleVarianceRatio(false);
        }
      }
 }
