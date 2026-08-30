@@ -140,7 +140,7 @@ SAIGE.Marker = function(traitType,
     #print(timeoutput)
     ptm <- proc.time()
     print(ptm)
-    gc()
+    # (per-chunk gc() removed in Phase 4: it was the top frame of the marker-loop profile)
     #rm(resMarker)
 
 

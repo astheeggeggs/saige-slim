@@ -557,86 +557,57 @@ public:
    }
 		
 
+   // Phase 4: byte-level lookup decoder. Bit-identical to the former
+   // bit-serial loop (same float lookup values, same write positions); the
+   // former out->zeros() memset is dropped because every element is written.
+   // 2-bit code (b = bit0, a = bit1) -> genotype index 2-(a+b), 4 per byte.
+   struct ByteCodes {
+       unsigned char c[256][4];
+       ByteCodes(){
+           for(int v = 0; v < 256; v++){
+               for(int j = 0; j < 4; j++){
+                   int b = (v >> (2*j)) & 1;
+                   int a = (v >> (2*j+1)) & 1;
+                   c[v][j] = (unsigned char)(2 - (a + b));
+               }
+           }
+       }
+   };
+   static const ByteCodes& byteCodes(){ static const ByteCodes t; return t; }
+
    int Get_OneSNP_StdGeno(size_t SNPIdx, arma::fvec * out ){
-		//avoid large continuous memory usage
-                int indexOfVectorPointer = SNPIdx/numMarkersofEachArray;
-                int SNPIdxinVec = SNPIdx % numMarkersofEachArray;
-                ////////////////
-		//std::cout << "indexOfVectorPointer " << indexOfVectorPointer << std::endl;
- 		out->zeros(Nnomissing);
-		//std::cout << "m_size_of_esi " << m_size_of_esi << std::endl;
-		//std::cout << "SNPIdxinVec " << SNPIdxinVec << std::endl;
-		//std::cout << "genoVecofPointers[indexOfVectorPointer]->size() " << genoVecofPointers[indexOfVectorPointer]->size() << std::endl;
+		int indexOfVectorPointer = SNPIdx/numMarkersofEachArray;
+		int SNPIdxinVec = SNPIdx % numMarkersofEachArray;
+		out->set_size(Nnomissing);
+		size_t Start_idx = m_size_of_esi * SNPIdxinVec;
 
-
-
- 		size_t Start_idx = m_size_of_esi * SNPIdxinVec;
-
-		//std::cout << "Start_idx " << Start_idx << std::endl;
-		size_t ind= 0;
-		unsigned char geno1;
-		
 		float freq = alleleFreqVec[SNPIdx];
-		//cout << "Get_OneSNP_StdGeno here" << endl; 
 		float invStd = invstdvVec[SNPIdx];
+		float lut[3];
+		float mafVal2 = 2*freq;
+		lut[0] = (0-mafVal2)*invStd;
+		lut[1] = (1-mafVal2)*invStd;
+		lut[2] = (2-mafVal2)*invStd;
 
-		arma::fvec stdGenoLookUpArr(3);
-		setStdGenoLookUpArr(freq, invStd, stdGenoLookUpArr);
-//		std::cout << "freq " << freq << endl;
-//		std::cout << "invStd " << invStd << endl;
-
-		//setStdGenoLookUpArr(freq, invStd);
-		//std::cout << "stdGenoLookUpArr[0]: " << stdGenoLookUpArr[0] << std::endl;
-		//std::cout << "stdGenoLookUpArr[1]: " << stdGenoLookUpArr[1] << std::endl;
-		//std::cout << "stdGenoLookUpArr[2]: " << stdGenoLookUpArr[2] << std::endl;
-//		cout << "Get_OneSNP_StdGeno here2"  << endl;
-		for(size_t i=Start_idx; i< Start_idx+m_size_of_esi-1; i++){
-//			geno1 = genoVec[i];
-			geno1 = genoVecofPointers[indexOfVectorPointer]->at(i);
-
-			for(int j=0; j<4; j++){
-    			int b = geno1 & 1 ;
-    			geno1 = geno1 >> 1;
-    			int a = geno1 & 1 ;
-    			//(*out)[ind] = ((2-(a+b)) - 2*freq)* invStd;;
-    			(*out)[ind] = stdGenoLookUpArr(2-(a+b));
-//			std::cout << "a " << a << endl;
-//			std::cout << "b " << b << endl;
-//			std::cout << "(*out)[ind] " << (*out)[ind] << endl;
-			ind++;
-    			geno1 = geno1 >> 1;
-    			
-//    			if(ind >= Nnomissing){
-//				cout << "Get_OneSNP_StdGeno " << SNPIdx << endl; 
-//				cout << "Nnomissing " << Nnomissing << endl; 
-//				stdGenoLookUpArr.clear();
-//    				return 1;
-//    			}
-	    		}
+		const unsigned char* bytes = genoVecofPointers[indexOfVectorPointer]->data() + Start_idx;
+		const ByteCodes& bc = byteCodes();
+		float* o = out->memptr();
+		size_t nFull = Nnomissing / 4;
+		size_t rem = Nnomissing % 4;
+		size_t ind = 0;
+		for(size_t i = 0; i < nFull; i++){
+			const unsigned char* c = bc.c[bytes[i]];
+			o[ind]   = lut[c[0]];
+			o[ind+1] = lut[c[1]];
+			o[ind+2] = lut[c[2]];
+			o[ind+3] = lut[c[3]];
+			ind += 4;
 		}
-
-
-		size_t i = Start_idx+m_size_of_esi-1;
-                geno1 = genoVecofPointers[indexOfVectorPointer]->at(i);
-
-                for(int j=0; j<4; j++){
-                        int b = geno1 & 1 ;
-                        geno1 = geno1 >> 1;
-                        int a = geno1 & 1 ;
-                        (*out)[ind] = stdGenoLookUpArr(2-(a+b));
-                        ind++;
-                        geno1 = geno1 >> 1;
-
-                        if(ind >= Nnomissing){
-                                stdGenoLookUpArr.clear();
-                                return 1;
-                        }
-                }
-		//cout << "SNPIdx " << SNPIdx << endl; 
-
-		stdGenoLookUpArr.clear();
+		if(rem){
+			const unsigned char* c = bc.c[bytes[nFull]];
+			for(size_t k = 0; k < rem; k++) o[ind+k] = lut[c[k]];
+		}
 		return 1;
-				
  	}
 
 

@@ -1,0 +1,663 @@
+Loading required package: optparse
+R version 4.4.3 (2025-02-28)
+Platform: x86_64-apple-darwin13.4.0
+Running under: macOS 26.6.2
+
+Matrix products: default
+BLAS/LAPACK: /Users/dpalmer/Repositories/SAIGE/.pixi/envs/default/lib/libopenblasp-r0.3.30.dylib;  LAPACK version 3.12.0
+
+locale:
+[1] C.UTF-8/C.UTF-8/C.UTF-8/C/C.UTF-8/C.UTF-8
+
+time zone: Europe/London
+tzcode source: system (macOS)
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] optparse_1.8.2 SAIGE_1.5.2   
+
+loaded via a namespace (and not attached):
+[1] compiler_4.4.3        Matrix_1.7-6          tools_4.4.3          
+[4] Rcpp_1.1.2            grid_4.4.3            data.table_1.18.4    
+[7] RcppParallel_5.1.11-2 lattice_0.23-1       
+$seed
+[1] 1
+
+$plinkFile
+[1] "./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr"
+
+$bedFile
+[1] ""
+
+$bimFile
+[1] ""
+
+$famFile
+[1] ""
+
+$phenoFile
+[1] "./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt"
+
+$phenoCol
+[1] "y_binary"
+
+$traitType
+[1] "binary"
+
+$invNormalize
+[1] FALSE
+
+$covarColList
+[1] "x1,x2,a9,a10"
+
+$qCovarColList
+[1] "a9,a10"
+
+$sampleIDColinphenoFile
+[1] "IID"
+
+$tol
+[1] 0.02
+
+$maxiter
+[1] 20
+
+$tolPCG
+[1] 1e-05
+
+$maxiterPCG
+[1] 500
+
+$nThreads
+[1] 1
+
+$SPAcutoff
+[1] 2
+
+$numRandomMarkerforVarianceRatio
+[1] 30
+
+$skipModelFitting
+[1] FALSE
+
+$skipVarianceRatioEstimation
+[1] FALSE
+
+$memoryChunk
+[1] 2
+
+$tauInit
+[1] "0,0"
+
+$LOCO
+[1] FALSE
+
+$isLowMemLOCO
+[1] FALSE
+
+$traceCVcutoff
+[1] 0.0025
+
+$nrun
+[1] 30
+
+$ratioCVcutoff
+[1] 0.001
+
+$outputPrefix
+[1] "/Users/dpalmer/Repositories/SAIGE/harness/bench/prof_s1b1"
+
+$outputPrefix_varRatio
+[1] ""
+
+$IsOverwriteVarianceRatioFile
+[1] TRUE
+
+$sparseGRMFile
+[1] ""
+
+$sparseGRMSampleIDFile
+[1] ""
+
+$isCateVarianceRatio
+[1] FALSE
+
+$relatednessCutoff
+[1] 0
+
+$cateVarRatioMinMACVecExclude
+[1] "10,20.5"
+
+$cateVarRatioMaxMACVecInclude
+[1] "20.5"
+
+$isCovariateTransform
+[1] TRUE
+
+$isDiagofKinSetAsOne
+[1] FALSE
+
+$useSparseGRMtoFitNULL
+[1] FALSE
+
+$usePCGwithSparseGRM
+[1] FALSE
+
+$useSparseGRMforVarRatio
+[1] FALSE
+
+$minMAFforGRM
+[1] 0.01
+
+$maxMissingRateforGRM
+[1] 0.15
+
+$minCovariateCount
+[1] -1
+
+$includeNonautoMarkersforVarRatio
+[1] FALSE
+
+$FemaleOnly
+[1] FALSE
+
+$MaleOnly
+[1] FALSE
+
+$sexCol
+[1] ""
+
+$FemaleCode
+[1] "1"
+
+$MaleCode
+[1] "0"
+
+$isCovariateOffset
+[1] TRUE
+
+$SampleIDIncludeFile
+[1] ""
+
+$help
+[1] FALSE
+
+tauInit  is  0 0 
+cateVarRatioMinMACVecExclude  is  10 20.5 
+cateVarRatioMaxMACVecInclude  is  20.5 
+1  threads will be used  
+1000  samples have genotypes
+a9 a10 are categorical covariates
+formula is  y_binary~x1+x2+a9+a10 
+1000  samples have non-missing phenotypes
+1000  samples will be used for analysis
+    IID X.Intercept.          x1 x2 a91 a92 a101 a102 y_binary IndexPheno
+1   1a1            1  1.51178117  1   1   0    0    0        0          1
+113 1a2            1  0.38984324  1   1   0    1    0        0          2
+224 1a3            1 -0.62124058  1   0   0    1    0        0          3
+335 1a4            1 -2.21469989  1   1   0    1    0        0          4
+446 1a5            1  1.12493092  1   1   0    0    0        0          5
+557 1a6            1 -0.04493361  1   1   0    0    0        0          6
+    IndexGeno
+1           1
+113         2
+224         3
+335         4
+446         5
+557         6
+qr transformation has been performed on covariates
+colnames(data.new) is  y_binary minus1 x1 x2 a91 a92 a101 a102 
+out.transform$Param.transform$qrr:  7 7 
+[1] "isCovariateOffset=TRUE, so fixed effects coefficients won't be estimated."
+geno.g_minMACVarRatio 20
+geno.g_maxMACVarRatio -1
+Markers in the Plink file with MAF <  0.01  will be removed before constructing GRM
+Markers in the Plink file with missing rate >  0.15  will be removed before constructing GRM
+y_binary  is a binary trait
+[1] "formula.new"
+y_binary ~ 1
+<environment: 0x7fbaf636d190>
+[1] "head(data.new)"
+    y_binary minus1          x1         x2        a91         a92       a101
+1          0     -1 -1.50906738 -0.9445723 -1.1423374 -0.03116058 -0.7961688
+113        0     -1 -0.40405771 -0.9708608 -1.0851127 -0.01649437  1.3399560
+224        0     -1  0.59177046 -0.9945518  0.9714451  0.84472062  1.2762094
+335        0     -1  2.16118701 -1.0318886 -0.9522675  0.01755277  1.4469364
+446        0     -1 -1.12805409 -0.9536367 -1.1226060 -0.02610359 -0.7802791
+557        0     -1  0.02415905 -0.9810482 -1.0629368 -0.01081087 -0.7322274
+           a102    covoffset
+1   -0.35899208  1.555572774
+113  0.01645743  0.741612976
+224  0.06753213  0.003928598
+335  0.05052077 -1.186262432
+446 -0.35393268  1.269227320
+557 -0.33863269  0.403296926
+glm:
+
+Call:  glm(formula = formula.new, family = binomial, data = data.new, 
+    offset = covoffset)
+
+Coefficients:
+(Intercept)  
+     -2.525  
+
+Degrees of Freedom: 999 Total (i.e. Null);  999 Residual
+Null Deviance:	    576.8 
+Residual Deviance: 576.8 	AIC: 578.8
+
+Call:
+glm(formula = formula.new, family = binomial, data = data.new, 
+    offset = covoffset)
+
+Coefficients:
+            Estimate Std. Error z value Pr(>|z|)    
+(Intercept)  -2.5247     0.1106  -22.82   <2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 576.85  on 999  degrees of freedom
+Residual deviance: 576.85  on 999  degrees of freedom
+AIC: 578.85
+
+Number of Fisher Scoring iterations: 5
+
+Start fitting the NULL GLMM
+   user  system elapsed 
+  1.681   0.184   1.894 
+   user  system elapsed 
+  1.766   0.184   1.982 
+[1] "Start reading genotype plink file here"
+nbyte: 250
+nbyte: 250
+reserve: 32474736
+
+M: 128868, N: 1000
+setgeno mark1
+setgeno mark2
+110455 markers with MAF >= 0.01 and missing rate <= 0.15
+time: 2429.8
+[1] "Genotype reading is done"
+inital tau is  1 0 
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+Tau:
+[1] 1 0
+Fixed-effect coefficients:
+          [,1]
+[1,] -2.524673
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+Variance component estimates:
+[1] 1 0
+
+Iteration  1 1 0 :
+tau0_v1:  1 0 
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+Tau:
+[1] 1 0
+Fixed-effect coefficients:
+          [,1]
+[1,] -2.524673
+Updating fix effect coeffcieints took
+   user  system elapsed 
+  0.001   0.001   0.000 
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+iter from getPCG1ofSigmaAndVector 1
+Updating variance component estimate took
+   user  system elapsed 
+  3.256   0.044   3.742 
+[1] 0.0000000 0.9438252
+tau:  1 0.3360314 
+tau0:  1 0 
+
+Iteration  2 1 0.3360314 :
+tau0_v1:  1 0.3360314 
+iter from getPCG1ofSigmaAndVector 4
+iter from getPCG1ofSigmaAndVector 3
+Tau:
+[1] 1.0000000 0.3360314
+Fixed-effect coefficients:
+          [,1]
+[1,] -2.520359
+Updating fix effect coeffcieints took
+   user  system elapsed 
+  0.759   0.016   0.980 
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+Updating variance component estimate took
+   user  system elapsed 
+ 14.771   0.359  19.636 
+[1] 0.00000000 0.02120708
+tau:  1 0.3216595 
+tau0:  1 0.3360314 
+
+Iteration  3 1 0.3216595 :
+tau0_v1:  1 0.3216595 
+iter from getPCG1ofSigmaAndVector 4
+iter from getPCG1ofSigmaAndVector 3
+Tau:
+[1] 1.0000000 0.3216595
+Fixed-effect coefficients:
+          [,1]
+[1,] -2.526439
+Updating fix effect coeffcieints took
+   user  system elapsed 
+  1.312   0.015   1.360 
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+Updating variance component estimate took
+   user  system elapsed 
+ 16.930   0.142  17.451 
+[1] 0.00000000 0.01109626
+tau:  1 0.3291025 
+tau0:  1 0.3216595 
+
+Final  1 0.3291025 :
+iter from getPCG1ofSigmaAndVector 4
+iter from getPCG1ofSigmaAndVector 3
+Tau:
+[1] 1.0000000 0.3291025
+Fixed-effect coefficients:
+          [,1]
+[1,] -2.526634
+t_end_null - t_begin, fitting the NULL model without LOCO took
+   user  system elapsed 
+ 43.188   1.207  50.527 
+   user  system elapsed 
+ 45.071   1.420  52.659 
+t_end - t_begin, fitting the NULL model took
+   user  system elapsed 
+ 43.390   1.236  50.765 
+Start estimating variance ratios
+
+Family: binomial 
+Link function: logit 
+
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+iter from getPCG1ofSigmaAndVector 3
+length(MACvector):  110455 
+length(MACvector_forVarRatio):  850 
+Only one variance ratio will be estimated using randomly selected markers with MAC >= 20
+710 th marker in geno  1 
+MAC:  31 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  19 
+iter from getPCG1ofSigmaAndVector 3
+774 th marker in geno  1 
+MAC:  732 
+G0 0 0 0 0 1 0 0 1 0 0 
+CHR  21 
+iter from getPCG1ofSigmaAndVector 3
+416 th marker in geno  1 
+MAC:  139 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  11 
+iter from getPCG1ofSigmaAndVector 3
+392 th marker in geno  1 
+MAC:  50 
+G0 0 0 0 0 1 0 1 1 0 0 
+CHR  11 
+iter from getPCG1ofSigmaAndVector 3
+273 th marker in geno  1 
+MAC:  61 
+G0 1 0 0 0 0 0 0 0 0 0 
+CHR  8 
+iter from getPCG1ofSigmaAndVector 3
+349 th marker in geno  1 
+MAC:  84 
+G0 0 0 0 0 1 0 1 1 0 0 
+CHR  10 
+iter from getPCG1ofSigmaAndVector 3
+204 th marker in geno  1 
+MAC:  39 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  6 
+iter from getPCG1ofSigmaAndVector 3
+381 th marker in geno  1 
+MAC:  503 
+G0 1 1 2 2 1 0 2 1 1 1 
+CHR  10 
+iter from getPCG1ofSigmaAndVector 3
+297 th marker in geno  1 
+MAC:  458 
+G0 1 0 0 1 0 0 0 0 1 1 
+CHR  8 
+iter from getPCG1ofSigmaAndVector 3
+690 th marker in geno  1 
+MAC:  25 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  19 
+iter from getPCG1ofSigmaAndVector 3
+587 th marker in geno  1 
+MAC:  84 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  16 
+iter from getPCG1ofSigmaAndVector 3
+643 th marker in geno  1 
+MAC:  118 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  17 
+iter from getPCG1ofSigmaAndVector 3
+502 th marker in geno  1 
+MAC:  143 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  14 
+iter from getPCG1ofSigmaAndVector 3
+464 th marker in geno  1 
+MAC:  153 
+G0 1 0 1 0 0 0 1 0 0 0 
+CHR  12 
+iter from getPCG1ofSigmaAndVector 3
+480 th marker in geno  1 
+MAC:  48 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  13 
+iter from getPCG1ofSigmaAndVector 3
+818 th marker in geno  1 
+MAC:  864 
+G0 0 1 0 1 2 2 1 1 2 1 
+CHR  22 
+iter from getPCG1ofSigmaAndVector 3
+371 th marker in geno  1 
+MAC:  228 
+G0 0 0 0 0 1 0 1 0 0 0 
+CHR  10 
+iter from getPCG1ofSigmaAndVector 3
+823 th marker in geno  1 
+MAC:  39 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  22 
+iter from getPCG1ofSigmaAndVector 3
+575 th marker in geno  1 
+MAC:  53 
+G0 0 0 0 0 0 1 0 0 0 1 
+CHR  16 
+iter from getPCG1ofSigmaAndVector 3
+648 th marker in geno  1 
+MAC:  119 
+G0 0 0 0 0 1 0 0 0 0 0 
+CHR  17 
+iter from getPCG1ofSigmaAndVector 3
+231 th marker in geno  1 
+MAC:  40 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  7 
+iter from getPCG1ofSigmaAndVector 3
+289 th marker in geno  1 
+MAC:  105 
+G0 0 1 0 0 0 0 0 0 0 0 
+CHR  8 
+iter from getPCG1ofSigmaAndVector 3
+566 th marker in geno  1 
+MAC:  103 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  15 
+iter from getPCG1ofSigmaAndVector 3
+624 th marker in geno  1 
+MAC:  205 
+G0 0 1 0 0 1 1 0 1 1 0 
+CHR  17 
+iter from getPCG1ofSigmaAndVector 3
+484 th marker in geno  1 
+MAC:  20 
+G0 1 0 1 0 0 0 1 1 0 0 
+CHR  13 
+iter from getPCG1ofSigmaAndVector 3
+683 th marker in geno  1 
+MAC:  171 
+G0 0 0 0 0 1 1 0 1 1 1 
+CHR  18 
+iter from getPCG1ofSigmaAndVector 3
+550 th marker in geno  1 
+MAC:  107 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  15 
+iter from getPCG1ofSigmaAndVector 3
+622 th marker in geno  1 
+MAC:  535 
+G0 0 1 0 1 0 0 0 0 0 0 
+CHR  17 
+iter from getPCG1ofSigmaAndVector 3
+144 th marker in geno  1 
+MAC:  344 
+G0 0 0 0 0 1 1 1 1 0 0 
+CHR  4 
+iter from getPCG1ofSigmaAndVector 3
+45 th marker in geno  1 
+MAC:  79 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  2 
+iter from getPCG1ofSigmaAndVector 3
+CV for variance ratio estimate using  30  markers is  0.0002161374  <  0.001 
+varRatio_null 0.9437162 
+varRatio_null_noXadj 0.9327708 
+         V1          V2 V3
+1 0.9437162        null  1
+2 0.9327708 null_noXadj  1
+closed the plinkFile!

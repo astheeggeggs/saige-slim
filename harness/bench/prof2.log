@@ -1,0 +1,323 @@
+Loading required package: RhpcBLASctl
+R version 4.4.3 (2025-02-28)
+Platform: x86_64-apple-darwin13.4.0
+Running under: macOS 26.6.2
+
+Matrix products: default
+BLAS/LAPACK: /Users/dpalmer/Repositories/SAIGE/.pixi/envs/default/lib/libopenblasp-r0.3.30.dylib;  LAPACK version 3.12.0
+
+locale:
+[1] C.UTF-8/C.UTF-8/C.UTF-8/C/C.UTF-8/C.UTF-8
+
+time zone: Europe/London
+tzcode source: system (macOS)
+
+attached base packages:
+[1] parallel  stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+[1] data.table_1.18.4   optparse_1.8.2      RhpcBLASctl_0.23-42
+[4] SAIGE_1.5.2        
+
+loaded via a namespace (and not attached):
+[1] compiler_4.4.3        Matrix_1.7-6          tools_4.4.3          
+[4] Rcpp_1.1.2            grid_4.4.3            RcppParallel_5.1.11-2
+[7] lattice_0.23-1       
+$bedFile
+[1] "./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.bed"
+
+$bimFile
+[1] "./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.bim"
+
+$famFile
+[1] "./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.fam"
+
+$AlleleOrder
+[1] "alt-first"
+
+$idstoIncludeFile
+[1] ""
+
+$rangestoIncludeFile
+[1] ""
+
+$chrom
+[1] ""
+
+$is_imputed_data
+[1] FALSE
+
+$minMAF
+[1] 0
+
+$minMAC
+[1] 1
+
+$minGroupMAC_in_BurdenTest
+[1] 5
+
+$minInfo
+[1] 0
+
+$maxMissing
+[1] 0.15
+
+$impute_method
+[1] "best_guess"
+
+$LOCO
+[1] FALSE
+
+$GMMATmodelFile
+[1] "/Users/dpalmer/Repositories/SAIGE/harness/goldens/step1/binary_sparseGRM_a.rda"
+
+$varianceRatioFile
+[1] "/Users/dpalmer/Repositories/SAIGE/harness/goldens/step1/binary_sparseGRM_a.varianceRatio.txt"
+
+$SAIGEOutputFile
+[1] "/Users/dpalmer/Repositories/SAIGE/harness/bench/prof2.txt"
+
+$markers_per_chunk
+[1] 10000
+
+$groups_per_chunk
+[1] 100
+
+$is_output_moreDetails
+[1] FALSE
+
+$is_overwrite_output
+[1] TRUE
+
+$maxMAF_in_groupTest
+[1] "0.0001,0.001,0.01"
+
+$maxMAC_in_groupTest
+[1] "0"
+
+$annotation_in_groupTest
+[1] "lof,missense;lof,missense;lof;synonymous"
+
+$groupFile
+[1] ""
+
+$sparseGRMFile
+[1] ""
+
+$sparseGRMSampleIDFile
+[1] ""
+
+$relatednessCutoff
+[1] 0
+
+$sampleFile_male
+[1] ""
+
+$X_PARregion
+[1] ""
+
+$is_rewrite_XnonPAR_forMales
+[1] FALSE
+
+$MACCutoff_to_CollapseUltraRare
+[1] 10
+
+$cateVarRatioMinMACVecExclude
+[1] "10,20.5"
+
+$cateVarRatioMaxMACVecInclude
+[1] "20.5"
+
+$weights.beta
+[1] "1,25"
+
+$r.corr
+[1] 0
+
+$markers_per_chunk_in_groupTest
+[1] 100
+
+$condition
+[1] ""
+
+$SPAcutoff
+[1] 2
+
+$dosage_zerod_cutoff
+[1] 0.2
+
+$dosage_zerod_MAC_cutoff
+[1] 10
+
+$is_single_in_groupTest
+[1] FALSE
+
+$is_no_weight_in_groupTest
+[1] FALSE
+
+$is_output_markerList_in_groupTest
+[1] FALSE
+
+$is_Firth_beta
+[1] FALSE
+
+$pCutoffforFirth
+[1] 0.01
+
+$is_fastTest
+[1] FALSE
+
+$is_noadjCov
+[1] TRUE
+
+$max_MAC_for_ER
+[1] 4
+
+$nThreads
+[1] 1
+
+$subSampleFile
+[1] ""
+
+$help
+[1] FALSE
+
+[1] "opt$r.corr"
+[1] 0
+is_noadjCov  TRUE 
+is_fastTest  FALSE 
+dosage_zerod_cutoff  0.2 
+Any dosages <=  0.2  for genetic variants with MAC <=  10  are set to be 0.
+single-variant association test will be performed
+[1] "Leave-one-chromosome-out is not applied"
+P-values of genetic variants with MAC <=  4  will be calculated via effecient resampling.
+[1] "LOCO = FASLE and leave-one-chromosome-out is not applied"
+isSparseGRM is  FALSE 
+variance Ratio null is  0.9486613 0.9427139 
+variance Ratio null_noXadj is provided
+[1] "ratioVec_sparse"
+[1] -1
+[1] "ratioVec_null"
+[1] 0.9486613 0.9427139
+[1] "ratioVec_null_noXadj"
+[1] 0.9395565 0.9322730
+dosageFile type is  plink 
+allele order in the plink file is  alt-first .
+Reading bim file....
+Reading fam file....
+Setting position of samples in PLINK files....
+Number of all markers to test:	 128868 
+Number of markers in each chunk:	 10000 
+Number of chunks for all markers:	 22 
+(2026-08-30 19:31:58.88926) ---- Analyzing Chunk 1/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  2.069   0.240   2.458 
+(2026-08-30 19:31:59.238862) ---- Analyzing Chunk 2/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  2.433   0.260   2.851 
+(2026-08-30 19:31:59.640785) ---- Analyzing Chunk 3/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  2.799   0.289   3.260 
+(2026-08-30 19:32:00.046985) ---- Analyzing Chunk 4/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  3.151   0.310   3.645 
+(2026-08-30 19:32:00.42112) ---- Analyzing Chunk 5/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  3.469   0.323   3.978 
+(2026-08-30 19:32:00.753487) ---- Analyzing Chunk 6/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  3.793   0.339   4.321 
+(2026-08-30 19:32:01.100483) ---- Analyzing Chunk 7/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  4.126   0.353   4.672 
+(2026-08-30 19:32:01.451076) ---- Analyzing Chunk 8/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  4.457   0.367   5.021 
+(2026-08-30 19:32:01.797183) ---- Analyzing Chunk 9/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  4.777   0.381   5.359 
+(2026-08-30 19:32:02.139572) ---- Analyzing Chunk 10/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  5.092   0.395   5.691 
+(2026-08-30 19:32:02.470281) ---- Analyzing Chunk 11/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  5.420   0.409   6.036 
+(2026-08-30 19:32:02.811308) ---- Analyzing Chunk 12/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  5.760   0.426   6.405 
+(2026-08-30 19:32:03.184603) ---- Analyzing Chunk 13/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  6.071   0.439   6.732 
+(2026-08-30 19:32:03.506078) ---- Analyzing Chunk 14/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  6.391   0.452   7.067 
+(2026-08-30 19:32:03.839836) ---- Analyzing Chunk 15/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  6.692   0.464   7.381 
+(2026-08-30 19:32:04.154602) ---- Analyzing Chunk 16/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  6.985   0.476   7.689 
+(2026-08-30 19:32:04.461299) ---- Analyzing Chunk 17/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  7.288   0.488   8.005 
+(2026-08-30 19:32:04.779731) ---- Analyzing Chunk 18/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  7.595   0.501   8.329 
+(2026-08-30 19:32:05.108185) ---- Analyzing Chunk 19/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  7.916   0.514   8.670 
+(2026-08-30 19:32:05.444839) ---- Analyzing Chunk 20/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  8.237   0.529   9.008 
+(2026-08-30 19:32:05.789384) ---- Analyzing Chunk 21/22: chrom  ---- 
+5858 markers were tested.
+write to output
+   user  system elapsed 
+  8.586   0.545   9.430 
+(2026-08-30 19:32:06.208726) ---- Analyzing Chunk 22/22: chrom  ---- 
+5850 markers were tested.
+write to output
+   user  system elapsed 
+  8.895   0.557   9.754 
+[1] "Analysis done! The results have been saved to '/Users/dpalmer/Repositories/SAIGE/harness/bench/prof2.txt'."

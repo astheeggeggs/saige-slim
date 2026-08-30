@@ -561,7 +561,7 @@ SAIGE.Region = function(mu,
             }#for(j in 1:length(annolist)){
             
             
-            gc()
+            # (per-iteration gc() removed in Phase 4: it dominated the profile; R collects on demand)
             #}
             
             
@@ -835,7 +835,7 @@ SAIGE.Region = function(mu,
                 }#for(j in 1:length(annolist)){
                 
                 
-                gc()
+            # (per-iteration gc() removed in Phase 4: it dominated the profile; R collects on demand)
                 #}
                 
                 
@@ -996,7 +996,7 @@ SAIGE.Region = function(mu,
           if (regionTestType != "BURDEN") {
             rm(resultDF)
           }
-          gc()
+            # (per-iteration gc() removed in Phase 4: it dominated the profile; R collects on demand)
           
         }#if(length(noNAIndices) > 0){
       } else {
@@ -1140,7 +1140,7 @@ SAIGE.Region = function(mu,
         OutList.all = NULL
         Output_MarkerList.all = NULL
         cth_chunk_to_output = cth_chunk_to_output + 1
-        gc()
+            # (per-iteration gc() removed in Phase 4: it dominated the profile; R collects on demand)
       }
       
       
