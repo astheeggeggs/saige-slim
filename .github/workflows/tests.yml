@@ -1,0 +1,33 @@
+# CI for the strip branch. Runs the standard tier (unit + comparator
+# self-tests + step-2 end-to-end) in numeric-comparison mode: the committed
+# goldens were generated on macOS, so byte comparison is not valid on the
+# ubuntu runners — parsed tables at 1e-5 relative tolerance are (they absorb
+# platform float noise while catching real drift; see tests/testthat/helper-saige.R).
+# The full tier (step-1 regeneration, determinism, negative control) is
+# same-platform only and stays local: bash harness/run_tests.sh full
+#
+# NOTE: authored offline; not yet exercised on an actual runner.
+name: tests
+on:
+  push:
+    branches: [strip]
+  pull_request:
+    branches: [strip]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.51.0
+          cache: false # pixi.lock is deliberately not committed (see .gitignore)
+      - name: Install environment
+        run: |
+          pixi install
+          pixi run Rscript -e 'install.packages("lintools", repos="https://cloud.r-project.org")'
+      - name: Build and install SAIGE
+        run: pixi run R CMD INSTALL .
+      - name: Run tests (standard tier, numeric compare)
+        run: SAIGE_COMPARE_MODE=numeric bash harness/run_tests.sh standard

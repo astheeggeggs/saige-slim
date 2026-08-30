@@ -42,7 +42,30 @@ PGEN reader). `src/Makevars` still hardcodes `-I../.pixi/envs/default/include`,
 so the in-tree `.pixi/` env is required. `make` at the repo root runs the
 Docker build.
 
-## Harness (the test suite until Phase 2 formalizes it)
+## Test suite (Phase 2)
+
+`bash harness/run_tests.sh [fast|standard|full]` — testthat suite under
+`tests/testthat/` (sources the pinned env itself):
+- **fast** (seconds): unit tests over the R seams (Get_Variance_Ratio,
+  ReadModel, Geno.R, group-file parsing, Util.R), R-vs-C++ CCT reconciliation,
+  data-invariant checks over the goldens (score-test algebra, allele
+  accounting, ACAT recomputation of the Cauchy rows), and comparator
+  self-tests (the suite's own null + positive controls in
+  `test-meta-comparators.R`).
+- **standard** (~4 min, default): fast + the four PLINK step-2 CLI runs
+  compared against `harness/goldens/step2/`.
+- **full** (~20+ min, same-platform only): standard + full golden regeneration,
+  step-1 determinism double-run, permuted-phenotype negative control.
+
+`SAIGE_COMPARE_MODE=numeric` switches step-2 comparison from byte-exact to
+parsed-table tolerance (1e-5 rel) — required off the golden-generating
+platform; `.github/workflows/tests.yml` uses it. The suite's detection power
+is drill-verified: a planted 0.1% variance-ratio perturbation makes the
+standard tier fail, and reverting restores green.
+Characterization tests pin ledger bugs (#13-#15) — if one "fails" after a fix,
+update the ledger and the test together in the dedicated fix phase.
+
+## Harness (golden generation; the test suite drives comparison)
 
 - `source harness/env.sh` before ANY run — pins
   `RCPP_PARALLEL_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1`.
