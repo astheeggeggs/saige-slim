@@ -39,7 +39,7 @@ SAIGE.Marker = function(traitType,
   }
 
   ## set up an object for genotype
-  if(genoType == "plink" || genoType == "pgen"){
+  if(genoType == "plink"){
       #markerInfo = objGeno$markerInfo
     if(LOCO){
       genoIndex = genoIndex[which(CHROM == chrom)]
@@ -294,7 +294,7 @@ if(FALSE){
 #time_left = system.time({
 
 
-    if(genoType == "plink" || genoType == "pgen"){	
+    if(genoType == "plink"){	
       tempList = genoIndexList[[i]]
       genoIndex = as.character(format(tempList$genoIndex, scientific = FALSE))
       tempChrom = tempList$chrom

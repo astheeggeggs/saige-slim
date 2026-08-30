@@ -31,7 +31,6 @@ checkGenoInput = function(bgenFile = "",
                  bedFile="",
                  bimFile="",
                  famFile="",
-                 pgenPrefix="",
 		 sampleInModel = NULL){
    
     if(is.null(sampleInModel)){
@@ -95,11 +94,6 @@ checkGenoInput = function(bgenFile = "",
 	Check_File_Exist(bimFile, "bimFile")
 	Check_File_Exist(famFile, "famFile")
 	dosageFileType = "plink"
-    } else if(pgenPrefix != ""){
-        Check_File_Exist(paste0(pgenPrefix, ".pgen"), "pgen file (prefix + .pgen)")
-        Check_File_Exist(paste0(pgenPrefix, ".psam"), "psam file (prefix + .psam)")
-        Check_File_Exist(paste0(pgenPrefix, ".pvar"), "pvar file (prefix + .pvar)")
-        dosageFileType = "pgen"
     }
     
     cat("dosageFile type is ", dosageFileType, "\n")
@@ -138,7 +132,6 @@ setGenoInput = function(bgenFile = "",
                  bedFile="",
                  bimFile="",
                  famFile="",
-                 pgenPrefix="",
                  idstoIncludeFile = "",
                  rangestoIncludeFile = "",
                  chrom = "",
@@ -158,7 +151,6 @@ setGenoInput = function(bgenFile = "",
                  bedFile = bedFile,
                  bimFile = bimFile,
                  famFile = famFile,
-                 pgenPrefix = pgenPrefix,
 		 sampleInModel = sampleInModel)
 
   #time_geno_1 = proc.time()
@@ -197,33 +189,6 @@ setGenoInput = function(bgenFile = "",
     setPLINKobjInCPP(bimFile, famFile, bedFile, sampleInModel, AlleleOrder)
   }
 
-  ########## ----------  PGEN format ---------- ##########
-  
-  if(dosageFileType == "pgen"){
-    if(is.null(AlleleOrder)) AlleleOrder = "ref-first"
-    if(AlleleOrder != "ref-first"){
-	stop("genotype is in pgen, please set AlleleOrder=ref-first\n")
-    }
-
-    pgenFile = paste0(pgenPrefix, ".pgen")
-    psamFile = paste0(pgenPrefix, ".psam")
-    pvarFile = paste0(pgenPrefix, ".pvar")
-
-    markerInfo = data.table::fread(pvarFile, header = T)
-    names(markerInfo) = gsub('#CHROM', 'CHROM', names(markerInfo))
-    # columns are 'CHROM', 'POS', 'ID', 'REF', 'ALT'
-markerInfo[, ID := paste(CHROM, POS, REF, ALT, sep = ":")]
-    markerInfo$genoIndex = 1:nrow(markerInfo) - 1  # -1 is to convert 'R' to 'C++' 
-    markerInfo$genoIndex_prev = rep(0, length(markerInfo$genoIndex))
-    if(chrom != ""){
-      markerInfo = markerInfo[which(markerInfo[, "CHROM"] == chrom), ]
-    }
-    markerInfo[,REF:=NULL]
-    markerInfo[,ALT:=NULL]
-    setkeyv(markerInfo, c("ID"))
-    setPGENobjInCPP(pgenFile, psamFile, pvarFile, sampleInModel)
-  }
-  
   ########## ----------  BGEN format ---------- ##########
   
   if(dosageFileType == "bgen"){
@@ -450,7 +415,7 @@ if(FALSE){
   #cat("Based on the 'GenoFile' and 'GenoFileIndex',", genoType, "format is used for genotype data.\n")
 
   if(anyInclude){
-   if(dosageFileType == "plink" | dosageFileType == "pgen"){	  
+   if(dosageFileType == "plink"){
     markerInfo = subset(markerInfo, ID %in% markersInclude)
    }
   }
