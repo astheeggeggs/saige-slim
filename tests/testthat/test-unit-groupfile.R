@@ -163,3 +163,17 @@ test_that("detail=FALSE keeps the legacy two-element return for every format", {
   expect_identical(checkGroupFile(f2),
                    list(nRegions = 2, is_weight_included = TRUE))
 })
+
+test_that("negative weights are rejected only in multi-weight mode", {
+  # K = 1: historical behavior preserved -- weights were never sign-checked
+  # upstream (they enter only multiplicatively; no ACAT-V at K = 1)
+  f1 <- multiweight_groupfile("weight", value = "-1")
+  expect_identical(checkGroupFile(f1),
+                   list(nRegions = 2, is_weight_included = TRUE))
+
+  # K > 1: ACAT-V hands these to CCT as Cauchy combination weights, which
+  # stop()s mid-run on a negative -- so the parser fails fast with location
+  f2 <- multiweight_groupfile(c("weight:CADD", "weight:REVEL"), value = "-1")
+  expect_error(checkGroupFile(f2),
+               "Negative weight values in weight set 'CADD' for region GENE1")
+})

@@ -216,6 +216,14 @@ checkGroupFile<-function(groupFile, detail = FALSE){
         if(anyNA(weightValues)){
           stop("Error! Non-numeric weight values in weight set '", weightSetNames[k], "' for region ", geneID, "\n")
         }
+        #multi-weight mode only (K > 1): ACAT-V uses these values as Cauchy
+        #combination weights, and CCT stop()s mid-run on any negative weight.
+        #Fail fast at parse time with the file location instead. K <= 1 files
+        #keep the historical behavior (weights enter only multiplicatively
+        #and were never sign-checked upstream).
+        if(nWeightSets > 1 && any(weightValues < 0)){
+          stop("Error! Negative weight values in weight set '", weightSetNames[k], "' for region ", geneID, ": weights must be non-negative in multi-weight mode\n")
+        }
       }
     }
    nregion = nregion + 1
@@ -396,6 +404,28 @@ get_SKAT_pvalue = function(Score, Phi, r.corr, regionTestType){
                 }
 		return(list(Pvalue_SKATO = Pvalue[1], Pvalue_Burden = Pvalue[3], Pvalue_SKAT = Pvalue[2], BETA_Burden = BETA_Burden, SE_Burden = SE_Burden))
 
+}
+
+#ACAT-V for one (annotation, max_MAF, weight set) cell: the Cauchy
+#combination of the single-variant p-values of the markers in that cell,
+#weighted by that weight set's marker weights (the same AnnoWeights the
+#SKAT/Burden statistics use). Markers with a missing p-value are dropped, as
+#in get_CCT_pvalue; markers with weight 0 contribute nothing to this set and
+#are dropped too (an all-zero weight vector would make CCT's normalisation
+#NaN and abort the run); NA is returned when nothing is left. p-values that
+#underflowed double precision (exp(log p) == 0 for p < ~1e-308; CCT's
+#small-p 1/p branch also overflows on denormals) are clamped to the smallest
+#normal double, so extreme rows report a tiny nonzero ACAT-V instead of
+#exactly 0. Only reached in multi-weight mode (K > 1) -- the single-weight
+#schema has no ACAT-V column.
+get_ACATV_pvalue = function(pvalue, weights){
+   keep = which(!is.na(pvalue) & weights > 0)
+   if(length(keep) > 0){
+     acatvpval = CCT(pmax(pvalue[keep], .Machine$double.xmin), weights[keep])
+   }else{
+     acatvpval = NA
+   }
+   return(acatvpval)
 }
 
 get_CCT_pvalue = function(pvalue){

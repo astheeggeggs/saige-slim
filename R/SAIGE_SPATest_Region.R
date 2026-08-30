@@ -128,6 +128,34 @@ region_postprocess = function(outList,
                               is_single_in_groupTest,
                               is_rerun,
                               resultDF_carryover = NULL) {
+  # ---- weight-set layout (jmr decode) --------------------------------------
+  # Multi-weight mode (K > 1) is signalled by WEIGHT being the q0 x K matrix
+  # built in SAIGE.getRegionList_new. The legacy shapes -- the c(0) sentinel
+  # of an unweighted group file and the collapsed single-set numeric vector --
+  # are K = 1, and every expression below then reduces to the literal
+  # single-weight code (same objects, same arithmetic, same bytes).
+  # C++ writes every (anno, max_MAF)-indexed vector weight-fastest with the
+  # normative 0-based index jmr = j*q_maf*q_weight + m*q_weight + r (see
+  # src/Main.cpp mainRegionInCPP). The 1-based R form of that index is
+  #   jm  = (j - 1)*length(maxMAFlist) + m
+  #   jmr = (jm - 1)*K + r
+  # which at K = 1 (so r = 1) is jmr == jm, the legacy index.
+  nWeightSets = if (is.matrix(WEIGHT)) ncol(WEIGHT) else 1L
+  isMultiWeight = nWeightSets > 1
+  weightNames = if (isMultiWeight) {
+    nm = colnames(WEIGHT)
+    if (is.null(nm)) paste0("W", seq_len(nWeightSets)) else nm
+  } else {
+    NULL
+  }
+  # Carry-forward cache for the m > maxMAF0 branch, one slot per weight set;
+  # at K = 1 this is the single legacy `resultDF` wrapped in a 1-element list
+  # (exactly what the caller passed before).
+  resultDFList = if (!is.null(resultDF_carryover)) {
+    resultDF_carryover
+  } else {
+    vector("list", nWeightSets)
+  }
   if (!is.null(resultDF_carryover)) {
     resultDF = resultDF_carryover[[1]]
   }
@@ -140,7 +168,16 @@ region_postprocess = function(outList,
     if (is_rerun) {
       annoMAFIndicatorMat = outList$annoMAFIndicatorMat
     }
-    if (sum(WEIGHT) > 0) {
+    if (isMultiWeight) {
+      #per-set weights (design D2): the surviving rare markers carry set r's
+      #group-file weights and every collapsed ultra-rare pseudo-marker carries
+      #1, because C++ already baked w_r into the ultra-rare collapse.
+      #outList$numofUR is q_anno*q_maf*K, so each vector is q0 + q_anno_maf_weight
+      #long -- one entry per row of the marker-level output, as at K = 1.
+      AnnoWeightsList = lapply(seq_len(nWeightSets), function(r) {
+        c(WEIGHT[, r], rep(1, outList$numofUR))
+      })
+    } else if (sum(WEIGHT) > 0) {
       AnnoWeights = c(WEIGHT, rep(1, outList$numofUR))
     }
   }
@@ -190,50 +227,76 @@ region_postprocess = function(outList,
     MAFVec = outList$MAFVec[noNAIndices]
     #AnnoWeights = dbeta(MAFVec,1,25)
     
-    if (sum(WEIGHT) > 0) {
+    if (isMultiWeight) {
+      AnnoWeightsList = lapply(AnnoWeightsList, function(w) w[noNAIndices])
+    } else if (sum(WEIGHT) > 0) {
       #AnnoWeights = AnnoWeights[varTestedIndices]
       AnnoWeights = AnnoWeights[noNAIndices]
     } else {
       AnnoWeights = dbeta(MAFVec, 1, 25)
     }
-    weightMat = AnnoWeights %*% t(AnnoWeights)
-    
-    
-    if (isCondition) {
-      weightMat_G1_G2 = AnnoWeights %*% t(outList$G2_Weight_cond)
+
+    if (isMultiWeight) {
+      #P1Mat/P2Mat rows -- and hence VarMat -- are unweighted, so each set
+      #applies its own weights here. Only the (cheap) score vectors are
+      #materialised per set; the weighted variance sub-matrix is formed inside
+      #the loop on the cell's markers, since
+      #  (VarMat * w w')[pos, pos] == VarMat[pos, pos] * w[pos] w[pos]'
+      #element for element (same two multiplications in the same order).
+      wStatVecList = lapply(AnnoWeightsList, function(w) StatVec * w)
+    } else {
+      weightMat = AnnoWeights %*% t(AnnoWeights)
+
+
+      if (isCondition) {
+        weightMat_G1_G2 = AnnoWeights %*% t(outList$G2_Weight_cond)
+      }
+      wStatVec = StatVec * AnnoWeights
+
+      wadjVarSMat = outList$VarMat * weightMat
+
+      if (isCondition) {
+        wStatVec_cond = wStatVec - outList$TstatAdjCond
+        wadjVarSMat_cond = wadjVarSMat - outList$VarMatAdjCond
+      }
     }
-    wStatVec = StatVec * AnnoWeights
-    
-    wadjVarSMat = outList$VarMat * weightMat
-    
-    if (isCondition) {
-      wStatVec_cond = wStatVec - outList$TstatAdjCond
-      wadjVarSMat_cond = wadjVarSMat - outList$VarMatAdjCond
-    }
-    
+
     #gc()
     
     annoMAFIndVec = c()
     for (j in 1:length(annolistsub)) {
       AnnoName = annolistsub[j]
       maxMAF0 = outList$q_maf_for_annoVec[j]
-      isPolyRegion = TRUE
+      #one flag per weight set; at K = 1 this is the legacy scalar isPolyRegion
+      isPolyRegionVec = rep(TRUE, nWeightSets)
       for (m in 1:length(maxMAFlist)) {
         jm = (j - 1) * (length(maxMAFlist)) + m
         maxMAFName = maxMAFlist[m]
+        #rows are (anno x max_MAF x weight set), weight-innermost
+        for (r in 1:nWeightSets) {
+        jmr = (jm - 1) * nWeightSets + r   #K = 1, r = 1 -> jmr == jm
+        if (isMultiWeight) {
+          AnnoWeights = AnnoWeightsList[[r]]
+          wStatVec = wStatVecList[[r]]
+        }
         if (m <= maxMAF0) {
 
-		
 
-          tempPos = which(annoMAFIndicatorMat[, jm] == 1)
+
+          tempPos = which(annoMAFIndicatorMat[, jmr] == 1)
           if (length(tempPos) > 0) {
-            isPolyRegion = TRUE
-            annoMAFIndVec = c(annoMAFIndVec, jm)
-            Phi = wadjVarSMat[tempPos, tempPos, drop = F]
+            isPolyRegionVec[r] = TRUE
+            annoMAFIndVec = c(annoMAFIndVec, jmr)
+            Phi = if (isMultiWeight) {
+              outList$VarMat[tempPos, tempPos, drop = F] *
+                (AnnoWeights[tempPos] %*% t(AnnoWeights[tempPos]))
+            } else {
+              wadjVarSMat[tempPos, tempPos, drop = F]
+            }
             Score = wStatVec[tempPos]
             if (traitType == "binary") {
               p.new = adjPVec[tempPos]
-              g.sum = outList$genoSumMat[, jm]
+              g.sum = outList$genoSumMat[, jmr]
               q.sum <- sum(outList$gyVec[tempPos] * AnnoWeights[tempPos])
               mu.a = mu
               
@@ -250,6 +313,33 @@ region_postprocess = function(outList,
 
             }
             groupOutList = get_SKAT_pvalue(Score, Phi, r.corr, regionTestType)
+            if (isMultiWeight) {
+              #additive schema (design D3): Pvalue keeps its SKAT-O meaning,
+              #the Weight label sits right after max_MAF, and the two omnibus
+              #columns sit right after Pvalue_SKAT. None of them exist at K = 1.
+              #ACAT-V combines this cell's single-variant p-values with set r's
+              #weights; ACAT-O is the Cauchy combination of (ACAT-V, Burden,
+              #SKAT) for this row.
+              Pvalue_ACATV = get_ACATV_pvalue(exp(adjPVec[tempPos]), AnnoWeights[tempPos])
+              Pvalue_ACATO = get_CCT_pvalue(c(
+                Pvalue_ACATV,
+                groupOutList$Pvalue_Burden,
+                groupOutList$Pvalue_SKAT
+              ))
+              resultDF = data.frame(
+                Region = regionName,
+                Group = AnnoName,
+                max_MAF = maxMAFName,
+                Weight = weightNames[r],
+                Pvalue = groupOutList$Pvalue_SKATO,
+                Pvalue_Burden = groupOutList$Pvalue_Burden,
+                Pvalue_SKAT = groupOutList$Pvalue_SKAT,
+                Pvalue_ACATV = Pvalue_ACATV,
+                Pvalue_ACATO = Pvalue_ACATO,
+                BETA_Burden = groupOutList$BETA_Burden,
+                SE_Burden = groupOutList$SE_Burden
+              )
+            } else {
             resultDF = data.frame(
               Region = regionName,
               Group = AnnoName,
@@ -260,6 +350,7 @@ region_postprocess = function(outList,
               BETA_Burden = groupOutList$BETA_Burden,
               SE_Burden = groupOutList$SE_Burden
             )
+            }
 
             if (isCondition) {
               if (traitType == "binary") {
@@ -296,24 +387,31 @@ region_postprocess = function(outList,
               resultDF$SE_Burden_cond = groupOutList_cond$SE_Burden
             }#if(isCondition){
             pval.Region = rbind.data.frame(pval.Region, resultDF)
-            
+            resultDFList[[r]] = resultDF
+
           } else {
             #if(length(tempPos) > 0){
-            isPolyRegion = FALSE
+            isPolyRegionVec[r] = FALSE
           }
-          
+
         } else {
           #if(m <= maxMAF0){
-          if (isPolyRegion) {
-            annoMAFIndVec = c(annoMAFIndVec, jm)
+          if (isPolyRegionVec[r]) {
+            annoMAFIndVec = c(annoMAFIndVec, jmr)
+            #this max_MAF cutoff adds no marker, so set r's last tested row is
+            #re-emitted (its Weight label is already set r's own)
+            resultDF = resultDFList[[r]]
             resultDF$Region = regionName
             resultDF$Group = AnnoName
             resultDF$max_MAF = maxMAFName
             pval.Region = rbind.data.frame(pval.Region, resultDF)
+            resultDFList[[r]] = resultDF
             #pval.Region_temp = rbind.data.frame(pval.Region_temp, resultDF)
           }
         }#if(m <= maxMAF0){
-        
+
+        }#for(r in 1:nWeightSets){
+
       }#for(m in 1:length(maxMAFlist)){
     }#for(j in 1:length(annolist)){
     
@@ -335,10 +433,18 @@ region_postprocess = function(outList,
       pval.Region$Number_ultra_rare = outList$NumUltraRare_GroupVec[annoMAFIndVec]
     }
     
-    if (length(annolistsub) > 1 | length(maxMAFlist) > 1) {
+    if (length(annolistsub) > 1 | length(maxMAFlist) > 1 | isMultiWeight) {
+      if (is.null(pval.Region)) {
+      #Degenerate corner: run_core was TRUE (the region has rare/ultra-rare
+      #carriers) but no (anno, max_MAF, weight set) cell emitted a row --
+      #e.g. every flagged marker's p-value came back NA, or a weighted URV
+      #collapse produced an all-zero pseudo-genotype. ncol(NULL) is NULL, so
+      #the named construction below would error; reproduce the legacy
+      #construction verbatim instead (every get_CCT_pvalue(NULL) is NA and
+      #rbind(NULL, cctVec) is a 1-row character matrix), so the run continues
+      #exactly as at HEAD. Multi-weight mode reuses the same degenerate row.
       cctpval_Burden = get_CCT_pvalue(pval.Region$Pvalue_Burden)
       if (regionTestType != "BURDEN") {
-        #print(pval.Region$Pvalue)
         cctpval = get_CCT_pvalue(pval.Region$Pvalue)
         cctpval_SKAT = get_CCT_pvalue(pval.Region$Pvalue_SKAT)
         cctVec = c(
@@ -361,7 +467,6 @@ region_postprocess = function(outList,
       }
       if (isCondition) {
         cctpval_Burden = get_CCT_pvalue(pval.Region$Pvalue_Burden_cond)
-        
         if (regionTestType != "BURDEN") {
           cctpval = get_CCT_pvalue(pval.Region$Pvalue_cond)
           cctpval_SKAT = get_CCT_pvalue(pval.Region$Pvalue_SKAT_cond)
@@ -373,7 +478,6 @@ region_postprocess = function(outList,
                      NA)
         } else {
           cctVec = c(cctVec, cctpval_Burden, NA, NA)
-          
         }
       }
       cctVec = c(cctVec, NA)
@@ -381,8 +485,53 @@ region_postprocess = function(outList,
         cctVec = c(cctVec, NA, NA)
       }
       cctVec = c(cctVec, NA, NA)
-      
       pval.Region = rbind(pval.Region, cctVec)
+      } else {
+      #Exactly ONE pooled Cauchy row per region, combining every
+      #(anno x max_MAF x weight set) row of the region. NOTE on the names:
+      #rbind.data.frame IGNORES the names of an atomic-vector row and binds
+      #purely positionally -- the names on cctRow document intent, they are
+      #NOT load-bearing. The bytes are correct because names(cctRow) is
+      #assigned from colnames(pval.Region) IN ORDER, so list order == column
+      #order; never reorder these fields and never add one via $<- (a new
+      #name appends at the END of the list, silently shifting every later
+      #column). unlist() reproduces the legacy c() coercion (every field
+      #becomes character, which promotes the whole frame -- the golden bytes
+      #depend on that).
+      cctRow = as.list(rep(NA, ncol(pval.Region)))
+      names(cctRow) = colnames(pval.Region)
+      cctRow$Region = regionName
+      cctRow$Group = "Cauchy"
+      cctpval_Burden = get_CCT_pvalue(pval.Region$Pvalue_Burden)
+      cctRow$Pvalue_Burden = cctpval_Burden
+      if (regionTestType != "BURDEN") {
+        #print(pval.Region$Pvalue)
+        cctpval = get_CCT_pvalue(pval.Region$Pvalue)
+        cctpval_SKAT = get_CCT_pvalue(pval.Region$Pvalue_SKAT)
+        cctRow$Pvalue = cctpval
+        cctRow$Pvalue_SKAT = cctpval_SKAT
+        if (isMultiWeight) {
+          cctRow$Pvalue_ACATV = get_CCT_pvalue(pval.Region$Pvalue_ACATV)
+          cctRow$Pvalue_ACATO = get_CCT_pvalue(pval.Region$Pvalue_ACATO)
+        }
+      }
+      if (isCondition) {
+        #NOTE (upstream behavior, preserved): these overwrite the unconditional
+        #values, so the cctpval returned for the fastTest decision is the
+        #conditional one
+        cctpval_Burden = get_CCT_pvalue(pval.Region$Pvalue_Burden_cond)
+        cctRow$Pvalue_Burden_cond = cctpval_Burden
+
+        if (regionTestType != "BURDEN") {
+          cctpval = get_CCT_pvalue(pval.Region$Pvalue_cond)
+          cctpval_SKAT = get_CCT_pvalue(pval.Region$Pvalue_SKAT_cond)
+          cctRow$Pvalue_cond = cctpval
+          cctRow$Pvalue_SKAT_cond = cctpval_SKAT
+        }
+      }
+
+      pval.Region = rbind(pval.Region, unlist(cctRow))
+      }#if (is.null(pval.Region)) ... else
     } else {
       if (!is_rerun) {
         cctpval = 1
@@ -396,6 +545,9 @@ region_postprocess = function(outList,
   }
   if (exists("resultDF", inherits = FALSE)) {
     ret$resultDF = resultDF
+  }
+  if (any(!vapply(resultDFList, is.null, logical(1)))) {
+    ret$resultDFList = resultDFList
   }
   return(ret)
 }
@@ -518,6 +670,49 @@ SAIGE.Region = function(mu,
     cat("No weights are used in the group test\n")
   }
 
+  # Number of weight sets actually handed to the test engine: a group file with
+  # 0 or 1 weight lines (and the is_no_weight_in_groupTest all-ones vector) is
+  # the legacy single-set path.
+  nWeightSetsUsed = if (is_no_weight_in_groupTest) 1L else max(1L, nWeightSets)
+  isMultiWeightRun = nWeightSetsUsed > 1
+  if (isMultiWeightRun) {
+    cat(nWeightSetsUsed, " weight sets are used in the group test: ",
+        paste(weightSetNames, collapse = ", "), "\n")
+    if (regionTestType == "BURDEN") {
+      stop(
+        "Multiple weight sets (",
+        nWeightSetsUsed,
+        " weight lines in the group file) are not yet supported for the BURDEN test (--r.corr=1); the BURDEN output writer gains the Weight column in a later commit. Please use --r.corr=0 or a group file with a single weight line.\n"
+      )
+    }
+    if (isCondition) {
+      stop(
+        "Multiple weight sets (",
+        nWeightSetsUsed,
+        " weight lines in the group file) are not yet supported together with conditional analysis (--condition); the per-set conditional adjustment arrives in a later commit. Please drop --condition or use a group file with a single weight line.\n"
+      )
+    }
+  }
+
+  # Restart guard: the multi-weight schema adds columns (Weight,
+  # Pvalue_ACATV, Pvalue_ACATO), so appending to a file written with a
+  # different weight configuration would interleave two schemas in one file.
+  if (isappend && file.exists(OutputFile) && file.info(OutputFile)$size > 0) {
+    existingHeader = strsplit(readLines(OutputFile, n = 1), "[\t]")[[1]]
+    hasWeightCol = "Weight" %in% existingHeader
+    if (hasWeightCol != isMultiWeightRun) {
+      stop(
+        "The existing 'OutputFile' of '",
+        OutputFile,
+        "' was written ",
+        if (hasWeightCol) "WITH" else "WITHOUT",
+        " the multi-weight columns (Weight, Pvalue_ACATV, Pvalue_ACATO), but this run uses ",
+        nWeightSetsUsed,
+        " weight set(s). Please restart with the same group file and options, or use another 'OutputFile' (or --is_overwrite_output=TRUE).\n"
+      )
+    }
+  }
+
   nline_per_gene = 2 + nWeightSets
 
   # Per-set labels handed to mainRegionInCPP; inert at K <= 1 (C++ only
@@ -585,8 +780,17 @@ SAIGE.Region = function(mu,
   #   - length-q0 numeric vector (weighted file, or is_no_weight's
   #     rep(1, q0)) -> q0 x 1 matrix: one custom set (all-ones still counts
   #     as "equal weights" for the per-set ER gate)
+  #   - q0 x K numeric matrix (K > 1 weight lines in the group file) -> passed
+  #     through unchanged: K custom sets, one per group-file weight line
   # t_beta_params stays the 0-matrix sentinel and t_includeNoWeights FALSE:
   # explicit beta sets / No_Weights composition arrive in a later commit.
+  weight_matrix_for_CPP = function() {
+    if (is.matrix(WEIGHT)) {
+      matrix(as.numeric(WEIGHT), nrow = nrow(WEIGHT), ncol = ncol(WEIGHT))
+    } else {
+      matrix(as.numeric(WEIGHT), ncol = 1)
+    }
+  }
   run_mainRegionInCPP = function() {
     mainRegionInCPP(
       genoType,
@@ -600,7 +804,7 @@ SAIGE.Region = function(mu,
       P2Mat,
       regionTestType,
       isImputation,
-      matrix(as.numeric(WEIGHT), ncol = 1),
+      weight_matrix_for_CPP(),
       matrix(0, nrow = 1, ncol = 2),
       FALSE,
       region_weight_names,
@@ -658,7 +862,11 @@ SAIGE.Region = function(mu,
           #vector the legacy path produced (as.numeric drops dim/dimnames).
           WEIGHT = as.numeric(region$WEIGHT)
         } else {
-          stop("Multi-weight group files (K>1 weight sets) are parsed but not yet supported by the region test engine; this arrives in a later commit.\n")
+          #K > 1: the q0 x K numeric matrix, colnames = the group file's weight
+          #set names. It stays a matrix all the way through
+          #run_mainRegionInCPP and region_postprocess, which both key
+          #multi-weight mode off is.matrix(WEIGHT)/ncol(WEIGHT).
+          WEIGHT = region$WEIGHT
         }
         
         annoIndicatorMat = region$annoIndicatorMat
@@ -727,6 +935,9 @@ SAIGE.Region = function(mu,
         if ("resultDF" %in% names(res_postprocess)) {
           resultDF = res_postprocess$resultDF
         }
+        if ("resultDFList" %in% names(res_postprocess)) {
+          resultDFList = res_postprocess$resultDFList
+        }
 
         if ((sum(outList$NumUltraRare_GroupVec) + sum(outList$NumRare_GroupVec)) > 0) {
           if (regionTestType != "BURDEN") {
@@ -758,7 +969,9 @@ SAIGE.Region = function(mu,
                   regionName,
                   is_single_in_groupTest,
                   is_rerun = TRUE,
-                  resultDF_carryover = if (exists("resultDF", inherits = FALSE)) list(resultDF) else NULL
+                  #the per-set carry-forward cache; at K = 1 this is
+                  #list(resultDF), exactly the legacy carry-over
+                  resultDF_carryover = if (exists("resultDFList", inherits = FALSE)) resultDFList else NULL
                 )
                 pval.Region = res_postprocess$pval.Region
                 if ("cctpval" %in% names(res_postprocess)) {
@@ -766,6 +979,9 @@ SAIGE.Region = function(mu,
                 }
                 if ("resultDF" %in% names(res_postprocess)) {
                   resultDF = res_postprocess$resultDF
+                }
+                if ("resultDFList" %in% names(res_postprocess)) {
+                  resultDFList = res_postprocess$resultDFList
                 }
                 
                 
@@ -787,7 +1003,12 @@ SAIGE.Region = function(mu,
               for (m in 1:length(maxMAFlist)) {
                 jm = (j - 1) * (length(maxMAFlist)) + m
                 maxMAFName = maxMAFlist[m]
-                tempPos = which(outList$annoMAFIndicatorMat[, jm] > 0)
+                #the marker list is weight-independent (real markers belong to
+                #the same (anno, max_MAF) cell in every weight set), so read
+                #the first weight set's column: jmr with r = 1, which is jm
+                #when there is a single set
+                jmr1 = (jm - 1) * nWeightSetsUsed + 1
+                tempPos = which(outList$annoMAFIndicatorMat[, jmr1] > 0)
                 marker_rare_pos = which(outList$markerIndcatorVec == 1)
                 marker_ultrarare_pos = which(outList$markerIndcatorVec == 2)
                 if (length(tempPos) > 0) {
@@ -862,6 +1083,9 @@ SAIGE.Region = function(mu,
           rm(pval.Region)
           if (regionTestType != "BURDEN") {
             rm(resultDF)
+            #the per-set carry-forward cache is region-local, exactly like
+            #resultDF above
+            rm(resultDFList)
           }
             # (per-iteration gc() removed in Phase 4: it dominated the profile; R collects on demand)
           
