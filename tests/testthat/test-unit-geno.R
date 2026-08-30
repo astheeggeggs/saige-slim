@@ -15,9 +15,9 @@ test_that("checkGenoInput validation", {
                "sampleInModel is not specified")
   expect_error(checkGenoInput(bedFile = "/nope.bed", sampleInModel = "a"),
                "does not exsit")  # typo verbatim
-  # characterization: no bedFile at all fails messily, not with a clean stop
+  # LEDGER #15c fixed: missing bedFile now stops cleanly
   expect_error(checkGenoInput(bedFile = "", sampleInModel = "a"),
-               "'dosageFileType' not found")
+               "bedFile is required")
 })
 
 test_that("setGenoInput builds the plink markerInfo contract", {

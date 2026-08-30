@@ -55,6 +55,7 @@ test_that("small pure helpers", {
   expect_true(isContainValue(c(1, 2, 3), 2))
   expect_false(isContainValue(c(1, 2, 3), 9))
   expect_error(checkArgsBool("x", "flagname"), "flagname should be TRUE or FALSE")
-  # characterization: message hardcodes "0 to 0.5" regardless of the bounds given
   expect_error(checkArgsNumeric(0.7, "x", 0, 0.5), "0 to 0.5")
+  # LEDGER #15a fixed: the message now reflects the actual bounds
+  expect_error(checkArgsNumeric(5, "y", 1, 3), "ranging from 1 to 3")
 })

@@ -5,7 +5,7 @@ checkArgsBool = function(arg0, arg0name){
 
 checkArgsNumeric = function(arg0, arg0name, minVal, maxVal){
   if(!is.numeric(arg0) | arg0 < minVal | arg0 > maxVal)
-    stop(arg0name, " should be a numeric value ranging from 0 to 0.5.")
+    stop(arg0name, " should be a numeric value ranging from ", minVal, " to ", maxVal, ".")
 }
 
 

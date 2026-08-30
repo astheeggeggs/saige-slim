@@ -20,8 +20,10 @@ checkGenoInput = function(bedFile="",
 	Check_File_Exist(bimFile, "bimFile")
 	Check_File_Exist(famFile, "famFile")
 	dosageFileType = "plink"
+    }else{
+	stop("bedFile is required: PLINK bed/bim/fam is the only supported genotype input on this branch\n")
     }
-    
+
     cat("dosageFile type is ", dosageFileType, "\n")
 
     return(dosageFileType)
