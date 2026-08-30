@@ -11,12 +11,6 @@ library(parallel)
 print(sessionInfo())
 
 option_list <- list(
-  make_option("--bgenFile", type="character",default="",
-    help="Path to bgen file. Path to bgen file. Currently version 1.2 with 8 bit compression is supported"),
-  make_option("--bgenFileIndex", type="character",default="",
-    help="Path to the .bgi file (index of the bgen file)"),
-  make_option("--sampleFile", type="character",default="",
-    help="Path to the file that contains one column for IDs of samples in the dosage file. For version >= 0.38, this file is only needed for bgen files. "),
   make_option("--bedFile", type="character",default="",
     help="Path to bed file (PLINK)"),
   make_option("--bimFile", type="character",default="",
@@ -184,9 +178,6 @@ print(opt$r.corr)
 nThreads = opt$nThreads
 if(nThreads == 1){
   SPAGMMATtest(
-             bgenFile=opt$bgenFile,
-             bgenFileIndex=opt$bgenFileIndex,
-             sampleFile=opt$sampleFile,
              bedFile=opt$bedFile,
              bimFile=opt$bimFile,
              famFile=opt$famFile,
@@ -262,9 +253,6 @@ if(nThreads == 1){
 
     output_files = paste0(opt$SAIGEOutputFile, suffixes)
     fixed_params <- list(
-             bgenFile=opt$bgenFile,
-             bgenFileIndex=opt$bgenFileIndex,
-             sampleFile=opt$sampleFile,
              bedFile=opt$bedFile,
              bimFile=opt$bimFile,
              famFile=opt$famFile,

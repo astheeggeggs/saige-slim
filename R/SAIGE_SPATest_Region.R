@@ -109,7 +109,6 @@ SAIGE.Region = function(mu,
                         markers_per_chunk_in_groupTest,
                         genoType,
                         markerInfo,
-			bgenFileIndex,
                         traitType,
                         isImputation,
                         isCondition,
@@ -124,44 +123,6 @@ SAIGE.Region = function(mu,
                         is_fastTest,
                         pval_cutoff_for_fastTest,
                         is_output_moreDetails) {
-
-    if(genoType == "bgen"){
-        print("chrom")
-        print(chrom)
-	    db_con <- RSQLite::dbConnect(RSQLite::SQLite(), bgenFileIndex)
-	        on.exit(RSQLite::dbDisconnect(db_con), add = TRUE)
-        if(chrom != ""){
-                query <-  paste("SELECT chromosome, position, rsid, allele1, allele2, file_start_position, size_in_bytes
-                        FROM Variant
-                        WHERE chromosome= ?")
-
-        	query_result <- RSQLite::dbGetQuery(db_con, query, params = list(chrom))
-    	}else{
-
-                query <- paste("SELECT chromosome, position, allele1, allele2, file_start_position, size_in_bytes
-                        FROM Variant ")
-        	query_result <- RSQLite::dbGetQuery(db_con, query)
-	}
-        markerInfo=query_result
-
-        markerInfo$genoIndex_prev = as.character(markerInfo$file_start_position + markerInfo$size_in_bytes)
-        markerInfo$genoIndex = as.character(markerInfo$file_start_position)
-	markerInfo$ID2 = paste0(markerInfo$chromosome,":", markerInfo$position ,":", markerInfo$allele1, ":", markerInfo$allele2)
-	markerInfo$ID = paste0(markerInfo$chromosome,":", markerInfo$position ,":", markerInfo$allele2, ":", markerInfo$allele1)
-	colnames(markerInfo)[which(colnames(markerInfo) == "chromosome")] = "CHROM" 
-	colnames(markerInfo)[which(colnames(markerInfo) == "position")] = "POS" 
-	markerInfo$allele1 = NULL
-	markerInfo$allele2 = NULL
-	setDT(markerInfo)
-       	#markerInfo[,chromosome:=NULL]
-    	#markerInfo[,position:=NULL]
-       	#markerInfo[,allele1:=NULL]
-    	#markerInfo[,allele2:=NULL]
-    	setkeyv(markerInfo, c("ID", "ID2")) 
-    
-    }
-
-
 
   OutputFileIndex = NULL
   if (is.null(OutputFileIndex))
@@ -1465,24 +1426,7 @@ SAIGE.getRegionList_new = function(marker_group_line,
           } else {
             RegionList[[r]]$genoIndex_prev = c("-1")
           }
-          
-        } else {
-          ##VCF
-          if (length(SNP) > 0) {
-            orderposind = order(as.numeric(tstrsplit(SNP, ":")[[2]]))
-            SNP = SNP[orderposind]
-            annoIndicatorMat = annoIndicatorMat[orderposind, , drop = F]
-            if (length(WEIGHT) == length(orderposind)) {
-              WEIGHT = WEIGHT[orderposind]
-            }
-          }
-          RegionList[[r]] = list(
-            SNP = SNP,
-            WEIGHT = WEIGHT,
-            annoIndicatorMat = annoIndicatorMat,
-            #                          chrom = uchrom,
-            annoVec = annoVecNew
-          )
+
         }
         
       } else {

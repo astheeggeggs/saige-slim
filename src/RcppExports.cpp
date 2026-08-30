@@ -178,20 +178,6 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
-// setBGENobjInCPP
-void setBGENobjInCPP(std::string t_bgenFileName, std::string t_bgenFileIndex, std::vector<std::string>& t_SampleInBgen, std::vector<std::string>& t_SampleInModel, std::string t_AlleleOrder);
-RcppExport SEXP _SAIGE_setBGENobjInCPP(SEXP t_bgenFileNameSEXP, SEXP t_bgenFileIndexSEXP, SEXP t_SampleInBgenSEXP, SEXP t_SampleInModelSEXP, SEXP t_AlleleOrderSEXP) {
-BEGIN_RCPP
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< std::string >::type t_bgenFileName(t_bgenFileNameSEXP);
-    Rcpp::traits::input_parameter< std::string >::type t_bgenFileIndex(t_bgenFileIndexSEXP);
-    Rcpp::traits::input_parameter< std::vector<std::string>& >::type t_SampleInBgen(t_SampleInBgenSEXP);
-    Rcpp::traits::input_parameter< std::vector<std::string>& >::type t_SampleInModel(t_SampleInModelSEXP);
-    Rcpp::traits::input_parameter< std::string >::type t_AlleleOrder(t_AlleleOrderSEXP);
-    setBGENobjInCPP(t_bgenFileName, t_bgenFileIndex, t_SampleInBgen, t_SampleInModel, t_AlleleOrder);
-    return R_NilValue;
-END_RCPP
-}
 // setSAIGEobjInCPP
 void setSAIGEobjInCPP(arma::mat& t_XVX, arma::mat& t_XXVX_inv, arma::mat& t_XV, arma::mat& t_XVX_inv_XV, arma::mat& t_Sigma_iXXSigma_iX, arma::mat& t_X, arma::vec& t_S_a, arma::vec& t_res, arma::vec& t_mu2, arma::vec& t_mu, arma::vec& t_varRatio_sparse, arma::vec& t_varRatio_null, arma::vec& t_varRatio_null_noXadj, arma::vec& t_cateVarRatioMinMACVecExclude, arma::vec& t_cateVarRatioMaxMACVecInclude, double t_SPA_Cutoff, arma::vec& t_tauvec, std::string t_traitType, arma::vec& t_y, std::string t_impute_method, bool t_flagSparseGRM, bool t_isFastTest, bool t_isnoadjCov, double t_pval_cutoff_for_fastTest, arma::umat& t_locationMat, arma::vec& t_valueVec, int t_dimNum, bool t_isCondition, std::vector<uint32_t>& t_condition_genoIndex, bool t_is_Firth_beta, double t_pCutoffforFirth, arma::vec& t_offset, arma::vec& t_resout);
 RcppExport SEXP _SAIGE_setSAIGEobjInCPP(SEXP t_XVXSEXP, SEXP t_XXVX_invSEXP, SEXP t_XVSEXP, SEXP t_XVX_inv_XVSEXP, SEXP t_Sigma_iXXSigma_iXSEXP, SEXP t_XSEXP, SEXP t_S_aSEXP, SEXP t_resSEXP, SEXP t_mu2SEXP, SEXP t_muSEXP, SEXP t_varRatio_sparseSEXP, SEXP t_varRatio_nullSEXP, SEXP t_varRatio_null_noXadjSEXP, SEXP t_cateVarRatioMinMACVecExcludeSEXP, SEXP t_cateVarRatioMaxMACVecIncludeSEXP, SEXP t_SPA_CutoffSEXP, SEXP t_tauvecSEXP, SEXP t_traitTypeSEXP, SEXP t_ySEXP, SEXP t_impute_methodSEXP, SEXP t_flagSparseGRMSEXP, SEXP t_isFastTestSEXP, SEXP t_isnoadjCovSEXP, SEXP t_pval_cutoff_for_fastTestSEXP, SEXP t_locationMatSEXP, SEXP t_valueVecSEXP, SEXP t_dimNumSEXP, SEXP t_isConditionSEXP, SEXP t_condition_genoIndexSEXP, SEXP t_is_Firth_betaSEXP, SEXP t_pCutoffforFirthSEXP, SEXP t_offsetSEXP, SEXP t_resoutSEXP) {
@@ -2857,7 +2843,6 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_Unified_getSampleSizeinGeno", (DL_FUNC) &_SAIGE_Unified_getSampleSizeinGeno, 1},
     {"_SAIGE_Unified_getSampleSizeinAnalysis", (DL_FUNC) &_SAIGE_Unified_getSampleSizeinAnalysis, 1},
     {"_SAIGE_setPLINKobjInCPP", (DL_FUNC) &_SAIGE_setPLINKobjInCPP, 5},
-    {"_SAIGE_setBGENobjInCPP", (DL_FUNC) &_SAIGE_setBGENobjInCPP, 5},
     {"_SAIGE_setSAIGEobjInCPP", (DL_FUNC) &_SAIGE_setSAIGEobjInCPP, 33},
     {"_SAIGE_RegionSetUpConditional_binary_InCPP", (DL_FUNC) &_SAIGE_RegionSetUpConditional_binary_InCPP, 1},
     {"_SAIGE_mainRegionInCPP", (DL_FUNC) &_SAIGE_mainRegionInCPP, 20},

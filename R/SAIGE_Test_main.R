@@ -1,8 +1,5 @@
 #' Run single variant or gene- or region-based score tests with SPA based on the linear/logistic mixed model.
 #'
-#' @param bgenFile character. Path to bgen file. Currently version 1.2 with 8 bit compression is supported
-#' @param bgenFileIndex character. Path to the .bgi file (index of the bgen file)
-#' @param sampleFile character. Path to the file that contains one column for IDs of samples in the bgen file. The file does not contain header lines. 
 #' @param bedFile character. Path to bed file (PLINK)
 #' @param bimFile character. Path to bim file (PLINK)
 #' @param famFile character. Path to fam file (PLINK)
@@ -53,9 +50,7 @@
 #' @param sampleFile_male character. Path to the file containing one column for IDs of MALE samples in the bgen or vcf file with NO header. Order does not matter
 #' @return SAIGEOutputFile
 #' @export
-SPAGMMATtest = function(bgenFile = "",
-                 bgenFileIndex = "",
-                 sampleFile = "",
+SPAGMMATtest = function(
                  bedFile="",
                  bimFile="",
                  famFile="",
@@ -362,9 +357,7 @@ SPAGMMATtest = function(bgenFile = "",
 
 
     #in Geno.R
-    objGeno = setGenoInput(bgenFile = bgenFile,
-                 bgenFileIndex = bgenFileIndex,
-                 sampleFile = sampleFile,
+    objGeno = setGenoInput(
                  bedFile=bedFile,
                  bimFile=bimFile,
                  famFile=famFile,
@@ -493,7 +486,6 @@ SPAGMMATtest = function(bgenFile = "",
 
         SAIGE.Marker(traitType,
 		   genoType,
-		   bgenFileIndex,
 		   idstoIncludeFile,
 		   rangestoIncludeFile,
                    objGeno$markerInfo$genoIndex_prev,
@@ -543,7 +535,6 @@ SPAGMMATtest = function(bgenFile = "",
                      markers_per_chunk_in_groupTest,
                      genoType,
                      objGeno$markerInfo,
-		     bgenFileIndex,
 		     traitType,
 		     is_imputed_data,
 		     isCondition,

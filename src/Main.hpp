@@ -38,7 +38,7 @@ void setRegion_GlobalVarsInCPP(
 
 
 void mainMarkerInCPP(
-                           std::string & t_genoType,     // "PLINK", "BGEN"
+                           std::string & t_genoType,     // "PLINK"
                            std::string & t_traitType,
 			   std::vector<std::string> & t_genoIndex_prev,
                            std::vector<std::string>  & t_genoIndex,
@@ -46,7 +46,7 @@ void mainMarkerInCPP(
                            bool & t_isImputation,
 			   bool & t_isFirth);
 
-bool Unified_getOneMarker(std::string & t_genoType,   // "PLINK", "BGEN"
+bool Unified_getOneMarker(std::string & t_genoType,   // "PLINK"
 				uint64_t & t_gIndex_prev,
                                uint64_t & t_gIndex,        // different meanings for different genoType
                                std::string& t_ref,       // REF allele
@@ -99,7 +99,7 @@ void Unified_getMarkerPval(
 
 
 Rcpp::List mainRegionInCPP(
-                           std::string t_genoType,     // "PLINK", "BGEN"
+                           std::string t_genoType,     // "PLINK"
 			   std::vector<std::string> & t_genoIndex_prev,
                            std::vector<std::string> & t_genoIndex,
                            arma::mat & annoIndicatorMat,
@@ -128,12 +128,6 @@ void setPLINKobjInCPP(std::string t_bimFile,
                       std::vector<std::string> & t_SampleInModel,
                       std::string t_AlleleOrder);
 
-
-void setBGENobjInCPP(std::string t_bgenFileName,
-                     std::string t_bgenFileIndex,
-                     std::vector<std::string> & t_SampleInBgen,
-                     std::vector<std::string> & t_SampleInModel,
-                     std::string t_AlleleOrder);
 
 void setSAIGEobjInCPP(arma::mat & t_XVX,
         arma::mat & t_XXVX_inv,
@@ -171,7 +165,7 @@ void setSAIGEobjInCPP(arma::mat & t_XVX,
 
 
 void assign_conditionMarkers_factors(
-                           std::string t_genoType,     // "plink", "bgen"
+                           std::string t_genoType,     // "plink"
                            std::vector<std::string> & t_genoIndex_prev,
                            std::vector<std::string> & t_genoIndex,
                            unsigned int t_n,

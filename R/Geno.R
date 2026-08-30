@@ -1,41 +1,14 @@
-#' Check if sample identifiers are stored in a BGEN file (for BGEN v1.2)
-#'
-#' Check if sample identifiers are stored in a BGEN file (for BGEN v1.2)
-#'
-#' @param bgenFile a character of BGEN file. Sometimes, BGEN file does not include sample IDs. This information can be extracted from BGEN file. Please refer to https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html for more details.
-#' @examples
-#'
-#' BGENFile = system.file("extdata", "example_bgen_1.2_8bits.bgen", package = "SAIGE")
-#' checkIfSampleIDsExist(BGENFile)
-#' @export
-checkIfSampleIDsExist = function(bgenFile)
-{
-  con = file(bgenFile, "rb")
-  seek(con, 4)
-  LH = readBin(con, n = 1, what = "integer", size = 4)
-  seek(con, 4 + LH - 4)
-  header = rawToBits(readBin(con, n = 4, what = "raw", size = 1, signed = FALSE))
-  close(con)
-  return(header[32] == 01)
-}
 
-checkGenoInput = function(bgenFile = "",
-                 bgenFileIndex = "",
-                 sampleFile = "",
-                 bedFile="",
+checkGenoInput = function(bedFile="",
                  bimFile="",
                  famFile="",
 		 sampleInModel = NULL){
-   
+
     if(is.null(sampleInModel)){
     	stop("sampleInModel is not specified.")
-    }	    
+    }
     # genotype data
-    if (bgenFile != "") {
-        Check_File_Exist(bgenFile, "bgenFile")
-        Check_File_Exist(bgenFileIndex, "bgenFileIndex")
-        dosageFileType = "bgen"
-    }else if(bedFile != ""){
+    if(bedFile != ""){
 	Check_File_Exist(bedFile, "bedFile")
 	if(bimFile == ""){
 		bimFile = gsub("bed$", "bim", bedFile)
@@ -54,20 +27,7 @@ checkGenoInput = function(bgenFile = "",
     return(dosageFileType)
 }	
 
-
-splitreformatMarkerIDinBgen = function(x){
-	a = strsplit(x, split=":")[[1]]
-	b=x
-	if(length(a) == 4){
-		b = paste0(a[1],":",a[2],"_",a[3],"/",a[4])
-	}
-	return(b)
-}
-
-setGenoInput = function(bgenFile = "",
-                 bgenFileIndex = "",
-                 sampleFile = "",
-                 bedFile="",
+setGenoInput = function(bedFile="",
                  bimFile="",
                  famFile="",
                  idstoIncludeFile = "",
@@ -79,9 +39,7 @@ setGenoInput = function(bgenFile = "",
 
   #time_geno_0 = proc.time()
 
-  dosageFileType = checkGenoInput(bgenFile = bgenFile,
-                 bgenFileIndex = bgenFileIndex,
-                 bedFile = bedFile,
+  dosageFileType = checkGenoInput(bedFile = bedFile,
                  bimFile = bimFile,
                  famFile = famFile,
 		 sampleInModel = sampleInModel)
@@ -120,111 +78,6 @@ setGenoInput = function(bgenFile = "",
     markerInfo[,ALT:=NULL]
     setkeyv(markerInfo, c("ID"))
     setPLINKobjInCPP(bimFile, famFile, bedFile, sampleInModel, AlleleOrder)
-  }
-
-  ########## ----------  BGEN format ---------- ##########
-  
-  if(dosageFileType == "bgen"){
-    
-    
-    if(is.null(AlleleOrder)) AlleleOrder = "ref-first"
-    if(AlleleOrder != "ref-first"){
-	stop("genotype is in bgen, please set AlleleOrder=ref-first\n")
-    }
-
-  
-
-    if(sampleFile != "" | !checkIfSampleIDsExist(bgenFile)){
-	print("Sample IDs were not found in the bgen file.")
-	Check_File_Exist(sampleFile)
-	sf = file(sampleFile, "r")
-	first_sample_line = readLines(sf, n = 1)
-	close(sf)
-	first_sample_line_list = strsplit(first_sample_line, split="[\ \t]+")[[1]]
-        		
-	if(first_sample_line == "ID_1 ID_2 missing sex" | first_sample_line == "ID_1 ID_1 0 0" | length(first_sample_line_list) == 4){
-	    cat("sample file is in the bgenix format\n")
-	    sampleData = data.table::fread(sampleFile, header=F, colClasses = rep("character", 4), data.table=F, skip=2)
-	    samplesInGeno = as.character(sampleData[,2])
-	}else{
-	    if(length(first_sample_line_list) == 1){
-	        cat("sample file only has one column and has no header\n")
-	        sampleData = data.table::fread(sampleFile, header=F, colClasses = c("character"), data.table=F)
-                samplesInGeno = as.character(sampleData[,1])
-	    }else{
-		stop("sample file should either has one column and no header or in the bgenix format with four columns\n")	
-	    }
-	}
-    }else{
-	samplesInGeno = getSampleIDsFromBGEN(bgenFile)
-    } 
-
-      #time_geno_1a = proc.time()
-
-        #cat("time_geno_1a - time_geno_1\n")
-	  #print(time_geno_1a - time_geno_1)
-
-    
-
-	#time_geno_1a2b = proc.time()
-	#        cat("time_geno_1a2b - time_geno_1a2\n")
-	#	          print(time_geno_1a2b - time_geno_1a2)
-    #markerInfo = as.data.frame(markerInfo)
-    #markerInfo = as.data.frame(markerInfo)
-
-    #setDT(markerInfo)
-    #setkeyv(markerInfo, c("ID","ID2"))
-   #########markerInfo = as.data.table(markerInfo, keep.rownames = FALSE)
-        #time_geno_1a2b2 = proc.time()
-	#        cat("time_geno_1a2b2 - time_geno_1a2b\n")
-	#	          print(time_geno_1a2b2 - time_geno_1a2b)
-#markerInfo <- markerInfo[, .(chromosome, position, rsid, allele1, allele2, file_start_position, size_in_bytes)]
-    #rmcol = setdiff(names(markerInfo), c("chromosome", "position", "rsid", "allele1", "allele2", 'file_start_position', 'size_in_bytes'))
-        #time_geno_1a2b3 = proc.time()
-	#cat("time_geno_1a2b3 - time_geno_1a2b2\n")
-	#print(time_geno_1a2b3 - time_geno_1a2b2)
-    #markerInfo = markerInfo[, !..rmcol]
-
-        #time_geno_1a3 = proc.time()
-        #cat("time_geno_1a3 - time_geno_1a2b3\n")
-        #print(time_geno_1a3 - time_geno_1a2b3)
-
-
-    #if(AlleleOrder == "alt-first")
-    #  names(markerInfo) = c("CHROM", "POS", "ID", "ALT", "REF", "genoIndex", "size_in_bytes")
-    #if(AlleleOrder == "ref-first")
-    #  names(markerInfo) = c("CHROM", "POS", "ID", "REF", "ALT", "genoIndex", "size_in_bytes")
-
-      #markerInfo = markerInfo[,c(1,2,3,5,6,7)]  # https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
-    #markerInfo$ID2 = lapply(markerInfo$ID, splitreformatMarkerIDinBgen)
-    #markerInfo$ID2 = paste0(markerInfo$CHROM,":", markerInfo$POS ,":", markerInfo$REF, ":", markerInfo$ALT)
-    #markerInfo$genoIndex_prev = markerInfo$genoIndex + markerInfo$size_in_bytes
-
-#markerInfo[, ID2 := paste0(CHROM, ":", POS, ":", REF, ":", ALT)]
-#markerInfo[, genoIndex_prev := genoIndex + size_in_bytes]
-
-
-#    markerInfo[,POS:=NULL]
-#    markerInfo[,REF:=NULL]
-#    markerInfo[,ALT:=NULL]
-#    markerInfo[,size_in_bytes:=NULL]
-    
-    #if(chrom != ""){
-    #  markerInfo <- markerInfo[CHROM == chrom]
-    #}  
-   
-    #time_geno_1b = proc.time()
-
-     #       cat("time_geno_1b - time_geno_1a3\n")
-	#              print(time_geno_1b - time_geno_1a3)
-
-    #setkeyv(markerInfo, c("ID","ID2"))
-    #markerInfo$ID2 = paste0(markerInfo$CHROM,":", markerInfo$POS ,"_", markerInfo$ALT, "/", markerInfo$REF)
-
-#}#if FALSE
-        markerInfo = NULL
-
-    setBGENobjInCPP(bgenFile, bgenFileIndex, t_SampleInBgen = samplesInGeno, t_SampleInModel = sampleInModel, AlleleOrder)
   }
  
    #time_geno_2 = proc.time()
@@ -346,54 +199,6 @@ if(FALSE){
 
 
 
-
-updateSampleIDs = function(SampleIDs, samplesInGeno)
-{
-  if(is.null(SampleIDs)){
-    print("Since 'SampleIDs' not specified, we use all samples in 'GenoFile'.")
-    SampleIDs = samplesInGeno;
-  }
-  
-  if(any(!SampleIDs %in% samplesInGeno))
-    stop("At least one sample from 'SampleIDs' are not in 'GenoFile' and 'GenoFileIndex'.")
-  
-  return(SampleIDs)
-}
-
-# https://www.well.ox.ac.uk/~gav/bgen_format/spec/v1.2.html
-#' Extract sample identifiers from BGEN file (for BGEN v1.2)
-#' 
-#' Extract sample identifiers from BGEN file (for BGEN v1.2)
-#' 
-#' @param bgenFile a character of BGEN file. 
-#' @examples
-#' 
-#' BGENFile = system.file("extdata", "example_bgen_1.2_8bits.bgen", package = "SAIGE")
-#' getSampleIDsFromBGEN(BGENFile)
-#' @export
-getSampleIDsFromBGEN = function(bgenFile)
-{
-  if(!checkIfSampleIDsExist(bgenFile))
-    stop("The BGEN file does not include sample identifiers. Please refer to ?checkIfSampleIDsExist and ?SAIGE.ReadGeno for more details")
-  con = file(bgenFile, "rb")
-  seek(con, 4)
-  LH = readBin(con, n = 1, what = "integer", size = 4)
-  seek(con, 4 + LH + 4)
-  N = readBin(con, n = 1, what = "integer", size = 4)  # number of samples
-  samplesInGeno = rep(0, N)
-  
-  # cycle for all samples to extract IDs
-  for(i in 1:N){
-    LS = readBin(con, n = 1, what = "integer", size = 2)
-    sample = readChar(con, nchars = LS)
-    samplesInGeno[i] = sample
-  }
-  
-  # close connection
-  close(con)
-  
-  return(samplesInGeno)
-}
 
 
 extract_genoIndex_condition = function(condition, markerInfo, genoType){

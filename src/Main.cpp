@@ -18,7 +18,6 @@
 
 #include "Main.hpp"
 #include "PLINK.hpp"
-#include "BGEN.hpp"
 #include "SAIGE_test.hpp"
 #include "UTIL.hpp"
 #include "CCT.hpp"
@@ -31,7 +30,6 @@
 // global objects for different genotype formats
 
 static PLINK::PlinkClass* ptr_gPLINKobj = NULL;
-static BGEN::BgenClass* ptr_gBGENobj = NULL;
 // global objects for different analysis methods
 static SAIGE::SAIGEClass* ptr_gSAIGEobj = NULL;
 //single, SAIGE
@@ -164,7 +162,7 @@ void setRegion_GlobalVarsInCPP(
 
 // [[Rcpp::export]]
 void mainMarkerInCPP(
-                           std::string & t_genoType,     // "PLINK", "BGEN"
+                           std::string & t_genoType,     // "PLINK"
 			   std::string & t_traitType,
 			   std::vector<std::string> & t_genoIndex_prev,
 			   std::vector<std::string> & t_genoIndex,
@@ -272,11 +270,7 @@ void mainMarkerInCPP(
     }else{
         char* end_prev;
 	std::string t_genoIndex_prev_str;
-        if(t_genoType == "bgen"){
-            t_genoIndex_prev_str = t_genoIndex_prev.at(i-1);
-        }else if(t_genoType == "plink"){
-            t_genoIndex_prev_str = t_genoIndex.at(i-1);
-        }
+        t_genoIndex_prev_str = t_genoIndex.at(i-1);
         gIndex_prev = std::strtoull(t_genoIndex_prev_str.c_str(), &end_prev,10 );
         std::remove(end_prev);
     }
@@ -285,7 +279,7 @@ void mainMarkerInCPP(
 
 
     //Main.cpp
-    //PLINK or BGEN 
+    //PLINK 
     //uint32_t gIndex_temp = gIndex; 
     bool isOutputIndexForMissing = true;
     bool isOnlyOutputNonZero = false; 
@@ -630,7 +624,7 @@ void mainMarkerInCPP(
 
 
 // [[Rcpp::export]]
-bool Unified_getOneMarker(std::string & t_genoType,   // "PLINK", "BGEN"
+bool Unified_getOneMarker(std::string & t_genoType,   // "PLINK"
                                uint64_t & t_gIndex_prev,        // different meanings for different genoType
                                uint64_t & t_gIndex,        // different meanings for different genoType
                                std::string& t_ref,       // REF allele
@@ -659,16 +653,6 @@ bool Unified_getOneMarker(std::string & t_genoType,   // "PLINK", "BGEN"
    ptr_gPLINKobj->getOneMarker(t_gIndex_prev, t_gIndex, t_ref, t_alt, t_marker, t_pd, t_chr, t_altFreq, t_altCounts, t_missingRate, t_imputeInfo, 
                                        t_isOutputIndexForMissing, t_indexForMissing, t_isOnlyOutputNonZero, t_indexForNonZero,
                                        isTrueGenotype, t_GVec);   // t_isTrueGenotype, only used for PLINK format.
-  }
-
-  if(t_genoType == "bgen"){
-    //arma::vec timeoutput1 = getTime();
-    //bool isBoolRead = true;
-    ptr_gBGENobj->getOneMarker(t_gIndex_prev, t_gIndex, t_ref, t_alt, t_marker, t_pd, t_chr, t_altFreq, t_altCounts, t_missingRate, t_imputeInfo, 
-                                      t_isOutputIndexForMissing, t_indexForMissing, t_isOnlyOutputNonZero, t_indexForNonZero,
-                                      isBoolRead, t_GVec, t_isImputation);
-   //arma::vec timeoutput2 = getTime();
-   //printTime(timeoutput1, timeoutput2, "Unified_getOneMarker a");
   }
 
   if(g_is_rewrite_XnonPAR_forMales){
@@ -701,10 +685,6 @@ uint32_t Unified_getSampleSizeinGeno(std::string & t_genoType){
     if(t_genoType == "plink"){
 	N0 = ptr_gPLINKobj->getN0();
     }
-    if(t_genoType == "bgen"){
-	N0 = ptr_gBGENobj->getN0();
-    }	    
-
     return(N0);
 }	
 
@@ -714,10 +694,6 @@ uint32_t Unified_getSampleSizeinAnalysis(std::string & t_genoType){
     if(t_genoType == "plink"){
         N = ptr_gPLINKobj->getN();
     }
-    if(t_genoType == "bgen"){
-        N = ptr_gBGENobj->getN();
-    }
-
     return(N);
 }
 
@@ -784,26 +760,6 @@ void setPLINKobjInCPP(std::string t_bimFile,
   ptr_gPLINKobj->setPosSampleInPlink(t_SampleInModel);
   
 }
-
-// [[Rcpp::export]]
-void setBGENobjInCPP(std::string t_bgenFileName,
-                     std::string t_bgenFileIndex,
-                     std::vector<std::string> & t_SampleInBgen,
-                     std::vector<std::string> & t_SampleInModel,
-                     std::string t_AlleleOrder)
-{
-  std::cout << "t_SampleInBgen " << t_SampleInBgen.size() << std::endl;
-  ptr_gBGENobj = new BGEN::BgenClass(t_bgenFileName,
-                                     t_bgenFileIndex,
-                                     t_SampleInBgen,
-                                     t_SampleInModel,
-				     false,
-				     false,
-                                     t_AlleleOrder);
-  //int n = ptr_gBGENobj->getN();
-}
-
-
 
 //////// ---------- Main functions to set objects for different analysis methods --------- ////////////
 
@@ -922,7 +878,7 @@ Rcpp::List RegionSetUpConditional_binary_InCPP(arma::vec & t_weight_cond){
 //////// ---------- Main function for region-level analysis --------- ////////////
 // [[Rcpp::export]]
 Rcpp::List mainRegionInCPP(
-                           std::string t_genoType,     // "PLINK", "BGEN"
+                           std::string t_genoType,     // "PLINK"
                            std::vector<std::string> & t_genoIndex_prev,
                            std::vector<std::string> & t_genoIndex,
 			   arma::mat & annoIndicatorMat,
@@ -1125,11 +1081,7 @@ Rcpp::List mainRegionInCPP(
     }else{
         char* end_prev;
         std::string t_genoIndex_prev_str;
-        if(t_genoType == "bgen"){
-            t_genoIndex_prev_str = t_genoIndex_prev.at(i-1);
-        }else if(t_genoType == "plink"){
-            t_genoIndex_prev_str = t_genoIndex.at(i-1);
-        }
+        t_genoIndex_prev_str = t_genoIndex.at(i-1);
         gIndex_prev = std::strtoull( t_genoIndex_prev_str.c_str(), &end_prev,10 );
         std::remove(end_prev);
     }
@@ -2079,7 +2031,7 @@ OutList.push_back(iswriteOutput, "iswriteOutput");
 
 // [[Rcpp::export]]
 void assign_conditionMarkers_factors(
-                           std::string t_genoType,     // "plink", "bgen"
+                           std::string t_genoType,     // "plink"
 			   std::vector<std::string> & t_genoIndex_prev,
                            std::vector<std::string> & t_genoIndex,
                            unsigned int t_n, 
@@ -2146,15 +2098,8 @@ void assign_conditionMarkers_factors(
     }else{
         char* end_prev;
 	std::string t_genoIndex_prev_str;
-        if(t_genoType == "bgen"){
-            t_genoIndex_prev_str = t_genoIndex_prev.at(i-1);
-            gIndex_prev = std::strtoull( t_genoIndex_prev_str.c_str(), &end_prev,10 );
-        }else if(t_genoType == "plink"){
-            t_genoIndex_prev_str = t_genoIndex.at(i-1);
-            gIndex_prev = std::strtoull( t_genoIndex_prev_str.c_str(), &end_prev,10 );
-        }
-         //   gIndex_prev = 0;	
-	//}
+        t_genoIndex_prev_str = t_genoIndex.at(i-1);
+        gIndex_prev = std::strtoull( t_genoIndex_prev_str.c_str(), &end_prev,10 );
 	std::remove(end_prev);
     }
 
@@ -2356,9 +2301,7 @@ arma::vec fast_logistf_fit(arma::mat & x,
 // [[Rcpp::export]]
 void closeGenoFile(std::string & t_genoType)
 {
-  if(t_genoType == "bgen"){
-    ptr_gBGENobj->closegenofile();
-  }else if(t_genoType == "plink"){
+  if(t_genoType == "plink"){
     ptr_gPLINKobj->closegenofile();
   }
 }

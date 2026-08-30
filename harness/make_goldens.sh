@@ -173,34 +173,11 @@ run step2_plink_marker_cond.log R2 step2_SPAtests.R \
   --is_output_moreDetails=TRUE \
   --condition=rs13,rs79
 
-# --- bgen/vcf runs (cross-format checks; dropped when the readers are stripped) ---
-# B1: group test, bgen, fastTest (cmd.sh:22)
-run step2_bgen_group_fastTest.log R2 step2_SPAtests.R \
-  --bgenFile=./input/genotype_100markers.bgen \
-  --bgenFileIndex=./input/genotype_100markers.bgen.bgi \
-  --SAIGEOutputFile="$GOLD/step2/bgen_group_fastTest.txt" \
-  --chrom=1 --AlleleOrder=ref-first --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
-  --sampleFile=./input/samplelist.txt \
-  $GRP_MODEL $SG \
-  --groupFile=./input/group_new_chrposa1a2.txt \
-  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
-  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
-  --is_fastTest=TRUE
-
-# B2: single-variant, bgen, binary (cross-format vs P1; bgen dosages are 8-bit
-# quantized so numeric columns may differ slightly from PLINK/VCF hardcalls)
-run step2_bgen_marker_binary.log R2 step2_SPAtests.R \
-  --bgenFile=./input/genotype_100markers.bgen \
-  --bgenFileIndex=./input/genotype_100markers.bgen.bgi \
-  --SAIGEOutputFile="$GOLD/step2/bgen_marker_binary.txt" \
-  --chrom=1 --AlleleOrder=ref-first --minMAF=0 --minMAC=1 --LOCO=FALSE \
-  --sampleFile=./input/samplelist.txt \
-  $BIN_MODEL \
-  --is_output_moreDetails=TRUE
-
-# V1/V2 (vcf marker runs) retired to harness/goldens_retired/ when the VCF/SAV
-# reader was stripped (Strip 5). Their PLINK counterparts P1/P4 continue; the
-# vcf conditional output had been verified identical to P4's.
+# B1/B2 (bgen runs) and V1/V2 (vcf runs) retired to harness/goldens_retired/
+# when the BGEN (Strip 6) and VCF/SAV (Strip 5) readers were stripped. Their
+# PLINK counterparts P1-P4 continue; before retirement, the bgen group
+# fastTest run had byte-stable goldens and the vcf conditional output was
+# verified identical to P4's.
 
 if [ "${#FAILED_RUNS[@]}" -gt 0 ]; then
   echo "=== COMPLETE WITH FAILURES ($GOLD):"
