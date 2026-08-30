@@ -52,14 +52,12 @@ test_that("empty path returns GRM-mode sentinels; missing path errors", {
                "varianceRatioFile is specified but the file /nope/x.txt does not exist")
 })
 
-test_that("characterization: legacy (<1.0.6) files can never load (LEDGER.md #13)", {
-  # The legacy branch never assigns ratioVec_null_noXadj, so the print() at
-  # the end throws for every legacy file. Preserved bug-for-bug.
+test_that("LEDGER #13 fixed: legacy (<1.0.6) files are rejected cleanly", {
   f <- tempfile(); writeLines("0.95", f)
   expect_error(Get_Variance_Ratio(f, c(10), c(), FALSE, FALSE, FALSE),
-               "'ratioVec_null_noXadj' not found")
+               "pre-1.0.6 legacy format")
   expect_error(Get_Variance_Ratio(f, c(10), c(), FALSE, TRUE, FALSE),
-               "'ratioVec_null_noXadj' not found")
+               "pre-1.0.6 legacy format")
 })
 
 test_that("characterization: missing null_noXadj rows yield numeric(0), not the guard stop", {

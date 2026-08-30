@@ -415,7 +415,11 @@ Get_Variance_Ratio<-function(varianceRatioFile, cateVarRatioMinMACVecExclude, ca
 
 
 	}else{
-	    cat("Variance ratios were estimated with version < 1.0.6\n")	
+	    # LEDGER #13 fix: this legacy branch could never complete
+	    # (ratioVec_null_noXadj was never assigned). Reject cleanly instead.
+	    stop("varianceRatioFile ", varianceRatioFile, " is in the pre-1.0.6 legacy format (",
+	         ncol(varRatioData), " column(s)); this version requires the 3-column ",
+	         "'value type category' format. Please re-run Step 1.\n")
 	    if(isSparseGRM){
 	        ratioVec_sparse = varRatioData[,1]
 	        ratioVec_sparse = as.numeric(ratioVec_sparse)
