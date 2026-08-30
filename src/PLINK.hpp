@@ -81,7 +81,6 @@ public:
                    std::string t_bedFile);
   
   void setPosSampleInPlink(std::vector<std::string> & t_SampleInModel);
-  std::vector<uint32_t> getPosMarkerInPlink(std::vector<std::string> t_MarkerReqstd);
   
   void getOneMarker(uint64_t & t_gIndex_prev,
   			uint64_t & t_gIndex,        // different meanings for different genoType
@@ -101,42 +100,6 @@ public:
                          bool & t_isTrueGenotype, // only used in PLINK. check m_genoMaps for details about the genotype mapping in PLINK
 			 arma::vec & OneMarkerG1);
 			 //std::vector<double>& OneMarkerG1);
-  void getOneMarker(uint64_t t_gIndex_prev,
-  		uint64_t t_gIndex,
-                         double& t_altFreq,
-                         double& t_missingRate,
-                         std::string& t_chr,
-			 arma::vec & OneMarkerG1)
-  {
-    std::string ref, alt, marker;
-    uint32_t pd;
-    double altCounts, imputeInfo;
-    std::vector<uint> indexForMissing, indexForNonZero;
-    bool isOutputIndexForMissing = false; 
-    bool isOnlyOutputNonZero = false;
-    bool isTrueGenotype = false;
-    getOneMarker(t_gIndex_prev, t_gIndex, ref, alt, marker, pd, t_chr, t_altFreq, altCounts, t_missingRate, imputeInfo,
-                                         isOutputIndexForMissing, indexForMissing, isOnlyOutputNonZero, indexForNonZero, isTrueGenotype, OneMarkerG1);
-  }
-
-  void getOneMarker(uint64_t t_gIndex_prev,
-  uint64_t t_gIndex,
-                         double& t_altFreq,
-                         double& t_missingRate,
-                         std::vector<uint>& t_indexForMissing,
-			 arma::vec & OneMarkerG1)
-  {
-    std::string ref, alt, marker, chr;
-    uint32_t pd;
-    double altCounts, imputeInfo;
-    std::vector<uint> indexForNonZero;
-     bool isOutputIndexForMissing = false;
-    bool isOnlyOutputNonZero = false;
-    bool isTrueGenotype = true;
-    getOneMarker(t_gIndex_prev, t_gIndex, ref, alt, marker, pd, chr, t_altFreq, altCounts, t_missingRate, imputeInfo,
-                                         isOutputIndexForMissing, t_indexForMissing, isOnlyOutputNonZero, indexForNonZero, isTrueGenotype, OneMarkerG1);
-  }   
-
 
   uint32_t getN0(){return m_N0;}
   uint32_t getN(){return m_N;}

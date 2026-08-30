@@ -50,16 +50,11 @@ unsigned int g_region_maxMarkers_cutoff;   // maximal number of markers in one c
 bool g_isOutputMoreDetails;
 int g_marker_chunksize;
 
-std::string g_method_to_CollapseUltraRare;
-double g_DosageCutoff_for_UltraRarePresence;
 
 double g_dosage_zerod_MAC_cutoff;
 double g_dosage_zerod_cutoff;
-bool g_markerTestEnd = false;
 arma::vec g_weights_beta(2);
 
-bool  g_is_Firth_beta;
-double g_pCutoffforFirth;
 double g_MACCutoffforER;
 bool g_is_rewrite_XnonPAR_forMales = false;
 
@@ -139,8 +134,6 @@ void setMarker_GlobalVarsInCPP(
 //double t_DosageCutoff_for_UltraRarePresence,
 			       //std::string t_method_to_CollapseUltraRare,
 
-  //g_method_to_CollapseUltraRare = t_method_to_CollapseUltraRare;
-  //g_DosageCutoff_for_UltraRarePresence = t_DosageCutoff_for_UltraRarePresence;
 // [[Rcpp::export]]
 void setRegion_GlobalVarsInCPP(
                                arma::vec t_max_maf_region,
@@ -262,7 +255,6 @@ void mainMarkerInCPP(
     std::string t_genoIndex_str = t_genoIndex.at(i);
     char* end;
     uint64_t gIndex = std::strtoull( t_genoIndex_str.c_str(), &end,10 );
-    std::remove(end);
 
     uint64_t gIndex_prev = 0;
     if(i == 0){
@@ -272,7 +264,6 @@ void mainMarkerInCPP(
 	std::string t_genoIndex_prev_str;
         t_genoIndex_prev_str = t_genoIndex.at(i-1);
         gIndex_prev = std::strtoull(t_genoIndex_prev_str.c_str(), &end_prev,10 );
-        std::remove(end_prev);
     }
 
 
@@ -301,7 +292,6 @@ void mainMarkerInCPP(
 //
    if(!isReadMarker){
       //std::cout << "isReadMarker " << isReadMarker << std::endl;
-      g_markerTestEnd = true;
       break;
     }
 
@@ -1073,7 +1063,6 @@ Rcpp::List mainRegionInCPP(
     std::string t_genoIndex_str = t_genoIndex.at(i);
     char* end;
     uint64_t gIndex = std::strtoull( t_genoIndex_str.c_str(), &end,10 );
-    std::remove(end);
 
     uint64_t gIndex_prev = 0;
     if(i == 0){
@@ -1083,7 +1072,6 @@ Rcpp::List mainRegionInCPP(
         std::string t_genoIndex_prev_str;
         t_genoIndex_prev_str = t_genoIndex.at(i-1);
         gIndex_prev = std::strtoull( t_genoIndex_prev_str.c_str(), &end_prev,10 );
-        std::remove(end_prev);
     }
 
 
@@ -2087,7 +2075,6 @@ void assign_conditionMarkers_factors(
     std::string t_genoIndex_str = t_genoIndex.at(i);
     char* end;
     uint64_t gIndex = std::strtoull( t_genoIndex_str.c_str(), &end,10 );
-    std::remove(end);
 
     uint64_t gIndex_prev = 0;
     if(i == 0){
@@ -2097,7 +2084,6 @@ void assign_conditionMarkers_factors(
 	std::string t_genoIndex_prev_str;
         t_genoIndex_prev_str = t_genoIndex.at(i-1);
         gIndex_prev = std::strtoull( t_genoIndex_prev_str.c_str(), &end_prev,10 );
-	std::remove(end_prev);
     }
 
     bool isReadMarker = Unified_getOneMarker(t_genoType, gIndex_prev, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
