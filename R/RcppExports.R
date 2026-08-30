@@ -57,8 +57,8 @@ RegionSetUpConditional_binary_InCPP <- function(t_weight_cond) {
     .Call('_SAIGE_RegionSetUpConditional_binary_InCPP', PACKAGE = 'SAIGE', t_weight_cond)
 }
 
-mainRegionInCPP <- function(t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, P1Mat, P2Mat, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput) {
-    .Call('_SAIGE_mainRegionInCPP', PACKAGE = 'SAIGE', t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, P1Mat, P2Mat, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput)
+mainRegionInCPP <- function(t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, P1Mat, P2Mat, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_forceWeightColumn, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput) {
+    .Call('_SAIGE_mainRegionInCPP', PACKAGE = 'SAIGE', t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, P1Mat, P2Mat, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_forceWeightColumn, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput)
 }
 
 assign_conditionMarkers_factors <- function(t_genoType, t_genoIndex, t_n, t_weight_cond) {
@@ -77,8 +77,8 @@ closeGenoFile <- function(t_genoType) {
     invisible(.Call('_SAIGE_closeGenoFile', PACKAGE = 'SAIGE', t_genoType))
 }
 
-openOutfile <- function(t_traitType, isappend, t_nWeightSets) {
-    .Call('_SAIGE_openOutfile', PACKAGE = 'SAIGE', t_traitType, isappend, t_nWeightSets)
+openOutfile <- function(t_traitType, isappend, t_nWeightSets, t_forceWeightColumn) {
+    .Call('_SAIGE_openOutfile', PACKAGE = 'SAIGE', t_traitType, isappend, t_nWeightSets, t_forceWeightColumn)
 }
 
 openOutfile_singleinGroup <- function(t_traitType, t_isImputation, isappend, t_isMoreOutput) {

@@ -100,6 +100,32 @@ update the ledger and the test together in the dedicated fix phase.
 - PLINK group files key on **bim column 2 (rs IDs)** — use
   `extdata/input/group_new_snpid.txt`; `--condition` takes rsIDs too.
 
+## Multi-weight region tests (Phase 5, through C8)
+
+Group tests run K >= 1 weight sets in one pass; results are per
+(anno × max_MAF × weight set), weight-innermost, with a `Weight` label column
+right after `max_MAF` plus `Pvalue_ACATV`/`Pvalue_ACATO` (SKAT-O path) — the
+schema appears only when K > 1 or `--is_output_weight_column=TRUE`; K = 1
+without the flag is byte-identical legacy output. One pooled Cauchy row per
+region, unchanged in count. Set composition (order is normative, identical in
+R and C++): **custom** sets from group-file weight lines (`weight`,
+`weight:NAME`, or `weight,NAME` as line type; same names/order in every
+region) → **beta** sets from `--weights.beta="a1,b1;a2,b2"` (each pair a set
+named `Beta_a_b`; composed ONLY when >1 pair — a single pair keeps the legacy
+implicit path, incl. the LEDGER #19 R-vs-C++ asymmetry) → **No_Weights**
+(all-ones; appended by `--is_no_weight_in_groupTest=TRUE` when other sets
+exist, replacing the old hard error for weighted files). Per-set semantics
+(design D2): custom w0=w_r with weighted UR collapse max(w_r·G); beta
+w0=dbeta(MAF,a,b) with unweighted UR collapse; No_Weights all 1s. The
+normative flat index is `jmr = j*q_maf*q_weight + m*q_weight + r` (weight
+fastest) on both sides. K multiplies UR-collapse columns and output rows, not
+marker reads — real markers are read and score-tested once. Fixtures:
+`extdata/input/group_new_snpid_withWeights.txt` (K=1),
+`group_new_snpid_multiWeights.txt` (K=2: CADD, REVEL); tests in
+`tests/testthat/test-step2-multiweight.R` (standard tier) and the fast-tier
+unit files. Conditional analysis (`--condition`) with K > 1 or the forced
+Weight column errors out until the per-set adjustment lands (design D7/C11).
+
 ## Architecture
 
 ### Entry points → R functions

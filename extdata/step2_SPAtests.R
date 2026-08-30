@@ -64,7 +64,7 @@ option_list <- list(
   make_option("--annotation_in_groupTest", type="character",default="lof,missense;lof,missense;lof;synonymous",
     help="annotations of markers to be tested in the set-based tests seperated by comma. using ; to combine multiple annotations in the same test, e.g. lof,missense;lof,missense;lof;synonymous will test lof variants only, missense+lof variants, and missense+lof+synonymous variants. default: lof,missense;lof,missense;lof;synonymous"),
   make_option("--groupFile", type="character", default="",
-    help="Path to the file containing the group information for gene-based tests. Each gene/set has 2 or 3 lines in the group file. The first element is the gene/set name. The second element in the first line is to indicate whether this line contains variant IDs (var), annotations (anno), or weights (weight). The line for weights is optional. If not specified, the default weights will be generated based on beta(MAF, 1, 25). Use --weights.beta to change the parameters for the Beta distribution. The variant ids must be in the format chr:pos_ref/alt. Elements are seperated by tab or space."),
+    help="Path to the file containing the group information for gene-based tests. Each gene/set has 2 + K lines in the group file (K >= 0 weight lines). The first element of each line is the gene/set name. The second element indicates whether the line contains variant IDs (var), annotations (anno), or weights: a weight line's second element is 'weight' (weight set named WEIGHT), or 'weight:NAME' / 'weight,NAME' to name the weight set NAME. Weight lines are optional; with none, the default weights will be generated based on beta(MAF, 1, 25) (use --weights.beta to change the parameters). With more than one weight line per gene/set (each named, same names and order in every gene/set), each weight line defines one weight set and results are output per (annotation, max MAF, weight set) with a Weight column labeling the set (plus Pvalue_ACATV/Pvalue_ACATO columns for SKAT-O). The variant ids must match the genotype input's marker IDs (bim column 2 for PLINK). Elements are seperated by tab or space."),
   make_option("--sparseGRMFile", type="character", default="",
    help="Path to the pre-calculated sparse GRM file that was used in Step 1"),
   make_option("--sparseGRMSampleIDFile", type="character", default="",
@@ -84,7 +84,7 @@ option_list <- list(
   make_option("--cateVarRatioMaxMACVecInclude",type="character", default="20.5",
     help="Optional. vector of float. Higher bound for MAC categories. The length equals to the number of MAC categories for variance ratio estimation minus 1. [default='20.5']"),
   make_option("--weights.beta", type="character", default="1,25",
-    help="parameters for the beta distribution to weight genetic markers in gene-based tests."),
+    help="parameters for the beta distribution(s) to weight genetic markers in gene-based tests: semicolon-separated 'a,b' pairs, comma within a pair, e.g. '1,25' or '1,25;1,1' (quote the value if it contains a semicolon). Each a and b must be a finite number > 0. The first pair keeps the legacy roles (single-variant weighting and the conditioning-weight default). When more than one pair is given, each pair becomes one beta(MAF; a, b) weight set in the group test, named 'Beta_a_b' (e.g. Beta_1_25), appended after any group-file weight sets; results are then output per weight set with a Weight column. With a single pair, group-file weights (if present) take precedence, exactly as before. [default='1,25']"),
   make_option("--r.corr", type="numeric", default=0,
     help="If r.corr = 1, only Burden tests will be performed. If r.corr = 0, SKAT-O tests will be performed and results for Burden tests and SKAT tests will be output too. [default = 0]"),
   make_option("--markers_per_chunk_in_groupTest", type="numeric", default=100,
@@ -104,7 +104,9 @@ mean, p-value based on traditional score test is returned. Default value is 2.")
   make_option("--is_single_in_groupTest", type="logical", default=FALSE,
     help="Whether to output single-variant assoc test results when perform group tests. Note, single-variant assoc test results will always be output when SKAT and SKAT-O tests are conducted with --r.corr=0. This parameter should only be used when only Burden tests are conducted with --r.corr=1, [default=TRUE]"),
   make_option("--is_no_weight_in_groupTest", type="logical", default=FALSE,
-    help="Whether no weights are used in group Test. If FALSE, weights will be calcuated based on MAF from the Beta distribution with paraemters weights.beta or weights will be extracted from the group File if available [default=FALSE]"),
+    help="Whether no weights (all-ones) are used in group Test. If FALSE, weights will be calcuated based on MAF from the Beta distribution with paraemters weights.beta or weights will be extracted from the group File if available. If TRUE and the run has no other weight sets (unweighted group file, single weights.beta pair), the all-ones weights simply replace the beta weights, exactly as before. If TRUE and the run does have other weight sets (weight lines in the group file, or more than one weights.beta pair), an all-ones weight set named 'No_Weights' is appended as the last weight set [default=FALSE]"),
+  make_option("--is_output_weight_column", type="logical", default=FALSE,
+    help="Whether to force the multi-weight output schema even when only a single weight set is in play: the Weight column (labeled with the set's name) right after max_MAF, and for SKAT-O the additive Pvalue_ACATV/Pvalue_ACATO columns and an always-emitted Cauchy row. Useful for a stable schema across runs with different weight configurations; with more than one weight set the schema is always on. [default=FALSE]"),
   make_option("--is_output_markerList_in_groupTest", type="logical", default=FALSE,
     help="Whether to output the marker lists included in the set-based tests for each mask.[default=TRUE]"),
   make_option("--is_Firth_beta", type="logical", default=FALSE,
@@ -147,7 +149,9 @@ convertoNumeric = function(x,stringOutput){
 #weights.beta.rare <- convertoNumeric(x=strsplit(opt$weights.beta.rare,",")[[1]], "weights.beta.rare")
 #weights.beta.common <- convertoNumeric(x=strsplit(opt$weights.beta.common,",")[[1]], "weights.beta.common")
 #if(sum(weights.beta.common!=weights.beta.rare) > 0){stop("weights.beta.common option is not functioning, so weights.beta.common needs to be equal to weights.beta.rare")}
-weights.beta <- convertoNumeric(x=strsplit(opt$weights.beta,",")[[1]], "weights.beta")
+#pair-list string ("a1,b1;a2,b2;..."); parsed and validated inside
+#SPAGMMATtest (parse_weights_beta in R/SAIGE_Test_main.R)
+weights.beta <- opt$weights.beta
 
 cateVarRatioMinMACVecExclude <- convertoNumeric(x=strsplit(opt$cateVarRatioMinMACVecExclude,",")[[1]], "cateVarRatioMinMACVecExclude")
 cateVarRatioMaxMACVecInclude <- convertoNumeric(x=strsplit(opt$cateVarRatioMaxMACVecInclude,",")[[1]], "cateVarRatioMaxMACVecInclude")
@@ -225,6 +229,7 @@ if(nThreads == 1){
              pCutoffforFirth = opt$pCutoffforFirth,
              is_single_in_groupTest = opt$is_single_in_groupTest,
              is_no_weight_in_groupTest = opt$is_no_weight_in_groupTest,
+             is_output_weight_column = opt$is_output_weight_column,
              is_output_markerList_in_groupTest = opt$is_output_markerList_in_groupTest,
              is_fastTest = opt$is_fastTest,
 	     max_MAC_use_ER = opt$max_MAC_for_ER,
@@ -298,6 +303,7 @@ if(nThreads == 1){
              pCutoffforFirth = opt$pCutoffforFirth,
              is_single_in_groupTest = opt$is_single_in_groupTest,
              is_no_weight_in_groupTest = opt$is_no_weight_in_groupTest,
+             is_output_weight_column = opt$is_output_weight_column,
              is_output_markerList_in_groupTest = opt$is_output_markerList_in_groupTest,
              is_fastTest = opt$is_fastTest,
              max_MAC_use_ER = opt$max_MAC_for_ER,

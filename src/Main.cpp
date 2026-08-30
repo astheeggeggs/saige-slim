@@ -876,7 +876,8 @@ Rcpp::List mainRegionInCPP(
 			   arma::mat & t_weight,       // q0 x Kc custom (group-file) weight sets; 0-matrix sentinel when none
 			   arma::mat & t_beta_params,  // Kb x 2 beta(a,b) parameter pairs; 0-matrix sentinel when none
 			   bool t_includeNoWeights,    // append an all-ones "No_Weights" set
-			   std::vector<std::string> & t_weightNames, // per-set labels; only consumed when q_weight > 1
+			   std::vector<std::string> & t_weightNames, // per-set labels; only consumed when the Weight column is emitted
+			   bool t_forceWeightColumn, // emit the Weight column in the BURDEN writer even at q_weight == 1 (is_output_weight_column)
 			   arma::vec & t_weight_cond,
 			   bool t_isSingleinGroupTest,
 			   bool t_isOutputMarkerList, 
@@ -925,6 +926,10 @@ Rcpp::List mainRegionInCPP(
     q_weight_beta = 1;
   }
   unsigned int q_weight = q_weight_custom + q_weight_beta + (t_includeNoWeights ? 1u : 0u);
+  // Weight-column emission in the BURDEN writer: on for a real multi-weight
+  // run, or forced at a single set by is_output_weight_column (schema only;
+  // no arithmetic depends on this flag)
+  bool emitWeightColumn = (q_weight > 1) || t_forceWeightColumn;
   const int SET_CUSTOM = 0, SET_BETA = 1, SET_NOWEIGHT = 2;
   std::vector<int> setKindVec(q_weight);
   std::vector<unsigned int> setColVec(q_weight, 0);  // custom column / beta row per set
@@ -2004,6 +2009,7 @@ if(t_regionTestType == "BURDEN"){
 			q_maf,
 			q_weight,
 			t_weightNames,
+			emitWeightColumn,
 			isCondition,
 			t_traitType);
 	   }else{
@@ -2439,7 +2445,7 @@ void closeGenoFile(std::string & t_genoType)
 }
 
 // [[Rcpp::export]]
-bool openOutfile(std::string t_traitType, bool isappend, unsigned int t_nWeightSets){
+bool openOutfile(std::string t_traitType, bool isappend, unsigned int t_nWeightSets, bool t_forceWeightColumn){
 	bool isopen;
 	if(!isappend){
 	g_out.group.open(g_out.prefixGroup.c_str());
@@ -2448,9 +2454,10 @@ bool openOutfile(std::string t_traitType, bool isappend, unsigned int t_nWeightS
 		g_out.group << "Region\tGroup\tmax_MAF\t";
 		// additive multi-weight schema (design D3): the Weight label column
 		// sits right after max_MAF and exists only when more than one weight
-		// set is in play; at t_nWeightSets == 1 the emitted bytes are exactly
+		// set is in play (or the user forces it at a single set with
+		// is_output_weight_column); otherwise the emitted bytes are exactly
 		// the legacy header.
-		if(t_nWeightSets > 1){
+		if(t_nWeightSets > 1 || t_forceWeightColumn){
 			g_out.group << "Weight\t";
 		}
 		g_out.group << "Pvalue_Burden\tBETA_Burden\tSE_Burden\t";
@@ -2764,6 +2771,7 @@ void writeOutfile_BURDEN(std::string regionName,
 			unsigned int q_maf,
 			unsigned int q_weight,
 			std::vector<std::string> & t_weightNames,
+			bool t_emitWeightColumn,
 			bool isCondition,
 			std::string t_traitType){
      unsigned int i;
@@ -2780,7 +2788,7 @@ void writeOutfile_BURDEN(std::string regionName,
            g_out.group << "\t";
            g_out.group << BURDEN_maxMAFName_Vec.at(i);
            g_out.group << "\t";
-           if(q_weight > 1){
+           if(t_emitWeightColumn){
              // per-set Weight label right after max_MAF (design D3); same
              // name fallback as the UR pseudo-marker suffix in mainRegionInCPP
              g_out.group << ((r < t_weightNames.size()) ? t_weightNames.at(r) : ("W" + std::to_string(r + 1)));
@@ -2818,7 +2826,7 @@ void writeOutfile_BURDEN(std::string regionName,
    }
      g_out.group << regionName;
      g_out.group << "\tCauchy\tNA\t";
-     if(q_weight > 1){
+     if(t_emitWeightColumn){
        // the single pooled Cauchy row is not tied to one weight set
        g_out.group << "NA\t";
      }

@@ -1,3 +1,54 @@
+#Parse/canonicalize the weights.beta argument into the Kb x 2 numeric matrix
+#of beta(a, b) parameter pairs (one row per pair). Accepted inputs:
+#  - a single string "a1,b1;a2,b2;..." -- semicolon-separated pairs, comma
+#    within a pair (the CLI format; "1,25" is the single-pair legacy form)
+#  - a numeric vector of length 2 (the legacy R API form, e.g. c(1, 25))
+#  - a Kb x 2 numeric matrix (passed through after validation)
+#Each pair must be exactly 2 finite numerics with a > 0 and b > 0; the error
+#names the offending pair. Row 1 keeps the legacy roles (single-variant tests,
+#conditioning-weight default). More than one pair adds explicit beta weight
+#sets to the group test (see SAIGE.Region).
+parse_weights_beta = function(weights.beta) {
+  if (is.character(weights.beta)) {
+    if (length(weights.beta) != 1 || is.na(weights.beta) || !nzchar(weights.beta)) {
+      stop("weights.beta must be a single string of semicolon-separated 'a,b' pairs, e.g. '1,25' or '1,25;1,1'\n")
+    }
+    pairStrings = strsplit(weights.beta, ";", fixed = TRUE)[[1]]
+    if (length(pairStrings) == 0) {
+      stop("weights.beta must contain at least one 'a,b' pair, e.g. '1,25'\n")
+    }
+    pairList = lapply(pairStrings, function(p) {
+      vals = suppressWarnings(as.numeric(strsplit(p, ",", fixed = TRUE)[[1]]))
+      if (length(vals) != 2 || anyNA(vals)) {
+        stop("weights.beta: each pair must be exactly 2 numeric values 'a,b'; offending pair: '", p, "'\n")
+      }
+      vals
+    })
+    mat = do.call(rbind, pairList)
+  } else if (is.matrix(weights.beta)) {
+    if (!is.numeric(weights.beta) || ncol(weights.beta) != 2 || nrow(weights.beta) < 1) {
+      stop("weights.beta given as a matrix must be a numeric Kb x 2 matrix of beta(a, b) parameter pairs\n")
+    }
+    mat = matrix(as.numeric(weights.beta), nrow = nrow(weights.beta), ncol = 2)
+  } else if (is.numeric(weights.beta)) {
+    if (length(weights.beta) != 2) {
+      stop("weights.beta given as a numeric vector must have exactly 2 elements c(a, b), e.g. c(1, 25)\n")
+    }
+    mat = matrix(as.numeric(weights.beta), nrow = 1, ncol = 2)
+  } else {
+    stop("weights.beta must be a pair-list string ('a1,b1;a2,b2;...'), a numeric vector c(a, b), or a Kb x 2 numeric matrix\n")
+  }
+  for (k in seq_len(nrow(mat))) {
+    if (!all(is.finite(mat[k, ])) || any(mat[k, ] <= 0)) {
+      stop("weights.beta: beta distribution parameters must be finite and > 0; offending pair ",
+           k, ": '", mat[k, 1], ",", mat[k, 2], "'\n")
+    }
+  }
+  dimnames(mat) = NULL
+  return(mat)
+}
+
+
 #' Run single variant or gene- or region-based score tests with SPA based on the linear/logistic mixed model.
 #'
 #' @param bedFile character. Path to bed file (PLINK)
@@ -25,14 +76,14 @@
 #' @param maxMAC_in_groupTest. vector of numeric. Max MAC for markers tested in group test seperated by comma. This vector will be combined with maxMAF_in_groupTest. e.g. c(1) to only test singletons. By default, c(0) and no Max MAC cutoffs are applied.  
 #' @param minGroupMAC_in_BurdenTest numeric. Only applied when only Burden tests are performed (r.corr=1). Minimum minor allele count in the Burden test for the psueodo marker. By default, 5
 #' @param  annotation_in_groupTest. vector of character. annotations of markers to be tested in the set-based tests. using ; to combine multiple annotations in the same test. e.g. c("lof","missense;lof","missense;lof;synonymous")  will test lof variants only, missense+lof variants, and missense+lof+synonymous variants. By default:  c("lof","missense;lof","missense;lof;synonymous")
-#' @param groupFile character. Path to the file containing the group information for gene-based tests. Each gene/set has 2 or 3 lines in the group file. The first element is the gene/set name. The second element in the first line is to indicate whether this line contains variant IDs (var), annotations (anno), or weights (weight). The line for weights is optional. If not specified, the default weights will be generated based on beta(MAF, 1, 25). Use weights.beta to change the parameters for the Beta distribution. The variant ids must be in the format chr:pos_ref/alt. Elements are seperated by tab or space.
+#' @param groupFile character. Path to the file containing the group information for gene-based tests. Each gene/set has 2 + K lines in the group file (K >= 0 weight lines). The first element of each line is the gene/set name. The second element indicates whether the line contains variant IDs (var), annotations (anno), or weights. A weight line's second element is 'weight' (weight set named "WEIGHT"), or 'weight:NAME' / 'weight,NAME' to name the weight set NAME. Weight lines are optional; with none, the default weights are generated based on beta(MAF, 1, 25) (use weights.beta to change the parameters). With more than one weight line per gene/set (each named, same names and order in every gene/set), each weight line defines one weight set and results are output per (annotation, max MAF, weight set) with a Weight column labeling the set (plus Pvalue_ACATV/Pvalue_ACATO columns for SKAT-O). The variant ids must match the genotype input's marker IDs (bim column 2 for PLINK). Elements are seperated by tab or space.
 #' @param sparseGRMFile character. Path to the pre-calculated sparse GRM file that was used in Step 1
 #' @param sparseGRMSampleIDFile character. Path to the sample ID file for the pre-calculated sparse GRM. No header is included. The order of sample IDs is corresponding to sample IDs in the sparse GRM
 #' @param relatednessCutoff float. The threshold for coefficient of relatedness to treat two samples as unrelated in the sparse GRM. By default, 0
 #' @param MACCutoff_to_CollapseUltraRare numeric. MAC cutoff to collpase the ultra rare variants (<= MACCutoff_to_CollapseUltraRare) in the set-based association tests. By default, 10.
 #' @param cateVarRatioMinMACVecExclude vector of float. Lower bound of MAC for MAC categories. The length equals to the number of MAC categories for variance ratio estimation. By default, c(10.5,20.5). If groupFile="", only one variance ratio corresponding to MAC >= 20 is used
 #' @param cateVarRatioMaxMACVecInclude vector of float. Higher bound of MAC for MAC categories. The length equals to the number of MAC categories for variance ratio estimation minus 1. By default, c(20.5). If groupFile="", only one variance ratio corresponding to MAC >= 20 is used
-#' @param weights.beta vector of numeric with two elements. parameters for the beta distribution to weight genetic markers in gene-based tests. By default, "c(1,25)".
+#' @param weights.beta parameters for the beta distribution(s) to weight genetic markers in gene-based tests: a numeric vector with two elements c(a, b), a Kb x 2 numeric matrix with one (a, b) pair per row, or a string "a1,b1;a2,b2;..." (semicolon-separated pairs, comma within a pair). By default, c(1,25). The first pair keeps the legacy roles (single-variant weighting and the conditioning-weight default). When more than one pair is given, each pair becomes one beta(MAF; a, b) weight set in the group test, named "Beta_a_b" (e.g. "Beta_1_25"), appended after any group-file weight sets; results are then output per weight set with a Weight column. With a single pair, group-file weights (if present) take precedence, exactly as before.
 #' @param r.corr numeric. bewteen 0 and 1. parameters for gene-based tests. If r.corr = 1, only Burden tests will be performed. If r.corr = 0, SKAT-O tests will be performed and results for Burden tests and SKAT tests will be output too.  By default, 0. 
 #' @param markers_per_chunk_in_groupTest numeric. Number of markers in each chunk when calculating the variance covariance matrix in the set/group-based tests. By default, 100.
 #' @param condition character. For conditional analysis. Variant ids are in the format chr:pos_ref/alt and seperated by by comma. e.g."chr3:101651171:C:T,chr3:101651186:G:A". 
@@ -41,7 +92,8 @@
 #' @param dosage_zerod_cutoff numeric. If is_imputed_data = TRUE, For variants with MAC <= dosage_zerod_MAC_cutoff, dosages <= dosageZerodCutoff with be set to 0. By derault, 0.2
 #' @param dosage_zerod_MAC_cutoff numeric. If is_imputed_data = TRUE, For variants with MAC <= dosage_zerod_MAC_cutoff, dosages <= dosageZerodCutoff with be set to 0. By derault, 10
 #' @param is_single_in_groupTest logical.  Whether to output single-variant assoc test results when perform group tests. Note, single-variant assoc test results will always be output when SKAT and SKAT-O tests are conducted with r.corr=0. This parameter should only be used when only Burden tests are condcuted with r.corr=1. By default, TRUE
-#' @param is_no_weight_in_groupTest logical. Whether no weights are used in group Test. If FALSE, weights will be calcuated based on MAF from the Beta distribution with paraemters weights.beta or weights will be extracted from the group File if available. By default, FALSE
+#' @param is_no_weight_in_groupTest logical. Whether no weights (all-ones) are used in the group test. If FALSE, weights will be calcuated based on MAF from the Beta distribution with paraemters weights.beta or weights will be extracted from the group File if available. If TRUE and the run has no other weight sets (unweighted group file, single weights.beta pair), the all-ones weights simply replace the beta weights, exactly as before. If TRUE and the run does have other weight sets (weight lines in the group file, or more than one weights.beta pair), an all-ones weight set named "No_Weights" is appended as the last weight set (this replaces the previous hard error for weighted group files). By default, FALSE
+#' @param is_output_weight_column logical. Whether to force the multi-weight output schema even when only a single weight set is in play: the Weight column (labeled with the set's name) right after max_MAF, and for SKAT-O the additive Pvalue_ACATV/Pvalue_ACATO columns and an always-emitted Cauchy row. Useful for a stable schema across runs with different weight configurations. With more than one weight set the schema is always on and this flag is redundant. By default, FALSE
 #' @param is_output_markerList_in_groupTest logical. Whether to output the marker lists included in the set-based tests for each mask. By default, FALSE
 #' @param is_Firth_beta logical. Whether to estimate effect sizes using approx Firth, only for binary traits. By default, FALSE
 #' @param pCutoffforFirth numeric. p-value cutoff to use approx Firth to estiamte the effect sizes. Only for binary traits. The effect sizes of markers with p-value <= pCutoffforFirth will be estimated using approx Firth. By default, 0.01.
@@ -101,9 +153,10 @@ SPAGMMATtest = function(
 		 is_output_markerList_in_groupTest = FALSE,
 		 is_fastTest = FALSE,
 		 pval_cutoff_for_fastTest = 0.05, 
-		 max_MAC_use_ER = 4, 
+		 max_MAC_use_ER = 4,
 		 subSampleFile = "",
-		 is_noadjCov = FALSE
+		 is_noadjCov = FALSE,
+		 is_output_weight_column = FALSE
 ){
 
   cat("is_noadjCov ", is_noadjCov, "\n")
@@ -149,6 +202,11 @@ SPAGMMATtest = function(
     OutputFileIndex=NULL
     if(is.null(OutputFileIndex)){OutputFileIndex = paste0(OutputFile, ".index")} 
 
+    ##canonicalize weights.beta into the Kb x 2 matrix of beta(a, b) pairs
+    ##(design D10). Row 1 keeps the legacy roles below; extra rows become
+    ##explicit beta weight sets in the group test (SAIGE.Region).
+    weights.beta = parse_weights_beta(weights.beta)
+
     ##check the variance ratio file and extract the variance ratio vector
     setAssocTest_GlobalVarsInCPP(impute_method,
                             max_missing,
@@ -157,9 +215,9 @@ SPAGMMATtest = function(
                             min_Info,
 			dosage_zerod_cutoff,
                         dosage_zerod_MAC_cutoff,
-			weights.beta, 
+			as.numeric(weights.beta[1, ]),
 			OutputFile,
-			max_MAC_use_ER)	
+			max_MAC_use_ER)
    
     #time_2 = proc.time()
 
@@ -555,7 +613,9 @@ SPAGMMATtest = function(
 		     chrom,
 		     is_fastTest,
 		     pval_cutoff_for_fastTest,
-		     is_output_moreDetails)
+		     is_output_moreDetails,
+		     weights_beta_mat = weights.beta,
+		     is_output_weight_column = is_output_weight_column)
 
 
     }	    

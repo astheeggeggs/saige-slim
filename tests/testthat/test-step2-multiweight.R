@@ -60,6 +60,18 @@ single_run <- function() mw_run("group_new_snpid_withWeights.txt")
 # (openOutfile/writeOutfile_BURDEN), not the R SKAT-O post-processing
 burden_multi_run <- function() mw_run("group_new_snpid_multiWeights.txt", "--r.corr=1")
 burden_single_run <- function() mw_run("group_new_snpid_withWeights.txt", "--r.corr=1")
+# C8 set composition (D10): explicit beta sets from a weights.beta pair list
+# on an UNWEIGHTED group file (the semicolon needs shell quoting), the
+# appended No_Weights set on a weighted file, and the forced Weight column at
+# a single set (SKAT-O and BURDEN writers)
+beta_run <- function() mw_run("group_new_snpid.txt",
+                              paste0("--weights.beta=", shQuote("1,25;1,1")))
+noweights_run <- function() mw_run("group_new_snpid_multiWeights.txt",
+                                   "--is_no_weight_in_groupTest=TRUE")
+forced_run <- function() mw_run("group_new_snpid_withWeights.txt",
+                                "--is_output_weight_column=TRUE")
+burden_forced_run <- function() mw_run("group_new_snpid_withWeights.txt",
+                                       c("--r.corr=1", "--is_output_weight_column=TRUE"))
 
 WSETS <- c("CADD", "REVEL")
 pnum <- function(x) suppressWarnings(as.numeric(x))
@@ -184,6 +196,128 @@ test_that("BURDEN K=1 keeps the legacy header exactly", {
   expect_false(any(c("Weight", "Pvalue_ACATV", "Pvalue_ACATO") %in% colnames(s)))
 })
 
+# ---- C8: weights.beta pair list -> explicit beta sets ----------------------
+
+BETA_SETS <- c("Beta_1_25", "Beta_1_1")
+
+test_that("unweighted file + weights.beta pair list: one beta set per pair, in given order", {
+  d <- beta_run()$region
+  expect_identical(colnames(d)[1:9],
+                   c("Region", "Group", "max_MAF", "Weight", "Pvalue",
+                     "Pvalue_Burden", "Pvalue_SKAT", "Pvalue_ACATV", "Pvalue_ACATO"))
+  r <- d[d$Group != "Cauchy", ]
+  # weight-innermost rows cycling the pair-derived set names, K rows per cell
+  expect_identical(r$Weight, rep(BETA_SETS, nrow(r) / 2L))
+  expect_identical(nrow(r), length(unique(paste(r$Region, r$Group, r$max_MAF))) * 2L)
+  # one pooled Cauchy row per region
+  expect_identical(sum(d$Group == "Cauchy"), length(unique(d$Region)))
+  # positive control: the two beta parameterizations must actually differ
+  p25 <- pnum(r$Pvalue[r$Weight == "Beta_1_25"])
+  p11 <- pnum(r$Pvalue[r$Weight == "Beta_1_1"])
+  expect_true(any(abs(p25 - p11) > 0))
+  # per-row ACAT-O still reconciles on the beta-set rows
+  for (i in seq_len(nrow(r))) {
+    trio <- pnum(c(r$Pvalue_ACATV[i], r$Pvalue_Burden[i], r$Pvalue_SKAT[i]))
+    expect_lt(rel_err(pnum(r$Pvalue_ACATO[i]), CCT(trio)), 1e-12)
+  }
+  # UR pseudo-markers are per set, suffixed with the beta set names
+  ur <- beta_run()$single
+  ur <- ur[ur$CHR == "UR", ]
+  expect_gt(nrow(ur), 0)
+  expect_identical(sub("^.*:", "", ur$MarkerID), rep(BETA_SETS, nrow(ur) / 2L))
+})
+
+# ---- C8: is_no_weight_in_groupTest appends No_Weights to a weighted file ----
+
+test_that("weighted file + is_no_weight_in_groupTest: No_Weights appended after CADD/REVEL", {
+  d <- noweights_run()$region
+  m <- multi_run()$region
+  r <- d[d$Group != "Cauchy", ]
+  rm_ <- m[m$Group != "Cauchy", ]
+  sets3 <- c(WSETS, "No_Weights")
+  # the No_Weights set is appended LAST: rows cycle CADD, REVEL, No_Weights
+  expect_identical(r$Weight, rep(sets3, nrow(r) / 3L))
+  # same (anno, max_MAF) cells as the 2-set run, one extra row per cell
+  expect_identical(2L * nrow(r), 3L * nrow(rm_))
+  expect_identical(r$Group, rep(rm_$Group[seq(1, nrow(rm_), by = 2L)], each = 3L))
+  # still exactly one pooled Cauchy row per region
+  expect_identical(sum(d$Group == "Cauchy"), length(unique(d$Region)))
+  # sanity: the all-ones set is not a copy of a custom set
+  pn <- pnum(r$Pvalue[r$Weight == "No_Weights"])
+  pc <- pnum(r$Pvalue[r$Weight == "CADD"])
+  expect_true(any(abs(pn - pc) > 0))
+  # its UR pseudo-markers carry the No_Weights suffix
+  ur <- noweights_run()$single
+  ur <- ur[ur$CHR == "UR", ]
+  expect_true(any(grepl(":No_Weights$", ur$MarkerID)))
+})
+
+# ---- C8: --is_output_weight_column forces the schema at K = 1 ---------------
+
+test_that("forced Weight column at K=1 (SKAT-O): set name labels rows; excising the new columns reproduces the plain run", {
+  f <- forced_run()$region
+  s <- single_run()$region
+  newcols <- c("Weight", "Pvalue_ACATV", "Pvalue_ACATO")
+  expect_true(all(newcols %in% colnames(f)))
+  expect_identical(colnames(f)[1:5],
+                   c("Region", "Group", "max_MAF", "Weight", "Pvalue"))
+  # the single set keeps its group-file name (bare 'weight' line -> "WEIGHT")
+  expect_identical(unique(f$Weight[f$Group != "Cauchy"]), "WEIGHT")
+  expect_identical(unique(f$Weight[f$Group == "Cauchy"]), "NA")
+  # excising the additive columns reproduces the un-flagged run byte-for-byte
+  f2 <- f[, setdiff(colnames(f), newcols)]
+  rownames(f2) <- NULL
+  expect_identical(colnames(f2), colnames(s))
+  expect_identical(f2, s)
+  # the single-variant output is schema-independent
+  expect_identical(forced_run()$single, single_run()$single)
+})
+
+test_that("forced Weight column at K=1 (BURDEN writer): header and rows gain only the Weight column", {
+  f <- burden_forced_run()$region
+  s <- burden_single_run()$region
+  expect_identical(colnames(f), append(BURDEN_HDR_K1, "Weight", after = 3L))
+  expect_identical(unique(f$Weight[f$Group != "Cauchy"]), "WEIGHT")
+  expect_identical(unique(f$Weight[f$Group == "Cauchy"]), "NA")
+  f2 <- f[, setdiff(colnames(f), "Weight")]
+  rownames(f2) <- NULL
+  expect_identical(colnames(f2), colnames(s))
+  expect_identical(f2, s)
+})
+
+# ---- C8: weights.beta pair-list parser (fast tier: pure R, no CLI run) ------
+
+test_that("parse_weights_beta accepts the legacy and pair-list forms", {
+  pw <- SAIGE:::parse_weights_beta
+  expect_identical(pw("1,25"), matrix(c(1, 25), nrow = 1, ncol = 2, byrow = TRUE))
+  expect_identical(pw("1,25;1,1"),
+                   matrix(c(1, 25, 1, 1), nrow = 2, ncol = 2, byrow = TRUE))
+  expect_identical(pw("0.5,0.5;1,25;2,3"),
+                   matrix(c(0.5, 0.5, 1, 25, 2, 3), nrow = 3, ncol = 2, byrow = TRUE))
+  expect_identical(pw(c(1, 25)), matrix(c(1, 25), nrow = 1, ncol = 2))
+  m <- matrix(c(1, 25, 0.5, 0.5), nrow = 2, ncol = 2, byrow = TRUE)
+  expect_identical(pw(m), m)
+})
+
+test_that("parse_weights_beta rejects malformed pairs, naming the offender", {
+  pw <- SAIGE:::parse_weights_beta
+  expect_error(pw("1,25;2"), "offending pair: '2'", fixed = TRUE)
+  expect_error(pw("1,2,3"), "offending pair: '1,2,3'", fixed = TRUE)
+  expect_error(pw("a,b"), "offending pair: 'a,b'", fixed = TRUE)
+  expect_error(pw("1,25;;1,1"), "offending pair")
+  expect_error(pw(""), "weights.beta")
+  expect_error(pw(c(1, 25, 3)), "exactly 2 elements")
+  expect_error(pw(TRUE), "weights.beta")
+})
+
+test_that("parse_weights_beta rejects non-positive or non-finite parameters", {
+  pw <- SAIGE:::parse_weights_beta
+  expect_error(pw("0,25"), "offending pair 1: '0,25'", fixed = TRUE)
+  expect_error(pw("1,-1"), "finite and > 0")
+  expect_error(pw("1,25;1,Inf"), "offending pair 2", fixed = TRUE)
+  expect_error(pw(c(-1, 25)), "finite and > 0")
+})
+
 test_that("real markers are tested once regardless of K; only UR pseudo-markers are per set", {
   dm <- multi_run()$single
   ds <- single_run()$single
@@ -205,4 +339,33 @@ test_that("real markers are tested once regardless of K; only UR pseudo-markers 
   expect_identical(suffix, rep(WSETS, nrow(ur_m) / 2L))
   # dropping the suffix recovers exactly the single-set pseudo-marker names
   expect_identical(unique(sub(":[^:]+$", "", ur_m$MarkerID)), ur_s$MarkerID)
+})
+
+test_that("negative weights in a K=1 file are rejected under the multi-weight schema", {
+  skip_unless_level("standard")
+  # checkGroupFile's parse-time sign check is K>1-file-scoped, so a K=1
+  # weighted file with a negative weight parses fine -- but the multi-weight
+  # SCHEMA (forced here via is_output_weight_column; composition via
+  # is_no_weight_in_groupTest or multiple weights.beta pairs is the same
+  # path) computes ACAT-V from those weights, and CCT stop()s mid-run on a
+  # negative. The per-region guard in SAIGE.Region must fail fast instead,
+  # with a message naming the region.
+  src <- file.path(saige_extdata, "input", "group_new_snpid_withWeights.txt")
+  lines <- readLines(src)
+  wIdx <- which(vapply(strsplit(lines, "[ \t]+"),
+                       function(p) length(p) >= 3 && p[2] == "weight",
+                       logical(1)))[1]
+  parts <- strsplit(lines[wIdx], "[ \t]+")[[1]]
+  parts[3] <- paste0("-", parts[3])
+  lines[wIdx] <- paste(parts, collapse = " ")
+  negfile <- tempfile(fileext = ".txt")
+  writeLines(lines, negfile)
+  out <- file.path(tempfile("step2_mwneg_"), "region.txt")
+  dir.create(dirname(out), recursive = TRUE)
+  args <- c(MW_ARGS("group_new_snpid.txt", out), "--is_output_weight_column=TRUE")
+  args[grep("^--groupFile=", args)] <- paste0("--groupFile=", negfile)
+  status <- run_saige_cli("step2_SPAtests.R", args)
+  expect_false(identical(as.integer(status), 0L))
+  log <- readLines(attr(status, "log"), warn = FALSE)
+  expect_true(any(grepl("negative marker weights", log)))
 })

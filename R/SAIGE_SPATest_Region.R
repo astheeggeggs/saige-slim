@@ -127,24 +127,46 @@ region_postprocess = function(outList,
                               regionName,
                               is_single_in_groupTest,
                               is_rerun,
-                              resultDF_carryover = NULL) {
+                              resultDF_carryover = NULL,
+                              weight_sets = NULL) {
   # ---- weight-set layout (jmr decode) --------------------------------------
-  # Multi-weight mode (K > 1) is signalled by WEIGHT being the q0 x K matrix
-  # built in SAIGE.getRegionList_new. The legacy shapes -- the c(0) sentinel
-  # of an unweighted group file and the collapsed single-set numeric vector --
-  # are K = 1, and every expression below then reduces to the literal
-  # single-weight code (same objects, same arithmetic, same bytes).
+  # The composed weight-set list arrives as `weight_sets` (built in
+  # SAIGE.Region; per-set kind/name/params in the same custom -> beta ->
+  # No_Weights order as C++). weight_sets = NULL keeps the pre-composition
+  # contract: every set is a custom (group-file) column of WEIGHT, and K > 1
+  # is signalled by WEIGHT being the q0 x K matrix built in
+  # SAIGE.getRegionList_new. Either way the legacy shapes -- the c(0)
+  # sentinel of an unweighted group file and the collapsed single-set numeric
+  # vector -- are K = 1, and every expression below then reduces to the
+  # literal single-weight code (same objects, same arithmetic, same bytes);
+  # weight_sets$force (is_output_weight_column) switches a K = 1 run onto the
+  # multi-weight SCHEMA while its single set keeps the K = 1 arithmetic.
   # C++ writes every (anno, max_MAF)-indexed vector weight-fastest with the
   # normative 0-based index jmr = j*q_maf*q_weight + m*q_weight + r (see
   # src/Main.cpp mainRegionInCPP). The 1-based R form of that index is
   #   jm  = (j - 1)*length(maxMAFlist) + m
   #   jmr = (jm - 1)*K + r
   # which at K = 1 (so r = 1) is jmr == jm, the legacy index.
-  nWeightSets = if (is.matrix(WEIGHT)) ncol(WEIGHT) else 1L
-  isMultiWeight = nWeightSets > 1
+  if (is.null(weight_sets)) {
+    nWeightSets = if (is.matrix(WEIGHT)) ncol(WEIGHT) else 1L
+    ws_kind = rep("custom", nWeightSets)
+    ws_customCol = seq_len(nWeightSets)
+    ws_betaA = rep(NA_real_, nWeightSets)
+    ws_betaB = rep(NA_real_, nWeightSets)
+    ws_force = FALSE
+    ws_names = if (nWeightSets > 1) colnames(WEIGHT) else NULL
+  } else {
+    nWeightSets = length(weight_sets$kind)
+    ws_kind = weight_sets$kind
+    ws_customCol = weight_sets$customCol
+    ws_betaA = weight_sets$betaA
+    ws_betaB = weight_sets$betaB
+    ws_force = isTRUE(weight_sets$force)
+    ws_names = weight_sets$name
+  }
+  isMultiWeight = nWeightSets > 1 || ws_force
   weightNames = if (isMultiWeight) {
-    nm = colnames(WEIGHT)
-    if (is.null(nm)) paste0("W", seq_len(nWeightSets)) else nm
+    if (is.null(ws_names)) paste0("W", seq_len(nWeightSets)) else ws_names
   } else {
     NULL
   }
@@ -169,13 +191,33 @@ region_postprocess = function(outList,
       annoMAFIndicatorMat = outList$annoMAFIndicatorMat
     }
     if (isMultiWeight) {
-      #per-set weights (design D2): the surviving rare markers carry set r's
-      #group-file weights and every collapsed ultra-rare pseudo-marker carries
-      #1, because C++ already baked w_r into the ultra-rare collapse.
-      #outList$numofUR is q_anno*q_maf*K, so each vector is q0 + q_anno_maf_weight
-      #long -- one entry per row of the marker-level output, as at K = 1.
+      #per-set weights (design D2), by set kind:
+      #  custom: the surviving rare markers carry set r's group-file weights
+      #    and every collapsed ultra-rare pseudo-marker carries 1, because
+      #    C++ already baked w_r into the ultra-rare collapse max(w_r*G).
+      #  beta: dbeta(MAF, a_r, b_r) over EVERY output row -- the ultra-rare
+      #    collapse is unweighted for beta sets, and C++ scaled only its
+      #    genoSumMat contribution by pdf(beta_r, MAF_collapsed), so the
+      #    pseudo-marker weights like any marker at its collapsed MAF (the
+      #    literal legacy K = 1 flow).
+      #  implicit_beta: the hardcoded dbeta(MAF, 1, 25) -- LEDGER.md #19,
+      #    preserved (only reachable at K = 1 with is_output_weight_column).
+      #  noweight: all ones.
+      #outList$numofUR is q_anno*q_maf*K, so each vector is q0 + numofUR
+      #long -- one entry per row of the marker-level output, as at K = 1
+      #(outList$MAFVec has that same length). Rows of other sets are never
+      #read for set r: each cell subsets by annoMAFIndicatorMat[, jmr].
       AnnoWeightsList = lapply(seq_len(nWeightSets), function(r) {
-        c(WEIGHT[, r], rep(1, outList$numofUR))
+        switch(ws_kind[r],
+          custom = {
+            w = if (is.matrix(WEIGHT)) WEIGHT[, ws_customCol[r]] else as.numeric(WEIGHT)
+            c(w, rep(1, outList$numofUR))
+          },
+          beta = dbeta(outList$MAFVec, ws_betaA[r], ws_betaB[r]),
+          implicit_beta = dbeta(outList$MAFVec, 1, 25),
+          noweight = rep(1, length(outList$MAFVec)),
+          stop("region_postprocess: unknown weight-set kind '", ws_kind[r], "'\n")
+        )
       })
     } else if (sum(WEIGHT) > 0) {
       AnnoWeights = c(WEIGHT, rep(1, outList$numofUR))
@@ -578,7 +620,9 @@ SAIGE.Region = function(mu,
                         chrom,
                         is_fastTest,
                         pval_cutoff_for_fastTest,
-                        is_output_moreDetails) {
+                        is_output_moreDetails,
+                        weights_beta_mat = matrix(c(1, 25), nrow = 1, ncol = 2),
+                        is_output_weight_column = FALSE) {
 
   OutputFileIndex = NULL
   if (is.null(OutputFileIndex))
@@ -657,30 +701,68 @@ SAIGE.Region = function(mu,
   is_weight_included = region_list$is_weight_included
   nWeightSets = region_list$nWeightSets
   weightSetNames = region_list$weightSetNames
-  if (is_no_weight_in_groupTest & is_weight_included) {
-    stop("is_no_weight_in_groupTest = TRUE but weights are found in the group file.\n")
-  }
 
-  if (is_no_weight_in_groupTest) {
+  # ---- weight-set composition (design D5/D10) ------------------------------
+  # The composed per-run weight-set list, in the NORMATIVE order shared with
+  # C++ (src/Main.cpp mainRegionInCPP):
+  #   custom sets (group-file weight lines, file order)
+  #   -> explicit beta sets (weights.beta pairs in given order, named
+  #      "Beta_a_b"; composed ONLY when more than one pair is supplied -- a
+  #      single pair, default or not, keeps the legacy implicit-beta path)
+  #   -> "No_Weights" (all-ones; appended when is_no_weight_in_groupTest =
+  #      TRUE and the run has any other weight set)
+  # At exactly one composed set every branch below reduces to the legacy
+  # single-weight flow (same objects, same bytes).
+  nBetaPairs = nrow(weights_beta_mat)
+  useExplicitBeta = nBetaPairs > 1
+  betaSetNames = if (useExplicitBeta) {
+    paste0("Beta_", weights_beta_mat[, 1], "_", weights_beta_mat[, 2])
+  } else {
+    character(0)
+  }
+  # is_no_weight_in_groupTest composition:
+  #  - no other weight set (unweighted group file, single weights.beta pair):
+  #    the LEGACY path verbatim -- the single all-ones set replaces the
+  #    implicit beta set, no new output columns
+  #  - group-file weight lines (which used to hard-error here) or explicit
+  #    beta sets: an all-ones "No_Weights" set is APPENDED as the last set
+  includeNoWeightsSet = is_no_weight_in_groupTest &&
+    (is_weight_included || useExplicitBeta)
+  legacyNoWeight = is_no_weight_in_groupTest && !includeNoWeightsSet
+  if (legacyNoWeight) {
     cat("No weights are used in the group test\n")
   }
-
-  # Number of weight sets actually handed to the test engine: a group file with
-  # 0 or 1 weight lines (and the is_no_weight_in_groupTest all-ones vector) is
-  # the legacy single-set path.
-  nWeightSetsUsed = if (is_no_weight_in_groupTest) 1L else max(1L, nWeightSets)
+  if (includeNoWeightsSet) {
+    cat("is_no_weight_in_groupTest = TRUE: an all-ones 'No_Weights' weight set is appended to the group test\n")
+  }
+  composedNames = c(
+    if (legacyNoWeight) "No_Weights",
+    if (nWeightSets > 0) weightSetNames,
+    betaSetNames,
+    if (includeNoWeightsSet) "No_Weights"
+  )
+  nWeightSetsUsed = max(1L, length(composedNames))
   isMultiWeightRun = nWeightSetsUsed > 1
   if (isMultiWeightRun) {
-    cat(nWeightSetsUsed, " weight sets are used in the group test: ",
-        paste(weightSetNames, collapse = ", "), "\n")
-    if (isCondition) {
+    if (anyDuplicated(composedNames) > 0) {
       stop(
-        "Multiple weight sets (",
-        nWeightSetsUsed,
-        " weight lines in the group file) are not yet supported together with conditional analysis (--condition); the per-set conditional adjustment arrives in a later commit. Please drop --condition or use a group file with a single weight line.\n"
+        "Duplicate weight set name '",
+        composedNames[duplicated(composedNames)][1],
+        "' in the composed weight-set list (group-file sets, then weights.beta pairs, then No_Weights). Please rename the group-file weight set or drop the duplicate pair.\n"
       )
     }
+    cat(nWeightSetsUsed, " weight sets are used in the group test: ",
+        paste(composedNames, collapse = ", "), "\n")
   }
+  if (isCondition && (isMultiWeightRun || is_output_weight_column)) {
+    stop(
+      "Multiple weight sets (or is_output_weight_column = TRUE) are not yet supported together with conditional analysis (--condition); the per-set conditional adjustment arrives in a later commit. Please drop --condition, or use a single weight set (one or zero group-file weight lines, a single weights.beta pair) without the forced Weight column.\n"
+    )
+  }
+  # Schema switch for the region output file: the Weight column (and, for
+  # SKAT-O, Pvalue_ACATV/Pvalue_ACATO) is emitted when more than one weight
+  # set is composed OR the user forces it at a single set.
+  isMultiWeightSchema = isMultiWeightRun || is_output_weight_column
 
   # Restart guard: the multi-weight schema adds columns (Weight,
   # Pvalue_ACATV, Pvalue_ACATO), so appending to a file written with a
@@ -688,7 +770,7 @@ SAIGE.Region = function(mu,
   if (isappend && file.exists(OutputFile) && file.info(OutputFile)$size > 0) {
     existingHeader = strsplit(readLines(OutputFile, n = 1), "[\t]")[[1]]
     hasWeightCol = "Weight" %in% existingHeader
-    if (hasWeightCol != isMultiWeightRun) {
+    if (hasWeightCol != isMultiWeightSchema) {
       stop(
         "The existing 'OutputFile' of '",
         OutputFile,
@@ -706,7 +788,7 @@ SAIGE.Region = function(mu,
     #C++-written header gains the Weight column right after max_MAF; at
     #K = 1 it is byte-identical to the legacy header)
     cat("isappend ", isappend, "\n")
-    isOpenOutFile = openOutfile(traitType, isappend, nWeightSetsUsed)
+    isOpenOutFile = openOutfile(traitType, isappend, nWeightSetsUsed, is_output_weight_column)
     if (!isOpenOutFile) {
       stop("Output file ", OutputFile, " can't be opened\n")
     }
@@ -714,16 +796,60 @@ SAIGE.Region = function(mu,
 
   nline_per_gene = 2 + nWeightSets
 
-  # Per-set labels handed to mainRegionInCPP; inert at K <= 1 (C++ only
-  # consumes them for per-set output labels when more than one weight set is
-  # in play).
-  region_weight_names = if (is_no_weight_in_groupTest) {
-    "No_Weights"
-  } else if (nWeightSets >= 1) {
-    weightSetNames
+  # Per-set labels handed to mainRegionInCPP; consumed by C++ only for
+  # per-set output labels when the Weight column is emitted, and by
+  # region_postprocess as the Weight values. The implicit beta set of an
+  # unweighted default run is labeled "Beta" (visible only with
+  # is_output_weight_column = TRUE).
+  region_weight_names = if (length(composedNames) > 0) {
+    composedNames
   } else {
     "Beta"
   }
+
+  # Per-set descriptors for region_postprocess: slot r aligns with C++ set r
+  # and with region_weight_names. `kind` drives set r's R-side AnnoWeights
+  # (design D2):
+  #   custom        -> c(group-file weights, 1s for the UR pseudo-markers)
+  #                    (C++ baked w_r into the UR collapse max(w_r*G))
+  #   beta          -> dbeta(MAFVec, a_r, b_r) over every output row,
+  #                    UR pseudo-markers included (their collapse is
+  #                    unweighted, the beta weight of the collapsed MAF
+  #                    applies like any marker's)
+  #   implicit_beta -> the literal legacy dbeta(MAFVec, 1, 25) (LEDGER.md
+  #                    #19: hardcoded, ignores weights.beta -- preserved)
+  #   noweight      -> all ones
+  weight_sets_kind = if (legacyNoWeight) {
+    # legacy all-ones vector: enters C++ as a 1-column custom set
+    "custom"
+  } else {
+    c(
+      rep("custom", nWeightSets),
+      rep("beta", if (useExplicitBeta) nBetaPairs else 0L),
+      if (includeNoWeightsSet) "noweight"
+    )
+  }
+  if (length(weight_sets_kind) == 0) {
+    weight_sets_kind = "implicit_beta"
+  }
+  weight_sets = list(
+    kind = weight_sets_kind,
+    name = region_weight_names,
+    # column index into the WEIGHT matrix/vector, valid where kind == "custom"
+    customCol = cumsum(weight_sets_kind == "custom"),
+    betaA = {
+      a = rep(NA_real_, length(weight_sets_kind))
+      if (useExplicitBeta) a[weight_sets_kind == "beta"] = weights_beta_mat[, 1]
+      a
+    },
+    betaB = {
+      b = rep(NA_real_, length(weight_sets_kind))
+      if (useExplicitBeta) b[weight_sets_kind == "beta"] = weights_beta_mat[, 2]
+      b
+    },
+    force = is_output_weight_column
+  )
+  stopifnot(length(weight_sets_kind) == nWeightSetsUsed)
 
   gf = file(groupFile, "r")
   
@@ -781,14 +907,22 @@ SAIGE.Region = function(mu,
   #     as "equal weights" for the per-set ER gate)
   #   - q0 x K numeric matrix (K > 1 weight lines in the group file) -> passed
   #     through unchanged: K custom sets, one per group-file weight line
-  # t_beta_params stays the 0-matrix sentinel and t_includeNoWeights FALSE:
-  # explicit beta sets / No_Weights composition arrive in a later commit.
+  # t_beta_params carries the explicit beta pairs (only when more than one
+  # weights.beta pair was supplied -- a single pair keeps the 0-matrix
+  # sentinel and the implicit legacy beta path) and t_includeNoWeights
+  # appends the all-ones "No_Weights" set; C++ composes the sets in the same
+  # custom -> beta -> No_Weights order as weight_sets/region_weight_names.
   weight_matrix_for_CPP = function() {
     if (is.matrix(WEIGHT)) {
       matrix(as.numeric(WEIGHT), nrow = nrow(WEIGHT), ncol = ncol(WEIGHT))
     } else {
       matrix(as.numeric(WEIGHT), ncol = 1)
     }
+  }
+  beta_params_for_CPP = if (useExplicitBeta) {
+    matrix(as.numeric(weights_beta_mat), nrow = nBetaPairs, ncol = 2)
+  } else {
+    matrix(0, nrow = 1, ncol = 2)
   }
   run_mainRegionInCPP = function() {
     mainRegionInCPP(
@@ -804,9 +938,10 @@ SAIGE.Region = function(mu,
       regionTestType,
       isImputation,
       weight_matrix_for_CPP(),
-      matrix(0, nrow = 1, ncol = 2),
-      FALSE,
+      beta_params_for_CPP,
+      includeNoWeightsSet,
       region_weight_names,
+      is_output_weight_column,
       weight_cond,
       is_single_in_groupTest,
       is_output_markerList_in_groupTest,
@@ -852,7 +987,11 @@ SAIGE.Region = function(mu,
       i = i + 1
       if (!is.null(region$SNP) & length(annolistsub) > 0) {
         SNP = region$SNP
-        if (is_no_weight_in_groupTest) {
+        if (legacyNoWeight) {
+          #single-set is_no_weight run: the legacy all-ones vector (a
+          #1-column custom set for C++). When "No_Weights" is instead
+          #APPENDED to other sets, t_includeNoWeights carries it and WEIGHT
+          #keeps the group file's sets (or the c(0) sentinel).
           WEIGHT = rep(1, length(SNP))
         } else if (nWeightSets <= 1) {
           #K = 0: region$WEIGHT is the c(0) sentinel and as.numeric() keeps
@@ -866,6 +1005,23 @@ SAIGE.Region = function(mu,
           #run_mainRegionInCPP and region_postprocess, which both key
           #multi-weight mode off is.matrix(WEIGHT)/ncol(WEIGHT).
           WEIGHT = region$WEIGHT
+        }
+
+        #Under the multi-weight schema ACAT-V hands custom weights to CCT as
+        #Cauchy combination weights, which stop()s mid-run on a negative.
+        #checkGroupFile already rejects negatives for K > 1 group FILES, but
+        #a K <= 1 weighted file can still reach the schema through
+        #composition (is_no_weight_in_groupTest / multiple weights.beta
+        #pairs) or is_output_weight_column -- so guard here per region with a
+        #clear message. Never triggers on legacy paths (single set, no
+        #force): those keep the historical no-sign-check behavior.
+        if (isMultiWeightSchema && any(WEIGHT < 0)) {
+          stop(
+            "Region ", regionName, ": negative marker weights cannot be ",
+            "used with the multi-weight output schema (ACAT-V uses them as ",
+            "Cauchy combination weights). Please use non-negative weights ",
+            "in the group file.\n"
+          )
         }
         
         annoIndicatorMat = region$annoIndicatorMat
@@ -925,7 +1081,8 @@ SAIGE.Region = function(mu,
           maxMAFlist,
           regionName,
           is_single_in_groupTest,
-          is_rerun = FALSE
+          is_rerun = FALSE,
+          weight_sets = weight_sets
         )
         pval.Region = res_postprocess$pval.Region
         if ("cctpval" %in% names(res_postprocess)) {
@@ -970,7 +1127,8 @@ SAIGE.Region = function(mu,
                   is_rerun = TRUE,
                   #the per-set carry-forward cache; at K = 1 this is
                   #list(resultDF), exactly the legacy carry-over
-                  resultDF_carryover = if (exists("resultDFList", inherits = FALSE)) resultDFList else NULL
+                  resultDF_carryover = if (exists("resultDFList", inherits = FALSE)) resultDFList else NULL,
+                  weight_sets = weight_sets
                 )
                 pval.Region = res_postprocess$pval.Region
                 if ("cctpval" %in% names(res_postprocess)) {

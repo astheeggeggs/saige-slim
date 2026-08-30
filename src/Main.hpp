@@ -113,6 +113,7 @@ Rcpp::List mainRegionInCPP(
 			   arma::mat & t_beta_params,  // Kb x 2 beta(a,b) parameter pairs; 0-matrix sentinel when none
 			   bool t_includeNoWeights,
 			   std::vector<std::string> & t_weightNames,
+			   bool t_forceWeightColumn,
 			   arma::vec & t_weight_cond,
 			   bool t_isSingleinGroupTest,
 			   bool t_isOutputMarkerList,
@@ -195,7 +196,7 @@ Rcpp::List RegionSetUpConditional_binary_InCPP(arma::vec & t_weight_cond);
 
 void closeGenoFile(std::string & t_genoType);
 
-bool openOutfile(std::string t_traitType, bool isappend, unsigned int t_nWeightSets);
+bool openOutfile(std::string t_traitType, bool isappend, unsigned int t_nWeightSets, bool t_forceWeightColumn);
 
 
 bool openOutfile_singleinGroup(std::string t_traitType, bool t_isImputation, bool isappend, bool t_isMoreOutput);
@@ -271,6 +272,7 @@ void writeOutfile_BURDEN(std::string regionName,
                         unsigned int q_maf,
                         unsigned int q_weight,
                         std::vector<std::string> & t_weightNames,
+                        bool t_emitWeightColumn,
                         bool isCondition,
                         std::string t_traitType);
 
