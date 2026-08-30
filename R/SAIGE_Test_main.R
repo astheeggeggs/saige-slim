@@ -311,6 +311,15 @@ SPAGMMATtest = function(
     cat("isSparseGRM is ", isSparseGRM, "\n")
     ratioVecList = Get_Variance_Ratio(varianceRatioFile, cateVarRatioMinMACVecExclude, cateVarRatioMaxMACVecInclude, isGroupTest, isSparseGRM) #readInGLMM.R
 
+    # LEDGER #10 fix: single-variant analysis dereferences the null_noXadj
+    # variance ratios (the no-covariate-adjustment fast pass); a file without
+    # such rows used to crash in C++ mid-analysis (Mat index out of bounds).
+    if(!isGroupTest & length(ratioVecList$ratioVec_null_noXadj) == 0){
+      stop("varianceRatioFile ", varianceRatioFile, " contains no 'null_noXadj' rows, ",
+           "which single-variant tests require. This file was produced by an older ",
+           "SAIGE version or configuration; please re-run Step 1.\n")
+    }
+
 
 #time_6 = proc.time()
 

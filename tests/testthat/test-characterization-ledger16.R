@@ -38,3 +38,19 @@ test_that("LEDGER #16: mid-stream bim-row-0 read returns the cursor's record", {
   expect_identical(nrow(rs1), 1L)               # the phantom appears...
   expect_identical(rs1$AC_Allele2, "314")       # ...carrying rs81's allele count
 })
+
+test_that("LEDGER #10 fixed: marker run without null_noXadj VR rows stops cleanly", {
+  skip_unless_level("standard")
+  status <- run_saige_cli("step2_SPAtests.R", c(
+    "--bedFile=./input/genotype_100markers.bed",
+    "--bimFile=./input/genotype_100markers.bim",
+    "--famFile=./input/genotype_100markers.fam",
+    "--AlleleOrder=alt-first", "--chrom=1", "--minMAF=0", "--minMAC=1",
+    "--LOCO=FALSE",
+    "--GMMATmodelFile=./output/example_binary_sparseGRM.rda",
+    "--varianceRatioFile=./output/example_binary_sparseGRM.varianceRatio.txt",
+    paste0("--SAIGEOutputFile=", tempfile(fileext = ".txt"))))
+  expect_false(identical(as.integer(status), 0L))
+  lg <- readLines(attr(status, "log"), warn = FALSE)
+  expect_true(any(grepl("no 'null_noXadj' rows", lg)))
+})

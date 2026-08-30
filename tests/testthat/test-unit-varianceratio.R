@@ -60,8 +60,9 @@ test_that("LEDGER #13 fixed: legacy (<1.0.6) files are rejected cleanly", {
                "pre-1.0.6 legacy format")
 })
 
-test_that("characterization: missing null_noXadj rows yield numeric(0), not the guard stop", {
-  # The stop("categorical variance Ratio null_noXadj are needed") is dead code.
+test_that("missing null_noXadj rows yield numeric(0) from the parser (gated at run level)", {
+  # Get_Variance_Ratio itself still returns numeric(0) (group tests need
+  # that); SPAGMMATtest now rejects it for single-variant runs (LEDGER #10).
   f <- tempfile(); writeLines(c("0.95 null 1", "0.92 null 2"), f)
   out <- Get_Variance_Ratio(f, c(10, 20), c(20), FALSE, FALSE, FALSE)
   expect_identical(out$ratioVec_null_noXadj, numeric(0))
