@@ -229,3 +229,47 @@ test_that("composed golden names its sets in the normative order", {
   # beta pairs in the order given on the CLI, then the appended all-ones set
   expect_identical(unique(r$Weight), c("Beta_1_25", "Beta_1_1", "No_Weights"))
 })
+
+test_that("ACAT-V recomputes from the single-variant p-values and the fixture weights", {
+  skip_if_no_goldens()
+  # The strongest available check on Pvalue_ACATV: rebuild each cell's ACAT-V
+  # from first principles -- the group file's per-set weights, the cell's
+  # annotation/max_MAF membership, the per-marker p-values in the singleAssoc
+  # golden, and weight 1 for the collapsed ultra-rare pseudo-marker (design
+  # D2's custom-set rule, since C++ has already baked w_r into the collapse).
+  # The per-row ACATO check above consumes ACATV as an input, so without this
+  # nothing pins ACATV's own value.
+  reg <- golden2("plink_group_multiweight.txt")
+  sa  <- golden2("plink_group_multiweight.txt.singleAssoc.txt")
+  gl <- strsplit(readLines(file.path(saige_extdata, "input",
+                                     "group_new_snpid_multiWeights.txt")), "[ \t]+")
+  grouprow <- function(gene, pattern) {
+    i <- which(vapply(gl, function(p) p[1] == gene && grepl(pattern, p[2]), TRUE))[1]
+    gl[[i]][-(1:2)]
+  }
+
+  r <- reg[reg$Group != "Cauchy", ]
+  expect_gt(nrow(r), 0)
+  for (i in seq_len(nrow(r))) {
+    cell_id <- paste(r$Region[i], r$Group[i], r$max_MAF[i], r$Weight[i], sep = ":")
+    p_ur <- num(sa$p.value[sa$MarkerID == cell_id])
+    expect_identical(length(p_ur), 1L)   # one UR pseudo-marker per cell
+
+    if (r$Number_rare[i] == "0") {
+      # nothing but the pseudo-marker in the cell: ACAT-V is its p-value
+      expect_identical(num(r$Pvalue_ACATV[i]), p_ur)
+      next
+    }
+    vars  <- grouprow(r$Region[i], "^var$")
+    annos <- grouprow(r$Region[i], "^anno$")
+    w     <- as.numeric(grouprow(r$Region[i], paste0("weight.", r$Weight[i])))
+    real  <- sa[sa$CHR != "UR", ]
+    idx   <- match(vars, real$MarkerID)
+    keep  <- annos %in% strsplit(r$Group[i], ";")[[1]] &
+             !is.na(idx) & num(real$AF_Allele2[idx]) <= num(r$max_MAF[i])
+    expect_identical(sum(keep), as.integer(num(r$Number_rare[i])))
+    expect_lt(rel_err(num(r$Pvalue_ACATV[i]),
+                      CCT(c(num(real$p.value[idx[keep]]), p_ur), c(w[keep], 1))),
+              1e-12)
+  }
+})
