@@ -86,8 +86,10 @@ mergeShardOutputs <- function(shardFiles, OutputFile,
   for (b in seq_along(shardFiles)) {
     size <- file.size(shardFiles[b])
     if (is.na(size) || size == 0) {
-      stop("Marker shard ", b, " ('", shardFiles[b],
-           "') is missing or empty; refusing to merge a truncated result.")
+      stop(
+        "Marker shard ", b, " ('", shardFiles[b],
+        "') is missing or empty; refusing to merge a truncated result."
+      )
     }
   }
 
@@ -96,24 +98,32 @@ mergeShardOutputs <- function(shardFiles, OutputFile,
   mergingFile <- paste0(OutputFile, ".merging")
   con <- file(mergingFile, open = "wb")
   header <- NULL
-  tryCatch({
-    for (b in seq_along(shardFiles)) {
-      thisHeader <- appendShardBytes(shardFiles[b], con,
-                                     writeHeader = is.null(header),
-                                     blockSize = blockSize)
-      if (is.null(header)) {
-        header <- thisHeader
-      } else if (!identical(header, thisHeader)) {
-        stop("Marker shard ", b, " ('", shardFiles[b],
-             "') has a different header from shard 1.")
+  tryCatch(
+    {
+      for (b in seq_along(shardFiles)) {
+        thisHeader <- appendShardBytes(shardFiles[b], con,
+          writeHeader = is.null(header),
+          blockSize = blockSize
+        )
+        if (is.null(header)) {
+          header <- thisHeader
+        } else if (!identical(header, thisHeader)) {
+          stop(
+            "Marker shard ", b, " ('", shardFiles[b],
+            "') has a different header from shard 1."
+          )
+        }
       }
-    }
-  }, finally = close(con))
+    },
+    finally = close(con)
+  )
 
   if (!file.rename(mergingFile, OutputFile)) {
     unlink(mergingFile)
-    stop("Could not move the merged marker results into place at '",
-         OutputFile, "'.")
+    stop(
+      "Could not move the merged marker results into place at '",
+      OutputFile, "'."
+    )
   }
   invisible(OutputFile)
 }
@@ -142,7 +152,7 @@ varianceRatioBinsHaveGap <- function(minMACExclude, maxMACInclude) {
     return(FALSE)
   }
   if (length(minMACExclude) < k || anyNA(minMACExclude) || anyNA(maxMACInclude)) {
-    return(TRUE)  # cannot prove coverage; refuse rather than guess
+    return(TRUE) # cannot prove coverage; refuse rather than guess
   }
   upper <- minMACExclude[1]
   for (i in seq_len(k)) {
@@ -179,10 +189,12 @@ runMarkerScan <- function(traitType,
   }
 
   runSerial <- function() {
-    SAIGE.Marker(traitType, genoType, idstoIncludeFile, rangestoIncludeFile,
-                 genoIndex, CHROM, OutputFile, OutputFileIndex,
-                 nMarkersEachChunk, isMoreOutput, isImputation, isFirth,
-                 LOCO, chrom, isCondition, isOverWriteOutput, isAnyInclude)
+    SAIGE.Marker(
+      traitType, genoType, idstoIncludeFile, rangestoIncludeFile,
+      genoIndex, CHROM, OutputFile, OutputFileIndex,
+      nMarkersEachChunk, isMoreOutput, isImputation, isFirth,
+      LOCO, chrom, isCondition, isOverWriteOutput, isAnyInclude
+    )
   }
 
   nThreads <- as.integer(nThreads)
@@ -208,22 +220,28 @@ runMarkerScan <- function(traitType,
   }
 
   if (!isGenoReaderForkSafeInCPP()) {
-    stop("--nThreads > 1 requires a memory-mapped genotype reader, but the ",
-         ".bed file could not be memory mapped and the buffered fallback is ",
-         "in use. Forked workers would share one file offset and silently ",
-         "decode each other's records. Re-run with --nThreads=1.")
+    stop(
+      "--nThreads > 1 requires a memory-mapped genotype reader, but the ",
+      ".bed file could not be memory mapped and the buffered fallback is ",
+      "in use. Forked workers would share one file offset and silently ",
+      "decode each other's records. Re-run with --nThreads=1."
+    )
   }
 
   # Restart is not supported here: the shards are a partition of the marker
   # list, not of the chunk sequence, so a partially written serial output has
   # no meaning for them.
-  outIndex <- checkOutputFile(OutputFile, OutputFileIndex, "Marker",
-                              format(nMarkersEachChunk, scientific = FALSE),
-                              isOverWriteOutput)$indexChunk
+  outIndex <- checkOutputFile(
+    OutputFile, OutputFileIndex, "Marker",
+    format(nMarkersEachChunk, scientific = FALSE),
+    isOverWriteOutput
+  )$indexChunk
   if (outIndex != 1) {
-    stop("Restarting an interrupted analysis is not supported with ",
-         "--nThreads > 1. Re-run with --nThreads=1 to resume, or delete '",
-         OutputFileIndex, "' and re-run with --is_overwrite_output=TRUE.")
+    stop(
+      "Restarting an interrupted analysis is not supported with ",
+      "--nThreads > 1. Re-run with --nThreads=1 to resume, or delete '",
+      OutputFileIndex, "' and re-run with --is_overwrite_output=TRUE."
+    )
   }
 
   blocks <- splitMarkerShards(M, nThreads)
@@ -231,8 +249,10 @@ runMarkerScan <- function(traitType,
 
   # Shards live beside the output file, not in tempdir(): TMPDIR is often a
   # small tmpfs on HPC and these can be large.
-  shardDir <- tempfile(pattern = ".SAIGE_marker_shards_",
-                       tmpdir = dirname(OutputFile))
+  shardDir <- tempfile(
+    pattern = ".SAIGE_marker_shards_",
+    tmpdir = dirname(OutputFile)
+  )
   if (!dir.create(shardDir)) {
     stop("Could not create the shard directory '", shardDir, "'.")
   }
@@ -240,7 +260,9 @@ runMarkerScan <- function(traitType,
   shardFiles <- file.path(shardDir, sprintf("shard_%04d.txt", seq_len(nShards)))
 
   cat("Marker analysis: ", M, " markers in ", nShards,
-      " shards over ", nThreads, " threads\n", sep = "")
+    " shards over ", nThreads, " threads\n",
+    sep = ""
+  )
 
   # mc.set.seed = FALSE so every worker inherits one fixed parent RNG state
   # rather than a pid/time-derived one; the ER path re-seeds inside C++ at
@@ -249,11 +271,13 @@ runMarkerScan <- function(traitType,
   set.seed(1)
   shardResults <- parallel::mclapply(seq_len(nShards), function(b) {
     setSingleOutputPrefixInCPP(shardFiles[b])
-    SAIGE.Marker(traitType, genoType, idstoIncludeFile, rangestoIncludeFile,
-                 genoIndex[blocks[[b]]], CHROM[blocks[[b]]], shardFiles[b],
-                 paste0(shardFiles[b], ".index"), nMarkersEachChunk,
-                 isMoreOutput, isImputation, isFirth, LOCO, chrom,
-                 isCondition, TRUE, isAnyInclude)
+    SAIGE.Marker(
+      traitType, genoType, idstoIncludeFile, rangestoIncludeFile,
+      genoIndex[blocks[[b]]], CHROM[blocks[[b]]], shardFiles[b],
+      paste0(shardFiles[b], ".index"), nMarkersEachChunk,
+      isMoreOutput, isImputation, isFirth, LOCO, chrom,
+      isCondition, TRUE, isAnyInclude
+    )
   }, mc.cores = nThreads, mc.preschedule = TRUE, mc.set.seed = FALSE)
 
   # Check every shard before merging anything: mclapply reports a worker that
@@ -261,12 +285,16 @@ runMarkerScan <- function(traitType,
   # these away and concatenated whatever files happened to exist.
   for (b in seq_len(nShards)) {
     if (inherits(shardResults[[b]], "try-error")) {
-      stop("Marker shard ", b, " failed: ",
-           conditionMessage(attr(shardResults[[b]], "condition")))
+      stop(
+        "Marker shard ", b, " failed: ",
+        conditionMessage(attr(shardResults[[b]], "condition"))
+      )
     }
     if (is.null(shardResults[[b]]) || !is.character(shardResults[[b]])) {
-      stop("Marker shard ", b, " returned no result; the worker process ",
-           "died. Re-run with --nThreads=1 to see the error.")
+      stop(
+        "Marker shard ", b, " returned no result; the worker process ",
+        "died. Re-run with --nThreads=1 to see the error."
+      )
     }
   }
 
@@ -274,13 +302,16 @@ runMarkerScan <- function(traitType,
 
   # One index record for the whole run. This is deliberately not the serial
   # run's per-chunk index: with nThreads > 1 there is nothing to restart from.
-  writeOutputFileIndex(OutputFileIndex = OutputFileIndex,
-                       AnalysisType = "Marker",
-                       nEachChunk = format(nMarkersEachChunk,
-                                           scientific = FALSE),
-                       indexChunk = nShards,
-                       Start = TRUE,
-                       End = TRUE)
+  writeOutputFileIndex(
+    OutputFileIndex = OutputFileIndex,
+    AnalysisType = "Marker",
+    nEachChunk = format(nMarkersEachChunk,
+      scientific = FALSE
+    ),
+    indexChunk = nShards,
+    Start = TRUE,
+    End = TRUE
+  )
 
   paste0("Analysis done! The results have been saved to '", OutputFile, "'.")
 }
