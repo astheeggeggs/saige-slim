@@ -13,12 +13,19 @@ readers, step 3 (LD matrices), and RareEffect were stripped in commits
 Binary and quantitative traits are supported; survival-trait support was
 removed in Phase 3a of the refactor.
 
-**The working plan lives at `~/.claude/plans/rosy-munching-pudding.md`**:
+**The working plan lives at `~/.claude/plans/based-on-this-repository-silly-shore.md`**
+(it supersedes `rosy-munching-pudding.md`, which holds the Phase 0-5 history):
 Phases 0-3 are done (baseline/harness; strip; test suite; refactor — survival
 removed in 3a, GenoReader interface + de-globalized Step2Config/Step2Output/
-owned model in 3b-d, ten ledger fixes in 3e). Next: Phase 4 (speedup;
-includes the deferred BedIO and TestContext commits). LEDGER.md still-OPEN:
-#6 (PCG tolerance, deliberately deferred) and #14 (unverified suspicion).
+owned model in 3b-d, ten ledger fixes in 3e); Phase 5 (multi-weights) done
+through C11; **Phase 6 done — LEDGER #28 and #29 FIXED** (326abe8f, 86a08f47:
+the AF>0.5 marker path is now exactly flip-invariant, full tier 1225/1225).
+Next: Phase 4 (speedup), re-scoped to step 2 — make step 2 measurable (both s2
+bench workloads are ~90% process startup and can measure nothing), make
+`--nThreads` actually work (it is a silent no-op without `--idstoIncludeFile`),
+then per-marker allocation hygiene. Step-1 blocked-GetTrace is parked behind
+that measurement. LEDGER.md still-OPEN: #6 (PCG tolerance, deliberately
+deferred), #14 (unverified suspicion), #17-#27.
 Step 1 now takes `--seed` (default 1).
 
 ## Rules of this branch
@@ -115,12 +122,16 @@ Three standing traps when adding tests here:
   `--AlleleOrder=ref-first`, which mirrors every marker across 0.5 — that is
   how LEDGER #28 (variance mis-centred by `scoreTestFast_noadjCov`) and #29
   (markers at exactly `--minMAC` dropped by the gate-1 float round trip) were
-  found, and golden P11 `plink_marker_reffirst.txt` pins both. It is a proxy
-  for "ALT is the major allele", not a native fixture. Pair it with the
-  `--is_noadjCov=FALSE` invariance control in
-  `tests/testthat/test-step2-allele-order.R`: the flip is EXACTLY invariant on
-  the covariate-adjusted path, so anything that moves is the bug, not the
-  construction.
+  found, and golden P11 `plink_marker_reffirst.txt` pins the path. It is a
+  proxy for "ALT is the major allele", not a native fixture — a native AF>0.5
+  fixture needs an edited `.bed`, not just a `.bim`, and is still worth adding.
+  **Both bugs are FIXED (Phase 6, commits 326abe8f/86a08f47), so the assertions
+  in `tests/testthat/test-step2-allele-order.R` are now inverted**: the default
+  path is EXACTLY flip-invariant on all 70 markers, matching what was
+  previously only true of the `--is_noadjCov=FALSE` control arm. That control
+  arm is still the thing to reach for — it was the reference that proved the
+  ref-first construction sound while the default path was broken, and it is
+  what any future change to this path should be measured against.
 - **A statistic over forced/degenerate output can invent a bug.** The #26
   entry was first written as "Firth effect sizes are wrong" on the strength
   of a Pearson correlation that two ±750 outliers had dragged to zero;
