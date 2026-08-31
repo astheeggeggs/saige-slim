@@ -558,8 +558,11 @@ test_that("burden linearity: scaling every weight by 2 is exact without the UR c
   expect_identical(nrow(ra), nrow(rb))
   expect_true(all(pnum(ra$Number_ultra_rare) == 0))    # collapse really is off
   # scale-invariant: the p-values are unchanged, to the printed precision
-  expect_identical(ra$Pvalue_Burden, rb$Pvalue_Burden)
-  expect_identical(ra$Pvalue_SKAT, rb$Pvalue_SKAT)
+  # toleranced rather than string-identical: the two runs feed different
+  # intermediate magnitudes (every weight doubled) into the same arithmetic, so
+  # the last ULP need not agree even though the p-value is invariant
+  expect_lt(rel_err(pnum(ra$Pvalue_Burden), pnum(rb$Pvalue_Burden)), 1e-12)
+  expect_lt(rel_err(pnum(ra$Pvalue_SKAT), pnum(rb$Pvalue_SKAT)), 1e-12)
   # equivariant: BETA and SE both halve
   expect_lt(max(abs(pnum(rb$BETA_Burden) / pnum(ra$BETA_Burden) - 0.5)), 1e-9)
   expect_lt(max(abs(pnum(rb$SE_Burden) / pnum(ra$SE_Burden) - 0.5)), 1e-9)
@@ -607,11 +610,20 @@ test_that("the ultra-rare collapse makes custom weights only approximately scale
   expect_lt(max(abs(pnum(rb$SE_Burden) / pnum(ra$SE_Burden) - 0.5)), 0.05)
 })
 
-test_that("No_Weights rows reproduce a plain all-ones run exactly", {
+test_that("No_Weights rows reproduce a plain all-ones run", {
   # The appended all-ones set must be the same analysis as running the
-  # unweighted group file in no-weight mode: same cells, same numbers, column
-  # for column. This is what pins design D2's "noweight = all ones with an
-  # unweighted UR collapse" against the C++ side.
+  # unweighted group file in no-weight mode. This is what pins design D2's
+  # "noweight = all ones with an unweighted UR collapse" against the C++ side.
+  #
+  # Counts and labels are compared exactly; the statistics are compared at a
+  # tolerance because the two answers arrive by different routes -- the
+  # No_Weights column is the third set of a K = 3 run, the plain run is K = 1 --
+  # so they are algebraically identical but not bit-identical. Observed
+  # disagreement is 1 ULP on 1 of 12 rows (0.540776608214742 vs ...741), and
+  # whether it shows up in the printed digits is platform-dependent: it does
+  # not on the golden-generating macOS host, it does on the Linux CI runner.
+  # Asserting string identity here is over-claiming; 1e-12 still catches any
+  # real divergence between the two paths by many orders of magnitude.
   skip_unless_level("standard")
   plain_out <- file.path(tempfile("step2_nwplain_"), "region.txt")
   dir.create(dirname(plain_out), recursive = TRUE)
@@ -625,9 +637,14 @@ test_that("No_Weights rows reproduce a plain all-ones run exactly", {
   expect_identical(nrow(nw), nrow(pr))
   expect_identical(nw$Group, pr$Group)
   expect_identical(nw$max_MAF, pr$max_MAF)
-  for (col in c("Pvalue", "Pvalue_Burden", "Pvalue_SKAT", "BETA_Burden",
-                "SE_Burden", "MAC", "MAC_case", "MAC_control",
-                "Number_rare", "Number_ultra_rare")) {
+  # exact: labels, marker counts and allele counts are integers or short decimals
+  for (col in c("MAC", "MAC_case", "MAC_control", "Number_rare",
+                "Number_ultra_rare")) {
     expect_identical(nw[[col]], pr[[col]], label = paste("No_Weights ==", col))
+  }
+  # toleranced: the fitted statistics
+  for (col in c("Pvalue", "Pvalue_Burden", "Pvalue_SKAT", "BETA_Burden",
+                "SE_Burden")) {
+    expect_lt(rel_err(pnum(nw[[col]]), pnum(pr[[col]])), 1e-12)
   }
 })
