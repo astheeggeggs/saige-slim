@@ -114,8 +114,12 @@ one**, so editing `DESCRIPTION` without re-running `R CMD INSTALL` leaves
 parallelism silently OFF -- same wall time, no warning, no "Starting N test
 processes" line. Check for that line before believing a timing. It bought
 4:09 -> 2:29 on standard; wall time is bounded below by the slowest single
-file (`test-step2-multiweight.R`, ~103s), so splitting that file is the next
-lever. Total CPU goes UP (223s -> 319s): every worker loads SAIGE afresh,
+file, so splitting the long poles is the lever: `test-step2-multiweight.R`
+was 103s and is now split three ways (schema / `-cond` / `-behaviour`, ~31s /
+35s / 37s) over the shared `helper-multiweight.R`. Because `mw_cache` is
+per-process, a run two of those files both need executes twice -- 3 such runs,
+which is exactly the +3 `expect_cli_ok` assertions (1471 -> 1474) and the
++15s of extra serial work. `test-step2-threads.R` (~78s) is now the pole. Total CPU goes UP (223s -> 319s): every worker loads SAIGE afresh,
 which is the 1.08s floor each of the ~150 step-2 child processes also pays.
 
 Adopting edition 3 tightened `expect_equal` to waldo semantics and surfaced
@@ -238,7 +242,8 @@ fastest) on both sides. K multiplies UR-collapse columns and output rows, not
 marker reads — real markers are read and score-tested once. Fixtures:
 `extdata/input/group_new_snpid_withWeights.txt` (K=1),
 `group_new_snpid_multiWeights.txt` (K=2: CADD, REVEL); tests in
-`tests/testthat/test-step2-multiweight.R` (standard tier) and the fast-tier
+`tests/testthat/test-step2-multiweight{,-cond,-behaviour}.R` (standard tier,
+sharing `helper-multiweight.R`) and the fast-tier
 unit files. Conditional analysis (`--condition`) composes with K > 1
 and the forced Weight column (C11, design D7): the conditioning-weight vector
 stays a SINGLE vector across sets; at K > 1 C++ exports the G1-raw

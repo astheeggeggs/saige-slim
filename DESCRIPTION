@@ -19,3 +19,4 @@ Encoding: UTF-8
 Packaged: 2025-11-1 EST
 Config/testthat/edition: 3
 Config/testthat/parallel: true
+Config/testthat/start-first: step2-multiweight, step2-threads, step2-goldens
