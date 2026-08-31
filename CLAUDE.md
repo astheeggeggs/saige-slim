@@ -190,8 +190,18 @@ marker reads — real markers are read and score-tested once. Fixtures:
 `extdata/input/group_new_snpid_withWeights.txt` (K=1),
 `group_new_snpid_multiWeights.txt` (K=2: CADD, REVEL); tests in
 `tests/testthat/test-step2-multiweight.R` (standard tier) and the fast-tier
-unit files. Conditional analysis (`--condition`) with K > 1 or the forced
-Weight column errors out until the per-set adjustment lands (design D7/C11).
+unit files. Conditional analysis (`--condition`) composes with K > 1
+and the forced Weight column (C11, design D7): the conditioning-weight vector
+stays a SINGLE vector across sets; at K > 1 C++ exports the G1-raw
+`G1tilde_P_G2tilde` matrix (plus `VarInvMat_G2_cond_w0`/`Tstat_G2_cond_w0`)
+and skips its baked `TstatAdjCond`/`VarMatAdjCond`, with R applying set r's
+G1-side weight per cell; at q_weight == 1 the baked C++ path runs verbatim
+(P3 byte-identical). Golden P10 `plink_group_cond_multiweight.txt` pins the
+K=2 conditional run. Reconciliation tests validate the R-side adjustment
+against the K=1 baked path through the BETA route only — a K=1
+custom-weighted conditional run reads uninitialized `w0` on ultra-rare rows
+(LEDGER #17, K=1-only after C11) and cannot serve as the comparison
+baseline.
 
 ## Architecture
 

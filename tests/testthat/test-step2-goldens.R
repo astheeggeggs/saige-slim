@@ -142,6 +142,20 @@ test_that("step2 group multi-weight BURDEN (K=2, r.corr=1) matches golden", {
       "--r.corr=1", "--is_fastTest=FALSE"))
 })
 
+test_that("step2 group conditional multi-weight (K=2, rs30,rs79) matches golden", {
+  # P10 (C11, design D7): P3's conditional configuration on the K=2 custom
+  # file. The conditioning-weight vector is shared across sets; the per-set
+  # G1-side adjustment is formed in R from the raw exported matrix.
+  run_step2_case("plink_group_cond_multiweight.txt",
+    c(PLINK_ARGS(), "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
+      GRP_MODEL, SG_ARGS,
+      "--groupFile=./input/group_new_snpid_multiWeights.txt",
+      "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+      "--maxMAF_in_groupTest=0.0001,0.001,0.01",
+      "--condition=rs30,rs79", "--is_fastTest=TRUE"),
+    extra_outputs = ".singleAssoc.txt")
+})
+
 test_that("step2 group composed sets (2 beta pairs + No_Weights) matches golden", {
   run_step2_case("plink_group_composed.txt",
     c(PLINK_ARGS(), "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",

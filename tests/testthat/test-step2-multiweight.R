@@ -370,41 +370,175 @@ test_that("negative weights in a K=1 file are rejected under the multi-weight sc
   expect_true(any(grepl("negative marker weights", log)))
 })
 
-# ---- guards that must fail fast (C8/C9) ------------------------------------
-# Runs expected to exit non-zero; returns the CLI log so the exact message can
-# be asserted. The messages are user-facing contract, not incidental text.
-mw_fail_log <- function(groupFile, extra = character(0)) {
-  skip_unless_level("standard")
-  out <- file.path(tempfile("step2_mwfail_"), "region.txt")
-  dir.create(dirname(out), recursive = TRUE)
-  status <- run_saige_cli("step2_SPAtests.R", c(MW_ARGS(groupFile, out), extra))
-  expect_false(identical(as.integer(status), 0L))
-  readLines(attr(status, "log"), warn = FALSE)
+# ---- conditional multi-weight (C11, design D7) ------------------------------
+# The C9 guard is lifted: --condition now composes with K > 1 and with the
+# forced Weight column. The conditioning-marker weight vector stays a SINGLE
+# vector across sets (weights_for_condition, else pdf(beta(1,25))); what
+# varies per set is the G1-side weight, applied in region_postprocess from the
+# raw exported G1tilde_P_G2tilde matrix (C++ bakes it only at q_weight == 1).
+#
+# Reconciliation strategy (anything computable two ways must reconcile): the
+# per-set R adjustment at K = 2 against the K = 1 C++-baked path. The CUSTOM
+# fixture cannot serve as the K = 1 side of that comparison: a custom-weighted
+# group file with --condition reads an UNINITIALIZED w0 on every collapsed
+# ultra-rare row (LEDGER #17, preserved bug-for-bug; every cell of the bundled
+# fixtures collapses ultra-rare markers, and on this platform the garbage w0
+# zeroes the adjustment). The BETA route has no such defect -- the K = 1 beta
+# path assigns w0 = pdf(beta, MAF) -- so the clean two-ways check is
+# Beta_1_25-of-a-composed-run vs the plain (implicit beta 1,25) conditional
+# run. Both runs are live on the same machine; statistics are compared at
+# 1e-12 relative (algebraically identical, different float grouping -- never
+# byte, per the cross-path rule in CLAUDE.md).
+
+cond_multi_run <- function() mw_run("group_new_snpid_multiWeights.txt",
+                                    "--condition=rs30,rs79")
+cond_plain_run <- function() mw_run("group_new_snpid.txt",
+                                    "--condition=rs30,rs79")
+cond_beta2_run <- function() mw_run("group_new_snpid.txt",
+                                    c(paste0("--weights.beta=", shQuote("1,25;1,1")),
+                                      "--condition=rs30,rs79"))
+cond_forced_run <- function() mw_run("group_new_snpid.txt",
+                                     c("--is_output_weight_column=TRUE",
+                                       "--condition=rs30,rs79"))
+
+COND_STATS <- c("Pvalue", "Pvalue_Burden", "Pvalue_SKAT", "BETA_Burden",
+                "SE_Burden", "Pvalue_cond", "Pvalue_Burden_cond",
+                "Pvalue_SKAT_cond", "BETA_Burden_cond", "SE_Burden_cond",
+                "MAC", "MAC_case", "MAC_control",
+                "Number_rare", "Number_ultra_rare")
+expect_stats_close <- function(a, b, cols = COND_STATS, tol = 1e-12) {
+  for (cc in cols) {
+    x <- pnum(a[[cc]])
+    y <- pnum(b[[cc]])
+    expect_equal(x, y, tolerance = tol, label = cc)
+  }
 }
 
-test_that("conditional analysis with K>1 is refused, naming the option and the way out", {
-  # The per-set conditional adjustment (design D7) is not implemented; until it
-  # lands the combination must stop rather than silently condition every set on
-  # the same single-weight vector.
-  log <- mw_fail_log("group_new_snpid_multiWeights.txt", "--condition=rs30,rs79")
-  expect_true(any(grepl("not yet supported together with conditional analysis", log)))
-  expect_true(any(grepl("--condition", log, fixed = TRUE)))
-  expect_true(any(grepl("single weight set", log)))
+test_that("conditional analysis composes with K>1: schema, per-set adjustment, pooled Cauchy", {
+  d <- cond_multi_run()$region
+  # full schema: Weight + omnibus columns + the conditional columns, in order
+  expect_identical(colnames(d)[1:9],
+                   c("Region", "Group", "max_MAF", "Weight", "Pvalue",
+                     "Pvalue_Burden", "Pvalue_SKAT", "Pvalue_ACATV", "Pvalue_ACATO"))
+  expect_identical(colnames(d)[12:16],
+                   c("Pvalue_cond", "Pvalue_Burden_cond", "Pvalue_SKAT_cond",
+                     "BETA_Burden_cond", "SE_Burden_cond"))
+  r <- d[d$Group != "Cauchy", ]
+  # weight-innermost row order, exactly one pooled Cauchy row per region
+  expect_identical(unique(r$Weight), WSETS)
+  expect_identical(r$Weight, rep(WSETS, times = nrow(r) / 2))
+  expect_identical(as.integer(table(d$Group[d$Group == "Cauchy"])), 2L)
+  # positive control: the per-set adjustment is set-specific -- the two sets'
+  # conditional p-values differ (their unconditional ones already do)
+  cadd <- r[r$Weight == "CADD", ]
+  revel <- r[r$Weight == "REVEL", ]
+  expect_false(identical(cadd$Pvalue_cond, revel$Pvalue_cond))
+  # conditioning must do something: cond and uncond differ somewhere per set
+  expect_false(identical(cadd$Pvalue_cond, cadd$Pvalue))
+  # the pooled Cauchy row combines BOTH sets' rows, conditional columns too
+  cz <- d[d$Group == "Cauchy", ]
+  for (gene in unique(r$Region)) {
+    rows <- r[r$Region == gene, ]
+    expect_equal(pnum(cz$Pvalue_cond[cz$Region == gene]),
+                 acat_p(pnum(rows$Pvalue_cond)), tolerance = 1e-12)
+    expect_equal(pnum(cz$Pvalue_Burden_cond[cz$Region == gene]),
+                 acat_p(pnum(rows$Pvalue_Burden_cond)), tolerance = 1e-12)
+  }
+  # conditioning leaves the unconditional columns untouched: shared columns
+  # equal the unconditional K=2 run's, column for column (same computation,
+  # same platform, same run configuration -- the P2-vs-P3 golden invariant)
+  u <- multi_run()$region
+  shared <- intersect(colnames(u), colnames(d))
+  expect_identical(d[shared], u[shared])
 })
 
-test_that("conditional analysis with a forced Weight column at K=1 is refused too", {
-  # is_output_weight_column switches a single-set run onto the multi-weight
-  # schema, which the conditional writer cannot emit either.
-  log <- mw_fail_log("group_new_snpid_withWeights.txt",
-                     c("--condition=rs30,rs79", "--is_output_weight_column=TRUE"))
-  expect_true(any(grepl("not yet supported together with conditional analysis", log)))
-  expect_true(any(grepl("is_output_weight_column", log, fixed = TRUE)))
+test_that("the K>1 conditional adjustment reconciles with the K=1 baked path (beta route)", {
+  # Two-ways check per the header comment: the composed run's Beta_1_25 rows
+  # against the plain conditional run (the implicit beta(1,25) K = 1 path,
+  # C++-baked w0). Labels exact, statistics at 1e-12.
+  a <- cond_beta2_run()$region
+  b <- cond_plain_run()$region
+  a25 <- a[a$Weight == "Beta_1_25" & a$Group != "Cauchy", ]
+  bb <- b[b$Group != "Cauchy", ]
+  expect_identical(a25$Region, bb$Region)
+  expect_identical(a25$Group, bb$Group)
+  expect_identical(a25$max_MAF, bb$max_MAF)
+  expect_stats_close(a25, bb)
+  # the second set is a genuinely different weighting, not a copy
+  a11 <- a[a$Weight == "Beta_1_1" & a$Group != "Cauchy", ]
+  expect_false(identical(a11$Pvalue_cond, a25$Pvalue_cond))
+})
+
+test_that("a forced Weight column composes with conditioning at K=1", {
+  # is_output_weight_column at a single set: the C++ side is the literal
+  # q_weight == 1 baked path (w0 baked into the exported matrix), and R's
+  # multi-weight branch must NOT re-apply the set weight to it. For this
+  # binary trait the baked matrix flows through the legacy scaled adjustment;
+  # the sibling quantitative arm (baked TstatAdjCond/VarMatAdjCond exports) is
+  # covered by test-unit-region-cond.R. Dropping the schema columns must
+  # recover the plain conditional run.
+  a <- cond_forced_run()$region
+  b <- cond_plain_run()$region
+  expect_identical(colnames(a)[4], "Weight")
+  a1 <- a[a$Group != "Cauchy", ]
+  bb <- b[b$Group != "Cauchy", ]
+  expect_identical(unique(a1$Weight), "Beta")
+  expect_identical(a1$Region, bb$Region)
+  expect_identical(a1$Group, bb$Group)
+  expect_identical(a1$max_MAF, bb$max_MAF)
+  expect_stats_close(a1, bb)
+})
+
+test_that("BURDEN conditional at K>1 reconciles with a K=1 single-set run", {
+  # The BURDEN conditional path is pure C++ (per-jmr genoSumVec through
+  # getMarkerPval's internal conditional machinery; no G1tilde matrix, no w0,
+  # so LEDGER #17 does not pollute this comparison and the CUSTOM fixture can
+  # be reconciled directly): the K=2 run's CADD rows against a CADD-only K=1
+  # file derived from the same fixture.
+  skip_unless_level("standard")
+  src <- file.path(saige_extdata, "input", "group_new_snpid_multiWeights.txt")
+  caddfile <- tempfile(fileext = ".txt")
+  writeLines(grep("weight,REVEL", readLines(src),
+                  fixed = TRUE, invert = TRUE, value = TRUE), caddfile)
+  run_burden_cond <- function(groupFile) {
+    out <- file.path(tempfile("step2_mwbcond_"), "region.txt")
+    dir.create(dirname(out), recursive = TRUE)
+    args <- c(MW_ARGS("group_new_snpid_multiWeights.txt", out),
+              "--r.corr=1", "--condition=rs30,rs79")
+    # is_fastTest=TRUE + BURDEN drops all regions but the last (LEDGER #27);
+    # run the correct non-fast path so both regions are compared
+    args[grep("^--is_fastTest=", args)] <- "--is_fastTest=FALSE"
+    args[grep("^--groupFile=", args)] <- paste0("--groupFile=", groupFile)
+    expect_cli_ok(run_saige_cli("step2_SPAtests.R", args))
+    read_saige_table(out)
+  }
+  a <- run_burden_cond(file.path(saige_extdata, "input",
+                                 "group_new_snpid_multiWeights.txt"))
+  b <- run_burden_cond(caddfile)
+  # conditional BURDEN columns are present in the C++-written schema
+  expect_true(all(c("Pvalue_Burden_c", "Beta_Burden_c", "seBeta_Burden_c")
+                  %in% colnames(a)))
+  aC <- a[a$Group != "Cauchy" & a$Weight == "CADD", ]
+  bb <- b[b$Group != "Cauchy", ]
+  expect_identical(aC$Region, bb$Region)
+  expect_identical(aC$Group, bb$Group)
+  expect_identical(aC$max_MAF, bb$max_MAF)
+  for (cc in c("Pvalue_Burden", "BETA_Burden", "SE_Burden",
+               "Pvalue_Burden_c", "Beta_Burden_c", "seBeta_Burden_c",
+               "MAC", "Number_rare", "Number_ultra_rare")) {
+    if (cc %in% colnames(a) && cc %in% colnames(b)) {
+      expect_equal(pnum(aC[[cc]]), pnum(bb[[cc]]), tolerance = 1e-12, label = cc)
+    }
+  }
+  # positive control: REVEL's conditional burden differs from CADD's
+  aR <- a[a$Group != "Cauchy" & a$Weight == "REVEL", ]
+  expect_false(identical(aR$Pvalue_Burden_c, aC$Pvalue_Burden_c))
 })
 
 test_that("a single-weight conditional run is still accepted", {
-  # Negative control for the two guards above: the same conditional run
-  # without any multi-weight schema must succeed, so the stop() is attributable
-  # to the weight configuration and not to --condition itself.
+  # Baseline control: the plain conditional run without any multi-weight
+  # schema keeps the legacy columns, so everything the tests above observe is
+  # attributable to the weight configuration and not to --condition itself.
   skip_unless_level("standard")
   out <- file.path(tempfile("step2_mwcond_"), "region.txt")
   dir.create(dirname(out), recursive = TRUE)

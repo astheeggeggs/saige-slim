@@ -237,8 +237,23 @@ run step2_plink_group_composed.log R2 step2_SPAtests.R \
   --weights.beta="1,25;1,1" --is_no_weight_in_groupTest=TRUE \
   --is_fastTest=TRUE
 
-# P11 (added during the AF>0.5 investigation; P10 is reserved by the working
-# plan for the C11 conditional multi-weight golden): the SAME bed as P1, read
+# P10 (added Phase 5 C11): conditional multi-weight — P3's configuration on
+# the K=2 custom-weight group file (design D7: single conditioning-weight
+# vector across sets; the per-set G1-side adjustment happens in R from the
+# raw exported G1tilde_P_G2tilde matrix). The K=1 conditional path is
+# untouched (P3 stays byte-identical).
+run step2_plink_group_cond_multiweight.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_cond_multiweight.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid_multiWeights.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --condition=rs30,rs79 --is_fastTest=TRUE
+
+# P11 (added during the AF>0.5 investigation; P10 above is the C11
+# conditional multi-weight golden): the SAME bed as P1, read
 # with
 # --AlleleOrder=ref-first, which makes every marker AF_Allele2 > 0.5 (a
 # mirror-image dataset, since the flip is exact -- see the invariance control in

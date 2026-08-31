@@ -1237,10 +1237,17 @@ Rcpp::List mainRegionInCPP(
       	  pvalNA_cVec.at(i) = pval_noSPA_c;
       	  Tstat_cVec.at(i) = Tstat_c * (1 - 2*flip);
       	  varT_cVec.at(i) = varT_c;
-	  // per-set conditional adjustment is deferred (design D7); K>1 with
-	  // conditioning is blocked at the R layer, so set 0's weight
-	  // reproduces the legacy single-set factor exactly
-	  G1tilde_P_G2tilde_Weighted_Mat.row(i) = G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t() * w0_vec(0);
+	  if(q_weight == 1){
+	    // the legacy baked row: G2-side conditioning weights times this
+	    // marker's single-set weight w0
+	    G1tilde_P_G2tilde_Weighted_Mat.row(i) = G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t() * w0_vec(0);
+	  }else{
+	    // design D7 (C11): at K>1 the exported matrix is G1-raw -- still
+	    // scaled by the (set-independent) G2 conditioning weights, but with
+	    // NO per-row w0 baked in. region_postprocess applies set r's weight
+	    // per (anno, max_MAF, set) cell.
+	    G1tilde_P_G2tilde_Weighted_Mat.row(i) = G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t();
+	  }
         }
 
 
@@ -1608,10 +1615,19 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
               pvalNA_cVec.at(i) = pval_noSPA_c;
               Tstat_cVec.at(i) = Tstat_c * (1 - 2*flip);
               varT_cVec.at(i) = varT_c;
-              // NOTE: for a custom weight set w0 is not assigned on this path
-              // (legacy behavior, preserved bug-for-bug; conditioning with
-              // multiple weight sets is blocked at the R layer)
-              G1tilde_P_G2tilde_Weighted_Mat.row(i) = G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t() * w0;
+              if(q_weight == 1){
+                // NOTE (LEDGER.md #17): for a custom weight set w0 is not
+                // assigned on this path -- legacy behavior, preserved
+                // bug-for-bug. Reachable only at q_weight == 1 (a K>1 run
+                // takes the raw-export branch below, which reads no w0).
+                G1tilde_P_G2tilde_Weighted_Mat.row(i) = G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t() * w0;
+              }else{
+                // design D7 (C11): G1-raw row at K>1, per-set weight applied
+                // in region_postprocess (1 for custom sets -- their collapse
+                // already baked w_r into genoURVec -- and pdf(beta_r, MAF)
+                // for beta sets, matching what the baked path would use)
+                G1tilde_P_G2tilde_Weighted_Mat.row(i) = G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t();
+              }
             }
 
     	    chrVec.at(i) = "UR";
@@ -2038,16 +2054,37 @@ if(t_regionTestType == "BURDEN"){
   //arma::mat scaled_m_VarInvMat_cond;
     if(isCondition){
   //std::cout << "okk5" << std::endl;
+     if(q_weight == 1){
       arma::mat AdjCondMat = G1tilde_P_G2tilde_Weighted_Mat * (g_model->m_VarInvMat_cond / (w0G2Mat_cond));
       arma::mat VarMatAdjCond = AdjCondMat * (G1tilde_P_G2tilde_Weighted_Mat.t());
-      arma::vec TstatAdjCond = AdjCondMat * (g_model->m_Tstat_cond % w0G2Vec_cond ); 
-      OutList.push_back(G1tilde_P_G2tilde_Weighted_Mat, "G1tilde_P_G2tilde_Weighted_Mat"); 
+      arma::vec TstatAdjCond = AdjCondMat * (g_model->m_Tstat_cond % w0G2Vec_cond );
+      OutList.push_back(G1tilde_P_G2tilde_Weighted_Mat, "G1tilde_P_G2tilde_Weighted_Mat");
       OutList.push_back(g_model->m_scalefactor_G2_cond, "scalefactor_G2_cond");
-      OutList.push_back(g_model->m_VarInvMat_cond_scaled_weighted, "VarInvMat_G2_cond_scaled"); 
+      OutList.push_back(g_model->m_VarInvMat_cond_scaled_weighted, "VarInvMat_G2_cond_scaled");
       OutList.push_back(g_model->m_Tstat_cond, "Tstat_G2_cond"); //m_Tstat_cond is weighted
       OutList.push_back(g_model->m_G2_Weight_cond, "G2_Weight_cond");
       OutList.push_back(TstatAdjCond, "TstatAdjCond");
-      OutList.push_back(VarMatAdjCond, "VarMatAdjCond"); 
+      OutList.push_back(VarMatAdjCond, "VarMatAdjCond");
+     }else{
+      // design D7 (C11): at K>1 the baked TstatAdjCond/VarMatAdjCond would
+      // carry set 0's weights only, so they are not computed here.
+      // G1tilde_P_G2tilde_Weighted_Mat is the G1-raw matrix (see the fill
+      // sites); region_postprocess forms, per set r,
+      //   G1w_r = raw[cell rows] * AnnoWeights_r
+      //   AdjCondMat_r  = G1w_r * VarInvMat_G2_cond_w0
+      //   VarMatAdjCond_r = AdjCondMat_r * G1w_r'
+      //   TstatAdjCond_r  = AdjCondMat_r * Tstat_G2_cond_w0
+      // -- the literal q_weight == 1 arithmetic above with w0 moved to R.
+      arma::mat VarInvMat_G2_cond_w0 = g_model->m_VarInvMat_cond / (w0G2Mat_cond);
+      arma::vec Tstat_G2_cond_w0 = g_model->m_Tstat_cond % w0G2Vec_cond;
+      OutList.push_back(G1tilde_P_G2tilde_Weighted_Mat, "G1tilde_P_G2tilde_Weighted_Mat");
+      OutList.push_back(g_model->m_scalefactor_G2_cond, "scalefactor_G2_cond");
+      OutList.push_back(g_model->m_VarInvMat_cond_scaled_weighted, "VarInvMat_G2_cond_scaled");
+      OutList.push_back(g_model->m_Tstat_cond, "Tstat_G2_cond");
+      OutList.push_back(g_model->m_G2_Weight_cond, "G2_Weight_cond");
+      OutList.push_back(VarInvMat_G2_cond_w0, "VarInvMat_G2_cond_w0");
+      OutList.push_back(Tstat_G2_cond_w0, "Tstat_G2_cond_w0");
+     }
     }
 
     if(!t_isFastTest){

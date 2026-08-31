@@ -71,7 +71,8 @@ test_that("Cauchy rows reproduce ACAT over the per-region rows (R recompute vs C
   # the same one-row-per-region ACAT must hold with K > 1, and it must hold for
   # the additive Pvalue_ACATV/Pvalue_ACATO columns too.
   for (f in c("plink_group_fastTest.txt", "plink_group_cond_binary.txt",
-              "plink_group_multiweight.txt", "plink_group_composed.txt")) {
+              "plink_group_multiweight.txt", "plink_group_composed.txt",
+              "plink_group_cond_multiweight.txt")) {
     d <- golden2(f)
     pcols <- intersect(c("Pvalue", "Pvalue_Burden", "Pvalue_SKAT",
                          "Pvalue_ACATV", "Pvalue_ACATO",
@@ -115,6 +116,20 @@ test_that("conditional group run leaves unconditional columns untouched", {
   b <- golden2("plink_group_cond_binary.txt")
   shared <- intersect(colnames(a), colnames(b))
   expect_identical(a[shared], b[shared])
+  # the same invariant at K = 2 (C11, design D7): P10 is P8 plus --condition,
+  # and the per-set conditional adjustment must not move any unconditional
+  # column (Pvalue_ACATV/Pvalue_ACATO included)
+  a <- golden2("plink_group_multiweight.txt")
+  b <- golden2("plink_group_cond_multiweight.txt")
+  shared <- intersect(colnames(a), colnames(b))
+  expect_identical(a[shared], b[shared])
+  # positive control on the conditional side: the adjustment is per set, so
+  # the two sets' conditional p-values differ from each other and from the
+  # unconditional ones
+  r <- b[b$Group != "Cauchy", ]
+  expect_false(identical(r$Pvalue_cond[r$Weight == "CADD"],
+                         r$Pvalue_cond[r$Weight == "REVEL"]))
+  expect_false(identical(r$Pvalue_cond, r$Pvalue))
 })
 
 # ---- multi-weight goldens (Phase 5 C10) ------------------------------------
@@ -124,7 +139,8 @@ test_that("conditional group run leaves unconditional columns untouched", {
 # drift in the weight dimension shows up as a structural or arithmetic mismatch
 # rather than as an unexplained number.
 
-mw_goldens <- c(plink_group_multiweight.txt = 2L, plink_group_composed.txt = 3L)
+mw_goldens <- c(plink_group_multiweight.txt = 2L, plink_group_composed.txt = 3L,
+                plink_group_cond_multiweight.txt = 2L)
 
 test_that("multi-weight goldens: K rows per cell, weight innermost, one Cauchy row", {
   skip_if_no_goldens()

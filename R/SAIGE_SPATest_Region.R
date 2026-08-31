@@ -241,8 +241,14 @@ region_postprocess = function(outList,
     }
     
     if (isCondition) {
-      outList$VarMatAdjCond = outList$VarMatAdjCond[noNAIndices, noNAIndices]
-      outList$TstatAdjCond = outList$TstatAdjCond[noNAIndices]
+      if (nWeightSets == 1) {
+        #the C++ baked adjustment exists only at q_weight == 1 (design D7);
+        #at K > 1 mainRegionInCPP exports the G1-raw matrix plus the
+        #VarInvMat_G2_cond_w0/Tstat_G2_cond_w0 pieces instead, and the
+        #per-set adjustment is formed per cell below
+        outList$VarMatAdjCond = outList$VarMatAdjCond[noNAIndices, noNAIndices]
+        outList$TstatAdjCond = outList$TstatAdjCond[noNAIndices]
+      }
       outList$G1tilde_P_G2tilde_Weighted_Mat = outList$G1tilde_P_G2tilde_Weighted_Mat[noNAIndices, , drop =
                                                                                         F]
       weightMat_G2_G2 = outList$G2_Weight_cond %*% t(outList$G2_Weight_cond)
@@ -396,8 +402,17 @@ region_postprocess = function(outList,
 
             if (isCondition) {
               if (traitType == "binary") {
+                G1tilde_P_G2tilde_Mat_sub = outList$G1tilde_P_G2tilde_Weighted_Mat[tempPos, , drop = F]
+                if (nWeightSets > 1) {
+                  #design D7: at K > 1 the exported matrix is G1-raw, so
+                  #apply set r's per-marker weights to its rows -- exactly
+                  #the w0 the q_weight == 1 path bakes in C++ (custom sets:
+                  #w_r for real markers and 1 for UR pseudo-markers, whose
+                  #collapse already carries w_r; beta sets: dbeta(MAF))
+                  G1tilde_P_G2tilde_Mat_sub = G1tilde_P_G2tilde_Mat_sub * AnnoWeights[tempPos]
+                }
                 G1tilde_P_G2tilde_Mat_scaled = t(t((
-                  outList$G1tilde_P_G2tilde_Weighted_Mat[tempPos, , drop = F]
+                  G1tilde_P_G2tilde_Mat_sub
                 ) * sqrt(as.vector(
                   re_phi$scaleFactor
                 ))
@@ -410,7 +425,31 @@ region_postprocess = function(outList,
                 TstatAdjCond = adjCondTemp %*% (outList$Tstat_G2_cond * outList$G2_Weight_cond)
                 Phi_cond = re_phi$val - diag(VarMatAdjCond)
                 Score_cond = Score - TstatAdjCond
-                
+
+              } else if (isMultiWeight) {
+                #quantitative trait under the multi-weight schema. The full
+                #wStatVec_cond/wadjVarSMat_cond matrices of the legacy arm
+                #below are per-set here, so the conditional adjustment is
+                #formed on the cell's rows only; subsetting the difference
+                #and differencing the subsets are the same elementwise
+                #operations.
+                if (nWeightSets > 1) {
+                  #per-set adjustment from the G1-raw exports (design D7):
+                  #the literal q_weight == 1 C++ arithmetic with set r's w0
+                  #applied here instead of baked into the matrix
+                  G1w_sub = outList$G1tilde_P_G2tilde_Weighted_Mat[tempPos, , drop = F] *
+                    AnnoWeights[tempPos]
+                  adjCondTemp = G1w_sub %*% outList$VarInvMat_G2_cond_w0
+                  VarMatAdjCond = adjCondTemp %*% t(G1w_sub)
+                  TstatAdjCond = adjCondTemp %*% outList$Tstat_G2_cond_w0
+                } else {
+                  #K = 1 with the forced Weight column: C++ baked the single
+                  #set's w0 as always, so its adjustment applies unchanged
+                  TstatAdjCond = outList$TstatAdjCond[tempPos]
+                  VarMatAdjCond = outList$VarMatAdjCond[tempPos, tempPos, drop = F]
+                }
+                Score_cond = Score - TstatAdjCond
+                Phi_cond = Phi - VarMatAdjCond
               } else {
                 Score_cond = wStatVec_cond[tempPos]
                 Phi_cond = wadjVarSMat_cond[tempPos, tempPos]
@@ -754,11 +793,11 @@ SAIGE.Region = function(mu,
     cat(nWeightSetsUsed, " weight sets are used in the group test: ",
         paste(composedNames, collapse = ", "), "\n")
   }
-  if (isCondition && (isMultiWeightRun || is_output_weight_column)) {
-    stop(
-      "Multiple weight sets (or is_output_weight_column = TRUE) are not yet supported together with conditional analysis (--condition); the per-set conditional adjustment arrives in a later commit. Please drop --condition, or use a single weight set (one or zero group-file weight lines, a single weights.beta pair) without the forced Weight column.\n"
-    )
-  }
+  # Conditional analysis composes with the multi-weight schema (design D7,
+  # C11): the conditioning-marker weight vector stays a SINGLE vector across
+  # all sets (weights_for_condition, else pdf(beta(1,25)) of the conditioning
+  # MAFs); what varies per set is the G1-side weight, applied in
+  # region_postprocess from the raw exported G1tilde_P_G2tilde matrix.
   # Schema switch for the region output file: the Weight column (and, for
   # SKAT-O, Pvalue_ACATV/Pvalue_ACATO) is emitted when more than one weight
   # set is composed OR the user forces it at a single set.
