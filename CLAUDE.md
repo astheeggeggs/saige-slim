@@ -31,6 +31,17 @@ Step 1 now takes `--seed` (default 1).
 - After adding/removing any `[[Rcpp::export]]` or `.cpp` file: update the
   explicit `OBJECTS` list in `src/Makevars` and re-run
   `pixi run Rscript -e 'Rcpp::compileAttributes(".")'`.
+- **R code must pass the lint check.** `.lintr` at the repo root is the
+  config (lintr defaults, 100-char lines, camelCase and the codebase's mixed
+  `name_with_parts` style accepted). Run it with lintr from a scratch lib
+  (not in the pinned env):
+  `R_LIBS_USER=<scratch-lib> Rscript -e 'lintr::lint("<file>")'` — new or
+  restyled R files must come back clean. Restyling is behavior-neutral by
+  definition: gate it like any other change (goldens byte-identical), and for
+  CLI option blocks verify old-vs-new `option_list` metadata value-identical
+  (see the generator pattern used for the extdata scripts). The three extdata
+  CLI scripts are lint-clean; the `R/` sources are legacy-style and are NOT
+  retroactively restyled — the rule applies to files you add or rewrite.
 - **After ANY header (`.hpp`) change, delete `src/*.o` before `R CMD INSTALL`.**
   R's make has no header dependency tracking: a class-layout change in a
   header with stale dependents' objects produces intermittent memory
