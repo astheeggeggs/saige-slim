@@ -34,7 +34,14 @@ re-baselined goldens P3/P10), #34 (`diag()` handed a scalar variance -- an Inf
 beta below 1, a terabyte allocation above it; fixed at the landmine so no
 caller can re-arm it), and #27 (BURDEN + fastTest silently dropped every
 escalated region; `m_flagSparseGRM_cur` was both the VR selector and the
-escalation signal).
+escalation signal). **#40 too**: uninitialised reads in the conditional SPA
+block, reached via the ER path by 2 of 70 markers on the default binary fixture
+under `--condition`, one shifting a conditional p-value 30x anti-conservatively.
+Golden **P12** `plink_marker_cond_binary.txt` was added with that fix -- the
+conditional SPA block is gated on `traitType != "quantitative"`, so P4
+(quantitative) could never reach it and NO golden covered the path, which is why
+it survived. When a fix leaves every golden byte-identical, that is a statement
+about coverage, not a pass.
 Step 1 now takes `--seed` (default 1).
 
 ## Rules of this branch

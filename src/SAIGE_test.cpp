@@ -537,6 +537,7 @@ if(!m_flagSparseGRM_cur && t_isnoadjCov){
  //arma::vec timeoutput3_a = getTime();
   double q, qinv, m1, NAmu, NAsigma, tol1, p_iIndexComVecSize;
 
+
   //arma::uvec iIndexComVec = arma::find(t_GVec == 0);
   //arma::uvec iIndexVec = arma::find(t_GVec != 0);
  
@@ -558,6 +559,43 @@ if(!m_flagSparseGRM_cur && t_isnoadjCov){
 
 
   double gmuNB;
+
+  // LEDGER #40 fix. The conditional-analysis SPA block far below reads m1,
+  // p_iIndexComVecSize, NAmu, NAsigma, tol1 and gNA/gNB/muNA/muNB, but ONLY
+  // the marginal block assigns them, under a DIFFERENT predicate: the
+  // marginal one is `!t_isER && StdStat > m_SPA_Cutoff`, the conditional one
+  // is `stat_c > m_SPA_Cutoff^2`. A marker that takes the ER path, or whose
+  // marginal statistic is below the cutoff, therefore reached the conditional
+  // SPA with all of these uninitialised -- undefined behaviour, and
+  // p_iIndexComVecSize is itself the predicate choosing SPA_fast vs SPA.
+  // Observed on the bundled binary fixture: 2 of 70 markers under an ordinary
+  // --condition, both via the ER path with StdStat ABOVE the cutoff (3.94 and
+  // 2.63), i.e. markers that would otherwise have been SPA-corrected.
+  // The setup is idempotent and computed at most once per marker.
+  bool spaContextReady = false;
+  auto prepSPAContext = [&]() {
+    if(spaContextReady) return;
+    if(!is_gtilde){
+      t_gtilde.resize(m_n);
+      getadjGFast(t_GVec, t_gtilde, iIndex);
+      is_gtilde = true;
+    }
+    p_iIndexComVecSize = double(iIndexComVecSize)/m_n;
+    m1 = dot(m_mu, t_gtilde);
+    if(p_iIndexComVecSize >= 0.5){
+      gNB = t_gtilde(iIndex);
+      gNA = t_gtilde(iIndexComVec);
+      muNB = m_mu(iIndex);
+      muNA = m_mu(iIndexComVec);
+      gmuNB = dot(gNB, muNB);
+      NAmu = m1 - gmuNB;
+      if(m_traitType == "binary"){
+        NAsigma = t_var2 - arma::sum(muNB % (1-muNB) % arma::pow(gNB,2));
+      }
+    }
+    tol1 = std::pow(std::numeric_limits<double>::epsilon(), 0.25);
+    spaContextReady = true;
+  };
 
 //std::cout << "ok1" << std::endl;
 
@@ -583,6 +621,7 @@ if(!t_isER){
 	//int t_gtilden = t_gtilde.n_elem;
         p_iIndexComVecSize = double(iIndexComVecSize)/m_n;
    	m1 = dot(m_mu, t_gtilde);
+        spaContextReady = true;   // LEDGER #40: marginal path fills these itself
 
 	if(p_iIndexComVecSize >= 0.5){
 		unsigned int j1 = 0;
@@ -848,6 +887,9 @@ if(!t_isER){
 
     bool t_isSPAConverge_c;
     if(m_traitType != "quantitative" && stat_c > std::pow(m_SPA_Cutoff,2)){
+        //LEDGER #40: populate the shared SPA context if the marginal block
+        //did not. No-op whenever it did, so that path is untouched.
+        prepSPAContext();
 	double q_c, qinv_c, pval_noadj_c, SPApval_c;    
 	if(m_traitType == "binary"){
                 q_c = t_Tstat_c/sqrt(t_varT_c/t_var2) + m1;
@@ -863,15 +905,14 @@ if(!t_isER){
 
         if(p_iIndexComVecSize >= 0.5 && !m_flagSparseGRM_cur){
 		//std::cout << "SPA_fast " << std::endl;
-                // Reproduce the pre-lazy state exactly. If the marginal SPA
-                // branch ran, these are already filled and the set_size calls
-                // are no-ops; if it did not (LEDGER #40 -- this predicate is
-                // not the one that fills them), they were previously sized and
-                // uninitialised, and are again.
-                gNB.set_size(iIndexSize);
-                gNA.set_size(iIndexComVecSize);
-                muNB.set_size(iIndexSize);
-                muNA.set_size(iIndexComVecSize);
+                // LEDGER #40 fixed: prepSPAContext() above fills these
+                // whenever p_iIndexComVecSize >= 0.5, which is exactly the
+                // condition for reaching SPA_fast, so they are populated on
+                // every path that gets here. C3's set_size calls existed only
+                // to reproduce the pre-lazy sized-but-uninitialised state and
+                // are now removed -- set_size does not preserve contents, so
+                // keeping them would silently wipe the data on any future size
+                // mismatch rather than failing loudly.
                 SPA_fast(m_mu, t_gtilde, q_c, qinv_c, pval_noSPA_c, ispvallog, gNA, gNB, muNA, muNB, NAmu, NAsigma, tol1, m_traitType, SPApval_c, t_isSPAConverge_c);
         }else{
 		//std::cout << "SPA " << std::endl;

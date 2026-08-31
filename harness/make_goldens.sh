@@ -151,6 +151,19 @@ run step2_plink_marker_cond.log R2 step2_SPAtests.R \
   --is_output_moreDetails=TRUE \
   --condition=rs13,rs79
 
+# P12 (added with the LEDGER #40 fix): single-variant conditional, BINARY.
+# The conditional SPA block is gated on traitType != "quantitative", so P4
+# above cannot reach it and no golden covered it -- which is exactly why #40's
+# uninitialised reads went unobserved. minMAC=1 keeps the ultra-rare markers
+# that take the ER path (rs44, rs56), which are the ones that hit it.
+run step2_plink_marker_cond_binary.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_marker_cond_binary.txt" \
+  --chrom=1 --minMAF=0 --minMAC=1 --LOCO=FALSE \
+  $BIN_MODEL \
+  --is_output_moreDetails=TRUE \
+  --condition=rs13,rs79
+
 # P5-P7 (added Phase 3 commit 0): coverage for output paths that the
 # de-globalization commits relocate — the BURDEN OutFile stream (r.corr=1),
 # the non-fastTest sparse-GRM region path, and chunked marker append.

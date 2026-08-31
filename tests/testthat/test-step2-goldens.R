@@ -113,6 +113,17 @@ test_that("step2 single-variant conditional quantitative (rs13,rs79) matches gol
       quant_model(), "--is_output_moreDetails=TRUE", "--condition=rs13,rs79"))
 })
 
+test_that("step2 single-variant conditional BINARY (rs13,rs79) matches golden", {
+  # The regression pin for LEDGER #40: the conditional SPA block is gated on
+  # traitType != "quantitative", so the quantitative sibling above cannot
+  # reach it. minMAC=1 retains the ultra-rare ER-path markers (rs44, rs56)
+  # whose conditional statistics exceed the cutoff while their marginal block
+  # is skipped -- the exact combination that read uninitialised state.
+  run_step2_case("plink_marker_cond_binary.txt",
+    c(PLINK_ARGS(), "--chrom=1", "--minMAF=0", "--minMAC=1", "--LOCO=FALSE",
+      bin_model(), "--is_output_moreDetails=TRUE", "--condition=rs13,rs79"))
+})
+
 # ---- multi-weight goldens (Phase 5 C10) ------------------------------------
 # P2's configuration throughout, so a diff against plink_group_fastTest.txt
 # isolates the weight dimension.
