@@ -98,6 +98,18 @@ Three standing traps when adding tests here:
   the intended cutoff the fit stops converging and drifts to
   `maxstep*maxit` = 750 (LEDGER #26). Use 0.05, which fires on 5 of the 70
   bundled markers.
+- **No bundled fixture has a marker with AF_Allele2 > 0.5** (max 0.498, and
+  0.5 exactly in the chunked set), so the whole AF>0.5 half of the marker path
+  is unexercised by every golden. Reach it by reading the SAME bed with
+  `--AlleleOrder=ref-first`, which mirrors every marker across 0.5 — that is
+  how LEDGER #28 (variance mis-centred by `scoreTestFast_noadjCov`) and #29
+  (markers at exactly `--minMAC` dropped by the gate-1 float round trip) were
+  found, and golden P11 `plink_marker_reffirst.txt` pins both. It is a proxy
+  for "ALT is the major allele", not a native fixture. Pair it with the
+  `--is_noadjCov=FALSE` invariance control in
+  `tests/testthat/test-step2-allele-order.R`: the flip is EXACTLY invariant on
+  the covariate-adjusted path, so anything that moves is the bug, not the
+  construction.
 - **A statistic over forced/degenerate output can invent a bug.** The #26
   entry was first written as "Firth effect sizes are wrong" on the strength
   of a Pearson correlation that two ±750 outliers had dragged to zero;

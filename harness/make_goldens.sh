@@ -237,6 +237,28 @@ run step2_plink_group_composed.log R2 step2_SPAtests.R \
   --weights.beta="1,25;1,1" --is_no_weight_in_groupTest=TRUE \
   --is_fastTest=TRUE
 
+# P11 (added during the AF>0.5 investigation; P10 is reserved by the working
+# plan for the C11 conditional multi-weight golden): the SAME bed as P1, read
+# with
+# --AlleleOrder=ref-first, which makes every marker AF_Allele2 > 0.5 (a
+# mirror-image dataset, since the flip is exact -- see the invariance control in
+# tests/testthat/test-step2-allele-order.R). It pins the two AF>0.5 bugs at
+# once, and is a CHARACTERIZATION golden: it captures buggy output on purpose.
+#   LEDGER #28 - variance mis-centred by scoreTestFast_noadjCov (var inflated
+#                ~178x median, p driven to 1)
+#   LEDGER #29 - 7 of the 70 markers (the MAC=1 singletons) silently dropped by
+#                the gate-1 MAC round-trip, hence 63 data rows not 70
+# When #28/#29 are fixed this file MUST change and every other golden MUST NOT.
+run step2_plink_marker_reffirst.log R2 step2_SPAtests.R \
+  --bedFile=./input/genotype_100markers.bed \
+  --bimFile=./input/genotype_100markers.bim \
+  --famFile=./input/genotype_100markers.fam \
+  --AlleleOrder=ref-first \
+  --SAIGEOutputFile="$GOLD/step2/plink_marker_reffirst.txt" \
+  --chrom=1 --minMAF=0 --minMAC=1 --LOCO=FALSE \
+  $BIN_MODEL \
+  --is_output_moreDetails=TRUE
+
 # B1/B2 (bgen runs) and V1/V2 (vcf runs) retired to harness/goldens_retired/
 # when the BGEN (Strip 6) and VCF/SAV (Strip 5) readers were stripped. Their
 # PLINK counterparts P1-P4 continue; before retirement, the bgen group
