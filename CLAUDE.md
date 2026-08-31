@@ -119,7 +119,20 @@ was 103s and is now split three ways (schema / `-cond` / `-behaviour`, ~31s /
 35s / 37s) over the shared `helper-multiweight.R`. Because `mw_cache` is
 per-process, a run two of those files both need executes twice -- 3 such runs,
 which is exactly the +3 `expect_cli_ok` assertions (1471 -> 1474) and the
-+15s of extra serial work. `test-step2-threads.R` (~78s) is now the pole. Total CPU goes UP (223s -> 319s): every worker loads SAIGE afresh,
++15s of extra serial work. `test-step2-threads.R` (82s) is split in two the
+same way over `helper-threads.R` -- units + P1/P4 + the refusal guards, vs
+P7/P11 + the repeat-identity check (~38s / ~43s); `th_run` has no cache, so
+that split is exactly assertion-neutral. The pole is now
+`test-step2-multiweight-behaviour.R` at ~47s, against a 1:33 tier.
+
+`Config/testthat/start-first` is set but **measured as no benefit both times it
+was tested** (2:29.26 -> 2:26.17, and later 1:33.50 -> 1:42/1:41/1:50 -- the
+second comparison confounded by ~2.5 cores of unrelated load). It is kept only
+as insurance for when the file count grows; do not assume it is buying
+anything, and note it names FILES, so it goes stale whenever one is renamed.
+When timing this suite, check `uptime` first: a background Docker daemon at
+~196% CPU moved the tier by ~10s, which is larger than most changes worth
+measuring. Total CPU goes UP (223s -> 319s): every worker loads SAIGE afresh,
 which is the 1.08s floor each of the ~150 step-2 child processes also pays.
 
 Adopting edition 3 tightened `expect_equal` to waldo semantics and surfaced
