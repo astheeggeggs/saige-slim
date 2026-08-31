@@ -379,7 +379,7 @@ get_SKAT_pvalue = function(Score, Phi, r.corr, regionTestType){
 
 
                 BETA_Burden = sum(Score)/(sum(diag(Phi)))
-                if(class(out_SKAT_List) == "try-error"){
+                if(inherits(out_SKAT_List, "try-error")){
                         Pvalue = c(NA, NA, NA)
                         error.code = 2
                         BETA_Burden = NA

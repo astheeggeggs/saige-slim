@@ -158,3 +158,69 @@ test_that("K=1 with the forced Weight column reproduces the legacy quantitative 
                  tolerance = 1e-12, label = cc)
   }
 })
+
+# ---- characterization: the two type-polymorphism bugs in this code path -----
+# LEDGER #33 and #34. These assert what region_postprocess / get_SKAT_pvalue do
+# TODAY, including the Inf; the fix phase must invert them.
+
+test_that("LEDGER #34: a scalar Phi_cond makes BETA_Burden Inf while the p-value stays right", {
+  # R/SAIGE_SPATest_Region.R:455 omits drop = FALSE, so a single-marker
+  # (anno x max_MAF) cell hands get_SKAT_pvalue a bare numeric instead of a
+  # 1 x 1 matrix. SKAT itself tolerates that -- it is sum(diag(Phi)) that
+  # breaks, because diag() of a length-1 numeric below 1 is a 0 x 0 matrix.
+  Score <- 1.7
+  v <- 0.42
+  dropped <- get_SKAT_pvalue(Score, v, 0, "SKAT-O")
+  kept <- get_SKAT_pvalue(Score, matrix(v, 1, 1), 0, "SKAT-O")
+
+  # the p-values are unaffected: no try-error, no NA rescue
+  expect_equal(dropped$Pvalue_SKATO, kept$Pvalue_SKATO, tolerance = 1e-12)
+  expect_equal(dropped$Pvalue_Burden, kept$Pvalue_Burden, tolerance = 1e-12)
+
+  # the burden effect size is not
+  expect_identical(dropped$BETA_Burden, Inf)
+  expect_identical(dropped$SE_Burden, Inf)
+  expect_equal(kept$BETA_Burden, Score / v, tolerance = 1e-12)
+  expect_true(is.finite(kept$SE_Burden))
+
+  # a variance >= 1 is worse: plausible-looking and wrong, not Inf
+  big <- get_SKAT_pvalue(Score, 2.5, 0, "SKAT-O")
+  expect_equal(big$BETA_Burden, Score / 2, tolerance = 1e-12)
+  expect_true(is.finite(big$BETA_Burden))
+})
+
+test_that("LEDGER #33: the binary arm subtracts diag(VarMatAdjCond), not the matrix", {
+  # R/SAIGE_SPATest_Region.R:426 vs its siblings at :452 and :308. Pinned as
+  # algebra rather than through region_postprocess, whose binary arm needs the
+  # C++ conditioning exports; the recycling is the whole of the defect.
+  q <- 3L
+  Phi <- matrix(c(2.0, 0.3, 0.1,
+                  0.3, 1.5, 0.2,
+                  0.1, 0.2, 1.8), q, q)
+  VarMatAdjCond <- matrix(c(0.50, 0.20, 0.10,
+                            0.20, 0.40, 0.15,
+                            0.10, 0.15, 0.30), q, q)
+
+  today <- Phi - diag(VarMatAdjCond)      # line 426 as written
+  intended <- Phi - VarMatAdjCond         # line 452 / line 308
+
+  expect_false(isTRUE(all.equal(today, intended)))
+  # d[i] is applied across the whole of row i
+  expect_identical(today, Phi - matrix(rep(diag(VarMatAdjCond), q), q, q))
+  # the result is no longer symmetric, though Phi and the adjustment both are
+  expect_identical(t(intended), intended)
+  expect_false(identical(t(today), today))
+  # the diagonal survives, so BETA_Burden (sum(diag(.))) is unaffected ...
+  expect_equal(diag(today), diag(intended), tolerance = 1e-12)
+  expect_equal(get_SKAT_pvalue(rep(1, q), today, 0, "SKAT-O")$BETA_Burden,
+               get_SKAT_pvalue(rep(1, q), intended, 0, "SKAT-O")$BETA_Burden,
+               tolerance = 1e-12)
+  # ... but the SKAT p-values, which read the off-diagonals, are not
+  expect_false(isTRUE(all.equal(
+    get_SKAT_pvalue(rep(1, q), today, 0, "SKAT-O")$Pvalue_SKAT,
+    get_SKAT_pvalue(rep(1, q), intended, 0, "SKAT-O")$Pvalue_SKAT)))
+
+  # a single-marker cell coincides exactly, which is why this hid for so long
+  expect_identical(matrix(2.0, 1, 1) - diag(matrix(0.5, 1, 1)),
+                   matrix(2.0, 1, 1) - matrix(0.5, 1, 1))
+})

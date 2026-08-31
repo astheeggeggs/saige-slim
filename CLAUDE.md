@@ -25,7 +25,10 @@ bench workloads are ~90% process startup and can measure nothing), make
 `--nThreads` actually work (it is a silent no-op without `--idstoIncludeFile`),
 then per-marker allocation hygiene. Step-1 blocked-GetTrace is parked behind
 that measurement. LEDGER.md still-OPEN: #6 (PCG tolerance, deliberately
-deferred), #14 (unverified suspicion), #17-#27.
+deferred), #14 (unverified suspicion), #17-#27, #32 (marker-shard
+variance-ratio carry), and #33-#39 from the type-polymorphic-builtin audit
+(`diag`, `sample`, `1:n`, missing `drop = FALSE`) -- #33 and #34 are the two
+live ones, and #33 is baked into goldens P3 and P10.
 Step 1 now takes `--seed` (default 1).
 
 ## Rules of this branch
