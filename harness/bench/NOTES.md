@@ -33,6 +33,32 @@ byte-identical 16 MB copies were committed in 64b0f677 and untracked again on
 for one step-2 and both step-1 runs are kept as the evidence behind the numbers
 above.
 
+### First reproducible profile: s2_marker_all, current build, N=1000
+
+4,940 samples total, of which `mainMarkerInCPP` is 3,066 (62%). Within it:
+
+| frame | samples | % of marker loop |
+|---|---|---|
+| `writeOutfile_single` | 682 | 22% |
+| `SPA_fast` | 471 | 15% |
+| `imputeGenoAndFlip` | 400 | 13% |
+| `__cxa_throw` + unwinding | 269 | 8.8% |
+
+**This corrects the lead noted in the C1 commit message.** The old
+`sample_s2_marker.txt` showed 1455/4605 (~32%) in `__cxa_throw`; on the current
+pixi build it is 8.8%. That profile was taken with a different R, a different
+commit and a different dyld cache, so the 32% figure should not be quoted.
+Exceptions on the SPA path are real but are not the headline.
+
+**This ranking does NOT extrapolate to biobank N, and that is the point.** The
+fixture is N=1000, where per-marker FIXED costs dominate. `writeOutfile_single`
+formats ~19 fields per row at ~5 us/row regardless of N; the exception cost is
+likewise per-marker. Both stay flat as N grows. What scales with N is the
+genotype decode, `imputeGenoAndFlip`, the score test and SPA -- so at N = 500k
+the top two rows here become rounding error. Optimise `writeOutfile_single`
+only if small-N runs are themselves a target; its printed digits are the golden
+bytes, so it is also the most hazardous thing in the table to touch.
+
 - `phase4-baseline` (2 reps) and `phase4-batch1` (2 reps): CLEAN — machine quiet.
 - `phase4-batch2` (2 reps): SUSPECT — a design workflow's agents were running
   concurrently; s1 numbers plausible, s2 numbers unresolved.

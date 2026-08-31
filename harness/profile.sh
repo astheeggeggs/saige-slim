@@ -35,13 +35,31 @@ case "$(uname -s)" in
     pixi run --manifest-path "$REPO/pixi.toml" Rscript "$SCRIPT" "$@" \
       > "$OUTDIR/$LABEL.run.log" 2>&1 &
     RPID=$!
-    # `sample` needs the R process, not the pixi/shell wrapper that spawned it.
-    TARGET="$RPID"
-    for _ in $(seq 1 40); do
-      KID=$(pgrep -P "$TARGET" 2>/dev/null | head -1) || true
-      [ -n "${KID:-}" ] || break
-      TARGET="$KID"
+    # `sample` must attach to the R process, NOT the pixi wrapper -- pixi only
+    # blocks in pthread_join, so profiling it yields a call graph of nothing.
+    # pixi also resolves the environment before exec'ing R, so the R process
+    # does not exist yet at this point: poll for it rather than descending once.
+    # Match on the COMMAND LINE, not the process tree. Walking children picks up
+    # pixi's short-lived wrapper R (which just sits in wait4) and yields a
+    # profile of nothing; `pgrep -f <script>` finds the process actually running
+    # the workload. Require comm == R so the pixi and shell wrappers, whose
+    # argv also contains the script name, are skipped.
+    TARGET=""
+    for _ in $(seq 1 150); do
+      for c in $(pgrep -f "$SCRIPT" 2>/dev/null || true); do
+        case "$(ps -o comm= -p "$c" 2>/dev/null)" in
+          *R) TARGET="$c" ;;
+        esac
+      done
+      [ -n "$TARGET" ] && break
+      kill -0 "$RPID" 2>/dev/null || break     # workload already finished
+      sleep 0.2
     done
+    if [ -z "$TARGET" ]; then
+      echo "profile.sh: could not find the R process under pixi (pid $RPID)"
+      wait "$RPID" || true
+      exit 1
+    fi
     # 9999 s ceiling: sample exits on its own when the target does.
     sample "$TARGET" 9999 1 -f "$OUT" >/dev/null 2>&1 || true
     wait "$RPID" || { echo "profile.sh: workload FAILED, see $OUTDIR/$LABEL.run.log"; exit 1; }
