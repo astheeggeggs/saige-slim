@@ -13,3 +13,12 @@ plink-ng/
 pixi.lock
 harness/work/
 harness/goldens/logs/
+# Bench run ARTEFACTS (step-2 result tables, fitted models, index files). Ten
+# byte-identical 16 MB copies of the same table were committed in 64b0f677;
+# untracked 2026-08-31. The prof*.log RUN LOGS are deliberately NOT ignored --
+# they are the evidence behind the timing and PCG-iteration numbers in
+# harness/bench/NOTES.md.
+harness/bench/prof*.txt
+harness/bench/prof*.txt.index
+harness/bench/prof*.rda
+harness/bench/profiles/
