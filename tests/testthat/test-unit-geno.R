@@ -56,6 +56,40 @@ test_that("chrom filter and include-file plumbing", {
   expect_true(all(obj$markerInfo$POS >= 10 & obj$markerInfo$POS <= 20))
 })
 
+test_that("a multi-column idstoIncludeFile is rejected and names the file", {
+  ids <- tempfile(); writeLines(c("rs13\tjunk", "rs79\tjunk"), ids)
+  expect_error(setGenoInput(bedFile = bed100(), sampleInModel = fam_ids(),
+                            idstoIncludeFile = ids),
+               "should only include one column", fixed = TRUE)
+  expect_error(setGenoInput(bedFile = bed100(), sampleInModel = fam_ids(),
+                            idstoIncludeFile = ids),
+               ids, fixed = TRUE)
+})
+
+test_that("a malformed rangestoIncludeFile fails in fread, before its own guard", {
+  # Geno.R:127 checks ncol(RangesToInclude) != 3, but fread is called with a
+  # length-3 colClasses, so any other column count errors inside fread first
+  # and that stop() cannot be reached. Pinned as the message the user actually
+  # sees. LEDGER #24: recorded, not fixed.
+  rng <- tempfile(); writeLines("1\t10", rng)
+  expect_error(setGenoInput(bedFile = bed100(), sampleInModel = fam_ids(),
+                            rangestoIncludeFile = rng),
+               "colClasses")
+})
+
+test_that("include files that match nothing leave an empty markerInfo", {
+  ids <- tempfile(); writeLines(c("rsNOPE1", "rsNOPE2"), ids)
+  obj <- setGenoInput(bedFile = bed100(), sampleInModel = fam_ids(),
+                      idstoIncludeFile = ids)
+  expect_true(obj$anyInclude)
+  expect_identical(nrow(obj$markerInfo), 0L)
+
+  rng <- tempfile(); writeLines("1\t100000\t200000", rng)
+  obj <- setGenoInput(bedFile = bed100(), sampleInModel = fam_ids(),
+                      rangestoIncludeFile = rng)
+  expect_identical(nrow(obj$markerInfo), 0L)
+})
+
 test_that("extract_genoIndex_condition resolves rsIDs in condition order", {
   mi <- setGenoInput(bedFile = bed100(), sampleInModel = fam_ids())$markerInfo
   out <- extract_genoIndex_condition("rs13,rs79", mi, "plink")

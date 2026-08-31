@@ -369,3 +369,127 @@ test_that("negative weights in a K=1 file are rejected under the multi-weight sc
   log <- readLines(attr(status, "log"), warn = FALSE)
   expect_true(any(grepl("negative marker weights", log)))
 })
+
+# ---- guards that must fail fast (C8/C9) ------------------------------------
+# Runs expected to exit non-zero; returns the CLI log so the exact message can
+# be asserted. The messages are user-facing contract, not incidental text.
+mw_fail_log <- function(groupFile, extra = character(0)) {
+  skip_unless_level("standard")
+  out <- file.path(tempfile("step2_mwfail_"), "region.txt")
+  dir.create(dirname(out), recursive = TRUE)
+  status <- run_saige_cli("step2_SPAtests.R", c(MW_ARGS(groupFile, out), extra))
+  expect_false(identical(as.integer(status), 0L))
+  readLines(attr(status, "log"), warn = FALSE)
+}
+
+test_that("conditional analysis with K>1 is refused, naming the option and the way out", {
+  # The per-set conditional adjustment (design D7) is not implemented; until it
+  # lands the combination must stop rather than silently condition every set on
+  # the same single-weight vector.
+  log <- mw_fail_log("group_new_snpid_multiWeights.txt", "--condition=rs30,rs79")
+  expect_true(any(grepl("not yet supported together with conditional analysis", log)))
+  expect_true(any(grepl("--condition", log, fixed = TRUE)))
+  expect_true(any(grepl("single weight set", log)))
+})
+
+test_that("conditional analysis with a forced Weight column at K=1 is refused too", {
+  # is_output_weight_column switches a single-set run onto the multi-weight
+  # schema, which the conditional writer cannot emit either.
+  log <- mw_fail_log("group_new_snpid_withWeights.txt",
+                     c("--condition=rs30,rs79", "--is_output_weight_column=TRUE"))
+  expect_true(any(grepl("not yet supported together with conditional analysis", log)))
+  expect_true(any(grepl("is_output_weight_column", log, fixed = TRUE)))
+})
+
+test_that("a single-weight conditional run is still accepted", {
+  # Negative control for the two guards above: the same conditional run
+  # without any multi-weight schema must succeed, so the stop() is attributable
+  # to the weight configuration and not to --condition itself.
+  skip_unless_level("standard")
+  out <- file.path(tempfile("step2_mwcond_"), "region.txt")
+  dir.create(dirname(out), recursive = TRUE)
+  status <- run_saige_cli("step2_SPAtests.R",
+                          c(MW_ARGS("group_new_snpid_withWeights.txt", out),
+                            "--condition=rs30,rs79"))
+  expect_cli_ok(status)
+  res <- read_saige_table(out)
+  expect_false("Weight" %in% colnames(res))
+  # the SKAT-O region writer names the conditional columns with a _cond suffix
+  expect_true(all(c("Pvalue_cond", "Pvalue_Burden_cond", "Pvalue_SKAT_cond")
+                  %in% colnames(res)))
+})
+
+test_that("a region run cannot be restarted, so the append schema guard never fires", {
+  # SAIGE.Region writes "nEachChunk = <numberRegionsInChunk>" into the index,
+  # but numberRegionsInChunk is still 0 when nEachChunk is captured
+  # (SAIGE_SPATest_Region.R:881,890) while checkOutputFile is called with a
+  # hardcoded 1 (:631). The two never match, so --is_overwrite_output=FALSE
+  # always fails validation on an untouched index -- even restarting the very
+  # same command. Consequence: the C6 append-restart schema guard at :770
+  # (multi-weight columns vs legacy header) is unreachable through the CLI.
+  # LEDGER #25: recorded, not fixed.
+  skip_unless_level("standard")
+  out <- file.path(tempfile("step2_mwrestart_"), "region.txt")
+  dir.create(dirname(out), recursive = TRUE)
+  args <- MW_ARGS("group_new_snpid_withWeights.txt", out)
+  expect_cli_ok(run_saige_cli("step2_SPAtests.R", args))
+  idx <- readLines(paste0(out, ".index"), warn = FALSE)
+  expect_true(any(grepl("^nEachChunk = 0$", idx)))   # writer's value
+
+  status <- run_saige_cli("step2_SPAtests.R", c(args, "--is_overwrite_output=FALSE"))
+  expect_false(identical(as.integer(status), 0L))
+  log <- readLines(attr(status, "log"), warn = FALSE)
+  expect_true(any(grepl("is not as expected", log)))
+})
+
+# ---- the implicit_beta set (LEDGER #19) -------------------------------------
+# An UNWEIGHTED group file with --is_output_weight_column=TRUE composes no set
+# at all, so region_postprocess falls to kind "implicit_beta": the literal
+# legacy dbeta(MAFVec, 1, 25). This is the only way to observe that arm, and
+# it is where the R/C++ weight asymmetry becomes visible in the output.
+implicit_beta_run <- function(beta) {
+  skip_unless_level("standard")
+  out <- file.path(tempfile("step2_implbeta_"), "region.txt")
+  dir.create(dirname(out), recursive = TRUE)
+  args <- c(MW_ARGS("group_new_snpid.txt", out),
+            "--is_output_weight_column=TRUE",
+            paste0("--weights.beta=", beta))
+  # single anno/max_MAF keeps the run small; the asymmetry is per row
+  args[grep("^--annotation_in_groupTest=", args)] <- "--annotation_in_groupTest=lof"
+  args[grep("^--maxMAF_in_groupTest=", args)] <- "--maxMAF_in_groupTest=0.01"
+  expect_cli_ok(run_saige_cli("step2_SPAtests.R", args))
+  read_saige_table(out)
+}
+
+test_that("an unweighted file with a forced Weight column labels its single set Beta", {
+  res <- implicit_beta_run("1,25")
+  expect_true("Weight" %in% colnames(res))
+  expect_identical(which(colnames(res) == "Weight"), 4L)   # right after max_MAF
+  lab <- unique(res$Weight[res$Group != "Cauchy"])
+  expect_identical(lab, "Beta")
+  expect_identical(unique(res$Weight[res$Group == "Cauchy"]), "NA")
+})
+
+test_that("weights.beta moves the C++ statistics but not the R-side ACAT-V (LEDGER #19)", {
+  # region_postprocess hardcodes dbeta(MAF, 1, 25) for the implicit_beta set
+  # while C++ honours g_cfg.weights_beta, so changing --weights.beta shifts
+  # every C++-computed column and leaves Pvalue_ACATV exactly where it was.
+  # Pvalue_ACATO moves because it is CCT(ACATV, Burden, SKAT) and two of its
+  # three inputs moved. Preserved bug-for-bug: this test documents the
+  # asymmetry, it does not endorse it.
+  a <- implicit_beta_run("1,25")
+  b <- implicit_beta_run("1,1")
+  expect_identical(colnames(a), colnames(b))
+
+  # frozen in R, therefore identical across the two runs
+  expect_identical(a$Pvalue_ACATV, b$Pvalue_ACATV)
+  # computed in C++ from the CLI value, therefore different
+  for (cn in c("Pvalue", "Pvalue_Burden", "Pvalue_SKAT", "BETA_Burden", "SE_Burden")) {
+    expect_false(identical(a[[cn]], b[[cn]]),
+                 label = paste0("weights.beta changes ", cn))
+  }
+  # allele accounting is weight-independent
+  for (cn in c("MAC", "Number_rare", "Number_ultra_rare")) {
+    expect_identical(a[[cn]], b[[cn]])
+  }
+})

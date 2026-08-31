@@ -78,6 +78,34 @@ test_that("removeLOCOResult", {
   expect_true(all(vapply(out$LOCOResult[-3], is.null, logical(1))))
 })
 
+test_that("ReadModel_subsample repeats ReadModel's LOCO validation", {
+  # ReadModel_subsample (reached from SPAGMMATtest when --subSampleFile is
+  # given) carries its own copy of the LOCO checks. The copies in ReadModel
+  # are covered above; these are the duplicates, which no golden run reaches
+  # because no golden passes --subSampleFile. Keep the two in step.
+  set.seed(101)
+  n <- 8
+  ids <- paste0("S", seq_len(n))
+  fixture <- function(loco) {
+    modglmm <- list(LOCO = loco, traitType = "quantitative", theta = c(2, 1),
+                    y = rnorm(n), X = matrix(1, n, 1),
+                    fitted.values = rnorm(n), residuals = rnorm(n),
+                    sampleID = ids, LOCOResult = vector("list", 22))
+    f <- tempfile(fileext = ".rda"); save(modglmm, file = f); f
+  }
+  ss <- tempfile(); writeLines(ids[1:5], ss)
+
+  expect_error(ReadModel_subsample(fixture(FALSE), chrom = "", LOCO = "yes",
+                                   subSampleFile = ss),
+               "LOCO should be TRUE or FALSE.", fixed = TRUE)
+  expect_error(ReadModel_subsample(fixture(FALSE), chrom = "1", LOCO = TRUE,
+                                   subSampleFile = ss),
+               "does not contain LOCO results")
+  expect_error(ReadModel_subsample(fixture(TRUE), chrom = "", LOCO = TRUE,
+                                   subSampleFile = ss),
+               "chrom needs to be specified in order to apply Leave-one-chromosome-out")
+})
+
 test_that("ReadModel_subsample validation and prefix-subset happy path", {
   skip_if_no_goldens()
   expect_error(ReadModel_subsample(golden_rda("quant_sparseGRM"), chrom = "", LOCO = FALSE,

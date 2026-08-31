@@ -56,14 +56,18 @@ Docker build.
 
 `bash harness/run_tests.sh [fast|standard|full]` — testthat suite under
 `tests/testthat/` (sources the pinned env itself):
-- **fast** (seconds): unit tests over the R seams (Get_Variance_Ratio,
-  ReadModel, Geno.R, group-file parsing, Util.R), R-vs-C++ CCT reconciliation,
-  data-invariant checks over the goldens (score-test algebra, allele
-  accounting, ACAT recomputation of the Cauchy rows), and comparator
-  self-tests (the suite's own null + positive controls in
-  `test-meta-comparators.R`).
-- **standard** (~4 min, default): fast + the four PLINK step-2 CLI runs
-  compared against `harness/goldens/step2/`.
+- **fast** (~15s): unit tests over the R seams (Get_Variance_Ratio,
+  ReadModel, Geno.R, group-file parsing, Util.R, checkArgs validators),
+  R-vs-C++ CCT reconciliation, pure-kernel tests pinned to closed forms
+  (the binomial CGF and its derivatives in `test-unit-spa.R`; the exported
+  `fast_logistf_fit` against `glm` in `test-unit-firth.R`), the degenerate
+  `region_postprocess` corner, data-invariant checks over the goldens
+  (score-test algebra, allele accounting, ACAT recomputation of the Cauchy
+  rows), and comparator self-tests (the suite's own null + positive controls
+  in `test-meta-comparators.R`).
+- **standard** (~2-4 min, default): fast + the four PLINK step-2 CLI runs
+  compared against `harness/goldens/step2/`, the multi-weight runs, and the
+  live Firth path (`test-step2-firth.R`).
 - **full** (~20+ min, same-platform only): standard + full golden regeneration,
   step-1 determinism double-run, permuted-phenotype negative control.
 
@@ -72,8 +76,49 @@ parsed-table tolerance (1e-5 rel) — required off the golden-generating
 platform; `.github/workflows/tests.yml` uses it. The suite's detection power
 is drill-verified: a planted 0.1% variance-ratio perturbation makes the
 standard tier fail, and reverting restores green.
-Characterization tests pin ledger bugs (#13-#15) — if one "fails" after a fix,
-update the ledger and the test together in the dedicated fix phase.
+Characterization tests pin ledger bugs (#13-#16, #19-#26) — if one "fails"
+after a fix, update the ledger and the test together in the dedicated fix
+phase. They assert what the code does TODAY, including the malformed error
+messages (#21) and the unreachable guards (#24, #25); read the LEDGER entry
+before "correcting" one.
+
+Two standing traps when adding tests here:
+- **Do not force `--pCutoffforFirth` upward** to make the Firth arm fire.
+  Firth is gated behind it because the penalised fit is expensive, and above
+  the intended cutoff the fit stops converging and drifts to
+  `maxstep*maxit` = 750 (LEDGER #26). Use 0.05, which fires on 5 of the 70
+  bundled markers.
+- **A statistic over forced/degenerate output can invent a bug.** The #26
+  entry was first written as "Firth effect sizes are wrong" on the strength
+  of a Pearson correlation that two ±750 outliers had dragged to zero;
+  Spearman over the same data is 0.85 and the estimator is fine. Inspect the
+  handful of in-regime rows before trusting an aggregate.
+
+### Measuring coverage (not part of any gate)
+
+`covr` is not in the pinned env; install it to a scratch lib. Three
+non-obvious things, each of which fails silently rather than loudly:
+- Start from `getOption("covr.flags")` and only blank `FLIBS`. The defaults
+  carry `CXX11/14/17/20FLAGS`, and `src/Makevars` sets `CXX_STD = CXX14`, so a
+  hand-rolled vector with just `CXXFLAGS` instruments **nothing** — the link
+  gets `--coverage`, no compile does, and no `.gcda` is ever written. `FLIBS`
+  must go because conda clang ships no `libgcov` (`--coverage` at link pulls
+  `libclang_rt.profile` instead).
+- Use `type = "none"` + `code = 'setwd("<repo>/tests/testthat"); test_dir(".")'`.
+  With `type = "tests"` covr runs from the installed tree, where
+  `helper-saige.R`'s `getwd()/../..` repo-root guess lands on the temp lib
+  (which has its own DESCRIPTION, so the `SAIGE_REPO` fallback never fires)
+  and every `extdata` fixture path breaks.
+- Run `gcov` with cwd = `src/`; from anywhere else it emits header-only
+  `.gcov` files with no line data. Point `covr.gcov` at a wrapper calling
+  `llvm-cov gcov` (version-matched to the conda clang, not Apple's).
+
+covr builds in-place, so afterwards delete `src/*.{gcno,gcda,o,so}` and the
+stray `covr/` dir, then re-run `harness/build.sh` before any gate.
+Child processes ARE captured (they inherit `R_LIBS`), so CLI-driven code
+counts. Baseline at C8: R 55.2% full-tier, live step-2 C++ 72.2% line /
+42.9% branch (dead code and `RcppExports.cpp` excluded — see LEDGER for the
+dead files).
 
 ## Harness (golden generation; the test suite drives comparison)
 
