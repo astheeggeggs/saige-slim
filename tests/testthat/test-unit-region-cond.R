@@ -189,10 +189,11 @@ test_that("LEDGER #34: a scalar Phi_cond makes BETA_Burden Inf while the p-value
   expect_true(is.finite(big$BETA_Burden))
 })
 
-test_that("LEDGER #33: the binary arm subtracts diag(VarMatAdjCond), not the matrix", {
-  # R/SAIGE_SPATest_Region.R:426 vs its siblings at :452 and :308. Pinned as
-  # algebra rather than through region_postprocess, whose binary arm needs the
-  # C++ conditioning exports; the recycling is the whole of the defect.
+test_that("LEDGER #33 (FIXED): the binary conditional arm subtracts the full matrix", {
+  # R/SAIGE_SPATest_Region.R:426 now matches its siblings at :452 and :308.
+  # This pins WHY the old diag() form was wrong, so the fix is not undone:
+  # diag() on a matrix EXTRACTS, and matrix - vector then recycles
+  # column-major, applying d[i] across the whole of row i.
   q <- 3L
   Phi <- matrix(c(2.0, 0.3, 0.1,
                   0.3, 1.5, 0.2,
@@ -201,26 +202,27 @@ test_that("LEDGER #33: the binary arm subtracts diag(VarMatAdjCond), not the mat
                             0.20, 0.40, 0.15,
                             0.10, 0.15, 0.30), q, q)
 
-  today <- Phi - diag(VarMatAdjCond)      # line 426 as written
-  intended <- Phi - VarMatAdjCond         # line 452 / line 308
+  fixed <- Phi - VarMatAdjCond          # what :426 computes now
+  old <- Phi - diag(VarMatAdjCond)      # the upstream 7c7e6da5 form
 
-  expect_false(isTRUE(all.equal(today, intended)))
-  # d[i] is applied across the whole of row i
-  expect_identical(today, Phi - matrix(rep(diag(VarMatAdjCond), q), q, q))
-  # the result is no longer symmetric, though Phi and the adjustment both are
-  expect_identical(t(intended), intended)
-  expect_false(identical(t(today), today))
-  # the diagonal survives, so BETA_Burden (sum(diag(.))) is unaffected ...
-  expect_equal(diag(today), diag(intended), tolerance = 1e-12)
-  expect_equal(get_SKAT_pvalue(rep(1, q), today, 0, "SKAT-O")$BETA_Burden,
-               get_SKAT_pvalue(rep(1, q), intended, 0, "SKAT-O")$BETA_Burden,
+  # the fix preserves symmetry; the old form did not
+  expect_identical(t(fixed), fixed)
+  expect_false(identical(t(old), old))
+  expect_false(isTRUE(all.equal(old, fixed)))
+  # the old form was the row-broadcast of the diagonal
+  expect_identical(old, Phi - matrix(rep(diag(VarMatAdjCond), q), q, q))
+  # ... and its DIAGONAL was already correct, which is why BETA_Burden_cond
+  # (sum(diag(.)) only) did not move when the fix was applied, while the
+  # SKAT p-values, which read the off-diagonals, did.
+  expect_equal(diag(old), diag(fixed), tolerance = 1e-12)
+  expect_equal(get_SKAT_pvalue(rep(1, q), old, 0, "SKAT-O")$BETA_Burden,
+               get_SKAT_pvalue(rep(1, q), fixed, 0, "SKAT-O")$BETA_Burden,
                tolerance = 1e-12)
-  # ... but the SKAT p-values, which read the off-diagonals, are not
   expect_false(isTRUE(all.equal(
-    get_SKAT_pvalue(rep(1, q), today, 0, "SKAT-O")$Pvalue_SKAT,
-    get_SKAT_pvalue(rep(1, q), intended, 0, "SKAT-O")$Pvalue_SKAT)))
+    get_SKAT_pvalue(rep(1, q), old, 0, "SKAT-O")$Pvalue_SKAT,
+    get_SKAT_pvalue(rep(1, q), fixed, 0, "SKAT-O")$Pvalue_SKAT)))
 
-  # a single-marker cell coincides exactly, which is why this hid for so long
+  # a single-marker cell coincides either way, which is why this hid so long
   expect_identical(matrix(2.0, 1, 1) - diag(matrix(0.5, 1, 1)),
                    matrix(2.0, 1, 1) - matrix(0.5, 1, 1))
 })

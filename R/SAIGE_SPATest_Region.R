@@ -423,7 +423,16 @@ region_postprocess = function(outList,
                 adjCondTemp = G1tilde_P_G2tilde_Mat_scaled %*% outList$VarInvMat_G2_cond_scaled
                 VarMatAdjCond = adjCondTemp %*% t(G1tilde_P_G2tilde_Mat_scaled)
                 TstatAdjCond = adjCondTemp %*% (outList$Tstat_G2_cond * outList$G2_Weight_cond)
-                Phi_cond = re_phi$val - diag(VarMatAdjCond)
+                #LEDGER #33 fix: subtract the FULL adjustment matrix, as the
+                #quantitative arms at :452 and :308 always did. The diag()
+                #here came from upstream 7c7e6da5 ("only for burden tests"),
+                #where re_phi$val is as.vector(); on this arm it is a q x q
+                #as.matrix(), so diag() EXTRACTED the diagonal and R recycled
+                #it column-major, subtracting d[i] across the whole of row i
+                #and leaving an asymmetric covariance. run_core (:230-237)
+                #keeps BURDEN out of this block entirely, so the vector case
+                #it was written for never reaches here.
+                Phi_cond = re_phi$val - VarMatAdjCond
                 Score_cond = Score - TstatAdjCond
 
               } else if (isMultiWeight) {
