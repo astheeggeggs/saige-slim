@@ -153,27 +153,47 @@ test_that("LEDGER #28 FIXED: the default (noadjCov) path is flip-invariant", {
                 ao_num(mf$var.ref[escalated])), 0.05)
 })
 
-test_that("LEDGER #29: markers at exactly MAC = minMAC are dropped when ALT is major", {
+test_that("LEDGER #29 FIXED: markers at exactly MAC = minMAC survive when ALT is major", {
+  # Was: gate 1 derived MAC from the FREQUENCY, so under --minMAC=1 the seven
+  # MAC = 1 singletons (rs28, rs32, rs42, rs44, rs55, rs62, rs89) landed
+  # ~1.1e-13 short of 1 and were dropped by the strictly-less-than gate.
+  # Now: gate 1 derives MAC from the counts, and PLINK.cpp takes the ref-first
+  # complement by exact integer arithmetic instead of rebuilding it from the
+  # frequency, so both orientations keep all 70 markers.
   alt <- alt_default()
   ref <- ao_run("ref-first")$tab
-  dropped <- setdiff(alt$MarkerID, ref$MarkerID)
 
-  # Exactly the MAC = 1 singletons, and nothing else, under --minMAC=1.
-  expect_length(dropped, 7)
+  expect_length(setdiff(alt$MarkerID, ref$MarkerID), 0L)   # nothing dropped now
+  expect_length(setdiff(ref$MarkerID, alt$MarkerID), 0L)
+  expect_identical(nrow(alt), nrow(ref))
+
+  # The seven are back, and they really are the MAC = 1 singletons.
   ac <- ao_num(alt$AC_Allele2)
   nn <- ao_num(alt$N_case) + ao_num(alt$N_ctrl)
   mac <- pmin(ac, 2 * nn - ac)
-  expect_true(all(mac[alt$MarkerID %in% dropped] == 1))
-  expect_true(all(mac[!alt$MarkerID %in% dropped] != 1))
-  expect_length(setdiff(ref$MarkerID, alt$MarkerID), 0L)
+  expect_identical(sum(mac == 1), 7L)
+  expect_true(all(alt$MarkerID[mac == 1] %in% ref$MarkerID))
+
+  # And the recovered rows are not junk: the whole 70-marker pairing is exactly
+  # flip-invariant, singletons included. AC is exactly complementary.
+  m <- ao_pair(alt, ref)
+  expect_identical(nrow(m), 70L)
+  expect_identical(m$var.alt, m$var.ref)
+  expect_identical(m$p.value.alt, m$p.value.ref)
+  expect_identical(ao_num(m$BETA.alt), -ao_num(m$BETA.ref))
+  expect_identical(ao_num(m$AC_Allele2.ref),
+                   2 * (ao_num(m$N_case.alt) + ao_num(m$N_ctrl.alt)) -
+                     ao_num(m$AC_Allele2.alt))
 })
 
-test_that("LEDGER #29: the gate-1 MAC round trip is reproducible in exact arithmetic", {
-  # Pure R, fast tier: reproduce src/Main.cpp:328-329 on the counts of the
-  # dropped singletons and show the value lands below the cutoff it equals.
-  # PLINK.cpp:303-307 (ref-first) and a major ALT under alt-first both reach
-  # gate 1 through the same `1 - f` subtraction, which is what loses precision;
-  # altCounts itself stays exact.
+test_that("LEDGER #29: the OLD gate-1 MAC round trip, kept as a record of the bug", {
+  # Pure R, fast tier. This reproduces the FORMER src/Main.cpp gate-1 expression
+  # (MAF * n * (1-missingRate) * 2) to document why the seven singletons were
+  # dropped. It is deliberately retained after the fix: it pins the float
+  # behaviour that motivated the change, and it is the reason the replacement
+  # had to come from the counts rather than the frequency.
+  # PLINK.cpp (ref-first) and a major ALT under alt-first both reached gate 1
+  # through the same `1 - f` subtraction, which is what loses precision.
   n <- 1000
   gate1_mac <- function(altFreq, n) {
     MAF <- min(altFreq, 1 - altFreq)
@@ -192,8 +212,18 @@ test_that("LEDGER #29: the gate-1 MAC round trip is reproducible in exact arithm
   expect_gt(gate1_mac(1 - 2 / n / 2, n), 2)
   expect_gt(gate1_mac(1 - 10 / n / 2, n), 10)
 
-  # Gate 2 (Main.cpp:355) is exact, but runs only after gate 1 has dropped it.
-  expect_identical(min(1999, 2 * n - 1999), 1)
+  # Gate 2 (Main.cpp:355) was always exact, but ran only after gate 1 had
+  # dropped the marker. The fix makes gate 1 use the same count-based form, so
+  # the two gates now agree by construction -- exactly, for every count.
+  gate1_fixed <- function(altCounts, nNonMissing) {
+    min(altCounts, 2 * nNonMissing - altCounts)
+  }
+  for (ac in c(1, 2, 10, 100, 1900, 1990, 1998, 1999)) {
+    expect_identical(gate1_fixed(ac, n), min(ac, 2 * n - ac))   # gate 1 == gate 2
+  }
+  # The singleton that used to fail `MAC < 1` now lands on exactly 1.
+  expect_identical(gate1_fixed(1999, n), 1)
+  expect_false(gate1_fixed(1999, n) < 1)
 })
 
 test_that("golden P11: the ref-first characterization run is stable", {

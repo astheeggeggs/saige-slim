@@ -326,7 +326,18 @@ void mainMarkerInCPP(
 
     // MAF and MAC are for Quality Control (QC)
     double MAF = std::min(altFreq, 1 - altFreq);
-    double MAC = MAF * n * (1 - missingRate) *2;
+    // LEDGER #29 (second of two lossy steps): MAC used to be derived from the
+    // FREQUENCY as MAF * n * (1-missingRate) * 2. Both factors are float round
+    // trips -- MAF via 1-f when ALT is major, and n*(1-missingRate) via
+    // missingRate = numMissing/n -- so a marker sitting exactly on an integer
+    // --minMAC cutoff was dropped by the strictly-less-than gate below whenever
+    // the error happened to round low. Gate 2 already recomputes this exactly
+    // from the counts, but only AFTER gate 1 has discarded the marker.
+    // Derive it from counts here too. indexForMissing is populated on this path
+    // (isOutputIndexForMissing is set true above), so the non-missing count is
+    // exact -- unlike n*(1-missingRate).
+    double nNonMissing = (double)(n - (int)indexForMissing.size());
+    double MAC = std::min(altCounts, 2*nNonMissing - altCounts);
     
     
   /*

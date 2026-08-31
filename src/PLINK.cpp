@@ -303,8 +303,21 @@ void PlinkClass::getOneMarker(				uint64_t & t_gIndex,        // different meani
   
   // updated on 03/14/2021
   if(m_AlleleOrder == "ref-first"){
-    t_altFreq = 1 - t_altFreq;
-    t_altCounts = 2 * (double)count * t_altFreq;
+    // LEDGER #29 (first of two lossy steps): the ALT count used to be
+    // reconstructed FROM the frequency as 2*count*(1-f), a float round trip
+    // landing up to ~500 ulps off the true integer -- so under ref-first
+    // t_altCounts reached the QC gates already lossy. counts[] are integers and
+    // count is exact, so take the complement by exact integer arithmetic and
+    // derive the frequency from it, not the other way round.
+    if(count > 0){
+      t_altCounts = 2.0 * (double)count - t_altCounts;
+      t_altFreq = t_altCounts / (double)count / 2;
+    }else{
+      // Degenerate all-missing marker: preserved verbatim (altFreq 1-0 = 1,
+      // altCounts 0). Dropped by the missingRate gate long before this matters.
+      t_altFreq = 1 - t_altFreq;
+      t_altCounts = 2 * (double)count * t_altFreq;
+    }
   }
  
   if(t_isOnlyOutputNonZero){
