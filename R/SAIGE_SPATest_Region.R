@@ -246,7 +246,10 @@ region_postprocess = function(outList,
         #at K > 1 mainRegionInCPP exports the G1-raw matrix plus the
         #VarInvMat_G2_cond_w0/Tstat_G2_cond_w0 pieces instead, and the
         #per-set adjustment is formed per cell below
-        outList$VarMatAdjCond = outList$VarMatAdjCond[noNAIndices, noNAIndices]
+        #LEDGER #34: drop = FALSE, else a one-marker region collapses this
+        #to a scalar and the [tempPos, tempPos, drop = F] below raises
+        #"incorrect number of dimensions".
+        outList$VarMatAdjCond = outList$VarMatAdjCond[noNAIndices, noNAIndices, drop = FALSE]
         outList$TstatAdjCond = outList$TstatAdjCond[noNAIndices]
       }
       outList$G1tilde_P_G2tilde_Weighted_Mat = outList$G1tilde_P_G2tilde_Weighted_Mat[noNAIndices, , drop =
@@ -461,7 +464,10 @@ region_postprocess = function(outList,
                 Phi_cond = Phi - VarMatAdjCond
               } else {
                 Score_cond = wStatVec_cond[tempPos]
-                Phi_cond = wadjVarSMat_cond[tempPos, tempPos]
+                #LEDGER #34: drop = FALSE, as the three sibling subsets
+                #already had. A single-marker cell otherwise degrades this
+                #to a bare scalar and get_SKAT_pvalue's trace sees it.
+                Phi_cond = wadjVarSMat_cond[tempPos, tempPos, drop = FALSE]
               }
               
               groupOutList_cond = get_SKAT_pvalue(Score_cond,

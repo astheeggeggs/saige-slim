@@ -378,7 +378,17 @@ get_SKAT_pvalue = function(Score, Phi, r.corr, regionTestType){
                               silent = TRUE)
 
 
-                BETA_Burden = sum(Score)/(sum(diag(Phi)))
+                #LEDGER #34 fix: take the trace WITHOUT diag(), which reads a
+                #length-1 numeric as a DIMENSION and CONSTRUCTS a trunc(x)-square
+                #identity -- 0 x 0 below 1 (so sum() is 0 and BETA is Inf), and a
+                #quadratic allocation above it: the argument is a weighted score
+                #variance, so diag(4e5) asks for 1.2 Tb and aborts the run. Shape
+                #by shape this is byte-identical on every reachable path: a matrix
+                #still gives the trace, and a bare vector still gives sum(Phi),
+                #exactly what sum(diag(vector)) computed. Only the scalar case
+                #changes, from garbage to the value itself.
+                varSum_Phi = if (is.matrix(Phi)) sum(diag(Phi)) else sum(Phi)
+                BETA_Burden = sum(Score)/varSum_Phi
                 if(inherits(out_SKAT_List, "try-error")){
                         Pvalue = c(NA, NA, NA)
                         error.code = 2

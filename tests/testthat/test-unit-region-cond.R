@@ -163,30 +163,37 @@ test_that("K=1 with the forced Weight column reproduces the legacy quantitative 
 # LEDGER #33 and #34. These assert what region_postprocess / get_SKAT_pvalue do
 # TODAY, including the Inf; the fix phase must invert them.
 
-test_that("LEDGER #34: a scalar Phi_cond makes BETA_Burden Inf while the p-value stays right", {
-  # R/SAIGE_SPATest_Region.R:455 omits drop = FALSE, so a single-marker
-  # (anno x max_MAF) cell hands get_SKAT_pvalue a bare numeric instead of a
-  # 1 x 1 matrix. SKAT itself tolerates that -- it is sum(diag(Phi)) that
-  # breaks, because diag() of a length-1 numeric below 1 is a 0 x 0 matrix.
+test_that("LEDGER #34 (FIXED): a scalar Phi is traced, not fed to diag()", {
+  # get_SKAT_pvalue takes the trace as `if (is.matrix(Phi)) sum(diag(Phi))
+  # else sum(Phi)`, so a bare scalar -- which R/SAIGE_SPATest_Region.R:464
+  # could produce before its drop = FALSE -- no longer reaches diag(), where
+  # a length-1 numeric is read as a DIMENSION.
   Score <- 1.7
   v <- 0.42
   dropped <- get_SKAT_pvalue(Score, v, 0, "SKAT-O")
   kept <- get_SKAT_pvalue(Score, matrix(v, 1, 1), 0, "SKAT-O")
 
-  # the p-values are unaffected: no try-error, no NA rescue
+  # the two shapes now agree on every statistic
   expect_equal(dropped$Pvalue_SKATO, kept$Pvalue_SKATO, tolerance = 1e-12)
   expect_equal(dropped$Pvalue_Burden, kept$Pvalue_Burden, tolerance = 1e-12)
+  expect_equal(dropped$BETA_Burden, kept$BETA_Burden, tolerance = 1e-12)
+  expect_equal(dropped$BETA_Burden, Score / v, tolerance = 1e-12)
+  expect_true(is.finite(dropped$BETA_Burden))   # was Inf before the fix
+  expect_true(is.finite(dropped$SE_Burden))
 
-  # the burden effect size is not
-  expect_identical(dropped$BETA_Burden, Inf)
-  expect_identical(dropped$SE_Burden, Inf)
-  expect_equal(kept$BETA_Burden, Score / v, tolerance = 1e-12)
-  expect_true(is.finite(kept$SE_Burden))
-
-  # a variance >= 1 is worse: plausible-looking and wrong, not Inf
+  # a variance >= 1 is the dangerous half: diag() would have CONSTRUCTED a
+  # trunc(x)-square identity, quadratic in the variance
   big <- get_SKAT_pvalue(Score, 2.5, 0, "SKAT-O")
-  expect_equal(big$BETA_Burden, Score / 2, tolerance = 1e-12)
-  expect_true(is.finite(big$BETA_Burden))
+  expect_equal(big$BETA_Burden, Score / 2.5, tolerance = 1e-12)   # was Score/2
+  # and at a realistic weighted variance the old form aborted the run outright
+  expect_error(diag(4e5), "memory|cannot allocate")
+  expect_equal(get_SKAT_pvalue(Score, 4e5, 0, "SKAT-O")$BETA_Burden,
+               Score / 4e5, tolerance = 1e-12)
+
+  # matrix and vector inputs are untouched by the fix
+  M <- matrix(c(2, 0.3, 0.3, 1.5), 2, 2)
+  expect_identical(sum(diag(M)), if (is.matrix(M)) sum(diag(M)) else sum(M))
+  expect_identical(sum(diag(c(0.2, 0.3))), sum(c(0.2, 0.3)))
 })
 
 test_that("LEDGER #33 (FIXED): the binary conditional arm subtracts the full matrix", {
