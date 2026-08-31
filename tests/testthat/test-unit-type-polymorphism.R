@@ -32,6 +32,24 @@ test_that("diag() dispatches on the type and shape of its argument", {
   expect_identical(sum(diag(matrix(0.37, 1, 1))), 0.37)
 })
 
+test_that("diag() on a scalar allocates as the SQUARE of the value", {
+  # LEDGER #34: the argument that reaches this constructor is a weighted score
+  # variance, so it is not bounded by anything small. Below 1 the result is
+  # 0 x 0 and the run continues with an Inf beta; at realistic magnitudes the
+  # allocation is quadratic in the variance and the run dies outright.
+  for (v in c(2, 7, 40)) {
+    expect_identical(dim(diag(v)), c(as.integer(v), as.integer(v)))
+  }
+  # the requested footprint grows as x^2, not as x
+  bytes <- function(v) 8 * trunc(v)^2
+  expect_identical(bytes(400) / bytes(200), 4)
+  # a variance of 4e5 -- reachable at biobank N -- asks for over a terabyte
+  expect_gt(bytes(4e5), 1e12)
+  # and R refuses rather than returning a wrong answer, so this arm of the bug
+  # is a hard crash, not silent corruption like the sub-1 arm above
+  expect_error(diag(4e5), "memory|cannot allocate")
+})
+
 test_that("dropping a single-element matrix subset is what feeds diag() a scalar", {
   m <- matrix(c(0.42, 0.1, 0.1, 0.7), 2, 2)
   pos <- 1L
