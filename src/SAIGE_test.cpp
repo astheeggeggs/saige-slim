@@ -74,6 +74,9 @@ SAIGEClass::SAIGEClass(
     m_res = t_res;
     m_resout = t_resout;
     m_mu2 = t_mu2;
+    // Cached here rather than per marker; same expression, same data.
+    m_accu_mu2 = arma::accu(m_mu2);
+    m_accu_res = arma::accu(m_res);
     m_mu = t_mu;
     m_varRatio_sparse = t_varRatio_sparse;
     m_varRatio_null = t_varRatio_null;
@@ -341,7 +344,7 @@ void SAIGEClass::scoreTestFast_noadjCov(arma::vec & t_GVec,
      
     double var2_a = dot(m_mu21,pow(g1,2));
     double var2_b = dot(m_mu21, 2*2*centreFreq*g1);
-    double var2_c = arma::accu(m_mu2)*pow(2*centreFreq, 2);
+    double var2_c = m_accu_mu2*pow(2*centreFreq, 2);
     var2 = var2_a - var2_b + var2_c;
     var2 = var2 *(m_tauvec[0]);
     //std::cout << "var2 " << var2 << std::endl;
@@ -351,7 +354,7 @@ void SAIGEClass::scoreTestFast_noadjCov(arma::vec & t_GVec,
     //std::cout << "var2 b " << var2 << std::endl;
     //S = dot(t_GVec_center, m_res);
     //std::cout << "S " << S << std::endl;
-    S = dot(g1, m_res1)  - arma::accu(m_res)*(2*centreFreq);
+    S = dot(g1, m_res1)  - m_accu_res*(2*centreFreq);
     //std::cout << "S b " << S << std::endl; 
     S = S/m_tauvec[0];
 
@@ -539,11 +542,19 @@ if(!m_flagSparseGRM_cur && t_isnoadjCov){
  
   
   unsigned int iIndexComVecSize = iIndexComVec.n_elem;
-  unsigned int iIndexSize = iIndex.n_elem; 
-  arma::vec gNB(iIndexSize, arma::fill::none);
-  arma::vec gNA(iIndexComVecSize, arma::fill::none);
-  arma::vec muNB(iIndexSize, arma::fill::none);
-  arma::vec muNA(iIndexComVecSize, arma::fill::none);
+  unsigned int iIndexSize = iIndex.n_elem;
+  // Sized lazily. These four are only read on the SPA branches below, which
+  // together take ~5% of binary markers and no quantitative one; sizing them
+  // for every marker cost two allocations of ~n doubles each (gNA and muNA are
+  // the zero-genotype side, so ~n for a rare variant), i.e. two mmap/munmap
+  // round trips per marker at biobank n, ~95% of them wasted.
+  //
+  // The marginal branch assigns them wholesale (gNB = t_gtilde(iIndex) etc.),
+  // so it needs no explicit sizing. The CONDITIONAL branch is a different
+  // predicate and can be reached without the marginal branch having run
+  // (LEDGER #40), and previously found them sized-but-uninitialised; it now
+  // sizes them there to reproduce exactly that state.
+  arma::vec gNB, gNA, muNB, muNA;
 
 
   double gmuNB;
@@ -852,6 +863,15 @@ if(!t_isER){
 
         if(p_iIndexComVecSize >= 0.5 && !m_flagSparseGRM_cur){
 		//std::cout << "SPA_fast " << std::endl;
+                // Reproduce the pre-lazy state exactly. If the marginal SPA
+                // branch ran, these are already filled and the set_size calls
+                // are no-ops; if it did not (LEDGER #40 -- this predicate is
+                // not the one that fills them), they were previously sized and
+                // uninitialised, and are again.
+                gNB.set_size(iIndexSize);
+                gNA.set_size(iIndexComVecSize);
+                muNB.set_size(iIndexSize);
+                muNA.set_size(iIndexComVecSize);
                 SPA_fast(m_mu, t_gtilde, q_c, qinv_c, pval_noSPA_c, ispvallog, gNA, gNB, muNA, muNB, NAmu, NAsigma, tol1, m_traitType, SPApval_c, t_isSPAConverge_c);
         }else{
 		//std::cout << "SPA " << std::endl;

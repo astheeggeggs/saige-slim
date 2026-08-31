@@ -66,8 +66,22 @@ double K2_Binom(double t1, arma::vec & mu, arma::vec & g)
 
 
 
+// The two full-length reductions over g, factored out so a caller that runs
+// getroot twice on the same g pays for them once. The expressions are the
+// originals, unchanged, so the values are bit-identical.
+void getGPosNeg_Binom(arma::vec & g, double & gpos, double & gneg){
+	gpos = arma::accu( g.elem( find(g > 0) ) );
+	gneg = arma::accu( g.elem( find(g < 0) ) );
+}
+
 // [[Rcpp::export]]
 Rcpp::List getroot_K1_Binom(double init, arma::vec & mu, arma::vec & g, double q, double tol, int maxiter){
+	double gpos, gneg;
+	getGPosNeg_Binom(g, gpos, gneg);
+	return getroot_K1_Binom_pre(init, mu, g, q, tol, gpos, gneg, maxiter);
+}
+
+Rcpp::List getroot_K1_Binom_pre(double init, arma::vec & mu, arma::vec & g, double q, double tol, double gpos, double gneg, int maxiter){
 	Rcpp::List result;
 	double root;
 	int niter;
@@ -75,8 +89,6 @@ Rcpp::List getroot_K1_Binom(double init, arma::vec & mu, arma::vec & g, double q
         int rep;
 	double K1_eval, K2_eval, t, tnew, newK1;
 	double prevJump;
-	double gpos = arma::accu( g.elem( find(g > 0) ) );
-	double gneg = arma::accu( g.elem( find(g < 0) ) );
 	//std::cout << "q is " << q << std::endl;
 	//std::cout << "gpos is " << gpos << std::endl;
 	//std::cout << "gneg is " << gneg << std::endl;
@@ -330,6 +342,12 @@ double K2_fast_Binom(double t1, arma::vec & mu, arma::vec & g, arma::vec & gNA, 
 
 // [[Rcpp::export]]
 Rcpp::List getroot_K1_fast_Binom(double init, arma::vec & mu, arma::vec & g, double q, arma::vec & gNA, arma::vec & gNB, arma::vec & muNA, arma::vec & muNB,  double NAmu, double NAsigma, double tol, int maxiter){
+	double gpos, gneg;
+	getGPosNeg_Binom(g, gpos, gneg);
+	return getroot_K1_fast_Binom_pre(init, mu, g, q, gNA, gNB, muNA, muNB, NAmu, NAsigma, tol, gpos, gneg, maxiter);
+}
+
+Rcpp::List getroot_K1_fast_Binom_pre(double init, arma::vec & mu, arma::vec & g, double q, arma::vec & gNA, arma::vec & gNB, arma::vec & muNA, arma::vec & muNB,  double NAmu, double NAsigma, double tol, double gpos, double gneg, int maxiter){
 	Rcpp::List result;
 	double root;
 	int niter;
@@ -337,8 +355,6 @@ Rcpp::List getroot_K1_fast_Binom(double init, arma::vec & mu, arma::vec & g, dou
         int rep;
 	double K1_eval, K2_eval, t, tnew, newK1;
 	double prevJump;
-	double gpos = arma::accu( g.elem( find(g > 0) ) );
-	double gneg = arma::accu( g.elem( find(g < 0) ) );
 	if(q >= gpos || q <= gneg){
 		root = std::numeric_limits<double>::infinity();
 		niter = 0;

@@ -19,6 +19,12 @@ class SAIGEClass
       arma::vec m_resout;
       arma::vec m_mu;
       arma::vec m_mu2;
+      // accu(m_mu2) and accu(m_res): full-n reductions over model constants that
+      // scoreTestFast_noadjCov (the default marker path) was recomputing for
+      // every marker. Both vectors are set once and never mutated, so caching
+      // the identical arma::accu call is bit-identical.
+      double m_accu_mu2;
+      double m_accu_res;
       arma::vec m_tauvec;
       arma::vec  m_S_a;
       //std::string m_traitType; 

@@ -18,14 +18,16 @@
 // [[Rcpp::export]]
 void SPA(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, double & pval, bool & isSPAConverge){
         using namespace Rcpp;
-        List result;
         double p1, p2;
         bool Isconverge = true;
 	Rcpp::List outuni1;
 	Rcpp::List outuni2;
         if( traitType == "binary"){
-          outuni1 = getroot_K1_Binom(0, mu, g, q, tol);
-          outuni2 = getroot_K1_Binom(0, mu, g, qinv, tol);
+          // gpos/gneg depend only on g, and both roots use the same g
+          double gpos, gneg;
+          getGPosNeg_Binom(g, gpos, gneg);
+          outuni1 = getroot_K1_Binom_pre(0, mu, g, q, tol, gpos, gneg);
+          outuni2 = getroot_K1_Binom_pre(0, mu, g, qinv, tol, gpos, gneg);
         }
 
 /*
@@ -98,7 +100,6 @@ void SPA(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_noadj
 void SPA_fast(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_noadj, bool logp, arma::vec & gNA, arma::vec & gNB, arma::vec & muNA, arma::vec & muNB,  double NAmu, double NAsigma, double tol, std::string traitType, double & pval, bool & isSPAConverge){
 
         using namespace Rcpp;
-        List result;
         double p1, p2;
         bool Isconverge = true;
 	Rcpp::List outuni1;
@@ -112,11 +113,14 @@ void SPA_fast(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_
 */
         if( traitType == "binary"){
 	    //   arma::vec timeoutput1 = getTime();
-          outuni1 = getroot_K1_fast_Binom(0, mu, g, q, gNA,gNB,muNA,muNB,NAmu, NAsigma, tol);
+          // gpos/gneg depend only on g, and both roots use the same g
+          double gpos, gneg;
+          getGPosNeg_Binom(g, gpos, gneg);
+          outuni1 = getroot_K1_fast_Binom_pre(0, mu, g, q, gNA,gNB,muNA,muNB,NAmu, NAsigma, tol, gpos, gneg);
 	  //   arma::vec timeoutput2 = getTime();
  //printTime(timeoutput1, timeoutput2, "getroot_K1_fast_Binom");
           //double qinv = -1*q;
-          outuni2 = getroot_K1_fast_Binom(0, mu, g, qinv, gNA,gNB,muNA,muNB,NAmu, NAsigma, tol);
+          outuni2 = getroot_K1_fast_Binom_pre(0, mu, g, qinv, gNA,gNB,muNA,muNB,NAmu, NAsigma, tol, gpos, gneg);
 	 // arma::vec timeoutput3 = getTime();
  	//printTime(timeoutput2, timeoutput3, "getroot_K1_fast_Binom");
         }
@@ -193,14 +197,16 @@ void SPA_fast(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_
 double SPA_pval(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, bool & isSPAConverge){
        double pval;
         using namespace Rcpp;
-        List result;
         double p1, p2;
         bool Isconverge = true;
         Rcpp::List outuni1;
         Rcpp::List outuni2;
         if( traitType == "binary"){
-          outuni1 = getroot_K1_Binom(0, mu, g, q, tol);
-          outuni2 = getroot_K1_Binom(0, mu, g, qinv, tol);
+          // gpos/gneg depend only on g, and both roots use the same g
+          double gpos, gneg;
+          getGPosNeg_Binom(g, gpos, gneg);
+          outuni1 = getroot_K1_Binom_pre(0, mu, g, q, tol, gpos, gneg);
+          outuni2 = getroot_K1_Binom_pre(0, mu, g, qinv, tol, gpos, gneg);
         }
 
 

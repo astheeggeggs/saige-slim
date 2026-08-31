@@ -210,6 +210,10 @@ void mainMarkerInCPP(
   std::vector<uint> indexZeroVec;
   std::vector<uint> indexNonZeroVec;
   std::vector<uint> indexForMissing;
+  // Hoisted out of the marker loop: conv_to fully overwrites them every marker,
+  // so reusing the buffers is value-neutral and saves an n-element uvec
+  // allocation (plus its widening copy) per marker.
+  arma::uvec indexZeroVec_arma, indexNonZeroVec_arma;
 
   int n = g_model->m_n;
   arma::vec t_GVec(n);
@@ -384,14 +388,15 @@ void mainMarkerInCPP(
     //arma::vec t_P2Vec;
     //arma::vec t_P2Vec;
 
-    arma::uvec indexZeroVec_arma, indexNonZeroVec_arma;
     indexZeroVec_arma = arma::conv_to<arma::uvec>::from(indexZeroVec);
     indexNonZeroVec_arma = arma::conv_to<arma::uvec>::from(indexNonZeroVec);
 
     indexZeroVec.clear();
     indexNonZeroVec.clear();
-    t_P2Vec.clear();
-    G1tilde_P_G2tilde_Vec.clear();    
+    // t_P2Vec / G1tilde_P_G2tilde_Vec are NOT cleared here any more. Both are
+    // fully assigned before any read (SAIGE_test.cpp:166/174/930/934 and :786
+    // respectively), so clearing them only freed the hoisted buffers and made
+    // the next marker re-allocate n doubles. Values are unaffected.
     //arma::vec timeoutput5 = getTime(); 
 
 
@@ -498,8 +503,8 @@ void mainMarkerInCPP(
 //arma::vec timeoutput6 = getTime();
 //printTime(timeoutput5, timeoutput6, "Unified_getMarkerPval");
 
-   indexNonZeroVec_arma.clear();
-   indexZeroVec_arma.clear();
+   // Not cleared: both are fully reassigned by conv_to at the top of the next
+   // marker's analysis block, and freeing them here defeated the hoist above.
    //std::cout << "isSPAConverge " << isSPAConverge << std::endl;
     BetaVec.at(i) = Beta * (1 - 2*flip);  // Beta if flip = false, -1*Beta is flip = true       
     seBetaVec.at(i) = seBeta;       
@@ -1095,6 +1100,9 @@ Rcpp::List mainRegionInCPP(
   arma::vec GZeroVec(t_n);
   std::vector<uint> indexZeroVec;
   std::vector<uint> indexNonZeroVec;
+  // Hoisted out of the marker and ultra-rare loops below: conv_to fully
+  // overwrites them at each use, so reuse is value-neutral.
+  arma::uvec indexZeroVec_arma, indexNonZeroVec_arma;
 
   //variance ratio
   bool hasVarRatio = true;;
@@ -1158,7 +1166,6 @@ Rcpp::List mainRegionInCPP(
     double MAF = std::min(altFreq, 1 - altFreq);
     double MAC = MAF * 2 * t_n * (1 - missingRate);   // checked on 08-10-2021
     flip = imputeGenoAndFlip(GVec, altFreq, altCounts, indexForMissing, g_cfg.impute_method, g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC, indexZeroVec, indexNonZeroVec);
-    arma::uvec indexZeroVec_arma, indexNonZeroVec_arma;
     MAF = std::min(altFreq, 1 - altFreq);
     MAC = std::min(altCounts, t_n *2 - altCounts);
     chrVec.at(i) = chr;
@@ -1599,7 +1606,6 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
     	    MACVec.at(i) = MAC;
     	    MAFVec.at(i) = MAF;
 
-            arma::uvec indexZeroVec_arma, indexNonZeroVec_arma;
             indexZeroVec_arma = arma::conv_to<arma::uvec>::from(indexZeroVec);
             indexNonZeroVec_arma = arma::conv_to<arma::uvec>::from(indexNonZeroVec);
 
