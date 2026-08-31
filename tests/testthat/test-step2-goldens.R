@@ -112,3 +112,46 @@ test_that("step2 single-variant conditional quantitative (rs13,rs79) matches gol
     c(PLINK_ARGS(), "--chrom=1", "--minMAF=0", "--minMAC=20", "--LOCO=FALSE",
       quant_model(), "--is_output_moreDetails=TRUE", "--condition=rs13,rs79"))
 })
+
+# ---- multi-weight goldens (Phase 5 C10) ------------------------------------
+# P2's configuration throughout, so a diff against plink_group_fastTest.txt
+# isolates the weight dimension.
+
+test_that("step2 group multi-weight SKAT-O (K=2) matches golden", {
+  run_step2_case("plink_group_multiweight.txt",
+    c(PLINK_ARGS(), "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
+      GRP_MODEL, SG_ARGS,
+      "--groupFile=./input/group_new_snpid_multiWeights.txt",
+      "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+      "--maxMAF_in_groupTest=0.0001,0.001,0.01",
+      "--is_fastTest=TRUE"),
+    extra_outputs = c(".singleAssoc.txt", ".singleAssoc.txt_temp"))
+})
+
+test_that("step2 group multi-weight BURDEN (K=2, r.corr=1) matches golden", {
+  # different emitter from the SKAT-O case: the Weight column here is written
+  # by the C++ BURDEN writer (C7), not the R post-processing.
+  # is_fastTest=FALSE mirrors the single-weight BURDEN golden; the TRUE
+  # combination loses regions (LEDGER #27) and is characterized separately.
+  run_step2_case("plink_group_multiweight_burden.txt",
+    c(PLINK_ARGS(), "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
+      GRP_MODEL, SG_ARGS,
+      "--groupFile=./input/group_new_snpid_multiWeights.txt",
+      "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+      "--maxMAF_in_groupTest=0.0001,0.001,0.01",
+      "--r.corr=1", "--is_fastTest=FALSE"))
+})
+
+test_that("step2 group composed sets (2 beta pairs + No_Weights) matches golden", {
+  run_step2_case("plink_group_composed.txt",
+    c(PLINK_ARGS(), "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
+      GRP_MODEL, SG_ARGS,
+      "--groupFile=./input/group_new_snpid.txt",
+      "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+      "--maxMAF_in_groupTest=0.0001,0.001,0.01",
+      # system2 goes through a shell, so the semicolon needs quoting
+      paste0("--weights.beta=", shQuote("1,25;1,1")),
+      "--is_no_weight_in_groupTest=TRUE",
+      "--is_fastTest=TRUE"),
+    extra_outputs = c(".singleAssoc.txt", ".singleAssoc.txt_temp"))
+})

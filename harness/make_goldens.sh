@@ -191,6 +191,52 @@ run step2_plink_marker_chunked.log R2 step2_SPAtests.R \
   $BIN_MODEL \
   --markers_per_chunk=1000
 
+# P8-P9/P8b (added Phase 5 C10): the multi-weight region schema. P2's
+# configuration throughout, so a diff against P2 isolates the weight dimension.
+# The weighted group files carry K = 2 custom sets (weight:CADD, weight,REVEL);
+# rows are (anno x max_MAF x weight set) with the weight innermost.
+
+# P8: group test, SKAT-O, K=2 custom weight sets — the Weight column plus the
+# additive Pvalue_ACATV/Pvalue_ACATO columns
+run step2_plink_group_multiweight.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_multiweight.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid_multiWeights.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --is_fastTest=TRUE
+
+# P9: same, BURDEN only (r.corr=1) — the C7 Weight column in the C++ BURDEN
+# writer, which is a different emitter from P8's R post-processing.
+# is_fastTest=FALSE mirrors P5: BURDEN + is_fastTest=TRUE silently drops every
+# region but the last (LEDGER.md #27), so that combination is characterized in
+# the test suite rather than frozen into a golden.
+run step2_plink_group_multiweight_burden.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_multiweight_burden.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid_multiWeights.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --r.corr=1 --is_fastTest=FALSE
+
+# P8b: C8 set composition (D10) on an UNWEIGHTED group file — two beta pairs
+# plus the appended No_Weights set, i.e. Beta_1_25, Beta_1_1, No_Weights in
+# that normative order
+run step2_plink_group_composed.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_composed.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --weights.beta="1,25;1,1" --is_no_weight_in_groupTest=TRUE \
+  --is_fastTest=TRUE
+
 # B1/B2 (bgen runs) and V1/V2 (vcf runs) retired to harness/goldens_retired/
 # when the BGEN (Strip 6) and VCF/SAV (Strip 5) readers were stripped. Their
 # PLINK counterparts P1-P4 continue; before retirement, the bgen group

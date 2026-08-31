@@ -493,3 +493,141 @@ test_that("weights.beta moves the C++ statistics but not the R-side ACAT-V (LEDG
     expect_identical(a[[cn]], b[[cn]])
   }
 })
+
+# ---- C10 invariants --------------------------------------------------------
+
+test_that("BURDEN + is_fastTest=TRUE emits only the last region (LEDGER #27)", {
+  # Silent data loss, independent of the weight dimension: every earlier region
+  # is analysed (the log announces it) but never written. RECORDED, NOT FIXED
+  # -- this test asserts the defect so the fix phase trips it. is_fastTest=FALSE
+  # is the correct-output control immediately below.
+  skip_unless_level("standard")
+  for (gf in c("group_new_snpid.txt", "group_new_snpid_multiWeights.txt")) {
+    out <- file.path(tempfile("step2_burdenfast_"), "region.txt")
+    dir.create(dirname(out), recursive = TRUE)
+    args <- MW_ARGS(gf, out)
+    args <- c(args[!grepl("^--is_fastTest=", args)], "--r.corr=1", "--is_fastTest=TRUE")
+    expect_cli_ok(run_saige_cli("step2_SPAtests.R", args))
+    d <- read_saige_table(out)
+    expect_identical(unique(d$Region), "GENE2")   # GENE1 analysed, never written
+  }
+})
+
+test_that("BURDEN + is_fastTest=FALSE keeps every region", {
+  skip_unless_level("standard")
+  out <- file.path(tempfile("step2_burdenslow_"), "region.txt")
+  dir.create(dirname(out), recursive = TRUE)
+  args <- MW_ARGS("group_new_snpid_multiWeights.txt", out)
+  args <- c(args[!grepl("^--is_fastTest=", args)], "--r.corr=1", "--is_fastTest=FALSE")
+  expect_cli_ok(run_saige_cli("step2_SPAtests.R", args))
+  d <- read_saige_table(out)
+  expect_identical(sort(unique(d$Region)), c("GENE1", "GENE2"))
+})
+
+test_that("burden linearity: scaling every weight by 2 is exact without the UR collapse", {
+  # A uniform rescaling of user-supplied weights is a reparameterisation of the
+  # burden test: the score scales by c, its variance by c^2, so the p-value is
+  # unchanged and BETA/SE both scale by 1/c. Checked with the ultra-rare
+  # collapse DISABLED, where the identity is exact to machine precision.
+  skip_unless_level("standard")
+  doubled <- local({
+    src <- file.path(saige_extdata, "input", "group_new_snpid_multiWeights.txt")
+    lines <- readLines(src)
+    out <- tempfile(fileext = ".txt")
+    writeLines(vapply(lines, function(l) {
+      p <- strsplit(l, "[ \t]+")[[1]]
+      if (length(p) >= 3 && grepl("^weight", p[2])) {
+        p[-(1:2)] <- format(as.numeric(p[-(1:2)]) * 2, trim = TRUE, scientific = FALSE)
+        paste(p, collapse = " ")
+      } else l
+    }, "", USE.NAMES = FALSE), out)
+    out
+  })
+  run_one <- function(groupFile) {
+    out <- file.path(tempfile("step2_lin_"), "region.txt")
+    dir.create(dirname(out), recursive = TRUE)
+    args <- MW_ARGS("group_new_snpid_multiWeights.txt", out)
+    args[grep("^--groupFile=", args)] <- paste0("--groupFile=", groupFile)
+    args <- c(args, "--MACCutoff_to_CollapseUltraRare=0")
+    expect_cli_ok(run_saige_cli("step2_SPAtests.R", args))
+    read_saige_table(out)
+  }
+  a <- run_one(file.path(saige_extdata, "input", "group_new_snpid_multiWeights.txt"))
+  b <- run_one(doubled)
+  ra <- a[a$Group != "Cauchy", ]; rb <- b[b$Group != "Cauchy", ]
+  expect_identical(nrow(ra), nrow(rb))
+  expect_true(all(pnum(ra$Number_ultra_rare) == 0))    # collapse really is off
+  # scale-invariant: the p-values are unchanged, to the printed precision
+  expect_identical(ra$Pvalue_Burden, rb$Pvalue_Burden)
+  expect_identical(ra$Pvalue_SKAT, rb$Pvalue_SKAT)
+  # equivariant: BETA and SE both halve
+  expect_lt(max(abs(pnum(rb$BETA_Burden) / pnum(ra$BETA_Burden) - 0.5)), 1e-9)
+  expect_lt(max(abs(pnum(rb$SE_Burden) / pnum(ra$SE_Burden) - 0.5)), 1e-9)
+})
+
+test_that("the ultra-rare collapse makes custom weights only approximately scale-free", {
+  # With the collapse ON the same doubling stops being exact: the collapsed
+  # pseudo-genotype is max(w_r*G), so its apparent allele count doubles too
+  # (AC 38.40 -> 76.80 in the singleAssoc output) while its weight in
+  # AnnoWeights stays 1, and the MAC-dependent machinery downstream therefore
+  # sees a different marker. So a uniform rescaling of a group file -- which a
+  # user would reasonably expect to be a no-op -- shifts the answer slightly.
+  # Bounded, not asserted equal: a real weight-handling regression would move
+  # these by orders of magnitude, while this residual is ~1e-2.
+  skip_unless_level("standard")
+  doubled <- local({
+    lines <- readLines(file.path(saige_extdata, "input",
+                                 "group_new_snpid_multiWeights.txt"))
+    out <- tempfile(fileext = ".txt")
+    writeLines(vapply(lines, function(l) {
+      p <- strsplit(l, "[ \t]+")[[1]]
+      if (length(p) >= 3 && grepl("^weight", p[2])) {
+        p[-(1:2)] <- format(as.numeric(p[-(1:2)]) * 2, trim = TRUE, scientific = FALSE)
+        paste(p, collapse = " ")
+      } else l
+    }, "", USE.NAMES = FALSE), out)
+    out
+  })
+  out <- file.path(tempfile("step2_lin_on_"), "region.txt")
+  dir.create(dirname(out), recursive = TRUE)
+  args <- MW_ARGS("group_new_snpid_multiWeights.txt", out)
+  args[grep("^--groupFile=", args)] <- paste0("--groupFile=", doubled)
+  expect_cli_ok(run_saige_cli("step2_SPAtests.R", args))
+
+  a <- multi_run()$region                      # collapse on, original weights
+  b <- read_saige_table(out)                   # collapse on, doubled weights
+  ra <- a[a$Group != "Cauchy", ]; rb <- b[b$Group != "Cauchy", ]
+  expect_true(all(pnum(ra$Number_ultra_rare) > 0))   # collapse really is active
+  rel <- function(x, y) max(abs(x - y) / (abs(x) + abs(y) + 1e-300))
+  # not exact any more ...
+  expect_false(identical(ra$Pvalue_Burden, rb$Pvalue_Burden))
+  # ... but still close, and BETA/SE still halve to within a couple of percent
+  expect_lt(rel(pnum(ra$Pvalue_Burden), pnum(rb$Pvalue_Burden)), 0.05)
+  expect_lt(max(abs(pnum(rb$BETA_Burden) / pnum(ra$BETA_Burden) - 0.5)), 0.05)
+  expect_lt(max(abs(pnum(rb$SE_Burden) / pnum(ra$SE_Burden) - 0.5)), 0.05)
+})
+
+test_that("No_Weights rows reproduce a plain all-ones run exactly", {
+  # The appended all-ones set must be the same analysis as running the
+  # unweighted group file in no-weight mode: same cells, same numbers, column
+  # for column. This is what pins design D2's "noweight = all ones with an
+  # unweighted UR collapse" against the C++ side.
+  skip_unless_level("standard")
+  plain_out <- file.path(tempfile("step2_nwplain_"), "region.txt")
+  dir.create(dirname(plain_out), recursive = TRUE)
+  expect_cli_ok(run_saige_cli("step2_SPAtests.R",
+    c(MW_ARGS("group_new_snpid.txt", plain_out), "--is_no_weight_in_groupTest=TRUE")))
+  plain <- read_saige_table(plain_out)
+
+  d <- noweights_run()$region                  # weighted file + No_Weights set
+  nw <- d[d$Weight == "No_Weights" & d$Group != "Cauchy", ]
+  pr <- plain[plain$Group != "Cauchy", ]
+  expect_identical(nrow(nw), nrow(pr))
+  expect_identical(nw$Group, pr$Group)
+  expect_identical(nw$max_MAF, pr$max_MAF)
+  for (col in c("Pvalue", "Pvalue_Burden", "Pvalue_SKAT", "BETA_Burden",
+                "SE_Burden", "MAC", "MAC_case", "MAC_control",
+                "Number_rare", "Number_ultra_rare")) {
+    expect_identical(nw[[col]], pr[[col]], label = paste("No_Weights ==", col))
+  }
+})

@@ -67,9 +67,14 @@ acat <- function(p) 0.5 - atan(mean(tan((0.5 - p) * pi))) / pi
 
 test_that("Cauchy rows reproduce ACAT over the per-region rows (R recompute vs C++ output)", {
   skip_if_no_goldens()
-  for (f in c("plink_group_fastTest.txt", "plink_group_cond_binary.txt")) {
+  # The multi-weight goldens pool over (anno x max_MAF x weight set) rows, so
+  # the same one-row-per-region ACAT must hold with K > 1, and it must hold for
+  # the additive Pvalue_ACATV/Pvalue_ACATO columns too.
+  for (f in c("plink_group_fastTest.txt", "plink_group_cond_binary.txt",
+              "plink_group_multiweight.txt", "plink_group_composed.txt")) {
     d <- golden2(f)
     pcols <- intersect(c("Pvalue", "Pvalue_Burden", "Pvalue_SKAT",
+                         "Pvalue_ACATV", "Pvalue_ACATO",
                          "Pvalue_cond", "Pvalue_Burden_cond", "Pvalue_SKAT_cond"),
                        colnames(d))
     for (region in unique(d$Region)) {
@@ -110,4 +115,117 @@ test_that("conditional group run leaves unconditional columns untouched", {
   b <- golden2("plink_group_cond_binary.txt")
   shared <- intersect(colnames(a), colnames(b))
   expect_identical(a[shared], b[shared])
+})
+
+# ---- multi-weight goldens (Phase 5 C10) ------------------------------------
+# P8 (plink_group_multiweight.txt) is P2's configuration with K = 2 custom sets;
+# P8b (plink_group_composed.txt) is P2's group file with two beta pairs plus the
+# appended No_Weights set. Both are checked against the SAME P2 golden, so any
+# drift in the weight dimension shows up as a structural or arithmetic mismatch
+# rather than as an unexplained number.
+
+mw_goldens <- c(plink_group_multiweight.txt = 2L, plink_group_composed.txt = 3L)
+
+test_that("multi-weight goldens: K rows per cell, weight innermost, one Cauchy row", {
+  skip_if_no_goldens()
+  p2 <- golden2("plink_group_fastTest.txt")
+  p2r <- p2[p2$Group != "Cauchy", ]
+  for (f in names(mw_goldens)) {
+    K <- mw_goldens[[f]]
+    d <- golden2(f)
+    r <- d[d$Group != "Cauchy", ]
+    # the schema columns exist and sit where C7/C8 put them
+    expect_identical(colnames(d)[1:5],
+                     c("Region", "Group", "max_MAF", "Weight", "Pvalue"))
+    expect_true(all(c("Pvalue_ACATV", "Pvalue_ACATO") %in% colnames(d)))
+    # exactly K rows per (anno, max_MAF) cell of the single-weight golden
+    expect_identical(nrow(r), K * nrow(p2r))
+    expect_identical(r$Group, rep(p2r$Group, each = K))
+    expect_identical(r$max_MAF, rep(p2r$max_MAF, each = K))
+    # weight is the fastest-varying index: the same set order repeats per cell
+    sets <- unique(r$Weight)
+    expect_identical(length(sets), K)
+    expect_identical(r$Weight, rep(sets, nrow(r) / K))
+    # one pooled Cauchy row per region, unlabelled by weight
+    expect_identical(sum(d$Group == "Cauchy"), length(unique(d$Region)))
+    expect_true(all(d$Weight[d$Group == "Cauchy"] == "NA"))
+    # MARKER counts are weight-independent -- every set of a cell sees the same
+    # markers -- so they repeat across the K rows and match the single-weight
+    # golden. (Allele counts are NOT: see the next test.)
+    for (col in c("Number_rare", "Number_ultra_rare")) {
+      expect_identical(r[[col]], rep(p2r[[col]], each = K))
+    }
+  }
+})
+
+test_that("MAC is set-dependent exactly when the ultra-rare collapse is weighted", {
+  skip_if_no_goldens()
+  # Design D2: a custom (group-file) set collapses its ultra-rare markers as
+  # max(w_r * G), so the pseudo-marker's allele count carries that set's
+  # weights and the cell's MAC differs per set. Beta and No_Weights sets
+  # collapse UNWEIGHTED, so their MAC is the single-weight golden's.
+  p2r <- local({ d <- golden2("plink_group_fastTest.txt"); d[d$Group != "Cauchy", ] })
+
+  custom <- local({ d <- golden2("plink_group_multiweight.txt"); d[d$Group != "Cauchy", ] })
+  bySet <- split(num(custom$MAC), custom$Weight)
+  expect_identical(length(bySet), 2L)
+  expect_false(isTRUE(all.equal(bySet[[1]], bySet[[2]])))
+  expect_false(isTRUE(all.equal(bySet[[1]], num(p2r$MAC))))
+
+  composed <- local({ d <- golden2("plink_group_composed.txt"); d[d$Group != "Cauchy", ] })
+  bySet2 <- split(num(composed$MAC), composed$Weight)
+  expect_identical(length(bySet2), 3L)
+  for (s in bySet2) expect_identical(s, num(p2r$MAC))
+})
+
+test_that("multi-weight goldens: per-row ACATO is CCT of that row's ACATV/Burden/SKAT", {
+  skip_if_no_goldens()
+  for (f in names(mw_goldens)) {
+    d <- golden2(f)
+    r <- d[d$Group != "Cauchy", ]
+    for (i in seq_len(nrow(r))) {
+      trio <- num(c(r$Pvalue_ACATV[i], r$Pvalue_Burden[i], r$Pvalue_SKAT[i]))
+      expect_lt(rel_err(num(r$Pvalue_ACATO[i]), CCT(trio)), 1e-12)
+    }
+  }
+})
+
+test_that("multi-weight goldens: SKAT-O p stays bounded by its components", {
+  skip_if_no_goldens()
+  for (f in names(mw_goldens)) {
+    r <- golden2(f); r <- r[r$Group != "Cauchy", ]
+    lo <- pmin(num(r$Pvalue_Burden), num(r$Pvalue_SKAT))
+    expect_true(all(num(r$Pvalue) >= lo * (1 - 1e-12)))
+    expect_true(all(num(r$Pvalue) <= 2 * lo * (1 + 1e-12)))
+    for (col in c("Pvalue", "Pvalue_Burden", "Pvalue_SKAT",
+                  "Pvalue_ACATV", "Pvalue_ACATO")) {
+      p <- num(r[[col]])
+      expect_false(anyNA(p))
+      expect_true(all(p > 0 & p <= 1))
+    }
+  }
+})
+
+test_that("multi-weight BURDEN golden carries the Weight column and matches P8's cells", {
+  skip_if_no_goldens()
+  b <- golden2("plink_group_multiweight_burden.txt")
+  s <- golden2("plink_group_multiweight.txt")
+  # written by the C++ BURDEN writer, not the R post-processing, so the schema
+  # is asserted independently
+  expect_identical(colnames(b)[1:4], c("Region", "Group", "max_MAF", "Weight"))
+  expect_false(any(c("Pvalue_ACATV", "Pvalue_ACATO") %in% colnames(b)))
+  br <- b[b$Group != "Cauchy", ]; sr <- s[s$Group != "Cauchy", ]
+  # same cells and the same weight-innermost ordering as the SKAT-O run
+  expect_identical(br$Group, sr$Group)
+  expect_identical(br$max_MAF, sr$max_MAF)
+  expect_identical(br$Weight, sr$Weight)
+  expect_identical(br$MAC, sr$MAC)
+})
+
+test_that("composed golden names its sets in the normative order", {
+  skip_if_no_goldens()
+  d <- golden2("plink_group_composed.txt")
+  r <- d[d$Group != "Cauchy", ]
+  # beta pairs in the order given on the CLI, then the appended all-ones set
+  expect_identical(unique(r$Weight), c("Beta_1_25", "Beta_1_1", "No_Weights"))
 })
