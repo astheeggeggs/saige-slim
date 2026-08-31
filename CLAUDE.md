@@ -86,7 +86,7 @@ Docker build.
   (score-test algebra, allele accounting, ACAT recomputation of the Cauchy
   rows), and comparator self-tests (the suite's own null + positive controls
   in `test-meta-comparators.R`).
-- **standard** (~2-4 min, default): fast + the four PLINK step-2 CLI runs
+- **standard** (~2.5 min, default): fast + the four PLINK step-2 CLI runs
   compared against `harness/goldens/step2/`, the multi-weight runs, and the
   live Firth path (`test-step2-firth.R`).
 - **full** (~20+ min, same-platform only): standard + full golden regeneration,
@@ -102,6 +102,30 @@ after a fix, update the ledger and the test together in the dedicated fix
 phase. They assert what the code does TODAY, including the malformed error
 messages (#21) and the unreachable guards (#24, #25); read the LEDGER entry
 before "correcting" one.
+
+The suite runs test files **in parallel** (8 workers here; `TESTTHAT_CPUS`
+overrides). This needs BOTH `Config/testthat/parallel: true` and
+`Config/testthat/edition: 3` in `DESCRIPTION`, and `run_tests.sh` must pass
+`package = "SAIGE", load_package = "installed"` to `test_dir` -- the default
+`load_package = "none"` hands each callr worker an empty package name and dies
+with "attempt to use zero-length variable name" before a single test runs.
+**The trap: `find_parallel()` reads the INSTALLED DESCRIPTION, not the source
+one**, so editing `DESCRIPTION` without re-running `R CMD INSTALL` leaves
+parallelism silently OFF -- same wall time, no warning, no "Starting N test
+processes" line. Check for that line before believing a timing. It bought
+4:09 -> 2:29 on standard; wall time is bounded below by the slowest single
+file (`test-step2-multiweight.R`, ~103s), so splitting that file is the next
+lever. Total CPU goes UP (223s -> 319s): every worker loads SAIGE afresh,
+which is the 1.08s floor each of the ~150 step-2 child processes also pays.
+
+Adopting edition 3 tightened `expect_equal` to waldo semantics and surfaced
+two assertions in `test-unit-cct.R` whose stated 1e-12 tolerance was tighter
+than the arithmetic allows: CCT round-trips through
+`0.5 - atan(tan((0.5 - p) * pi)) / pi`, and for small p that argument sits
+beside pi/2 where tan is ill-conditioned, costing 1.55e-12 R-vs-C++ and
+6.55e-12 on the scalar identity, both entirely from p = 1e-5 (every vector
+case is <= 5.3e-15). Edition 2 had been accepting them because its numeric
+comparison was looser than the number written in the test. Relaxed to 1e-10.
 
 Three standing traps when adding tests here:
 - **Never assert bit-identity between two different code paths**, and gate new

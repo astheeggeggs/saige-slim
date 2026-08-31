@@ -3,7 +3,7 @@
 #   bash harness/run_tests.sh [fast|standard|full]
 #
 # fast     - unit + golden-invariant + comparator self-tests only (seconds)
-# standard - fast + step-2 end-to-end runs vs goldens (~3-4 min)  [default]
+# standard - fast + step-2 end-to-end runs vs goldens (~2.5 min)  [default]
 # full     - standard + step-0/step-1 regeneration with toleranced compare,
 #            step-1 determinism double-run, and the permuted-phenotype
 #            negative control (~20+ min)
@@ -19,4 +19,20 @@ export SAIGE_TEST_LEVEL="${1:-standard}"
 export SAIGE_COMPARE_MODE="${SAIGE_COMPARE_MODE:-byte}"
 echo "== SAIGE tests: level=$SAIGE_TEST_LEVEL compare=$SAIGE_COMPARE_MODE"
 cd "$REPO"
-pixi run Rscript -e 'res <- testthat::test_dir("tests/testthat", stop_on_failure = TRUE)'
+
+# Call the pinned env's Rscript directly rather than through `pixi run`: the
+# wrapper costs 2.5-5s per invocation and adds nothing here (env.sh above
+# already exports the thread pins, and the R shell script sets its own R_HOME,
+# verified to load SAIGE from a stripped environment).
+RSCRIPT="$REPO/.pixi/envs/default/lib/R/bin/Rscript"
+
+# Test files run in parallel (Config/testthat/{edition,parallel} in DESCRIPTION).
+# Workers block on their step-2 child processes rather than spinning, so one
+# worker per core is right; env.sh pins every child to a single thread, so the
+# workers cannot oversubscribe each other.
+export TESTTHAT_CPUS="${TESTTHAT_CPUS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
+
+# package/load_package are REQUIRED for the parallel path: test_dir defaults to
+# load_package="none", which hands each callr worker an empty package name and
+# fails with "attempt to use zero-length variable name" before any test runs.
+"$RSCRIPT" -e 'res <- testthat::test_dir("tests/testthat", package = "SAIGE", load_package = "installed", stop_on_failure = TRUE)'

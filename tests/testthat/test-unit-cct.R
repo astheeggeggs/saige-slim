@@ -18,8 +18,17 @@ test_that("R and C++ CCT agree on the equal-weights path", {
     c(0, 0.5),                       # p==0 -> 0
     c(0, 1, 0.5)                     # 0 beats 1
   )
+  # Tolerance 1e-10, not 1e-12: CCT round-trips through
+  # 0.5 - atan(tan((0.5 - p) * pi)) / pi, and for small p the argument sits
+  # next to pi/2 where tan is ill-conditioned, so the round trip loses
+  # precision. Measured worst case across these cases is 1.55e-12, all of it
+  # from the scalar p = 1e-5 (every vector case is <= 5.3e-15). This is
+  # inherent conditioning, not a divergence between the two implementations;
+  # 1e-10 keeps ~15x margin over the observed error. Edition 2 accepted the
+  # old 1e-12 because its numeric comparison was looser than the number
+  # written here; waldo enforces it literally.
   for (p in cases) {
-    expect_equal(CCT(p), CCT_cpp(as.matrix(p)), tolerance = 1e-12,
+    expect_equal(CCT(p), CCT_cpp(as.matrix(p)), tolerance = 1e-10,
                  label = paste0("CCT(", paste(p, collapse = ","), ")"))
   }
 })
@@ -33,7 +42,9 @@ test_that("CCT reference values are stable", {
 })
 
 test_that("scalar CCT is the identity on (1e-16, 1)", {
-  for (p in c(1e-5, 0.2, 0.5, 0.99)) expect_equal(CCT(p), p, tolerance = 1e-12)
+  # identity only to the tan/atan round-trip precision -- 6.55e-12 at p = 1e-5
+  # (exact at 0.2, 0.5, 0.99). See the tolerance note above.
+  for (p in c(1e-5, 0.2, 0.5, 0.99)) expect_equal(CCT(p), p, tolerance = 1e-10)
 })
 
 test_that("CCT weight handling", {
