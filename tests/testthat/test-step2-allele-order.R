@@ -92,35 +92,65 @@ test_that("CONTROL: with --is_noadjCov=FALSE the allele flip is exactly invarian
   expect_identical(ao_num(m$Tstat.alt), -ao_num(m$Tstat.ref))
 })
 
-test_that("LEDGER #28: the default (noadjCov) path inflates variance at AF > 0.5", {
-  # scoreTestFast_noadjCov centres on 2*altFreq with altFreq in the ALT
-  # orientation while the genotype is minor-coded, so the centre is off by
-  # 2*(1 - 2*MAF) and the variance picks up sum(mu2)*4*(1-2*MAF)^2.
+test_that("LEDGER #28 FIXED: the default (noadjCov) path is flip-invariant", {
+  # Was: scoreTestFast_noadjCov centred on 2*altFreq with altFreq in the ALT
+  # orientation while the genotype is minor-coded, so the centre was off by
+  # 2*(1 - 2*MAF) and the variance picked up sum(mu2)*4*(1-2*MAF)^2 (observed
+  # median inflation 178x, max 5408x, every signal erased).
+  # Now: the flip flag is threaded down from the Main.cpp marker loop and the
+  # centre is the frequency of the allele t_GVec actually counts, so this path
+  # matches the covariate-adjusted CONTROL arm above EXACTLY.
   # is_fastTest=FALSE here: without a sparse GRM this path is taken either way,
-  # which is itself the point — --is_fastTest=FALSE alone does NOT avoid it.
+  # which was the point — --is_fastTest=FALSE alone did NOT avoid the bug.
   alt <- alt_default()
   ref <- ao_run("ref-first")$tab
   m <- ao_pair(alt, ref)
+  expect_gt(nrow(m), 60)
+  expect_true(all(ao_num(m$AF_Allele2.ref) > 0.5))   # the mirror is AF > 0.5
 
-  ratio <- ao_num(m$var.ref) / ao_num(m$var.alt)
-  expect_gt(median(ratio), 100)         # observed ~178x at the time of writing
-  expect_gt(max(ratio), 1000)           # observed ~5408x
-  expect_true(all(ratio > 0.99))        # inflation only, never deflation
+  # The same printed-string identity the CONTROL arm asserts. This is now the
+  # strong claim: the two orientations agree bit-for-bit, not to a tolerance.
+  expect_identical(m$SE.alt, m$SE.ref)
+  expect_identical(m$var.alt, m$var.ref)
+  expect_identical(m$p.value.alt, m$p.value.ref)
+  expect_identical(ao_num(m$BETA.alt), -ao_num(m$BETA.ref))
+  expect_identical(ao_num(m$Tstat.alt), -ao_num(m$Tstat.ref))
 
-  # The score is mis-centred toward zero the same way, so p is driven to 1 and
-  # every signal in the fixture is erased.
-  expect_lt(min(ao_num(alt$p.value)), 0.05)
-  expect_gt(min(ao_num(ref$p.value)), 0.05)
-  expect_gt(median(ao_num(ref$p.value)), 0.9)
+  # Signal is preserved rather than erased: the ref-first run recovers the same
+  # minimum p-value as alt-first (it was driven above 0.05 by the inflation).
+  expect_lt(min(ao_num(ref$p.value)), 0.05)
 
-  # Self-concealing under --is_fastTest: the escalation at Main.cpp:440 fires
-  # only when pass-1 p < pval_cutoff_for_fastTest (0.05), and the inflation
-  # pushes every marker above it, so the exact re-test never runs and the
-  # fastTest output is identical to the non-fast output.
+  # The self-concealment is gone, and this is the sharpest evidence of it.
+  # BEFORE the fix the inflation drove every marker's pass-1 p above
+  # pval_cutoff_for_fastTest (0.05), so the escalation at src/Main.cpp:440 never
+  # fired and the fastTest output was identical to the non-fast output for all
+  # 63 markers. AFTER the fix, signal is preserved, so exactly the markers below
+  # the cutoff get re-tested by the exact second pass.
+  #
+  # Assert the partition exactly: differing <=> pass-1 p < cutoff. Not
+  # bit-identity between fast and non-fast for the escalated rows -- those ARE
+  # two different code paths (CLAUDE.md's standing trap), so they are compared
+  # numerically and only required to agree to within the refinement they make.
   fast <- ao_run("ref-first", "--is_fastTest=TRUE")$tab
   mf <- ao_pair(ref, fast)
-  expect_identical(mf$var.alt, mf$var.ref)
-  expect_identical(mf$p.value.alt, mf$p.value.ref)
+  escalated <- ao_num(mf$p.value.alt) < 0.05
+  expect_gt(sum(escalated), 0)          # the re-test is now REACHABLE (was not)
+
+  # Below the cutoff: pass 1 stands, byte for byte.
+  expect_identical(mf$var.alt[!escalated], mf$var.ref[!escalated])
+  expect_identical(mf$p.value.alt[!escalated], mf$p.value.ref[!escalated])
+
+  # Above it: the exact re-test ran and moved the answer, but only slightly --
+  # it is a refinement of the same statistic, not a different one. Note the
+  # moved set is a SUBSET of the escalated set, not equal to it: at the time of
+  # writing 4 markers sit below the cutoff and 3 move, because rs56 (MAC 2)
+  # re-tests to the same 6-significant-digit string. So assert containment plus
+  # reachability, never "all escalated markers differ".
+  moved <- mf$p.value.alt != mf$p.value.ref
+  expect_true(all(escalated[moved]))    # nothing outside the cutoff can move
+  expect_gt(sum(moved), 0)              # and the second pass demonstrably runs
+  expect_lt(max(abs(ao_num(mf$var.alt[escalated]) - ao_num(mf$var.ref[escalated])) /
+                ao_num(mf$var.ref[escalated])), 0.05)
 })
 
 test_that("LEDGER #29: markers at exactly MAC = minMAC are dropped when ALT is major", {

@@ -94,7 +94,8 @@ void Unified_getMarkerPval(
 			   bool & t_isFirthConverge,
 			   bool t_isER,
 			  bool t_isnoadjCov,
-			  bool t_isSparseGRM);
+			  bool t_isSparseGRM,
+			  bool t_flip);
 
 
 Rcpp::List mainRegionInCPP(

@@ -155,6 +155,9 @@ void scoreTestFast(arma::vec & t_GVec,
                      double &t_var1,
                      double &t_var2);
 
+// t_flip: true when imputeGenoAndFlip() mirrored this marker (ALT was the major
+// allele), in which case t_GVec is minor-coded while t_altFreq has been restored
+// to ALT orientation -- the centre must be the minor frequency. See LEDGER #28.
 void scoreTestFast_noadjCov(arma::vec & t_GVec,
                 arma::uvec & t_indexForNonZero,
                      double& t_Beta,
@@ -165,7 +168,8 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
                      double t_altFreq,
                      double &t_Tstat,
                      double &t_var1,
-                     double &t_var2);
+                     double &t_var2,
+                     bool t_flip);
 
 
 
@@ -203,7 +207,8 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
 				bool & t_isFirth,
                                 bool & t_isFirthConverge, 
 				bool t_isER,
-                                bool t_isnoadjCov,                                              bool t_isSparseGRM);
+                                bool t_isnoadjCov,                                              bool t_isSparseGRM,
+				bool t_flip);
 
     void getindices(arma::uvec & t_case_indices,
       arma::uvec & t_ctrl_indices);

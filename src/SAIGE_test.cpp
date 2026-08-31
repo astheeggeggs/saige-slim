@@ -316,12 +316,20 @@ void SAIGEClass::scoreTestFast_noadjCov(arma::vec & t_GVec,
                      double t_altFreq,
                      double &t_Tstat,
                      double &t_var1,
-                     double &t_var2){
+                     double &t_var2,
+                     bool t_flip){
 
     //arma::vec Sm, var2m;
       arma::vec g1 = t_GVec.elem(t_indexForNonZero);
       arma::vec m_mu21 = m_mu2.elem(t_indexForNonZero);
       arma::vec m_res1 = m_res.elem(t_indexForNonZero);
+    // LEDGER #28: t_GVec is minor-coded (imputeGenoAndFlip mirrors G := 2-G when
+    // altFreq > 0.5) but t_altFreq is restored to ALT orientation for reporting,
+    // so centring on 2*t_altFreq is centring on the wrong allele whenever ALT is
+    // major. Take the frequency of the allele t_GVec actually counts. When
+    // t_flip is false this is t_altFreq itself -- no arithmetic, so unflipped
+    // markers are bit-identical to the pre-fix code.
+    double centreFreq = t_flip ? 1.0 - t_altFreq : t_altFreq;
     double S, var2;
     //getadjGFast(t_GVec, t_gtilde, t_indexForNonZero);
     //getadjG(t_GVec, t_gtilde);
@@ -332,8 +340,8 @@ void SAIGEClass::scoreTestFast_noadjCov(arma::vec & t_GVec,
     // }
      
     double var2_a = dot(m_mu21,pow(g1,2));
-    double var2_b = dot(m_mu21, 2*2*t_altFreq*g1);
-    double var2_c = arma::accu(m_mu2)*pow(2*t_altFreq, 2);
+    double var2_b = dot(m_mu21, 2*2*centreFreq*g1);
+    double var2_c = arma::accu(m_mu2)*pow(2*centreFreq, 2);
     var2 = var2_a - var2_b + var2_c;
     var2 = var2 *(m_tauvec[0]);
     //std::cout << "var2 " << var2 << std::endl;
@@ -343,7 +351,7 @@ void SAIGEClass::scoreTestFast_noadjCov(arma::vec & t_GVec,
     //std::cout << "var2 b " << var2 << std::endl;
     //S = dot(t_GVec_center, m_res);
     //std::cout << "S " << S << std::endl;
-    S = dot(g1, m_res1)  - arma::accu(m_res)*(2*t_altFreq);
+    S = dot(g1, m_res1)  - arma::accu(m_res)*(2*centreFreq);
     //std::cout << "S b " << S << std::endl; 
     S = S/m_tauvec[0];
 
@@ -473,7 +481,8 @@ void SAIGEClass::getMarkerPval(arma::vec & t_GVec,
 				bool & t_isFirth,
 				bool & t_isFirthConverge, 
 				bool t_isER,
-				bool t_isnoadjCov,						bool t_isSparseGRM)
+				bool t_isnoadjCov,						bool t_isSparseGRM,
+				bool t_flip)
 {
 
 
@@ -503,7 +512,7 @@ void SAIGEClass::getMarkerPval(arma::vec & t_GVec,
 if(!m_flagSparseGRM_cur && t_isnoadjCov){
 	is_gtilde = false;
         isScoreFast = true;
-	scoreTestFast_noadjCov(t_GVec, iIndex, t_Beta, t_seBeta, t_pval_noSPA, pval_noadj, ispvallog, t_altFreq,t_Tstat, t_var1, t_var2);
+	scoreTestFast_noadjCov(t_GVec, iIndex, t_Beta, t_seBeta, t_pval_noSPA, pval_noadj, ispvallog, t_altFreq,t_Tstat, t_var1, t_var2, t_flip);
 
 }else if(m_flagSparseGRM_cur){
 	is_gtilde = true;
