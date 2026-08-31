@@ -260,8 +260,43 @@ long-running `main*InCPP()` loop that writes output files from C++
 - Step 0 cannot be separated from step 1: both drive the same global `geno`,
   and `createSparseKinParallel` is defined in `R/SAIGE_fitGLMM_fast.R`.
 - One dataset per R process; no reentrancy. Parallelism is process-level
-  (`step2_SPAtests.R` splits markers and `mclapply`s) plus RcppParallel/TBB
-  in step-1 GRM kernels (source of LEDGER.md #7).
+  (step-2 `--nThreads`: `R/MarkerShard.R` partitions the canonical marker
+  order and `mclapply`s — see below) plus RcppParallel/TBB in step-1 GRM
+  kernels (source of LEDGER.md #7).
+
+### Step-2 `--nThreads` (Phase 4 C2)
+
+`R/MarkerShard.R` owns it, not `extdata/step2_SPAtests.R` — the CLI cannot,
+because the order that must be reproduced is the CHROM/POS-sorted `genoIndex`
+built inside `SPAGMMATtest`, and because the fork has to happen **after**
+`ReadModel` and after the model reaches the C++ singletons (children then share
+one copy-on-write model instead of each re-loading it). `runMarkerScan`
+dispatches: `nThreads == 1` is the old `SAIGE.Marker` call verbatim; above
+that, `splitMarkerShards` cuts `min(nThreads, M)` contiguous near-equal blocks
+of the **input** index, each shard runs the same serial code, and
+`mergeShardOutputs` concatenates raw bytes. Single-variant only — group tests
+warn and drop to one thread; restart (`--is_overwrite_output=FALSE` with a
+partial index) is refused.
+
+Three things this rests on, each verified rather than assumed:
+- **Chunk boundaries cannot reach the output bytes** (experiment E0): golden P7
+  is byte-identical at `--markers_per_chunk` ∈ {1000, 1500, 2000, 3000, 10000}.
+  `markers_per_chunk` reaches C++ only as a stdout progress counter.
+- **A forked child MUST close `g_out.single` explicitly** (experiment E1):
+  `parallel:::mcexit` ends a child with `_exit()`, no static destructor runs,
+  and the child silently loses everything past the stream's 192 KiB buffer
+  boundary *while still returning success*. Hence `closeOutfile_single()` at
+  the end of `SAIGE.Marker` — byte-neutral serially, mandatory in a shard.
+- **The reader must be fork-safe.** The mmap path is (pointer arithmetic into
+  a `MAP_PRIVATE` mapping); the `fread` fallback is not (children would share
+  one file offset). `isGenoReaderForkSafeInCPP()` errors at `nThreads > 1`
+  rather than silently decoding each other's records.
+
+Byte-exactness IS the right claim here, despite the cross-path trap below:
+each shard is ONE code path re-run over a disjoint subset, no marker's
+arithmetic depends on another's, and the only cross-marker aggregates go to
+stdout. `make_goldens.sh` is deliberately NOT modified — the gate's whole
+claim is that a threaded run reproduces the existing *serial* goldens.
 
 ### The step1 → step2 contract (implicit, name-based)
 

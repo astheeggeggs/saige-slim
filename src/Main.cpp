@@ -2629,6 +2629,40 @@ bool openOutfile_single(std::string t_traitType, bool t_isImputation, bool isapp
      return(isopen);
 }
 
+// Flush and close the single-variant output stream.
+//
+// g_out.single is a file-scope std::ofstream. In a serial run it is never
+// closed explicitly and survives only because static destruction at normal
+// process exit flushes it. That is not available to a forked worker:
+// parallel:::mcexit ends a child with _exit(), which runs no static
+// destructors, so the child would silently lose everything still sitting in
+// the stream buffer (measured: the tail past the 192 KiB buffer boundary,
+// with the child still reporting success). Serially this call is
+// byte-neutral -- it only moves the same flush earlier.
+// [[Rcpp::export]]
+void closeOutfile_single(){
+  if(g_out.single.is_open()){
+    g_out.single.close();
+  }
+}
+
+// Re-point the single-variant output file without re-running the 11-argument
+// setAssocTest_GlobalVarsInCPP. Used by a forked marker-scan worker to write
+// its own shard.
+// [[Rcpp::export]]
+void setSingleOutputPrefixInCPP(std::string t_outputFilePrefix){
+  g_out.prefixSingle = t_outputFilePrefix;
+}
+
+// Whether the active genotype reader may be used from forked children.
+// [[Rcpp::export]]
+bool isGenoReaderForkSafeInCPP(){
+  if(!g_reader){
+    Rcpp::stop("No genotype reader has been set up.");
+  }
+  return g_reader->isForkSafe();
+}
+
 
 void writeOutfile_single(bool t_isMoreOutput,
 			bool t_isImputation,

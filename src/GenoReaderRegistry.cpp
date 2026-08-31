@@ -47,6 +47,13 @@ public:
 
   void close() override { m_impl.closegenofile(); }
 
+  // Fork-safe only on the mmap path: reads are pointer arithmetic into a
+  // MAP_PRIVATE mapping, with no shared offset. The fread fallback seeks an
+  // inherited FILE*, which is not.
+  bool isForkSafe() const override {
+    return const_cast<PLINK::PlinkClass&>(m_impl).isMemMapped();
+  }
+
   std::unique_ptr<GenoReader> clone() const override {
     // Deferred to the Phase-4 shared-metadata implementation.
     throw std::logic_error("PlinkReader::clone() not implemented yet");

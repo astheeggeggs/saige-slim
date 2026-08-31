@@ -50,6 +50,12 @@ public:
 
   virtual void close() = 0;
 
+  // True when the reader carries no mutable per-read stream state that would
+  // be shared across a fork(). A reader that seeks a FILE* is NOT fork-safe:
+  // parent and children share one file description and therefore one offset,
+  // so concurrent readers silently decode each other's records.
+  virtual bool isForkSafe() const = 0;
+
   // Phase-4 hook: a clone shares immutable metadata but owns private
   // stream/buffer state, enabling per-thread readers.
   virtual std::unique_ptr<GenoReader> clone() const = 0;

@@ -105,6 +105,10 @@ public:
 			 arma::vec & OneMarkerG1);
 			 //std::vector<double>& OneMarkerG1);
 
+  // True when the .bed is read through the mmap path (no per-read seek on
+  // the shared FILE*), i.e. when reads are safe from forked children.
+  bool isMemMapped(){return m_map != NULL;}
+
   uint32_t getN0(){return m_N0;}
   uint32_t getN(){return m_N;}
   uint32_t getM0(){return m_M0;}

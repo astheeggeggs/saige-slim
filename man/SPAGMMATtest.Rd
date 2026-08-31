@@ -174,6 +174,8 @@ SPAGMMATtest(
 \item{is_rewrite_XnonPAR_forMales}{logical. Whether to rewrite gentoypes or dosages of variants in the NON-PAR regions on chromosome X for males (multiply by 2). By default, FALSE. Note, only use is_rewrite_XnonPAR_forMales=TRUE when the specified VCF or Bgen file only has variants on chromosome X. When is_rewrite_XnonPAR_forMales=TRUE, the program does not check the chromosome value by assuming all variants are on chromosome X (Not activated)}
 
 \item{sampleFile_male}{character. Path to the file containing one column for IDs of MALE samples in the bgen or vcf file with NO header. Order does not matter}
+
+\item{nThreads}{integer. Number of forked worker processes for the single-variant marker scan. The markers are split into that many contiguous blocks, tested in parallel after the null model has been loaded (so the model is shared copy-on-write), and the per-block outputs are concatenated, which reproduces the one-thread output byte for byte. Restarting an interrupted run is not supported with nThreads > 1, and group tests always run on one thread. By default, 1}
 }
 \value{
 SAIGEOutputFile

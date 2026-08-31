@@ -526,7 +526,13 @@ option_list <- list(
     "--nThreads",
     type = "integer",
     default = 1L,
-    help = "Optional. Number of threads (CPUs) to use [default=1]."
+    help = paste0(
+      "Optional. Number of forked worker processes for single-variant tests. ",
+      "The markers are split into that many contiguous blocks and the results ",
+      "concatenated, reproducing the one-thread output exactly. Ignored for ",
+      "group tests, and incompatible with restarting an interrupted run. ",
+      "[default=1]"
+    )
   ),
   make_option(
     "--subSampleFile",
@@ -604,12 +610,10 @@ if (BLASctl_installed) {
 print("opt$r.corr")
 print(opt$r.corr)
 
-nThreads <- opt$nThreads
-
-# Arguments shared by every SPAGMMATtest call; SAIGEOutputFile and
-# idstoIncludeFile are appended per call. The upstream script kept two
-# diverging copies of this list (the single-thread call and the mclapply
-# branch); they are deduplicated here.
+# Arguments for SPAGMMATtest. nThreads is handled inside the package, which is
+# the only place that can partition the canonical marker order and fork after
+# the null model has been loaded; the script used to try it here with `split`
+# on the --idstoIncludeFile, and did nothing at all without one (LEDGER #30).
 fixed_params <- list(
   bedFile = opt$bedFile,
   bimFile = opt$bimFile,
@@ -664,64 +668,14 @@ fixed_params <- list(
   is_noadjCov = opt$is_noadjCov
 )
 
-if (nThreads == 1) {
-  do.call(SPAGMMATtest, c(
-    fixed_params,
-    list(
-      SAIGEOutputFile = opt$SAIGEOutputFile,
-      idstoIncludeFile = opt$idstoIncludeFile
-    )
-  ))
-} else {
-  # NOTE (upstream behavior, preserved): with nThreads > 1 and no
-  # idstoIncludeFile the script silently does nothing.
-  if (opt$idstoIncludeFile != "") {
-    Check_File_Exist(opt$idstoIncludeFile, "idstoIncludeFile")
-    total_lines <- as.numeric(
-      system(paste("wc -l < ", opt$idstoIncludeFile), intern = TRUE)
-    )
-    lines_per_chunk <- total_lines %/% opt$nThreads
-    num_digits <- ceiling(log10(nThreads))
-    file_name <- basename(opt$idstoIncludeFile)
-    dir_path <- dirname(opt$SAIGEOutputFile)
-    split_command <- paste(
-      "split -l", lines_per_chunk, paste0("-a", num_digits), "-d",
-      opt$idstoIncludeFile, paste0(dir_path, "/", file_name, "_")
-    )
-    print(split_command)
-    system(split_command)
-    split_files <- list.files(
-      path = dir_path,
-      pattern = paste0("^", file_name, "_"),
-      full.names = TRUE
-    )
-    suffixes <- sapply(basename(split_files), function(file) {
-      # the suffix part after the last underscore
-      sub("^.*_(.*)$", "\\1", file)
-    })
-
-    output_files <- paste0(opt$SAIGEOutputFile, suffixes)
-    param_list <- mapply(function(SAIGEOutputFile, idstoIncludeFile) {
-      c(
-        fixed_params,
-        list(
-          SAIGEOutputFile = SAIGEOutputFile,
-          idstoIncludeFile = idstoIncludeFile
-        )
-      )
-    }, output_files, split_files, SIMPLIFY = FALSE)
-
-    mclapply(param_list, function(params) {
-      do.call(SPAGMMATtest, params)
-    }, mc.cores = nThreads)
-
-    sorted_files <- sort(output_files)
-    system(paste0("cat ", sorted_files[1], " > ", opt$SAIGEOutputFile))
-    for (i in 2:length(sorted_files)) {
-      system(paste0("tail -n +2 ", sorted_files[i], ">> ", opt$SAIGEOutputFile))
-    }
-  }
-}
+do.call(SPAGMMATtest, c(
+  fixed_params,
+  list(
+    SAIGEOutputFile = opt$SAIGEOutputFile,
+    idstoIncludeFile = opt$idstoIncludeFile,
+    nThreads = opt$nThreads
+  )
+))
 
 if (BLASctl_installed) {
   # Restore originally configured BLAS thread count

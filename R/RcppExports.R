@@ -89,6 +89,18 @@ openOutfile_single <- function(t_traitType, t_isImputation, isappend, t_isMoreOu
     .Call('_SAIGE_openOutfile_single', PACKAGE = 'SAIGE', t_traitType, t_isImputation, isappend, t_isMoreOutput)
 }
 
+closeOutfile_single <- function() {
+    invisible(.Call('_SAIGE_closeOutfile_single', PACKAGE = 'SAIGE'))
+}
+
+setSingleOutputPrefixInCPP <- function(t_outputFilePrefix) {
+    invisible(.Call('_SAIGE_setSingleOutputPrefixInCPP', PACKAGE = 'SAIGE', t_outputFilePrefix))
+}
+
+isGenoReaderForkSafeInCPP <- function() {
+    .Call('_SAIGE_isGenoReaderForkSafeInCPP', PACKAGE = 'SAIGE')
+}
+
 set_flagSparseGRM_cur_SAIGE <- function(t_flagSparseGRM_cur) {
     invisible(.Call('_SAIGE_set_flagSparseGRM_cur_SAIGE', PACKAGE = 'SAIGE', t_flagSparseGRM_cur))
 }

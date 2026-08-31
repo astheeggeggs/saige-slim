@@ -100,6 +100,7 @@ parse_weights_beta = function(weights.beta) {
 #' @param X_PARregion character. ranges of (pseudoautosomal) PAR region on chromosome X, which are seperated by comma and in the format start:end. By default: '60001-2699520,154931044-155260560' in the UCSC build hg19. For males, there are two X alleles in the PAR region, so PAR regions are treated the same as autosomes. In the NON-PAR regions (outside the specified PAR regions on chromosome X), for males, there is only one X allele. If is_rewrite_XnonPAR_forMales=TRUE, genotypes/dosages of all variants in the NON-PAR regions on chromosome X will be multiplied by 2 (Not activated).
 #' @param is_rewrite_XnonPAR_forMales logical. Whether to rewrite gentoypes or dosages of variants in the NON-PAR regions on chromosome X for males (multiply by 2). By default, FALSE. Note, only use is_rewrite_XnonPAR_forMales=TRUE when the specified VCF or Bgen file only has variants on chromosome X. When is_rewrite_XnonPAR_forMales=TRUE, the program does not check the chromosome value by assuming all variants are on chromosome X (Not activated)
 #' @param sampleFile_male character. Path to the file containing one column for IDs of MALE samples in the bgen or vcf file with NO header. Order does not matter
+#' @param nThreads integer. Number of forked worker processes for the single-variant marker scan. The markers are split into that many contiguous blocks, tested in parallel after the null model has been loaded (so the model is shared copy-on-write), and the per-block outputs are concatenated, which reproduces the one-thread output byte for byte. Restarting an interrupted run is not supported with nThreads > 1, and group tests always run on one thread. By default, 1
 #' @return SAIGEOutputFile
 #' @export
 SPAGMMATtest = function(
@@ -156,7 +157,8 @@ SPAGMMATtest = function(
 		 max_MAC_use_ER = 4,
 		 subSampleFile = "",
 		 is_noadjCov = FALSE,
-		 is_output_weight_column = FALSE
+		 is_output_weight_column = FALSE,
+		 nThreads = 1
 ){
 
   cat("is_noadjCov ", is_noadjCov, "\n")
@@ -167,6 +169,15 @@ SPAGMMATtest = function(
    #cat("r.corr is ", r.corr, "\n")
    if(!(impute_method %in% c("best_guess", "mean","minor"))){
      stop("impute_method should be 'best_guess', 'mean' or 'minor'.")
+   }
+
+   nThreads = as.integer(nThreads)
+   if(is.na(nThreads) || nThreads < 1){
+     stop("nThreads should be a positive integer.")
+   }
+   if(nThreads > 1 && groupFile != ""){
+     cat("WARNING: nThreads > 1 is only supported for single-variant tests; the group test will run on one thread\n")
+     nThreads = 1L
    }
 
 
@@ -378,6 +389,19 @@ SPAGMMATtest = function(
            "SAIGE version or configuration; please re-run Step 1.\n")
     }
 
+    # LEDGER #32: with categorical variance ratios, a MAC that falls in no bin
+    # silently reuses the previous marker's ratio. That carry is
+    # marker-order-dependent, so under nThreads > 1 it would make the threaded
+    # output differ from the serial output. Refuse rather than diverge; the
+    # serial behaviour is unchanged.
+    if(nThreads > 1 & length(ratioVecList$ratioVec_null) > 1 &
+       varianceRatioBinsHaveGap(cateVarRatioMinMACVecExclude, cateVarRatioMaxMACVecInclude)){
+      stop("cateVarRatioMinMACVecExclude/cateVarRatioMaxMACVecInclude leave a gap in MAC ",
+           "coverage, so some markers reuse the preceding marker's variance ratio ",
+           "(LEDGER #32). That is order-dependent and cannot be reproduced by a threaded ",
+           "run. Re-run with --nThreads=1, or give contiguous MAC categories.\n")
+    }
+
 
 #time_6 = proc.time()
 
@@ -550,7 +574,7 @@ SPAGMMATtest = function(
     	setorderv(objGeno$markerInfo,col=c("CHROM","POS"))
     }
 
-        SAIGE.Marker(traitType,
+        runMarkerScan(traitType,
 		   genoType,
 		   idstoIncludeFile,
 		   rangestoIncludeFile,
@@ -566,7 +590,8 @@ SPAGMMATtest = function(
                    chrom,
 		   isCondition,
 		   is_overwrite_output,
-		   objGeno$anyInclude)
+		   objGeno$anyInclude,
+		   nThreads)
 
 
     }else{

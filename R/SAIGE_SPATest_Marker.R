@@ -152,6 +152,12 @@ SAIGE.Marker = function(traitType,
 	  
   } #while(is_marker_test){
 
+  # Flush and close g_out.single explicitly. Serially this is byte-neutral (it
+  # only moves the flush that static destruction would have done at exit); in a
+  # forked shard it is mandatory, because parallel:::mcexit ends the child with
+  # _exit() and no static destructor ever runs. See R/MarkerShard.R.
+  closeOutfile_single()
+
   # information to users
   output = paste0("Analysis done! The results have been saved to '", OutputFile,"'.")
 

@@ -360,6 +360,35 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// closeOutfile_single
+void closeOutfile_single();
+RcppExport SEXP _SAIGE_closeOutfile_single() {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    closeOutfile_single();
+    return R_NilValue;
+END_RCPP
+}
+// setSingleOutputPrefixInCPP
+void setSingleOutputPrefixInCPP(std::string t_outputFilePrefix);
+RcppExport SEXP _SAIGE_setSingleOutputPrefixInCPP(SEXP t_outputFilePrefixSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type t_outputFilePrefix(t_outputFilePrefixSEXP);
+    setSingleOutputPrefixInCPP(t_outputFilePrefix);
+    return R_NilValue;
+END_RCPP
+}
+// isGenoReaderForkSafeInCPP
+bool isGenoReaderForkSafeInCPP();
+RcppExport SEXP _SAIGE_isGenoReaderForkSafeInCPP() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(isGenoReaderForkSafeInCPP());
+    return rcpp_result_gen;
+END_RCPP
+}
 // set_flagSparseGRM_cur_SAIGE
 void set_flagSparseGRM_cur_SAIGE(bool t_flagSparseGRM_cur);
 RcppExport SEXP _SAIGE_set_flagSparseGRM_cur_SAIGE(SEXP t_flagSparseGRM_curSEXP) {
@@ -1882,6 +1911,9 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_openOutfile", (DL_FUNC) &_SAIGE_openOutfile, 4},
     {"_SAIGE_openOutfile_singleinGroup", (DL_FUNC) &_SAIGE_openOutfile_singleinGroup, 4},
     {"_SAIGE_openOutfile_single", (DL_FUNC) &_SAIGE_openOutfile_single, 4},
+    {"_SAIGE_closeOutfile_single", (DL_FUNC) &_SAIGE_closeOutfile_single, 0},
+    {"_SAIGE_setSingleOutputPrefixInCPP", (DL_FUNC) &_SAIGE_setSingleOutputPrefixInCPP, 1},
+    {"_SAIGE_isGenoReaderForkSafeInCPP", (DL_FUNC) &_SAIGE_isGenoReaderForkSafeInCPP, 0},
     {"_SAIGE_set_flagSparseGRM_cur_SAIGE", (DL_FUNC) &_SAIGE_set_flagSparseGRM_cur_SAIGE, 1},
     {"_SAIGE_set_flagSparseGRM_cur_SAIGE_org", (DL_FUNC) &_SAIGE_set_flagSparseGRM_cur_SAIGE_org, 0},
     {"_SAIGE_copy_singleInGroup", (DL_FUNC) &_SAIGE_copy_singleInGroup, 0},
