@@ -82,7 +82,17 @@ phase. They assert what the code does TODAY, including the malformed error
 messages (#21) and the unreachable guards (#24, #25); read the LEDGER entry
 before "correcting" one.
 
-Two standing traps when adding tests here:
+Three standing traps when adding tests here:
+- **Never assert bit-identity between two different code paths**, and gate new
+  cross-run comparisons in BOTH compare modes (`SAIGE_COMPARE_MODE=numeric
+  bash harness/run_tests.sh standard`) before pushing. Comparing a K>1 run's
+  No_Weights column against a K=1 run with `expect_identical` on the parsed
+  strings passed locally and went red on CI: algebraically identical, 1 ULP
+  apart, and whether that reaches the printed digits is platform-dependent
+  (macOS no, Linux yes — and one CI run hit it while the previous one did
+  not). Compare counts and labels exactly, statistics at ~1e-12 relative.
+  Byte-exactness is a claim about ONE code path re-run, which is what the
+  goldens test; it is not a claim about two paths agreeing.
 - **Do not force `--pCutoffforFirth` upward** to make the Firth arm fire.
   Firth is gated behind it because the penalised fit is expensive, and above
   the intended cutoff the fit stops converging and drifts to
