@@ -25,10 +25,16 @@ bench workloads are ~90% process startup and can measure nothing), make
 `--nThreads` actually work (it is a silent no-op without `--idstoIncludeFile`),
 then per-marker allocation hygiene. Step-1 blocked-GetTrace is parked behind
 that measurement. LEDGER.md still-OPEN: #6 (PCG tolerance, deliberately
-deferred), #14 (unverified suspicion), #17-#27, #32 (marker-shard
-variance-ratio carry), and #33-#39 from the type-polymorphic-builtin audit
-(`diag`, `sample`, `1:n`, missing `drop = FALSE`) -- #33 and #34 are the two
-live ones, and #33 is baked into goldens P3 and P10.
+deferred), #14 (unverified suspicion), #17-#26, #32 (marker-shard
+variance-ratio carry), and #35-#39 from the type-polymorphic-builtin audit
+(`sample`, `1:n`, `rbind` recycling) -- all latent behind a guard.
+**#27, #33 and #34 are FIXED**, the three live ones, done together: #33 (the
+binary conditional arm subtracted a diagonal instead of the matrix;
+re-baselined goldens P3/P10), #34 (`diag()` handed a scalar variance -- an Inf
+beta below 1, a terabyte allocation above it; fixed at the landmine so no
+caller can re-arm it), and #27 (BURDEN + fastTest silently dropped every
+escalated region; `m_flagSparseGRM_cur` was both the VR selector and the
+escalation signal).
 Step 1 now takes `--seed` (default 1).
 
 ## Rules of this branch

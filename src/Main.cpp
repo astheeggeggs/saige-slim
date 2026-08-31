@@ -910,6 +910,17 @@ Rcpp::List mainRegionInCPP(
   //arma::vec timeoutput1 = getTime();
   unsigned int q0 = t_genoIndex.size();                 // number of markers (before QC) in one region
 
+  // LEDGER #27 fix: snapshot the caller's flagSparseGRM_cur BEFORE the marker
+  // loops touch it. R uses this flag to signal the fastTest escalation pass
+  // ("pass 1 declined to write, re-run me accurately and DO write"), but the
+  // per-marker variance-ratio selection below (:1919-1921, :1585-1587) also
+  // assigns it, from MAC. By the time the BURDEN write decision reads it, it
+  // reflects the MAC of the last marker processed rather than the caller's
+  // intent, so an escalated region silently produced no output at all. One
+  // variable was doing two unrelated jobs; the write decision now reads this
+  // snapshot and the VR selection keeps the mutable flag.
+  bool isEscalatedPass = g_model->m_flagSparseGRM_cur;
+
   // ---- weight-set layout (jmr extension) ----------------------------------
   // Weight sets are ordered: custom (group-file) sets first, then beta(a,b)
   // sets, then the optional all-ones "No_Weights" set. When the caller
@@ -2013,7 +2024,8 @@ if(t_regionTestType == "BURDEN"){
 	   if(!t_isFastTest){
 		iswriteOutput = true;
 	   }else{
-		if(g_model->m_flagSparseGRM_cur){
+		//LEDGER #27: the caller's intent at entry, not the mutated flag
+		if(isEscalatedPass){
 			iswriteOutput = true;
 		}else{
 		  if(cctpval >= 0.1){

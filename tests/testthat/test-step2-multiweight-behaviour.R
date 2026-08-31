@@ -68,11 +68,15 @@ test_that("weights.beta moves the C++ statistics but not the R-side ACAT-V (LEDG
 
 # ---- C10 invariants --------------------------------------------------------
 
-test_that("BURDEN + is_fastTest=TRUE emits only the last region (LEDGER #27)", {
-  # Silent data loss, independent of the weight dimension: every earlier region
-  # is analysed (the log announces it) but never written. RECORDED, NOT FIXED
-  # -- this test asserts the defect so the fix phase trips it. is_fastTest=FALSE
-  # is the correct-output control immediately below.
+test_that("BURDEN + is_fastTest=TRUE keeps every region (LEDGER #27, FIXED)", {
+  # Was silent data loss: R signals the fastTest escalation pass by setting
+  # flagSparseGRM_cur, but mainRegionInCPP's per-marker variance-ratio
+  # selection assigns the SAME flag from MAC, so by the time the BURDEN write
+  # decision read it, it reflected the last marker rather than the caller's
+  # intent and an escalated region produced no output at all. Only regions
+  # taking the cctpval >= 0.1 shortcut survived -- here GENE2 (p = 0.949),
+  # while GENE1 (p = 0.0715) escalated and vanished. Main.cpp now snapshots
+  # the caller's flag at entry.
   skip_unless_level("standard")
   for (gf in c("group_new_snpid.txt", "group_new_snpid_multiWeights.txt")) {
     out <- file.path(tempfile("step2_burdenfast_"), "region.txt")
@@ -81,7 +85,35 @@ test_that("BURDEN + is_fastTest=TRUE emits only the last region (LEDGER #27)", {
     args <- c(args[!grepl("^--is_fastTest=", args)], "--r.corr=1", "--is_fastTest=TRUE")
     expect_cli_ok(run_saige_cli("step2_SPAtests.R", args))
     d <- read_saige_table(out)
-    expect_identical(unique(d$Region), "GENE2")   # GENE1 analysed, never written
+    expect_identical(sort(unique(d$Region)), c("GENE1", "GENE2"))
+  }
+})
+
+test_that("BURDEN fastTest and non-fastTest agree row for row (LEDGER #27)", {
+  # The point of fastTest is to escalate when the cheap pass is not good
+  # enough, so its output must match the accurate path. Before the fix this
+  # could not even be asked -- the fast run was missing a region.
+  skip_unless_level("standard")
+  runs <- lapply(c("TRUE", "FALSE"), function(ft) {
+    out <- file.path(tempfile(paste0("step2_burdencmp_", ft, "_")), "region.txt")
+    dir.create(dirname(out), recursive = TRUE)
+    args <- MW_ARGS("group_new_snpid.txt", out)
+    args <- c(args[!grepl("^--is_fastTest=", args)], "--r.corr=1",
+              paste0("--is_fastTest=", ft))
+    expect_cli_ok(run_saige_cli("step2_SPAtests.R", args))
+    read_saige_table(out)
+  })
+  fast <- runs[[1]][order(runs[[1]]$Region, runs[[1]]$Group, runs[[1]]$max_MAF), ]
+  slow <- runs[[2]][order(runs[[2]]$Region, runs[[2]]$Group, runs[[2]]$max_MAF), ]
+  expect_identical(nrow(fast), nrow(slow))
+  expect_identical(fast$Region, slow$Region)
+  expect_identical(fast$Group, slow$Group)
+  # statistics at ~1e-12 relative, never bit-identity across two code paths
+  for (cc in c("Pvalue_Burden", "BETA_Burden", "SE_Burden")) {
+    a <- suppressWarnings(as.numeric(fast[[cc]]))
+    b <- suppressWarnings(as.numeric(slow[[cc]]))
+    k <- !is.na(a) & !is.na(b)
+    expect_equal(a[k], b[k], tolerance = 1e-12, label = cc)
   }
 })
 
