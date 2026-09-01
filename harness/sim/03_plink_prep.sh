@@ -7,7 +7,8 @@ cd "$WT"
 # relative to this checkout breaks in a git worktree, which has no .pixi of its
 # own -- that is a silent "No such file or directory" partway through the run.
 . "$(dirname "$0")/00_env.sh"
-D="${SIMDIR:-$WT/harness/work/sim}"
+# Prefer an inherited D so run_all.sh exporting either variable is sufficient.
+D="${SIMDIR:-${D:-$WT/harness/work/sim}}"
 PFX=$D/chr20_sim
 
 # --nonfounders everywhere: the 1000 offspring have PAT/MAT set, so plink2
@@ -54,8 +55,19 @@ print(f"variance-ratio markers: {len(sl)} with MAC in [11,20] (pool {len(lo):,})
 PY
 $P2 --bfile $PFX --extract $D/vr_markers.txt --make-bed --out $D/data_for_vr --silent
 
-# 3. PCs from the LD-pruned set
-$P2 --bfile $D/data_for_grm --nonfounders --pca 10 --out $D/pca --silent
+# 3. PCs from the LD-pruned set.
+#    Exact --pca builds the dense N x N GRM: 8*N^2 bytes, which is 800 MB at
+#    N=10,000 and 20 GB at N=50,000 -- plink2 aborts with "Out of memory.
+#    Consider --pca approx instead. Failed allocation size: 20000000000", which
+#    is exactly 8*50000^2. plink2's own guidance is that approx is preferred
+#    above a few thousand samples, so switch on N rather than on failure.
+NSAMP=$(wc -l < $PFX.fam)
+PCA_MODE=""
+if [ "$NSAMP" -gt 5000 ]; then
+  PCA_MODE="approx"
+  echo "PCA: N=$NSAMP > 5000, using --pca approx (exact needs $(( 8 * NSAMP / 1000 * NSAMP / 1000000 )) GB)"
+fi
+$P2 --bfile $D/data_for_grm --nonfounders --pca 10 $PCA_MODE --out $D/pca --silent
 
 # 4. PGEN mirror (step-2 pgen reader).
 #    psam-cols=sex forces a "#IID SEX" psam. SAIGE's PgenClass::readPsamFile

@@ -4,7 +4,7 @@
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO"
-export D="${SIMDIR:-$REPO/harness/work/sim}"
+export D="${SIMDIR:-${D:-$REPO/harness/work/sim}}"
 . harness/sim/00_env.sh
 export NTHREADS="${NTHREADS:-6}"
 export RELCUT="${RELCUT:-0.05}"

@@ -54,6 +54,11 @@ case "$CONFIG" in
     ;;
   *) echo "unknown CONFIG=$CONFIG (want chr20 or bench50k)" >&2; exit 1 ;;
 esac
+# Export SIMDIR, not just D: 03_plink_prep.sh, 04_run_saige.sh and
+# 07_run_pipeline.sh all read SIMDIR, so a preset that only ASSIGNS it leaves
+# every child falling back to the chr20 default directory. That is invisible
+# when SIMDIR is passed on the command line, which is how the smoke run hid it.
+export SIMDIR
 export D="$SIMDIR"
 . harness/sim/00_env.sh
 mkdir -p "$D"

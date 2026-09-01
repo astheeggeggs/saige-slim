@@ -3,7 +3,7 @@
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO"
-export D="${SIMDIR:-$REPO/harness/work/sim}"
+export D="${SIMDIR:-${D:-$REPO/harness/work/sim}}"
 . harness/sim/00_env.sh
 # absolute, via 00_env.sh -- see the note in 03_plink_prep.sh
 RS=${RS:-$REPO/.pixi/envs/default/lib/R/bin/Rscript}
