@@ -73,6 +73,27 @@ for (col in cols) {
                 nrow(pos), length(unique(pos[[nc]])), nc))
   }
 
+  # A1: max_MAF = 1e-4 is STRUCTURALLY DEGENERATE. MAC <= 10 is the ultra-rare
+  # collapse threshold (src/Main.cpp), and at 2N = 100,000 that is exactly
+  # MAF <= 1e-4 -- so every marker in that stratum collapses into ONE
+  # pseudo-marker and SKAT, BURDEN and SKAT-O become the same test. Measured
+  # here: 1042/1042 cells identical to the last digit, 0 with >= 4 real markers.
+  # Any BURDEN-vs-SKAT or SKAT-O comparison must therefore be restricted to
+  # cells that actually contain several uncollapsed markers, or it is comparing
+  # a number with itself and will report a spurious dead heat.
+  sub <- g[g$Group != "Cauchy", ]
+  cat("  A1 degeneracy by max_MAF (SKAT==BURDEN exactly / cells with >=4 real markers):\n")
+  for (mm in sort(unique(sub$max_MAF))) {
+    ss <- sub[sub$max_MAF == mm, ]
+    cat(sprintf("     max_MAF=%-8s %4d cells  identical %4d (%5.1f%%)  usable %4d (%5.1f%%)\n",
+                mm, nrow(ss), sum(ss$Pvalue_Burden == ss$Pvalue_SKAT),
+                100 * mean(ss$Pvalue_Burden == ss$Pvalue_SKAT),
+                sum(ss$Number_rare >= 4), 100 * mean(ss$Number_rare >= 4)))
+  }
+  usable <- sub[sub$Number_rare >= 4, ]
+  cat(sprintf("  -> ranking controls below use %d of %d sub-test cells\n",
+              nrow(usable), nrow(sub)))
+
   # which annotation mask carries the signal in the causal genes?
   gg <- merge(g[g$Group != "Cauchy", ], truth, by.x = "Region", by.y = "gene")
   cs <- gg[gg$causal == 1, ]
