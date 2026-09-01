@@ -8,6 +8,13 @@ d <- Sys.getenv("D", "harness/work/sim")
 cols <- if (length(args)) args else c("y_quant", "y_binary", "y_quant_pc", "y_binary_pc", "y_null")
 
 truth <- read.delim(file.path(d, "truth_genes.tsv"), stringsAsFactors = FALSE)
+# truth_genes.tsv carries NCP_quant/NCP_binary since the two arms are scaled
+# separately (a binary trait at prevalence K buys only phi(t)^2/(K(1-K)) of the
+# non-centrality). Older files have a single NCP column; accept both.
+ncpcol <- function(col) {
+  if ("NCP" %in% names(truth)) return("NCP")
+  if (grepl("binary", col) && "NCP_binary" %in% names(truth)) "NCP_binary" else "NCP_quant"
+}
 vars <- NULL   # 2.3M rows: read once, not once per trait
 lam <- function(p) {
   p <- p[is.finite(p) & p > 0]
@@ -43,8 +50,28 @@ for (col in cols) {
   cat(sprintf("  causal genes in the top 20 by p   : %d / 20   (rank-sum p=%.2g)\n",
               sum(m$causal[order(m$P)][1:20]),
               suppressWarnings(wilcox.test(pos$P, nul$P, alternative = "less")$p.value)))
-  o <- m[order(m$P), ][1:8, c("Region", "P", "causal", "h2", "NCP", "n_causal_var")]
+  nc <- ncpcol(col)
+  o <- m[order(m$P), ][1:8, c("Region", "P", "causal", "h2", nc, "n_causal_var")]
   print(o, row.names = FALSE, digits = 3)
+
+  # The control the NCP ladder exists to enable. A hit count saturates once N is
+  # large enough that every causal gene is found; a rank correlation between the
+  # non-centrality each gene was BUILT with and the significance it actually
+  # attains keeps discriminating, and it is the assertion amendment A4 asks for.
+  # Predicted: strongly positive (rho -> 1 as the ladder spans the power curve),
+  # and it must NOT be positive among non-causal genes, where NCP is 0 for all.
+  if (nrow(pos) >= 5 && length(unique(pos[[nc]])) > 1) {
+    ok <- is.finite(pos$P) & pos$P > 0
+    rho <- suppressWarnings(cor(pos[[nc]][ok], -log10(pos$P[ok]), method = "spearman"))
+    ct <- suppressWarnings(cor.test(pos[[nc]][ok], -log10(pos$P[ok]), method = "spearman"))
+    cat(sprintf("  LADDER control: Spearman(%s, -log10 p) over %d causal genes = %.3f (p=%.3g)\n",
+                nc, sum(ok), rho, ct$p.value))
+    cat(sprintf("     %s range over causal genes: %.2f - %.2f\n",
+                nc, min(pos[[nc]]), max(pos[[nc]])))
+  } else {
+    cat(sprintf("  LADDER control: skipped (%d causal genes, %d distinct %s)\n",
+                nrow(pos), length(unique(pos[[nc]])), nc))
+  }
 
   # which annotation mask carries the signal in the causal genes?
   gg <- merge(g[g$Group != "Cauchy", ], truth, by.x = "Region", by.y = "gene")
