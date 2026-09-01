@@ -258,7 +258,8 @@ dead files).
   `parallel_reduce`; empirically confirmed — see LEDGER.md #7). Sparse-GRM
   fits are byte-stable either way.
 - `bash harness/make_goldens.sh <dir>` — regenerates step0 (sparse GRM), step1
-  (binary ×2 / quantitative), and step2: 14 PLINK runs (P1-P12 + P25, with P8b as a
+  (binary ×2 sparse / quantitative sparse / **binary dense**), and step2: 14
+  PLINK runs (P1-P12 + P25, with P8b as a
   separate composed-set golden — single-variant marker/marker-conditional
   ×2 (quantitative P4, binary P12), group fastTest/conditional/BURDEN/SKAT-O
   ×2 (K=1 P2/P3/P5/P6, multi-weight P8/P9/P8b/P10), chunked marker P7, and the
@@ -292,7 +293,22 @@ dead files).
   tolerance.
 - `bash harness/compare_goldens.sh harness/goldens <candidate-dir>` — byte
   compare for step0/step2; toleranced step1 (θ/varianceRatio 1e-2 relative —
-  AI-REML `tol=0.02` makes tighter meaningless; vectors 1e-3).
+  AI-REML `tol=0.02` makes tighter meaningless; vectors 1e-3). It globs
+  `step1/*.rda`, so a new step-1 golden is picked up with no change; no test
+  enumerates that directory, so adding one is purely additive.
+- **`binary_denseGRM` is the only step-1 golden on the DENSE GRM path.** The
+  other three pass `--useSparseGRMtoFitNULL=TRUE`, so `getCrossprodMatAndKin`
+  never leaves its sparse branch and the dense TBB kernel (`parallelCrossProd`,
+  `GetTrace`'s per-probe `Au`) was covered by nothing at all until 2026-09-01 —
+  a change to it would have left every golden byte-identical while being
+  completely untested. Its config mirrors the `s1_full` bench workload so bench
+  rows and golden runs describe the same code path. **Before accepting any new
+  golden, prove it byte-reproducible at unpatched HEAD** (two runs, `cmp` on
+  both the `.rda` and the `.varianceRatio.txt`); until that holds it gates
+  nothing. Step-1 goldens ARE byte-reproducible on one machine — the 1e-2
+  tolerance above is for cross-platform regeneration, so a same-machine change
+  claiming bit-identity should be checked with `cmp`, which is strictly
+  stronger than what `compare_goldens.sh` asserts.
 - `bash harness/make_controls.sh <dir>` — permuted-phenotype negative control
   through the full pipeline + KS uniformity check (`harness/check_null.R`),
   run through both the PLINK and PGEN readers (Phase 7) over the same
