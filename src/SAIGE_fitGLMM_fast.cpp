@@ -3036,7 +3036,7 @@ float calCV(arma::fvec& xVec){
 }
 
 // [[Rcpp::export]]
-float GetTrace(arma::fmat Sigma_iX, arma::fmat& Xmat, arma::fvec& wVec, arma::fvec& tauVec, arma::fmat& cov1, int nrun, int maxiterPCG, float tolPCG, float traceCVcutoff){
+float GetTrace(arma::fmat& Sigma_iX, arma::fmat& Xmat, arma::fvec& wVec, arma::fvec& tauVec, arma::fmat& cov1, int nrun, int maxiterPCG, float tolPCG, float traceCVcutoff){
   set_seed(200);
   int Nnomissing = geno.getNnomissing();
   arma::fmat Sigma_iXt = Sigma_iX.t();
@@ -3368,7 +3368,7 @@ arma::fvec  getSigma_G_LOCO(arma::fvec& wVec, arma::fvec& tauVec,arma::fvec& Gve
 
 //This function needs the function getPCG1ofSigmaAndVector and function getCrossprodMatAndKin
 // [[Rcpp::export]]
-arma::fvec GetTrace_q(arma::fmat Sigma_iX, arma::fmat& Xmat, arma::fvec& wVec, arma::fvec& tauVec, arma::fmat& cov1,  int nrun, int maxiterPCG, float tolPCG, float traceCVcutoff){
+arma::fvec GetTrace_q(arma::fmat& Sigma_iX, arma::fmat& Xmat, arma::fvec& wVec, arma::fvec& tauVec, arma::fmat& cov1,  int nrun, int maxiterPCG, float tolPCG, float traceCVcutoff){
   	set_seed(200);
   	arma::fmat Sigma_iXt = Sigma_iX.t();
   	int Nnomissing = geno.getNnomissing();
