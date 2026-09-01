@@ -44,6 +44,13 @@ case "$CONFIG" in
     # the group-test, GRM and variance-ratio pools are untouched. 0.070 targets
     # M ~ 200,000 (.bed ~ 2.50 GB) from the pilot's 72,178 kept sites/Mb.
     : "${THIN:=0.070}"
+    # Trait scaling, per amendment A4. A fixed h2 gives every causal gene the
+    # same power, which at N=50,000 saturates the positive control (p ~ 1e-25)
+    # exactly where BURDEN/SKAT/SKAT-O most need to be told apart. The ladder
+    # spreads genes across the power curve so the control becomes
+    # Spearman(NCP, -log10 p). NCP 1 is undetectable and 60 is p ~ 1e-14, which
+    # brackets the interesting range.
+    : "${PREVALENCE:=0.01}" "${NCP_LADDER:=1,60}" "${H2_BINARY_MULT:=auto}"
     ;;
   *) echo "unknown CONFIG=$CONFIG (want chr20 or bench50k)" >&2; exit 1 ;;
 esac
@@ -54,6 +61,8 @@ export RELCUT="${RELCUT:-0.125}" NRANDMARK="${NRANDMARK:-3000}" NTHREADS="${NTHR
 echo "CONFIG=$CONFIG  D=$D  N=$(( NSING + 4 * NFAM ))  founders=$(( NSING + 2 * NFAM ))"
 echo "  window=${LEFT:-0}-${RIGHT:-end}  n_eur=$NEUR  n_genes=$NGENES" \
      "thin_intergenic=${THIN:-1.0}  relcut=$RELCUT  need=${NEED_GB}GB"
+echo "  prevalence=${PREVALENCE:-0.10}  ncp_ladder=${NCP_LADDER:-<none, fixed h2>}" \
+     "h2_binary_mult=${H2_BINARY_MULT:-1.0}"
 # The full run is ~80 min; DRYRUN resolves the configuration and stops, which is
 # the only cheap way to check a preset before committing to it.
 if [ -n "${DRYRUN:-}" ]; then echo "DRYRUN: stopping before stage 01"; exit 0; fi
@@ -71,6 +80,9 @@ step "02 genotypes, annotations, traits"
 $PY $S/02_build_dataset.py --trees "$D/chr20.trees" --outdir "$D" \
     ${NSING:+--n-singletons $NSING} ${NFAM:+--n-families $NFAM} \
     ${NGENES:+--n-genes $NGENES} ${THIN:+--thin-intergenic $THIN} \
+    ${PREVALENCE:+--prevalence $PREVALENCE} ${NCP_LADDER:+--ncp-ladder $NCP_LADDER} \
+    ${H2_BINARY_MULT:+--h2-binary-mult $H2_BINARY_MULT} \
+    ${H2:+--h2 $H2} ${H2_PC:+--h2-pc $H2_PC} ${SEED:+--seed $SEED} \
     2>&1 | tee "$D/02_build.log"
 
 step "03 plink/plink2 sets, PCs"

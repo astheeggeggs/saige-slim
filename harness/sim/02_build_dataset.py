@@ -32,7 +32,9 @@ Effect-size model
 import argparse
 import gzip
 import json
+import math
 import os
+import statistics
 import time
 
 import numpy as np
@@ -58,6 +60,25 @@ ap.add_argument("--h2-poly", type=float, default=0.35,
 ap.add_argument("--frac-h2-coding", type=float, default=0.6)
 ap.add_argument("--prevalence", type=float, default=0.10)
 ap.add_argument("--var-covar", type=float, default=0.10, help="variance explained by age+sex")
+ap.add_argument("--ncp-ladder", default="",
+                help='"lo,hi": give each causal gene a target non-centrality drawn '
+                     "LOG-UNIFORMLY on [lo,hi] and scale that gene's effects to hit "
+                     "it, instead of scaling all coding effects to a single --h2. "
+                     "Power then comes out as a graded curve and the assertion "
+                     "becomes Spearman(NCP, -log10 p) over genes rather than a hit "
+                     "count, which is the only thing that still discriminates once "
+                     "N is large enough to saturate a fixed h2. --h2 then sets the "
+                     "NON-coding component only; total h2 is an outcome, reported.")
+ap.add_argument("--h2-binary-mult", default="1.0",
+                help="multiply the genetic component by this for the BINARY arm's "
+                     "liability. A binary trait at prevalence K buys far less "
+                     "non-centrality than a quantitative one at the same h2: "
+                     "NCP_bin/NCP_quant = phi(t)^2/(K(1-K)), which is 0.0717 at "
+                     "K=0.01, so the two arms need separately scaled heritability "
+                     "or the binary ladder sits ~14x below the quantitative one. "
+                     "\"auto\" solves for the multiplier that equalises the two "
+                     "arms at the current --prevalence, so it cannot go stale when "
+                     "the prevalence changes; a number sets it directly.")
 ap.add_argument("--thin-intergenic", type=float, default=1.0,
                 help="retention probability for RARE INTERGENIC variants (1.0 = keep "
                      "everything, the default). Thinning must never be uniform: the "
@@ -81,6 +102,21 @@ t0 = time.time()
 def say(*m):
     print(f"[{time.time() - t0:7.1f}s]", *m, flush=True)
 
+
+# A binary trait at prevalence K buys phi(t)^2 / (K(1-K)) of the non-centrality
+# a quantitative trait gets from the same liability h2 (t = qnorm(1-K)). At
+# K=0.01 that is 0.0718, i.e. the binary arm is 13.9x weaker unless its
+# heritability is scaled up to compensate -- which is what --h2-binary-mult does.
+_t = statistics.NormalDist().inv_cdf(1 - a.prevalence)
+BIN_NCP_FRAC = (math.exp(-_t * _t / 2) / math.sqrt(2 * math.pi)) ** 2 / (
+    a.prevalence * (1 - a.prevalence))
+if str(a.h2_binary_mult).lower() == "auto":
+    a.h2_binary_mult = 1.0 / BIN_NCP_FRAC
+else:
+    a.h2_binary_mult = float(a.h2_binary_mult)
+say(f"prevalence {a.prevalence}: binary/quantitative NCP ratio {BIN_NCP_FRAC:.4f} "
+    f"at equal liability h2; --h2-binary-mult={a.h2_binary_mult:.4g} "
+    f"-> net {a.h2_binary_mult * BIN_NCP_FRAC:.3f}x")
 
 # ---------------------------------------------------------------- 1. samples
 ts = tskit.load(a.trees)
@@ -361,7 +397,13 @@ def dot_chunked(mat, b, n_out, step=2000):
     return out
 
 
-g_cod = dot_chunked(D, beta_c, N)
+# Every causal coding variant lies in a causal gene (causal = ... & is_cg), so
+# the coding genetic value is exactly the sum of the per-gene burdens. Building
+# them individually costs one pass and makes the per-gene rescale below free.
+burden = {int(gi): dot_chunked(D[(gcode == gi) & causal],
+                               beta_c[(gcode == gi) & causal], N)
+          for gi in causal_genes}
+g_cod = sum(burden.values()) if burden else np.zeros(N)
 
 # non-coding background: same spike-and-slab, no annotation, symmetric
 nc = np.where(gene < 0)[0]
@@ -396,36 +438,80 @@ g_non = (read_bed_rows(f"{a.outdir}/{a.prefix}.bed", nc_causal, N).T @ beta_nc
 say(f"raw genetic variance: coding {g_cod.var():.4g}, non-coding {g_non.var():.4g}")
 
 # ------------------------------------------------- 7. scale to target h2
-c_cod = np.sqrt(a.h2 * a.frac_h2_coding / g_cod.var()) if g_cod.var() > 0 else 0.0
-c_non = np.sqrt(a.h2 * (1 - a.frac_h2_coding) / g_non.var()) if g_non.var() > 0 else 0.0
-beta_c *= c_cod
-beta_nc *= c_non
-g_cod *= c_cod
-g_non *= c_non
+ncp_target = np.zeros(a.n_genes)
+if a.ncp_ladder:
+    # Per-gene NCP ladder. A single --h2 gives every causal gene roughly the same
+    # power, so at large N the positive control saturates (every method finds
+    # every gene, p ~ 1e-25) and stops discriminating between BURDEN/SKAT/SKAT-O
+    # exactly when it is most needed. A log-uniform ladder instead spreads genes
+    # across the whole power curve, so the control becomes a rank correlation
+    # over genes rather than a hit count. NCP ~ N * h2_gene for the 1-df burden
+    # test (exact only as h2_total -> 0; h2_total here is ~1%).
+    lo, hi = (float(x) for x in a.ncp_ladder.split(","))
+    assert 0 < lo < hi, (lo, hi)
+    draws = np.exp(rng.uniform(np.log(lo), np.log(hi), len(causal_genes)))
+    for gi, tgt in zip(causal_genes, draws):
+        gi = int(gi)
+        ncp_target[gi] = tgt
+        v = burden[gi].var()
+        if v <= 0:
+            continue
+        f = np.sqrt((tgt / N) / v)
+        burden[gi] *= f
+        beta_c[(gcode == gi) & causal] *= f
+    g_cod = sum(burden.values()) if burden else np.zeros(N)
+    say(f"NCP ladder log-uniform on [{lo}, {hi}]: coding h2 is now an OUTCOME "
+        f"({g_cod.var():.4g}), --h2={a.h2} sets the non-coding part only")
+    c_non = np.sqrt(a.h2 * (1 - a.frac_h2_coding) / g_non.var()) if g_non.var() > 0 else 0.0
+    beta_nc *= c_non
+    g_non *= c_non
+else:
+    c_cod = np.sqrt(a.h2 * a.frac_h2_coding / g_cod.var()) if g_cod.var() > 0 else 0.0
+    c_non = np.sqrt(a.h2 * (1 - a.frac_h2_coding) / g_non.var()) if g_non.var() > 0 else 0.0
+    beta_c *= c_cod
+    beta_nc *= c_non
+    g_cod *= c_cod
+    g_non *= c_non
+    for gi in causal_genes:
+        burden[int(gi)] *= c_cod
 g = g_cod + g_non
-if abs(g.var() - a.h2) > 0.05 * a.h2:
-    print(f"WARNING: realised chr20 h2 {g.var():.4g} != target {a.h2} -- a component "
-          f"had zero variance and could not be scaled", flush=True)
-say(f"scaled: var(g)={g.var():.4g} (target h2 {a.h2}); "
-    f"beta_c range [{beta_c.min():.3f}, {beta_c.max():.3f}]")
+H2 = g.var()                      # realised chr20 h2; the ladder makes it an outcome
+if not a.ncp_ladder and abs(H2 - a.h2) > 0.05 * a.h2:
+    # Usually NOT "a component had zero variance": g_cod and g_non are computed
+    # from the same genotypes and are correlated, so var(g_cod + g_non) is not
+    # the sum of the two targets.
+    print(f"WARNING: realised chr20 h2 {H2:.4g} != target {a.h2}; components are "
+          f"correlated (cov={np.cov(g_cod, g_non)[0, 1]:.3g}) or one had zero variance",
+          flush=True)
+say(f"scaled: var(g)={H2:.4g}; beta_c range [{beta_c.min():.3f}, {beta_c.max():.3f}]")
 
 # per-gene true h2 (variance of the gene's own burden of causal effects)
 gene_h2 = np.zeros(a.n_genes)
 for gi in causal_genes:
-    sel = (gcode == gi) & causal
-    if sel.any():
-        gene_h2[gi] = dot_chunked(D[sel], beta_c[sel], N).var()
+    gene_h2[int(gi)] = burden[int(gi)].var()
 # List CAUSAL genes only. Ranking all n_genes and taking the top 10 pads the
 # table with null genes at h2 = 0 exactly whenever there are fewer than 10
 # causal genes, which reads as "causal genes with no effect" and is not.
 _ord = causal_genes[np.argsort(-gene_h2[causal_genes])]
 _n0 = int((gene_h2[causal_genes] == 0).sum())
-say(f"causal genes by true h2 (expected 1-df NCP at N={N}); "
-    f"{_n0} of {len(causal_genes)} have h2 == 0:")
-for gi in _ord[:10]:
-    say(f"   GENE{gi + 1:04d}  h2={gene_h2[gi]:.3e}  NCP={N * gene_h2[gi]:.1f}")
-if len(_ord) > 10:
-    say(f"   ... {len(_ord) - 10} more causal genes")
+_bmul = a.h2_binary_mult * BIN_NCP_FRAC
+say(f"causal genes by true h2; {_n0} of {len(causal_genes)} have h2 == 0. "
+    f"NCP_q = N*h2 at N={N}; NCP_b = NCP_q * {_bmul:.3f}:")
+say("   gene       h2         NCP_target   NCP_quant   NCP_binary")
+for gi in _ord[:12]:
+    gi = int(gi)
+    nq = N * gene_h2[gi]
+    say(f"   GENE{gi + 1:04d}  {gene_h2[gi]:.3e}  "
+        f"{ncp_target[gi]:9.1f}  {nq:10.1f}  {nq * _bmul:10.1f}")
+if len(_ord) > 12:
+    say(f"   ... {len(_ord) - 12} more causal genes")
+if a.ncp_ladder:
+    _tg = ncp_target[causal_genes]
+    _rl = N * gene_h2[causal_genes]
+    _ok = _tg > 0
+    _err = np.abs(_rl[_ok] - _tg[_ok]) / _tg[_ok]
+    say(f"ladder delivered: max relative NCP error {_err.max():.2e} "
+        f"over {_ok.sum()} genes (0 = exact)")
 
 # ------------------------------------------------------- 8. phenotypes
 age = np.clip(rng.normal(50, 8, N), 20, 80)
@@ -446,19 +532,48 @@ poly[row_chi] = np.repeat(mid, 2) + rng.normal(0, sd_p / np.sqrt(2), n_child)
 say(f"var(poly)={poly.var():.3f} (target {a.h2_poly})")
 
 def make_traits(h2_target, tag):
-    s = np.sqrt(h2_target / a.h2)
-    lin = s * g + poly + cov
+    s = np.sqrt(h2_target / H2) if H2 > 0 else 0.0
     ve = 1.0 - h2_target - a.h2_poly - a.var_covar
-    assert ve > 0, ve
-    liab = lin + rng.normal(0, np.sqrt(ve), N)
+    assert ve > 0, (h2_target, ve)
+    liab = s * g + poly + cov + rng.normal(0, np.sqrt(ve), N)
     yq = liab
-    cut_ = np.quantile(liab, 1 - a.prevalence)
-    yb = (liab > cut_).astype(int)
-    say(f"{tag}: var(y)={yq.var():.3f}  cases={yb.sum()} ({yb.mean() * 100:.1f}%)")
+    # The binary arm gets its OWN liability when --h2-binary-mult != 1, because
+    # thresholding the quantitative one would hand it 14x less non-centrality at
+    # K=0.01. Same genes and same relative effects, only the genetic scale moves.
+    if a.h2_binary_mult == 1.0:
+        liab_b = liab
+    else:
+        h2b = h2_target * a.h2_binary_mult
+        # The liability has a fixed budget of 1. Scaling the genetic component up
+        # 14x is feasible for the ladder arm (h2 ~ 0.01) and NOT for a strong
+        # positive-control arm, so clamp -- loudly, because a silently weakened
+        # positive control is exactly the failure this amendment exists to avoid.
+        h2b_max = 1.0 - a.h2_poly - a.var_covar - 0.05
+        if h2b > h2b_max:
+            print(f"WARNING: {tag}: binary liability h2 {h2b:.3g} "
+                  f"(= {h2_target:.3g} x {a.h2_binary_mult:.4g}) exceeds the budget "
+                  f"1 - h2_poly - var_covar - 0.05 = {h2b_max:.3g}; clamped, so the "
+                  f"effective multiplier is {h2b_max / h2_target:.2f} not "
+                  f"{a.h2_binary_mult:.4g} and this arm's NCP ratio is "
+                  f"{h2b_max / h2_target * BIN_NCP_FRAC:.3f}x, not "
+                  f"{a.h2_binary_mult * BIN_NCP_FRAC:.3f}x", flush=True)
+            h2b = h2b_max
+        ve_b = 1.0 - h2b - a.h2_poly - a.var_covar
+        assert ve_b > 0, (h2b, ve_b)
+        liab_b = (np.sqrt(h2b / H2) * g + poly + cov
+                  + rng.normal(0, np.sqrt(ve_b), N))
+    cut_ = np.quantile(liab_b, 1 - a.prevalence)
+    yb = (liab_b > cut_).astype(int)
+    say(f"{tag}: var(y)={yq.var():.3f}  cases={yb.sum()} ({yb.mean() * 100:.2f}%)")
     return yq, yb
 
 
-yq, yb = make_traits(a.h2, f"h2={a.h2}")
+# With a ladder, the primary arm is generated at the REALISED h2, so each gene's
+# drawn NCP is delivered exactly rather than rescaled by h2_target/H2.
+H2_PRIMARY = H2 if a.ncp_ladder else a.h2
+yq, yb = make_traits(H2_PRIMARY, f"h2={H2_PRIMARY:.4g}")
+# Kept as the saturated "must be found by anything" smoke arm; with a ladder it
+# is deliberately redundant with the top of the ladder.
 yq_pc, yb_pc = make_traits(a.h2_pc, f"h2={a.h2_pc} (positive control)")
 # negative control: same pedigree-transmitted background and covariates, but
 # ZERO chr20 heritability -- step 2 p-values on it must be uniform.
@@ -506,15 +621,21 @@ with open(f"{a.outdir}/groupFile.txt", "w") as fh:
 say(f"group file: {ngw} genes")
 
 with open(f"{a.outdir}/truth_genes.tsv", "w") as fh:
-    fh.write("gene\tcausal\tn_var\tn_high\tn_medium\tn_low\tn_causal_var\th2\tNCP\n")
+    # NCP_quant/NCP_binary are what the Spearman(NCP, -log10 p) control is run
+    # against; NCP_target is the ladder draw, so target-vs-realised is auditable.
+    fh.write("gene\tcausal\tn_var\tn_high\tn_medium\tn_low\tn_causal_var\th2\t"
+             "NCP_target\tNCP_quant\tNCP_binary\n")
+    _bmul = a.h2_binary_mult * BIN_NCP_FRAC
     for gi in range(a.n_genes):
         m = gcode == gi
         if not m.any():
             continue
+        nq = N * gene_h2[gi]
         fh.write(f"GENE{gi + 1:04d}\t{int(gi in causal_genes)}\t{int(m.sum())}\t"
                  f"{int((anno[m] == 2).sum())}\t{int((anno[m] == 1).sum())}\t"
                  f"{int((anno[m] == 0).sum())}\t{int((causal & m).sum())}\t"
-                 f"{gene_h2[gi]:.4e}\t{N * gene_h2[gi]:.2f}\n")
+                 f"{gene_h2[gi]:.4e}\t{ncp_target[gi]:.2f}\t{nq:.2f}\t"
+                 f"{nq * _bmul:.2f}\n")
 
 json.dump({"N": N, "n_variants": int(n_kept), "n_coding": int(len(cod_idx)),
            "n_genes": a.n_genes, "n_causal_genes": int(n_causal_genes),
@@ -522,6 +643,12 @@ json.dump({"N": N, "n_variants": int(n_kept), "n_coding": int(len(cod_idx)),
            "frac_h2_coding": a.frac_h2_coding, "prevalence": a.prevalence,
            "seed": a.seed, "n_families": a.n_families,
            "n_singletons": a.n_singletons, "n_forced_causal_var": int(n_forced),
+           "h2_realised": float(H2), "h2_primary_arm": float(H2_PRIMARY),
+           "ncp_ladder": a.ncp_ladder, "h2_binary_mult": a.h2_binary_mult,
+           "binary_ncp_frac": float(BIN_NCP_FRAC),
+           # the genome-wide SFS is deliberately distorted by thinning; it is
+           # EXACT inside genes and at MAF >= thin_maf (amendment A5)
+           "sfs_distorted_outside_genes": a.thin_intergenic < 1.0,
            "thin_intergenic": a.thin_intergenic, "thin_maf": a.thin_maf,
            "n_thinned": int(n_thinned)},
           open(f"{a.outdir}/sim_meta.json", "w"), indent=2)
