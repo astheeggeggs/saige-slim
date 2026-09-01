@@ -3,6 +3,46 @@
 Everything here is generated; nothing is committed to git (outputs live in
 `harness/work/sim/`, which is gitignored). Run order:
 
+## Two configurations, one generator
+
+`run_all.sh` takes `CONFIG`. Both configurations run the same scripts and
+differ only in variables, so a generator fix lands in both and they cannot
+drift. Anything set in the environment overrides a preset; `DRYRUN=1` resolves
+the configuration and stops (the full run is ~80 min).
+
+| | `chr20` (default) | `bench50k` |
+|---|---|---|
+| purpose | correctness / controls | step-2 benchmarking |
+| region | whole chr20 (64.44 Mb) | chr20:34-59 Mb (25 Mb) |
+| N | 10,000 | 50,000 |
+| founders | 9,000 | 46,250 |
+| genes | 550 | 210 |
+| intergenic thinning | none | 0.070 (rare intergenic only) |
+| outdir | `harness/work/sim` | `harness/work/sim50k` |
+| disk | ~7 GB | ~14 GB |
+
+`bench50k` exists because **the bundled N=1,000 fixture inverts the ranking it
+is meant to measure**: `writeOutfile_single` (22% of the marker loop) and
+exceptions (8.8%) are flat in N, while decode/impute/score/SPA all scale with
+it. Its window and thinning come from the measured pilot in `PILOT.md`, not
+from estimates -- mean recombination rate 0.98x the chromosome mean, ~19 s/Mb,
+72,178 kept sites/Mb at 46,250 founders, 80.8% of variants at MAF <= 1e-4.
+
+**`bench50k` stops before step 0 and says why.** A GRM estimated from one 25 Mb
+window is not usable, for a genetic rather than a counting reason: 25 Mb of
+chr20 is ~41 cM, so the number of effectively independent common markers is a
+few hundred *however many markers the window holds*. The prior run measured
+exactly that failure -- true first-degree pairs at median 0.493 against an
+expected 0.5, but "unrelated" pairs at median 0.075 and the diagonal ranging
+0.228-2.230, i.e. a sound estimator on an unusable input. (Population structure
+is ruled out: `02_build_dataset.py` keeps EUR only.) The fix is the synthetic
+independent scaffold, which is not built yet. `ALLOW_REGION_GRM=1` runs step 0
+anyway as a diagnostic. Meanwhile `<prefix>.pedigree_truth.txt` holds the exact
+relatedness matrix step 0 is trying to estimate, so step 0 can be scored as a
+control rather than trusted as a dependency.
+
+## Run order
+
 ```sh
 PY=<venv with msprime,stdpopsim>/bin/python
 $PY harness/sim/01_simulate.py --out harness/work/sim/chr20.trees      # ~17 min
@@ -66,6 +106,25 @@ RELCUT=0.125 NRANDMARK=3000 NTHREADS=6 bash harness/sim/07_run_pipeline.sh
    variance-ratio file has no `sparse` rows and step 2 hard-stops when given
    `--sparseGRMFile` (`R/readInGLMM.R`, `Get_Variance_Ratio`).
 5. **PGEN psam must put IID first** — see the reader limitation below.
+
+## Generator invariants that are asserted, not assumed
+
+- **Every causal gene has >= 1 causal variant.** Causal variants are drawn
+  independently per variant, so a causal gene could come out with none: h2
+  exactly 0 while still counting as a positive control, which drags the
+  control's rank statistic toward the null and makes a correct pipeline look
+  broken. Causal genes are now drawn only from genes with >= 2 coding variants
+  (the group file skips the rest), any that still draw zero get one forced with
+  the same per-class propensity, and an assert holds it. At 200 genes / 50
+  causal, 8-14 genes per seed need forcing; after it, 0 of 50 have h2 == 0.
+- **Thinning is MAF-stratified.** Uniform thinning would gut the common pool
+  the GRM and the LD-pruned variance-ratio set are drawn from. Only intergenic
+  variants below `--thin-maf` (default 0.01) are thinned. Verified at retention
+  0.07: genic 721/721 kept, common 4,618/4,618 kept, rare intergenic
+  728/10,609 = 0.069 against an expected 0.070 (0.4 binomial SE).
+- The causal-gene listing prints **causal genes only**. Ranking all `n_genes`
+  and taking the top 10 pads the table with null genes at h2 = 0 whenever
+  there are fewer than 10 causal genes, which reads as a bug and is not.
 
 ## Findings about the codebase
 
