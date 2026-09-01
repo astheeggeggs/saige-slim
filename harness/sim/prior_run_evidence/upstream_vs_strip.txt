@@ -1,0 +1,34 @@
+
+== per arm ==
+main   bed   n=3  tested 70701 | real  91.39±3.38 | user  83.73 | startup 4.42 | WORK  86.75±4.15 |  415.1 us/marker | R2 0.9989
+main   pgen  n=3  tested 70701 | real  82.27±1.73 | user  75.55 | startup 3.55 | WORK  78.47±1.26 |  373.4 us/marker | R2 0.9995
+strip  bed   n=4  tested 70709 | real  65.46±2.25 | user  58.76 | startup 2.00 | WORK  63.29±2.95 |  301.4 us/marker | R2 0.9975
+strip  pgen  n=4  tested 70709 | real  72.36±1.80 | user  67.67 | startup 2.75 | WORK  69.49±1.56 |  331.2 us/marker | R2 0.9998
+
+== within build: pgen / bed on WORK (startup removed) ==
+  main   pgen/bed = 0.905  -> pgen is faster by 9.5%
+  strip  pgen/bed = 1.098  -> bed is faster by 9.8%
+
+== across builds: how much did each path improve? ==
+  bed   main/strip = 1.37x  (strip faster)
+  pgen  main/strip = 1.13x  (strip faster)
+markers tested   strip 70709   main 70701   (difference -8)
+in strip only: 8 | in main only: 0 | shared: 70701
+  strip-only markers: MAC range 20 - 20   (LEDGER #29 predicts exactly minMAC=20)
+MAC
+20 
+ 8 
+
+== on the 70701 shared markers ==
+cor(-log10 p)      Pearson 0.9734386379   Spearman 0.9460465768
+identical p-values : 59386 / 70701 (83.9960%)
+max |dlog10 p|     3.226e+00   median over differing 1.046e-01
+  BETA        max |rel diff| 9.999e-01   n differing 11312
+  SE          max |rel diff| 9.898e-01   n differing 11312
+  Tstat       max |rel diff| 3.974e-02   n differing 6086
+  var         max |rel diff| 9.999e-01   n differing 11312
+  AF_Allele2  max |rel diff| 0.000e+00   n differing 0
+
+markers with AF_Allele2 > 0.5: 11671 of 70701 (16.51%)
+  mean |dlog10 p|  AF<=0.5 0.000e+00   AF>0.5 2.107e-01
+  n differing      AF<=0.5 0/59030      AF>0.5 11315/11671
