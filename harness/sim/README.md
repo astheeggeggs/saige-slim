@@ -29,17 +29,60 @@ from estimates -- mean recombination rate 0.98x the chromosome mean, ~19 s/Mb,
 72,178 kept sites/Mb at 46,250 founders, 80.8% of variants at MAF <= 1e-4.
 
 **`bench50k` stops before step 0 and says why.** A GRM estimated from one 25 Mb
-window is not usable, for a genetic rather than a counting reason: 25 Mb of
-chr20 is ~41 cM, so the number of effectively independent common markers is a
-few hundred *however many markers the window holds*. The prior run measured
-exactly that failure -- true first-degree pairs at median 0.493 against an
-expected 0.5, but "unrelated" pairs at median 0.075 and the diagonal ranging
-0.228-2.230, i.e. a sound estimator on an unusable input. (Population structure
-is ruled out: `02_build_dataset.py` keeps EUR only.) The fix is the synthetic
-independent scaffold, which is not built yet. `ALLOW_REGION_GRM=1` runs step 0
-anyway as a diagnostic. Meanwhile `<prefix>.pedigree_truth.txt` holds the exact
-relatedness matrix step 0 is trying to estimate, so step 0 can be scored as a
-control rather than trusted as a dependency.
+window is expected to be unusable for a genetic rather than a counting reason:
+25 Mb of chr20 is ~41 cM, so the number of effectively independent common
+markers is a few hundred *however many markers the window holds*.
+**[ASSUMPTION]** -- that is an a priori argument; no GRM has been built on a
+25 Mb window here. What is measured is the full-chromosome case below, at 2.6x
+the genetic length, which is already marginal. `ALLOW_REGION_GRM=1` runs step 0
+anyway as a diagnostic. The fix is the synthetic independent scaffold, not yet
+built; meanwhile `<prefix>.pedigree_truth.txt` holds the exact relatedness
+matrix step 0 is trying to estimate, so step 0 can be scored as a control
+rather than trusted as a dependency.
+
+### What the prior run actually measured, and one trap in reading it
+
+Two GRM configurations were run on the SAME N=10,000 full-chr20 dataset, and
+they are easy to mix up because only the current one is described above:
+
+| | superseded (50-variant prune) | current (1 Mb prune) |
+|---|---|---|
+| markers offered / used | 14,047 / 5,000 | 3,055 / 3,000 |
+| true first-degree pairs | median 0.493 (IQR 0.455-0.536) | median 0.500 (IQR 0.456-0.543) |
+| diagonal | median 0.986, range **0.228-2.230** | median 0.998, range **0.353-1.314** |
+| pairs kept | 1,118,079 at cutoff 0.05 | 4,431 at cutoff 0.125 |
+
+**The trap: `value on OTHER pairs: median` is not a measure of background
+relatedness.** The sparse matrix only retains pairs above the cutoff, so that
+median sits just above wherever the cutoff was put -- 0.075 at cutoff 0.05,
+0.168 at cutoff 0.125. Reading those two as "the current recipe is twice as
+contaminated" is backwards; it is 250x less contaminated by pair count. Compare
+the diagonal (not truncated) or the extra-pair count at a fixed cutoff.
+
+### Open: why is the diagonal so wide? (rare-marker inflation, NOT settled)
+
+The standing hypothesis is that the GRM is dominated by near-threshold rare
+markers. It is checkable in closed form with no GRM at all, from the pruned
+set's MAF spectrum alone. For standardised genotypes over M independent markers
+under HWE, with `h_j = 2 p_j (1 - p_j)`, the fourth moment is `1/h_j` exactly
+(the binomial n=2 fourth central moment is `h`), so
+
+    Var(diagonal) = (1/M) * mean_j(1/h_j - 1)
+
+**[ASSUMPTION, order-of-magnitude]** under a neutral `1/p` spectrum truncated
+at MAF 0.01, `mean(1/h)` is ~12, giving sd ~0.062 and an expected range over
+10,000 individuals of about [0.76, 1.24]. The observed upper tail (1.314) is
+close to that; the observed lower tail (**0.353**) is nowhere near it, and a
+sum of positive terms should not have the longer tail on the low side. So rare
+markers alone look **insufficient**, and the hypothesis should not be treated
+as the explanation until the real spectrum is used.
+
+The test, in order of cost: (1) compute `mean(1/h)` over `data_for_grm`'s actual
+frequencies and compare the predicted sd against the observed diagonal -- one
+pass over a `.frq`, no GRM; (2) if it reconciles, re-run step 0 at
+`minMAFforGRM=0.05`, where `1/h <= 10.5` bounds the inflation and the sd should
+drop by ~2x. Doing (2) first would tell you the diagonal narrowed without
+telling you whether the model that predicted it was right.
 
 ## Run order
 

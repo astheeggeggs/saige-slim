@@ -81,12 +81,13 @@ $PY $S/04_add_pcs.py "$D" 4
 # genetic rather than a matter of counting markers: 25 Mb of chr20 is ~41 cM on
 # the HapMap map (108.1 cM over 64.44 Mb, and the window was chosen at 0.98x the
 # chromosome mean rate), so the number of effectively independent common markers
-# is a few hundred HOWEVER MANY markers the window contains. That is the
-# measured failure in the prior run -- true first-degree pairs sat at median
-# 0.493 against an expected 0.5, but "unrelated" pairs sat at median 0.075 with
-# the diagonal ranging 0.228-2.230, i.e. the estimator was fine and the input
-# was not. Population structure is ruled out (02_build_dataset.py keeps EUR
-# only). The fix is the synthetic independent scaffold -- founder frequencies
+# is a few hundred HOWEVER MANY markers the window contains. That is an a priori
+# argument, not a measurement: no GRM has ever been built on a 25 Mb window
+# here. What IS measured is the full-chromosome case (108 cM), where even at
+# 3,055 pruned markers the GRM keeps 1,951 spurious pairs against 2,480 true
+# ones -- and 25 Mb has under two fifths of that genetic length.
+# Population structure is ruled out (02_build_dataset.py keeps EUR only).
+# The fix is the synthetic independent scaffold -- founder frequencies
 # drawn on [0.05,0.45] and gene-dropped through this same pedigree -- which is
 # not built yet. Until it is, refuse rather than emit a GRM that looks fine and
 # is not; <prefix>.pedigree_truth.txt holds the exact answer to check against.
