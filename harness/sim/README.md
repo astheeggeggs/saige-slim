@@ -115,8 +115,9 @@ $PY harness/sim/02_build_dataset.py --trees harness/work/sim/chr20.trees \
       --outdir harness/work/sim                                        # ~15 min
 bash harness/sim/03_plink_prep.sh                                      # ~8 min
 $PY harness/sim/04_add_pcs.py harness/work/sim 4
+$PY harness/sim/03b_pedigree_grm.py --dir harness/work/sim  # exact GRM, instant
 SAIGE_LIB=<lib> NTHREADS=6 RELCUT=0.125 NRANDMARK=3000 \
-  bash harness/sim/04_run_saige.sh step0
+  bash harness/sim/04_run_saige.sh step0                     # a CONTROL, not a dep
 .pixi/envs/default/bin/Rscript harness/sim/05_check_grm.R              # GRM vs pedigree
 RELCUT=0.125 NRANDMARK=3000 NTHREADS=6 bash harness/sim/07_run_pipeline.sh
 .pixi/envs/default/bin/Rscript harness/sim/06_analyse.R                # results vs truth

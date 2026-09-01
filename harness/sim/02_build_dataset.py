@@ -565,6 +565,17 @@ def make_traits(h2_target, tag):
     cut_ = np.quantile(liab_b, 1 - a.prevalence)
     yb = (liab_b > cut_).astype(int)
     say(f"{tag}: var(y)={yq.var():.3f}  cases={yb.sum()} ({yb.mean() * 100:.2f}%)")
+    # A low prevalence at small N is degenerate, and it fails LOUDLY in the
+    # statistics rather than in the generator: measured at N=600 / K=0.01 (6
+    # cases) the binary positive-control arm came back with lambda_GC ~ 100 on
+    # markers whose true effect is ZERO, under BOTH an exact pedigree GRM and an
+    # estimated one. That is the case count, not the GRM and not SAIGE.
+    if 0 < yb.sum() < 100:
+        print(f"WARNING: {tag}: only {yb.sum()} cases at prevalence "
+              f"{a.prevalence}. Binary results at this scale are not "
+              f"interpretable -- expect wildly inflated test statistics even on "
+              f"null markers. Raise --prevalence or N for any binary claim.",
+              flush=True)
     return yq, yb
 
 
