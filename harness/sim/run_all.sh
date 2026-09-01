@@ -89,29 +89,41 @@ step "03 plink/plink2 sets, PCs"
 bash $S/03_plink_prep.sh 2>&1 | tee "$D/03_plink.log"
 $PY $S/04_add_pcs.py "$D" 4
 
-# A GRM estimated from ONE 25 Mb window is not usable, and the reason is
-# genetic rather than a matter of counting markers: 25 Mb of chr20 is ~41 cM on
-# the HapMap map (108.1 cM over 64.44 Mb, and the window was chosen at 0.98x the
-# chromosome mean rate), so the number of effectively independent common markers
-# is a few hundred HOWEVER MANY markers the window contains. That is an a priori
-# argument, not a measurement: no GRM has ever been built on a 25 Mb window
-# here. What IS measured is the full-chromosome case (108 cM), where even at
-# 3,055 pruned markers the GRM keeps 1,951 spurious pairs against 2,480 true
-# ones -- and 25 Mb has under two fifths of that genetic length.
-# Population structure is ruled out (02_build_dataset.py keeps EUR only).
-# The fix is the synthetic independent scaffold -- founder frequencies
-# drawn on [0.05,0.45] and gene-dropped through this same pedigree -- which is
-# not built yet. Until it is, refuse rather than emit a GRM that looks fine and
-# is not; <prefix>.pedigree_truth.txt holds the exact answer to check against.
-if [ "$CONFIG" = "bench50k" ] && [ -z "${ALLOW_REGION_GRM:-}" ]; then
-  echo
-  echo "STOP: CONFIG=bench50k has no usable GRM input yet (25 Mb ~ 41 cM; see"
-  echo "      the comment above and the GRM section of the plan). Stages 01-03"
-  echo "      are complete in $D."
-  echo "      Set ALLOW_REGION_GRM=1 to run step 0 anyway as a DIAGNOSTIC --"
-  echo "      its output is not fit to fit a null model against."
-  exit 0
+step "03b pedigree-truth sparse GRM"
+# The pedigree is known, so the relatedness matrix can be WRITTEN rather than
+# estimated. Cheap, exact, and produced for both configs -- chr20 uses it as a
+# reference to score step 0 against, bench50k consumes it directly.
+$PY $S/03b_pedigree_grm.py --dir "$D" 2>&1 | tee "$D/03b_pedigree_grm.log"
+
+# Which GRM steps 1-2 actually consume.
+#
+# bench50k uses the pedigree truth, because a GRM estimated from one 25 Mb
+# window is expected to be unusable for a genetic rather than a counting reason:
+# 25 Mb of chr20 is ~41 cM on the HapMap map (108.1 cM over 64.44 Mb, at 0.98x
+# the chromosome mean rate), so the number of effectively INDEPENDENT common
+# markers is a few hundred however many markers the window contains. That is an
+# a priori argument -- no GRM has been built on a 25 Mb window here. What is
+# measured is the full-chromosome case at 2.6x the genetic length, which already
+# keeps 1,951 spurious pairs against 2,480 true ones. Population structure is
+# ruled out (02_build_dataset.py keeps EUR only).
+#
+# Either way step 0 is now a CONTROL, not a dependency: it is scored against the
+# truth rather than trusted. RUN_STEP0 defaults on for chr20, which consumes its
+# output, and off for bench50k, which does not.
+if [ "$CONFIG" = "bench50k" ]; then
+  export GRMFILE="$D/pedigree_truth.sparseGRM.mtx"
+  export GRMIDS="$GRMFILE.sampleIDs.txt"
+  echo "steps 1-2 will consume the PEDIGREE-TRUTH GRM: $GRMFILE"
+  : "${RUN_STEP0:=0}"
+else
+  : "${RUN_STEP0:=1}"
 fi
+
+if [ "$RUN_STEP0" != "1" ]; then
+  echo
+  echo "skipping step 0 (RUN_STEP0=$RUN_STEP0). Set RUN_STEP0=1 to run it as a"
+  echo "control and score it against $D/pedigree_truth.sparseGRM.mtx."
+else
 
 step "04 step 0: sparse GRM (relatednessCutoff=$RELCUT)"
 # createSparseGRM refuses to start if numRandomMarkerforSparseKin exceeds the
@@ -129,6 +141,8 @@ fi
 $RS $S/05_check_grm.R \
   "$D/sparseGRM_relatednessCutoff_${RELCUT}_${NRANDMARK}_randomMarkersUsed.sparseGRM.mtx" \
   2>&1 | tee "$D/grm_check_$RELCUT.txt"
+
+fi   # RUN_STEP0
 
 step "05 steps 1 and 2, all traits"
 bash $S/07_run_pipeline.sh

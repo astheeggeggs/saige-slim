@@ -14,8 +14,10 @@ CUT="${RELCUT:-0.05}"
 # chr20 has only ~3,055 markers that are pairwise r2<0.05 within 1 Mb, so the
 # recipe's 5000 random markers for the relatedness screen is not attainable.
 NRM="${NRANDMARK:-3000}"
-GRM=$D/sparseGRM_relatednessCutoff_${CUT}_${NRM}_randomMarkersUsed.sparseGRM.mtx
-IDS=$GRM.sampleIDs.txt
+# GRMFILE overrides the step-0 output, so steps 1-2 can be pointed at the
+# pedigree-truth matrix (03b_pedigree_grm.py) instead of an estimated one.
+GRM=${GRMFILE:-$D/sparseGRM_relatednessCutoff_${CUT}_${NRM}_randomMarkersUsed.sparseGRM.mtx}
+IDS=${GRMIDS:-$GRM.sampleIDs.txt}
 
 step0() {
   echo "=== step 0: createSparseGRM ==="
