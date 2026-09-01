@@ -579,6 +579,17 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// parallelCrossProdMat
+arma::fmat parallelCrossProdMat(arma::fmat& BMat);
+RcppExport SEXP _SAIGE_parallelCrossProdMat(SEXP BMatSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::fmat& >::type BMat(BMatSEXP);
+    rcpp_result_gen = Rcpp::wrap(parallelCrossProdMat(BMat));
+    return rcpp_result_gen;
+END_RCPP
+}
 // parallelCrossProd
 arma::fvec parallelCrossProd(arma::fcolvec& bVec);
 RcppExport SEXP _SAIGE_parallelCrossProd(SEXP bVecSEXP) {
@@ -1946,6 +1957,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_getMsub_MAFge_minMAFtoConstructGRM_singleChr", (DL_FUNC) &_SAIGE_getMsub_MAFge_minMAFtoConstructGRM_singleChr, 0},
     {"_SAIGE_Get_MultiMarkersBySample_StdGeno_Mat", (DL_FUNC) &_SAIGE_Get_MultiMarkersBySample_StdGeno_Mat, 0},
     {"_SAIGE_Get_MultiMarkersBySample_StdGeno", (DL_FUNC) &_SAIGE_Get_MultiMarkersBySample_StdGeno, 2},
+    {"_SAIGE_parallelCrossProdMat", (DL_FUNC) &_SAIGE_parallelCrossProdMat, 1},
     {"_SAIGE_parallelCrossProd", (DL_FUNC) &_SAIGE_parallelCrossProd, 1},
     {"_SAIGE_innerProductFun", (DL_FUNC) &_SAIGE_innerProductFun, 2},
     {"_SAIGE_parallelCrossProd_full", (DL_FUNC) &_SAIGE_parallelCrossProd_full, 2},
