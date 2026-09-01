@@ -428,6 +428,26 @@ test_that("pgen: live Firth estimates reconcile with the plink Firth mirror at f
   }
 })
 
+test_that("golden P26: pgen group test, BURDEN conditional (r.corr=1, rs30,rs79)", {
+  # PGEN mirror of P25 (the LEDGER #41 coverage golden).
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  r <- pgen_run(c(PGEN_G, "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
+                 GRP_MODEL, SG,
+                 "--groupFile=./input/group_new_snpid.txt",
+                 "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+                 "--maxMAF_in_groupTest=0.0001,0.001,0.01",
+                 "--r.corr=1", "--is_fastTest=FALSE",
+                 "--condition=rs30,rs79"), "group_cond_burden")
+  expect_cli_ok(r$status)
+  expect_output_matches_golden(
+    file.path(saige_goldens, "step2", "pgen_group_cond_burden.txt"), r$path)
+  expect_reconciles_with_plink(
+    r$path, file.path(saige_goldens, "step2", "plink_group_cond_burden.txt"),
+    key = GROUP_KEY,
+    cols = c(BURDEN_COLS, "Pvalue_Burden_c", "Beta_Burden_c", "seBeta_Burden_c"))
+})
+
 test_that("--nThreads > 1 refuses cleanly on a pgen input", {
   # v1 decision (Phase 7 plan): PgenReader::isForkSafe() is always false, same
   # conservative default as PLINK's fread fallback. One assertion against the

@@ -947,7 +947,11 @@ if(!t_isER){
       char pValueBuf_SPA_c[100];
         if(t_isSPAConverge_c){
                 if(!ispvallog){
-                  sprintf(pValueBuf_SPA_c, "%.6E", SPApval_c/2);
+                  //LEDGER #41: print the saddlepoint p itself. The /2
+                  //belongs to the two-sided quantile at :929 that builds
+                  //t_seBeta_c, not to the p-value; printing it here made
+                  //every conditional SPA p-value 2x anti-conservative.
+                  sprintf(pValueBuf_SPA_c, "%.6E", SPApval_c);
                 }else{
                   double SPApval_c_log10 = SPApval_c/(log(10));
                   int exponent = floor(SPApval_c_log10);

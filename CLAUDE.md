@@ -31,7 +31,20 @@ then per-marker allocation hygiene. Step-1 blocked-GetTrace is parked behind
 that measurement. LEDGER.md still-OPEN: #6 (PCG tolerance, deliberately
 deferred), #14 (unverified suspicion), #17-#26, #32 (marker-shard
 variance-ratio carry), and #35-#39 from the type-polymorphic-builtin audit
-(`sample`, `1:n`, `rbind` recycling) -- all latent behind a guard.
+(`sample`, `1:n`, `rbind` recycling) -- all latent behind a guard, plus #42
+(the `log.p=TRUE` arms of the conditional/marginal SE back-calculation halve a
+log, i.e. take a square root), latent behind a p-value underflow.
+**#41 is FIXED**: the conditional SPA p-value was PRINTED halved
+(`src/SAIGE_test.cpp:950` printed `SPApval_c/2` while `:929` built the SE from
+the un-halved value), making every `p.value_c` from the SPA path -- and, via
+`std::stod` at `src/Main.cpp:2019`, the `--r.corr=1` BURDEN Cauchy row -- 2x
+anti-conservative; upstream since v1.1.5 (2022-08-17) and baked into every
+conditional golden. Validated at 128,868 markers (10,085 halved) before the
+one-line fix; goldens P3/P10/P12 + PGEN mirrors re-baselined (8 rows, `p.value_c`
+only, each exactly doubled) and P25/P26 added for the `--r.corr=1 --condition`
+path that had no coverage. The marginal ancestor of the same geometry was
+upstream's SE bug in v1.1.6-1.2.0 (fixed in 1.3.0) -- see the historical note
+in LEDGER.md; there the p was right and the SE inflated, the mirror image.
 **#27, #33 and #34 are FIXED**, the three live ones, done together: #33 (the
 binary conditional arm subtracted a diagonal instead of the matrix;
 re-baselined goldens P3/P10), #34 (`diag()` handed a scalar variance -- an Inf
@@ -245,16 +258,18 @@ dead files).
   `parallel_reduce`; empirically confirmed — see LEDGER.md #7). Sparse-GRM
   fits are byte-stable either way.
 - `bash harness/make_goldens.sh <dir>` — regenerates step0 (sparse GRM), step1
-  (binary ×2 / quantitative), and step2: 13 PLINK runs (P1-P12, with P8b as a
+  (binary ×2 / quantitative), and step2: 14 PLINK runs (P1-P12 + P25, with P8b as a
   separate composed-set golden — single-variant marker/marker-conditional
   ×2 (quantitative P4, binary P12), group fastTest/conditional/BURDEN/SKAT-O
   ×2 (K=1 P2/P3/P5/P6, multi-weight P8/P9/P8b/P10), chunked marker P7, and the
-  ref-first characterization golden P11) plus 12 PGEN mirrors added across
+  ref-first characterization golden P11, and the BURDEN-conditional golden P25
+  added with the LEDGER #41 fix) plus 13 PGEN mirrors added across
   Phase 7 and its coverage-extension follow-up: P13-P15 (marker/region/
   conditional parity, mirroring P1/P2/P3) and P16-P24 (mirroring, in order,
   P4/P12/P5/P6/P7/P8/P9/P8b/P10 — quantitative conditional, the LEDGER #40
   binary-conditional path, BURDEN, non-fastTest SKAT-O, chunking, and the full
-  multi-weight schema including composed sets and conditional multi-weight).
+  multi-weight schema including composed sets and conditional multi-weight),
+  plus P26 mirroring P25.
   P11 has no PGEN mirror: `--AlleleOrder=ref-first` is a PLINK bim-specific
   toggle, and pvar's fixed REF/ALT columns give it no ref-first/alt-first
   ambiguity to mirror. Step-2 runs consume frozen model inputs: our committed

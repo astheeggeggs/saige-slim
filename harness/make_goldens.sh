@@ -450,6 +450,33 @@ run step2_pgen_group_cond_multiweight.log R2 step2_SPAtests.R \
   --maxMAF_in_groupTest=0.0001,0.001,0.01 \
   --condition=rs30,rs79 --is_fastTest=TRUE
 
+# P25/P26 (added with the LEDGER #41 fix): BURDEN-only (--r.corr=1) group test
+# WITH --condition. This is the combination through which the halved conditional
+# p-value reached a GENE-level statistic: mainRegionInCPP parses the printed
+# string back with std::stod (src/Main.cpp:2019) and feeds it to CCT_cpp, so the
+# region Cauchy row inherited the halving. No golden covered r.corr=1 together
+# with --condition before the fix -- which is exactly why #41 survived P3/P10.
+# Mirrors P5's is_fastTest=FALSE and P3/P10's rs30,rs79 conditioning set.
+run step2_plink_group_cond_burden.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_cond_burden.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --r.corr=1 --is_fastTest=FALSE --condition=rs30,rs79
+
+run step2_pgen_group_cond_burden.log R2 step2_SPAtests.R \
+  $PGEN_G \
+  --SAIGEOutputFile="$GOLD/step2/pgen_group_cond_burden.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --r.corr=1 --is_fastTest=FALSE --condition=rs30,rs79
+
 # B1/B2 (bgen runs) and V1/V2 (vcf runs) retired to harness/goldens_retired/
 # when the BGEN (Strip 6) and VCF/SAV (Strip 5) readers were stripped. Their
 # PLINK counterparts P1-P4 continue; before retirement, the bgen group
