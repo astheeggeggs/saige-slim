@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # LD-pruned GRM set, variance-ratio set, PCs, and the PGEN mirror.
 set -euo pipefail
-REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-cd "$REPO"
-D="${SIMDIR:-harness/work/sim}"
-P2=.pixi/envs/default/bin/plink2
+WT="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$WT"
+# $P2/$RS come from 00_env.sh, which addresses the pixi env ABSOLUTELY. A path
+# relative to this checkout breaks in a git worktree, which has no .pixi of its
+# own -- that is a silent "No such file or directory" partway through the run.
+. "$(dirname "$0")/00_env.sh"
+D="${SIMDIR:-$WT/harness/work/sim}"
 PFX=$D/chr20_sim
 
 # --nonfounders everywhere: the 1000 offspring have PAT/MAT set, so plink2

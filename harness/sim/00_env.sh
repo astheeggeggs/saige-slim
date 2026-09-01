@@ -10,7 +10,10 @@
 # Calling the env's Rscript directly rather than via `pixi run` also avoids
 # ~2.5-5 s of wrapper startup per invocation (same reasoning as
 # harness/run_tests.sh:23-27).
-REPO=/Users/dpalmer/Repositories/SAIGE
+# The pixi env belongs to the PRIMARY checkout; a git worktree has none of its
+# own, so every tool below is addressed absolutely through $REPO rather than
+# relative to whichever checkout a script happens to be running from.
+REPO=${SIM_ENV_REPO:-/Users/dpalmer/Repositories/SAIGE}
 PY=/Users/dpalmer/miniconda3/bin/python3
 P2=$REPO/.pixi/envs/default/bin/plink2
 RS=$REPO/.pixi/envs/default/lib/R/bin/Rscript

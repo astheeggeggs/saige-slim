@@ -34,8 +34,17 @@ cat(sprintf("sparse GRM %s\n  %d x %d, %d off-diagonal pairs, %d true pairs plan
             basename(mtx), nrow(G), ncol(G), length(v), length(truth)))
 cat(sprintf("  value on TRUE pairs : median %.3f (IQR %.3f-%.3f)   [expected 0.5]\n",
             median(v[istrue]), quantile(v[istrue], .25), quantile(v[istrue], .75)))
-cat(sprintf("  value on OTHER pairs: median %.3f, 99.9%% %.3f, max %.3f\n",
-            median(v[!istrue]), quantile(v[!istrue], .999), max(v[!istrue])))
+# A pedigree-truth matrix (03b_pedigree_grm.py) has NO spurious pairs, and the
+# quantiles then come back NA/-Inf. Say so rather than printing them.
+# NOTE: this median is not a contamination measure -- the sparse matrix retains
+# only pairs above the cutoff, so it sits just above wherever the cutoff was put.
+# Compare the extra-pair count below, or the diagonal, which is not truncated.
+if (any(!istrue)) {
+  cat(sprintf("  value on OTHER pairs: median %.3f, 99.9%% %.3f, max %.3f\n",
+              median(v[!istrue]), quantile(v[!istrue], .999), max(v[!istrue])))
+} else {
+  cat("  value on OTHER pairs: none -- every stored pair is a true pedigree pair\n")
+}
 cat(sprintf("  diagonal: median %.3f, range %.3f-%.3f\n\n",
             median(G@x[!off]), min(G@x[!off]), max(G@x[!off])))
 # "mass" = summed off-diagonal weight. What matters for the model is not the

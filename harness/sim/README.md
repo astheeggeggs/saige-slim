@@ -18,6 +18,9 @@ the configuration and stops (the full run is ~80 min).
 | founders | 9,000 | 46,250 |
 | genes | 550 | 210 |
 | intergenic thinning | none | 0.070 (rare intergenic only) |
+| prevalence | 0.10 | 0.01 |
+| trait scaling | fixed `--h2` | NCP ladder 1-60, binary mult `auto` |
+| GRM for steps 1-2 | step 0's estimate | pedigree truth |
 | outdir | `harness/work/sim` | `harness/work/sim50k` |
 | disk | ~7 GB | ~14 GB |
 
@@ -28,17 +31,36 @@ it. Its window and thinning come from the measured pilot in `PILOT.md`, not
 from estimates -- mean recombination rate 0.98x the chromosome mean, ~19 s/Mb,
 72,178 kept sites/Mb at 46,250 founders, 80.8% of variants at MAF <= 1e-4.
 
-**`bench50k` stops before step 0 and says why.** A GRM estimated from one 25 Mb
-window is expected to be unusable for a genetic rather than a counting reason:
-25 Mb of chr20 is ~41 cM, so the number of effectively independent common
-markers is a few hundred *however many markers the window holds*.
-**[ASSUMPTION]** -- that is an a priori argument; no GRM has been built on a
-25 Mb window here. What is measured is the full-chromosome case below, at 2.6x
-the genetic length, which is already marginal. `ALLOW_REGION_GRM=1` runs step 0
-anyway as a diagnostic. The fix is the synthetic independent scaffold, not yet
-built; meanwhile `<prefix>.pedigree_truth.txt` holds the exact relatedness
-matrix step 0 is trying to estimate, so step 0 can be scored as a control
-rather than trusted as a dependency.
+### Step 0 is a control, not a dependency
+
+`03b_pedigree_grm.py` **writes** the sparse GRM implied by the pedigree instead
+of estimating it. The pedigree is known here, so there is no reason to infer
+it -- and over one region it cannot be inferred well: 25 Mb of chr20 is ~41 cM,
+so the number of effectively independent common markers is a few hundred
+*however many markers the window holds*. **[ASSUMPTION]** -- that is an a priori
+argument; no GRM has been built on a 25 Mb window here. What is measured is the
+full-chromosome case below, at 2.6x the genetic length, which is already
+marginal.
+
+Values are on SAIGE's GRM scale (twice kinship): 1.0 diagonal, 0.5 first-degree.
+Founders are independent coalescent draws and a family's two parents are
+unrelated, so within-family first-degree pairs are the *complete* set of nonzero
+off-diagonals -- a property of the construction, not an approximation. The file
+is `coordinate real symmetric`, lower triangle, 1-indexed against its
+`.sampleIDs.txt`, which is what `Matrix:::readMM` wants
+(`R/SAIGE_SPATest_Region.R:26`).
+
+So `RUN_STEP0` defaults **on** for `chr20` (which consumes step 0's output) and
+**off** for `bench50k` (which consumes the truth). Setting `RUN_STEP0=1` under
+`bench50k` runs step 0 purely to be scored against the truth. `GRMFILE`/`GRMIDS`
+override which matrix steps 1-2 read.
+
+The truth matrix is verified through SAIGE's own reader, not by inspection: at
+smoke scale it comes back `dsTMatrix`, symmetric, diagonal exactly 1, all
+off-diagonals exactly 0.5, nothing below the 0.125 cutoff, `.sampleIDs.txt`
+identical to `.fam` order -- and the row sums land at 1.0 / 2.0 / 2.5 for
+singletons / parents / children, which is the pedigree arithmetic derived
+independently of the file.
 
 ### What the prior run actually measured, and one trap in reading it
 
@@ -165,6 +187,21 @@ RELCUT=0.125 NRANDMARK=3000 NTHREADS=6 bash harness/sim/07_run_pipeline.sh
   variants below `--thin-maf` (default 0.01) are thinned. Verified at retention
   0.07: genic 721/721 kept, common 4,618/4,618 kept, rare intergenic
   728/10,609 = 0.069 against an expected 0.070 (0.4 binomial SE).
+- **The NCP ladder delivers its drawn targets to 4e-16 relative error.** With
+  `--ncp-ladder lo,hi` each causal gene gets a target non-centrality drawn
+  log-uniformly and its effects are scaled to hit it, so `--h2` then sets only
+  the non-coding component and total h2 is a reported outcome. A fixed h2 gives
+  every causal gene the same power, which at N=50,000 saturates the positive
+  control (p ~ 1e-25) exactly where BURDEN/SKAT/SKAT-O most need separating;
+  the ladder makes the control `Spearman(NCP, -log10 p)` instead of a hit count.
+- **The binary arm is scaled separately.** At prevalence K a binary trait buys
+  only `phi(t)^2/(K(1-K))` of the non-centrality a quantitative one gets from
+  the same liability h2 -- 0.0718 at K=0.01. `--h2-binary-mult auto` solves for
+  the equalising multiplier from the current prevalence (13.94 at K=0.01,
+  measured net ratio 1.000x) so it cannot go stale. It is **clamped loudly** when
+  it will not fit the liability budget of 1, which it does not for a strong
+  positive-control arm; the warning states the effective multiplier, because a
+  silently weakened positive control is the failure this exists to prevent.
 - The causal-gene listing prints **causal genes only**. Ranking all `n_genes`
   and taking the top 10 pads the table with null genes at h2 = 0 whenever
   there are fewer than 10 causal genes, which reads as a bug and is not.
