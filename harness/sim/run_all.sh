@@ -72,18 +72,27 @@ stage_idx() {
 # Validate here, not inside stage_idx: an `exit` in a $(...) only leaves the
 # SUBSHELL, so a bad FROM would set FROM_IDX empty and fail later as an obscure
 # arithmetic error instead of a clear message.
+TO="${TO:-06}"
 FROM_IDX=$(stage_idx "$FROM")
-if [ -z "$FROM_IDX" ]; then
-  echo "unknown FROM='$FROM' (want one of: 01 02 03 03b 04 05 06)" >&2
+TO_IDX=$(stage_idx "$TO")
+for _v in FROM TO; do
+  eval "_i=\$${_v}_IDX; _s=\$$_v"
+  if [ -z "$_i" ]; then
+    echo "unknown $_v='$_s' (want one of: 01 02 03 03b 04 05 06)" >&2
+    exit 1
+  fi
+done
+if [ "$FROM_IDX" -gt "$TO_IDX" ]; then
+  echo "FROM=$FROM is after TO=$TO; nothing would run" >&2
   exit 1
 fi
-want() { [ "$(stage_idx "$1")" -ge "$FROM_IDX" ]; }
+want() { _k=$(stage_idx "$1"); [ "$_k" -ge "$FROM_IDX" ] && [ "$_k" -le "$TO_IDX" ]; }
 
 echo "CONFIG=$CONFIG  D=$D  N=$(( NSING + 4 * NFAM ))  founders=$(( NSING + 2 * NFAM ))"
 echo "  window=${LEFT:-0}-${RIGHT:-end}  n_eur=$NEUR  n_genes=$NGENES" \
      "thin_intergenic=${THIN:-1.0}  relcut=$RELCUT  need=${NEED_GB}GB"
 echo "  prevalence=${PREVALENCE:-0.10}  ncp_ladder=${NCP_LADDER:-<none, fixed h2>}" \
-     "h2_binary_mult=${H2_BINARY_MULT:-1.0}  from=$FROM"
+     "h2_binary_mult=${H2_BINARY_MULT:-1.0}  stages=$FROM..$TO"
 # The full run is ~80 min; DRYRUN resolves the configuration and stops, which is
 # the only cheap way to check a preset before committing to it.
 if [ -n "${DRYRUN:-}" ]; then echo "DRYRUN: stopping before stage 01"; exit 0; fi
