@@ -3035,6 +3035,123 @@ float calCV(arma::fvec& xVec){
   return(vecCV);
 }
 
+// ---------------------------------------------------------------------------
+// S3: blocked multi-RHS PCG.
+//
+// Solves Sigma X = B for every column of BMat at once. Per column the
+// recurrence is EXACTLY the scalar one in getPCG1ofSigmaAndVector -- the same
+// armadillo expressions over contiguous fvec, in the same order -- so each
+// column is bit-identical to having been solved alone. The ONLY thing shared
+// is getCrossprod's GRM pass, taken once per iteration for all still-active
+// columns instead of once per column per iteration.
+//
+// This is why the per-column scalars (preA, Prebet, sumr2) are computed with
+// per-column fvec ops and NOT promoted to matrix form: an fmat formulation
+// would route the reductions through sgemm and silently change them. Only the
+// genotype decode may be shared; that is the entire win, and its size is
+// bounded by the measured decode share (D/(D+A) = 0.531).
+//
+// A column that has converged, or has hit maxiterPCG, is frozen and dropped
+// from the active set. That reproduces the scalar stopping point exactly --
+// its remaining iterations would not have run either -- and is what makes the
+// blocked cost (max_k iters_k)*D + (sum_k iters_k)*A rather than
+// (sum_k iters_k)*(D+A).
+//
+// Dense path only; the sparse branches have no decode to amortise and are left
+// to the scalar function verbatim by the caller. Memory is 6 working vectors
+// per column plus two N x na matrices, so the column count is capped to keep
+// that near 512 MB at large N.
+// ---------------------------------------------------------------------------
+static arma::fmat getPCG1ofSigmaAndVectorMat(arma::fvec& wVec, arma::fvec& tauVec,
+                                             arma::fmat& BMat, int maxiterPCG, float tolPCG){
+	const int Nnomissing = geno.getNnomissing();
+	const int K = BMat.n_cols;
+	arma::fmat XMat(Nnomissing, K);
+
+	arma::fvec minvVec(Nnomissing);
+	minvVec = 1/getDiagOfSigma(wVec, tauVec);
+
+	// Cap concurrent columns so peak memory stays bounded at large N. Column
+	// arithmetic is independent, so the cap cannot reach any result.
+	long long perCol = 6LL * (long long)Nnomissing * 4LL;
+	int maxCols = (int)((512LL << 20) / (perCol > 0 ? perCol : 1));
+	if(maxCols < 1) maxCols = 1;
+
+	for(int c0 = 0; c0 < K; c0 += maxCols){
+		const int c1 = std::min(c0 + maxCols, K);
+		const int nb = c1 - c0;
+
+		std::vector<arma::fvec> rV(nb), zV(nb), pV(nb), xV(nb);
+		std::vector<float> sumr2(nb);
+		std::vector<int> iters(nb, 0);
+		std::vector<int> active;
+		for(int j = 0; j < nb; j++){
+			arma::fvec bCol(BMat.colptr(c0 + j), Nnomissing, false, true);
+			xV[j].zeros(Nnomissing);
+			rV[j] = bCol;
+			zV[j] = minvVec % rV[j];
+			sumr2[j] = sum(rV[j] % rV[j]);
+			pV[j] = zV[j];
+			if(sumr2[j] > tolPCG && 0 < maxiterPCG) active.push_back(j);
+		}
+
+		arma::fmat PBlock, ApBlock;
+		while(!active.empty()){
+			const int na = active.size();
+			if(tauVec(1) != 0){
+				PBlock.set_size(Nnomissing, na);
+				for(int t = 0; t < na; t++) PBlock.col(t) = pV[active[t]];
+				ApBlock = getCrossprodMatAndKinMat(PBlock);
+			}
+			std::vector<int> stillActive;
+			for(int t = 0; t < na; t++){
+				const int j = active[t];
+				arma::fvec ApVec;
+				if(tauVec(1) == 0){
+					// getCrossprod's short circuit: no GRM pass at all.
+					ApVec = tauVec(0)*(pV[j] % (1/wVec));
+				}else{
+					arma::fvec cp1(ApBlock.colptr(t), Nnomissing, false, true);
+					ApVec = tauVec(0)*(pV[j] % (1/wVec)) + tauVec(1)*cp1;
+				}
+				arma::fvec preA = (rV[j].t() * zV[j])/(pV[j].t() * ApVec);
+				float a = preA(0);
+				xV[j] = xV[j] + a * pV[j];
+				arma::fvec r1Vec = rV[j] - a * ApVec;
+				arma::fvec z1Vec = minvVec % r1Vec;
+				arma::fvec Prebet = (z1Vec.t() * r1Vec)/(zV[j].t() * rV[j]);
+				float bet = Prebet(0);
+				pV[j] = z1Vec + bet*pV[j];
+				zV[j] = z1Vec;
+				rV[j] = r1Vec;
+				sumr2[j] = sum(rV[j] % rV[j]);
+				iters[j] = iters[j] + 1;
+				if(sumr2[j] > tolPCG && iters[j] < maxiterPCG) stillActive.push_back(j);
+			}
+			active.swap(stillActive);
+		}
+
+		// Same lines, same order, as the scalar function printed per solve.
+		for(int j = 0; j < nb; j++){
+			if(iters[j] >= maxiterPCG){
+				cout << "pcg did not converge. You may increase maxiter number." << endl;
+			}
+			cout << "iter from getPCG1ofSigmaAndVector " << iters[j] << endl;
+			XMat.col(c0 + j) = xV[j];
+		}
+	}
+	return XMat;
+}
+
+// True when getPCG1ofSigmaAndVector would take its dense PCG branch with the
+// diagonal preconditioner -- the only shape the blocked solver reproduces.
+static bool canBlockPCG(){
+	if(isUseSparseSigmaforInitTau) return false;
+	if(isUseSparseSigmaforModelFitting && !isUsePCGwithSparseSigma) return false;
+	if(isUsePrecondM) return false;
+	return true;
+}
+
 // [[Rcpp::export]]
 float GetTrace(arma::fmat& Sigma_iX, arma::fmat& Xmat, arma::fvec& wVec, arma::fvec& tauVec, arma::fmat& cov1, int nrun, int maxiterPCG, float tolPCG, float traceCVcutoff){
   set_seed(200);
@@ -3071,14 +3188,26 @@ float GetTrace(arma::fmat& Sigma_iX, arma::fmat& Xmat, arma::fvec& wVec, arma::f
       arma::fmat AuBlock;
       getTraceAuBlock(UBlock, nrunStart, AuBlock);
 
+      // All nrun probes are available at once, so solve them together: one GRM
+      // pass per iteration for the whole active set instead of one per probe.
+      arma::fmat SiuBlock;
+      if(canBlockPCG()){
+        SiuBlock = getPCG1ofSigmaAndVectorMat(wVec, tauVec, UBlock, maxiterPCG, tolPCG);
+      }else{
+        SiuBlock.set_size(Nnomissing, UBlock.n_cols);
+        for(unsigned int c = 0; c < UBlock.n_cols; c++){
+          arma::fvec uCol(UBlock.colptr(c), Nnomissing, false, true);
+          SiuBlock.col(c) = getPCG1ofSigmaAndVector(wVec, tauVec, uCol, maxiterPCG, tolPCG);
+        }
+      }
+
       for(int i = nrunStart; i < nrunEnd; i++){
         arma::fvec uCol(UBlock.colptr(i - nrunStart), Nnomissing, false, true);
         arma::fvec AuCol(AuBlock.colptr(i - nrunStart), Nnomissing, false, true);
-        Sigma_iu = getPCG1ofSigmaAndVector(wVec, tauVec, uCol, maxiterPCG, tolPCG);
-        Pu = Sigma_iu - Sigma_iX * (cov1 *  (Sigma_iXt * uCol));
+        arma::fvec SiuCol(SiuBlock.colptr(i - nrunStart), Nnomissing, false, true);
+        Pu = SiuCol - Sigma_iX * (cov1 *  (Sigma_iXt * uCol));
         tempVec(i) = dot(AuCol, Pu);
         Pu.clear();
-        Sigma_iu.clear();
       }
     }
     Au.clear();
@@ -3404,15 +3533,26 @@ arma::fvec GetTrace_q(arma::fmat& Sigma_iX, arma::fmat& Xmat, arma::fvec& wVec, 
   	  arma::fmat AuBlock;
   	  getTraceAuBlock(UBlock, nrunStart, AuBlock);
 
+  	  // See GetTrace: one GRM pass per iteration for the whole active set.
+  	  arma::fmat SiuBlock;
+  	  if(canBlockPCG()){
+  	    SiuBlock = getPCG1ofSigmaAndVectorMat(wVec, tauVec, UBlock, maxiterPCG, tolPCG);
+  	  }else{
+  	    SiuBlock.set_size(Nnomissing, UBlock.n_cols);
+  	    for(unsigned int c = 0; c < UBlock.n_cols; c++){
+  	      arma::fvec uCol(UBlock.colptr(c), Nnomissing, false, true);
+  	      SiuBlock.col(c) = getPCG1ofSigmaAndVector(wVec, tauVec, uCol, maxiterPCG, tolPCG);
+  	    }
+  	  }
+
   	  for(int i = nrunStart; i < nrunEnd; i++){
   	    arma::fvec uCol(UBlock.colptr(i - nrunStart), Nnomissing, false, true);
   	    arma::fvec AuCol(AuBlock.colptr(i - nrunStart), Nnomissing, false, true);
-  	    Sigma_iu = getPCG1ofSigmaAndVector(wVec, tauVec, uCol, maxiterPCG, tolPCG);
-  	    Pu = Sigma_iu - Sigma_iX * (cov1 *  (Sigma_iXt * uCol));
+  	    arma::fvec SiuCol(SiuBlock.colptr(i - nrunStart), Nnomissing, false, true);
+  	    Pu = SiuCol - Sigma_iX * (cov1 *  (Sigma_iXt * uCol));
   	    tempVec(i) = dot(AuCol, Pu);
   	    tempVec0(i) = dot(uCol, Pu);
   	    Pu.clear();
-  	    Sigma_iu.clear();
   	  }
   	}
   	Au.clear();
