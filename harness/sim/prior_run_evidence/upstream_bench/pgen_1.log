@@ -1,0 +1,69 @@
+(2026-09-01 23:16:03.889136) ---- Analyzing Chunk 1/22: chrom 20 ---- 
+3299 markers were tested.
+  6.190   0.417   6.707 
+(2026-09-01 23:16:07.365046) ---- Analyzing Chunk 2/22: chrom 20 ---- 
+3745 markers were tested.
+  9.835   0.566  10.825 
+(2026-09-01 23:16:11.477054) ---- Analyzing Chunk 3/22: chrom 20 ---- 
+3593 markers were tested.
+ 13.407   0.757  14.792 
+(2026-09-01 23:16:15.439797) ---- Analyzing Chunk 4/22: chrom 20 ---- 
+3642 markers were tested.
+ 17.159   1.013  18.911 
+(2026-09-01 23:16:19.559994) ---- Analyzing Chunk 5/22: chrom 20 ---- 
+3084 markers were tested.
+ 20.495   1.156  22.534 
+(2026-09-01 23:16:23.181057) ---- Analyzing Chunk 6/22: chrom 20 ---- 
+2849 markers were tested.
+ 23.599   1.286  25.870 
+(2026-09-01 23:16:26.51697) ---- Analyzing Chunk 7/22: chrom 20 ---- 
+3556 markers were tested.
+ 27.113   1.401  29.621 
+(2026-09-01 23:16:30.280688) ---- Analyzing Chunk 8/22: chrom 20 ---- 
+3179 markers were tested.
+ 30.388   1.541  33.115 
+(2026-09-01 23:16:33.778666) ---- Analyzing Chunk 9/22: chrom 20 ---- 
+3446 markers were tested.
+ 33.831   1.670  36.747 
+(2026-09-01 23:16:37.390462) ---- Analyzing Chunk 10/22: chrom 20 ---- 
+3282 markers were tested.
+ 37.353   1.847  40.510 
+(2026-09-01 23:16:41.153755) ---- Analyzing Chunk 11/22: chrom 20 ---- 
+3154 markers were tested.
+ 40.634   2.010  44.023 
+(2026-09-01 23:16:44.668607) ---- Analyzing Chunk 12/22: chrom 20 ---- 
+3489 markers were tested.
+ 44.073   2.154  47.674 
+(2026-09-01 23:16:48.338968) ---- Analyzing Chunk 13/22: chrom 20 ---- 
+3353 markers were tested.
+ 47.940   2.402  51.875 
+(2026-09-01 23:16:52.519715) ---- Analyzing Chunk 14/22: chrom 20 ---- 
+3348 markers were tested.
+ 51.429   2.557  55.731 
+(2026-09-01 23:16:56.381896) ---- Analyzing Chunk 15/22: chrom 20 ---- 
+3221 markers were tested.
+ 54.621   2.666  59.107 
+(2026-09-01 23:16:59.752669) ---- Analyzing Chunk 16/22: chrom 20 ---- 
+3517 markers were tested.
+ 57.981   2.815  62.691 
+(2026-09-01 23:17:03.335444) ---- Analyzing Chunk 17/22: chrom 20 ---- 
+3568 markers were tested.
+ 61.431   2.984  66.373 
+(2026-09-01 23:17:07.019255) ---- Analyzing Chunk 18/22: chrom 20 ---- 
+3505 markers were tested.
+ 64.888   3.159  70.030 
+(2026-09-01 23:17:10.686161) ---- Analyzing Chunk 19/22: chrom 20 ---- 
+3364 markers were tested.
+ 68.307   3.332  73.693 
+(2026-09-01 23:17:14.338343) ---- Analyzing Chunk 20/22: chrom 20 ---- 
+3189 markers were tested.
+ 71.543   3.467  77.130 
+(2026-09-01 23:17:17.772795) ---- Analyzing Chunk 21/22: chrom 20 ---- 
+3131 markers were tested.
+ 74.835   3.611  80.634 
+(2026-09-01 23:17:21.271105) ---- Analyzing Chunk 22/22: chrom 20 ---- 
+187 markers were tested.
+ 75.137   3.627  80.959 
+real 81.23
+user 75.25
+sys 3.66
