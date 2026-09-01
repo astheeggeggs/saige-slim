@@ -94,6 +94,52 @@ for (col in cols) {
   cat(sprintf("  -> ranking controls below use %d of %d sub-test cells\n",
               nrow(usable), nrow(sub)))
 
+  # DIRECTIONALITY control (plan Stage 7). BURDEN sums signed effects and SKAT
+  # sums squares, so a gene whose causal effects mostly share a sign should be
+  # found more easily by BURDEN, and a gene with mixed signs by SKAT. This is a
+  # prediction about the RANKING of two tests on the same data, which is far
+  # harder to satisfy by accident than "the causal genes come out significant",
+  # and it is the reason the generator bothers to make class-2 effects 90%
+  # same-sign.
+  #
+  # Directionality per gene is measured from the simulated betas as
+  # |sum(beta)| / sum(|beta|): 1 = perfectly directional, 0 = perfectly
+  # cancelling. Prediction: Spearman(dir, log10(P_SKAT / P_BURDEN)) > 0.
+  # Restricted to cells with >= 4 uncollapsed markers, because below that the
+  # two tests are literally the same number (see the A1 table above).
+  if (is.null(vars)) {
+    vf <- file.path(d, "variants.tsv.gz")
+    if (file.exists(vf)) vars <<- read.delim(gzfile(vf), stringsAsFactors = FALSE)
+  }
+  if (!is.null(vars) && nrow(usable) > 10) {
+    cv <- vars[vars$beta != 0 & vars$gene != ".", c("gene", "beta")]
+    dir <- aggregate(beta ~ gene, cv, function(b) abs(sum(b)) / sum(abs(b)))
+    names(dir)[2] <- "dirscore"
+    nvar <- aggregate(beta ~ gene, cv, length); names(nvar)[2] <- "n_causal"
+    dir <- merge(dir, nvar)
+    dir <- dir[dir$n_causal >= 2, ]          # a 1-variant gene is trivially "directional"
+    u <- merge(usable, dir, by.x = "Region", by.y = "gene")
+    u <- u[is.finite(u$Pvalue_Burden) & is.finite(u$Pvalue_SKAT) &
+             u$Pvalue_Burden > 0 & u$Pvalue_SKAT > 0, ]
+    if (nrow(u) >= 8) {
+      lr <- log10(u$Pvalue_SKAT) - log10(u$Pvalue_Burden)
+      rho <- suppressWarnings(cor(u$dirscore, lr, method = "spearman"))
+      ct <- suppressWarnings(cor.test(u$dirscore, lr, method = "spearman"))
+      cat(sprintf("  DIRECTIONALITY control: Spearman(dir, log10 P_SKAT/P_BURDEN) = %.3f (p=%.3g) over %d cells in %d genes\n",
+                  rho, ct$p.value, nrow(u), length(unique(u$Region))))
+      cat(sprintf("     predicted > 0 (directional genes favour BURDEN). dir range %.2f-%.2f\n",
+                  min(u$dirscore), max(u$dirscore)))
+      hi <- u[u$dirscore >= 0.8, ]; lo <- u[u$dirscore <= 0.4, ]
+      if (nrow(hi) && nrow(lo)) {
+        cat(sprintf("     BURDEN beats SKAT in %5.1f%% of directional cells (dir>=0.8, n=%d) vs %5.1f%% of mixed (dir<=0.4, n=%d)\n",
+                    100 * mean(hi$Pvalue_Burden < hi$Pvalue_SKAT), nrow(hi),
+                    100 * mean(lo$Pvalue_Burden < lo$Pvalue_SKAT), nrow(lo)))
+      }
+    } else {
+      cat(sprintf("  DIRECTIONALITY control: skipped (%d usable cells with >=2 causal variants)\n", nrow(u)))
+    }
+  }
+
   # which annotation mask carries the signal in the causal genes?
   gg <- merge(g[g$Group != "Cauchy", ], truth, by.x = "Region", by.y = "gene")
   cs <- gg[gg$causal == 1, ]
