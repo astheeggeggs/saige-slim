@@ -32,6 +32,31 @@ This corrects the plan's "1–2 h, the dominant cost and the top risk" estimate 
 an order of magnitude: 25 Mb is **~8 min**. Simulation is not the bottleneck and
 should be dropped from the risk list.
 
+> ### CORRECTION, measured on the real run (2026-09-01)
+>
+> **The ~8 min figure was wrong, and the error is in the model, not the
+> measurement.** Extrapolating s/Mb linearly assumes coalescent cost is linear in
+> sequence length. It is not: the number of ancestral segments carried by the
+> Hudson algorithm grows faster than L, so per-Mb cost rises with L.
+>
+> | at 25 Mb, 46,250 founders | predicted here | measured |
+> |---|---|---|
+> | wall clock | 7.9 min | **33.2 min** (1990.3 s) |
+> | peak RSS | 5.2 GB (208 MB/Mb) | **2.07 GB** (82.6 MB/Mb) |
+> | raw sites | 83,491/Mb | **83,211/Mb** |
+>
+> Realised runtime exponent `ln(52.4)/ln(12.5) = 1.57`, i.e. cost ~ L^1.57 over
+> this range. Site counts were accurate to 0.3% and memory was 2.5x
+> conservative; **only the runtime model was wrong**, so the sizing table above
+> is still sound and only its `sim` column is not.
+>
+> Realised: 1,159,476 trees, 2,080,270 sites, 6,155,502 edges, 349 MB `.trees`.
+>
+> The general lesson, twice over now: this stage has been mis-estimated in both
+> directions (5x optimistic from an unrepresentative window, then 4.2x optimistic
+> from a linear extrapolation). Do not quote a runtime for a length that has not
+> been run.
+
 ## Site-frequency spectrum (per Mb, founders)
 
 ```

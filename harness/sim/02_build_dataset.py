@@ -214,8 +214,18 @@ ev_ptr = 0
 n_seen = n_kept = n_multi = n_thinned = 0
 thin = a.thin_intergenic
 
+# The streaming loop is the longest stage at bench50k size (2.08M sites x 50,000
+# samples) and used to print nothing at all until it finished, so a run that was
+# progressing and one that was wedged looked identical for an hour. Report often
+# enough to see the rate, rarely enough to cost nothing.
+PROGRESS_EVERY = 100_000
+t_loop = time.time()
 for var in ts.variants(samples=founder_nodes, copy=False):
     n_seen += 1
+    if n_seen % PROGRESS_EVERY == 0:
+        el = time.time() - t_loop
+        say(f"  ... {n_seen:,} sites seen, {n_kept:,} kept, {len(cod_idx):,} coding, "
+            f"{n_thinned:,} thinned  [{el:.0f}s, {n_seen / max(el, 1e-9):,.0f} sites/s]")
     if len(var.alleles) != 2 or var.alleles[1] is None:
         n_multi += 1
         continue

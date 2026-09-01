@@ -58,24 +58,50 @@ export D="$SIMDIR"
 . harness/sim/00_env.sh
 mkdir -p "$D"
 export RELCUT="${RELCUT:-0.125}" NRANDMARK="${NRANDMARK:-3000}" NTHREADS="${NTHREADS:-6}"
+# FROM=<stage> resumes an interrupted run. Stage 01 alone is 33 min at
+# bench50k's size and stage 02 is longer, so re-running from the top to redo a
+# later stage is not an acceptable way to iterate.
+#   01 simulate  02 build  03 plink  03b truth-GRM  04 step0  05 steps1-2  06 analyse
+FROM="${FROM:-01}"
+stage_idx() {
+  case "$1" in
+    01) echo 1;; 02) echo 2;; 03) echo 3;; 03b) echo 4;;
+    04) echo 5;; 05) echo 6;; 06) echo 7;; *) echo "";;
+  esac
+}
+# Validate here, not inside stage_idx: an `exit` in a $(...) only leaves the
+# SUBSHELL, so a bad FROM would set FROM_IDX empty and fail later as an obscure
+# arithmetic error instead of a clear message.
+FROM_IDX=$(stage_idx "$FROM")
+if [ -z "$FROM_IDX" ]; then
+  echo "unknown FROM='$FROM' (want one of: 01 02 03 03b 04 05 06)" >&2
+  exit 1
+fi
+want() { [ "$(stage_idx "$1")" -ge "$FROM_IDX" ]; }
+
 echo "CONFIG=$CONFIG  D=$D  N=$(( NSING + 4 * NFAM ))  founders=$(( NSING + 2 * NFAM ))"
 echo "  window=${LEFT:-0}-${RIGHT:-end}  n_eur=$NEUR  n_genes=$NGENES" \
      "thin_intergenic=${THIN:-1.0}  relcut=$RELCUT  need=${NEED_GB}GB"
 echo "  prevalence=${PREVALENCE:-0.10}  ncp_ladder=${NCP_LADDER:-<none, fixed h2>}" \
-     "h2_binary_mult=${H2_BINARY_MULT:-1.0}"
+     "h2_binary_mult=${H2_BINARY_MULT:-1.0}  from=$FROM"
 # The full run is ~80 min; DRYRUN resolves the configuration and stops, which is
 # the only cheap way to check a preset before committing to it.
 if [ -n "${DRYRUN:-}" ]; then echo "DRYRUN: stopping before stage 01"; exit 0; fi
 S=harness/sim
+
+
 step() { echo; echo "### $*"; }
 
 require_free_gb "${NEED_GB:-8}"
 
+if want 01; then
 step "01 coalescent simulation"
 $PY $S/01_simulate.py --out "$D/chr20.trees" \
     ${NEUR:+--n-eur $NEUR} ${LEFT:+--left $LEFT} ${RIGHT:+--right $RIGHT} \
     2>&1 | tee "$D/01_simulate.log"
+fi
 
+if want 02; then
 step "02 genotypes, annotations, traits"
 $PY $S/02_build_dataset.py --trees "$D/chr20.trees" --outdir "$D" \
     ${NSING:+--n-singletons $NSING} ${NFAM:+--n-families $NFAM} \
@@ -84,16 +110,21 @@ $PY $S/02_build_dataset.py --trees "$D/chr20.trees" --outdir "$D" \
     ${H2_BINARY_MULT:+--h2-binary-mult $H2_BINARY_MULT} \
     ${H2:+--h2 $H2} ${H2_PC:+--h2-pc $H2_PC} ${SEED:+--seed $SEED} \
     2>&1 | tee "$D/02_build.log"
+fi
 
+if want 03; then
 step "03 plink/plink2 sets, PCs"
 bash $S/03_plink_prep.sh 2>&1 | tee "$D/03_plink.log"
 $PY $S/04_add_pcs.py "$D" 4
+fi
 
+if want 03b; then
 step "03b pedigree-truth sparse GRM"
 # The pedigree is known, so the relatedness matrix can be WRITTEN rather than
 # estimated. Cheap, exact, and produced for both configs -- chr20 uses it as a
 # reference to score step 0 against, bench50k consumes it directly.
 $PY $S/03b_pedigree_grm.py --dir "$D" 2>&1 | tee "$D/03b_pedigree_grm.log"
+fi
 
 # Which GRM steps 1-2 actually consume.
 #
@@ -119,7 +150,7 @@ else
   : "${RUN_STEP0:=1}"
 fi
 
-if [ "$RUN_STEP0" != "1" ]; then
+if [ "$RUN_STEP0" != "1" ] || ! want 04; then
   echo
   echo "skipping step 0 (RUN_STEP0=$RUN_STEP0). Set RUN_STEP0=1 to run it as a"
   echo "control and score it against $D/pedigree_truth.sparseGRM.mtx."
@@ -144,9 +175,13 @@ $RS $S/05_check_grm.R \
 
 fi   # RUN_STEP0
 
+if want 05; then
 step "05 steps 1 and 2, all traits"
 bash $S/07_run_pipeline.sh
+fi
 
+if want 06; then
 step "06 results vs simulated truth"
 $RS $S/06_analyse.R 2>&1 | tee "$D/RESULTS.txt"
+fi
 echo; echo "### done -- outputs in $D"
