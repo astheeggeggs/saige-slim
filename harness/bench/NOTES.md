@@ -108,3 +108,52 @@ No `results.tsv` rows are added for this: `bench.sh` records
 sys_s/maxRSS/pcg_iters from its own protocol, and back-filling those columns
 with NA from a different harness would put two protocols in one table. Re-run
 `bench.sh` on both builds if structured rows are wanted.
+
+## S3, blocked multi-RHS PCG (2026-09-01, commit 32ed5f1e)
+
+Same protocol as the section above: only `src/SAIGE_fitGLMM_fast.cpp` swapped
+between 34fa687d and the tip, full clean rebuild each way, same day.
+
+**Null model fit** ("fitting the NULL model took", user s, 3 reps):
+
+| | rep1 | rep2 | rep3 | mean |
+|---|---|---|---|---|
+| before | 34.843 | 33.393 | 33.229 | 33.82 |
+| after  | 14.160 | 14.305 | 14.413 | 14.29 |
+
+**2.37x user, 2.34x elapsed**, non-overlapping. Per-round varcomp block
+2.469/10.080/10.068 -> 0.085/4.181/4.225 s.
+
+**Whole step-1 script** (`/usr/bin/time`, 2 reps): user 41.60/43.09 -> 27.58/
+27.22 (**1.55x**); real 43.43/46.11 -> 30.78/29.44 (**1.49x**).
+
+### Quote the right denominator -- this cost a false "overshoot"
+
+The 2.37x first looked like it beat the 1.81x projection. It did not: the
+projection was for the WHOLE RUN and the measurement was of the NULL FIT.
+Redone on the right denominator the model is fine:
+
+- fit-phase PCG iterations 273, varratio-phase 111, **both unchanged** by this
+  change (it only touches GetTrace);
+- null-fit budget is 442 - 111 = 331 GRM passes, 300 of them blockable;
+- after = 7 blocked passes * 14.6 + 31 single = 133 units, i.e. **2.49x
+  predicted vs 2.37x measured** -- reconciles to 5%.
+
+The whole-run figure is lower than its own 1.81x projection for the opposite
+reason: the pass-count model counts ONLY GRM passes and ignores R startup,
+`library(SAIGE)`, the bim/fam parse and the ~2.2 s `setgeno` ingest, which
+together are ~8.5 s of the 42 s baseline and are untouchable by any of this.
+
+**So: 2.37x on the null model fit, 1.55x on the step-1 run as a user
+experiences it.** Both are real; quoting either without saying which is what
+made the numbers look inconsistent.
+
+### Cumulative, against the original plan
+
+| | null fit |
+|---|---|
+| plan's projection for blocked GetTrace | 3.6x |
+| measured ceiling once D/A was known | 1.81x whole-run / 2.49x null-fit |
+| S1+S2 (memoise + block Au) | 1.32x |
+| S1+S2+S3 (+ blocked multi-RHS PCG) | **2.37x** |
+
