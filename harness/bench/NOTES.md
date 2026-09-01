@@ -77,3 +77,34 @@ bytes, so it is also the most hazardous thing in the table to touch.
   (s2_marker 0.87× on means, overlapping distributions, n=3/4 — unresolved).
   The tight morning `phase4-batch1` rows remain the best baseline estimates.
   Re-measure s2 on a quiet morning machine before the threading work.
+
+## Step-1 blocked/memoised GetTrace: measured A/B (2026-09-01)
+
+Branch `gettrace-blocked`. Workload is the `binary_denseGRM` golden config,
+which is the `s1_full` bench workload; `bash harness/env.sh` pinned, one thread.
+Both arms built on the SAME DAY on the same machine by swapping only
+`src/SAIGE_fitGLMM_fast.cpp` between 34fa687d and the branch tip and doing a
+full clean rebuild each way -- cross-day rows are not comparable on this
+machine, which is why the `phase4-c3-*` rows could not serve as the baseline.
+
+Reported figure is "fitting the NULL model took", 3 reps:
+
+| | user (s) | elapsed (s) |
+|---|---|---|
+| before | 30.238 / 30.054 / 30.698 | 31.41 / 31.27 / 32.10 |
+| after  | 22.601 / 22.572 / 23.598 | 24.16 / 24.64 / 25.74 |
+
+**1.32x user, 1.27x elapsed, non-overlapping ranges.**
+
+**This SUPERSEDES the "1.40x" in commit 9213390e's message**, which came from a
+single rep per arm. The mechanism is unchanged and still reconciles -- the
+varcomp block goes 2.469/10.080/10.068 -> 0.086/7.641/7.770 s per round, round 1
+collapsing to a cache hit and rounds 2-3 each saving ~2.44 s against a predicted
+30 * 0.086 = 2.58 s -- but the headline ratio was optimistic. One rep per arm is
+not a measurement on this machine; the run-to-run spread here is ~2% within an
+arm and was ~13% for the s2 workloads.
+
+No `results.tsv` rows are added for this: `bench.sh` records
+sys_s/maxRSS/pcg_iters from its own protocol, and back-filling those columns
+with NA from a different harness would put two protocols in one table. Re-run
+`bench.sh` on both builds if structured rows are wanted.
