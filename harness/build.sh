@@ -12,16 +12,23 @@ cd "$REPO"
 # PGEN support (Phase 7) needs pgenlib from plink-ng, compiled into
 # .pixi/envs/default/lib/libplink2_includes.a. Not vendored in git
 # (.gitignore excludes plink-ng/); fetch+compile once, guarded so repeat
-# builds are a no-op. Mirrors docker/Dockerfile's layer, but uses the
-# pixi-env compiler ($CXX) so it works natively on macOS and Linux, not just
-# the Linux Docker image's fixed cross-compiler name.
+# builds are a no-op. Mirrors docker/Dockerfile's layer, but uses R's own
+# configured C++ compiler (`R CMD config CXX`) so it works natively on macOS
+# and Linux without assuming pixi exports $CXX -- it doesn't on a bare Linux
+# runner (no gxx_linux-64/clangxx-style compiler package in pixi.toml), which
+# is exactly what left `"$CXX"` expanding to an empty string and failing with
+# "command not found" the first time this ran in CI. R's compiler is
+# guaranteed to exist: this package can't build without it either way.
 if [ ! -f .pixi/envs/default/lib/libplink2_includes.a ]; then
   echo "libplink2_includes.a not found; fetching + building plink-ng ..."
   if [ ! -d plink-ng ]; then
     curl -L https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-a.6.16.tar.gz | tar -zx
     mv plink-ng-2.0.0-a.6.16 plink-ng
   fi
-  pixi run bash -c '"$CXX" -std=c++14 -fPIC -O3 -I.pixi/envs/default/include -L.pixi/envs/default/lib -o libplink2_includes.a plink-ng/2.0/include/*.cc -shared -lz -lzstd -lpthread -lm -ldeflate'
+  # R CMD config CXX returns "<compiler> -std=gnu++NN"; take just the
+  # compiler binary so it doesn't collide with our own -std=c++14 below.
+  RCXX="$(pixi run R CMD config CXX | awk '{print $1}')"
+  pixi run bash -c "'$RCXX' -std=c++14 -fPIC -O3 -I.pixi/envs/default/include -L.pixi/envs/default/lib -o libplink2_includes.a plink-ng/2.0/include/*.cc -shared -lz -lzstd -lpthread -lm -ldeflate"
   mv libplink2_includes.a .pixi/envs/default/lib
 fi
 
