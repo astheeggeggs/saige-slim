@@ -32,6 +32,7 @@ Effect-size model
 import argparse
 import gzip
 import json
+import os
 import time
 
 import numpy as np
@@ -57,9 +58,23 @@ ap.add_argument("--h2-poly", type=float, default=0.35,
 ap.add_argument("--frac-h2-coding", type=float, default=0.6)
 ap.add_argument("--prevalence", type=float, default=0.10)
 ap.add_argument("--var-covar", type=float, default=0.10, help="variance explained by age+sex")
+ap.add_argument("--thin-intergenic", type=float, default=1.0,
+                help="retention probability for RARE INTERGENIC variants (1.0 = keep "
+                     "everything, the default). Thinning must never be uniform: the "
+                     "GRM (--minMAFforGRM) and the LD-pruned variance-ratio set are "
+                     "drawn from the common-variant pool, and the group tests from the "
+                     "genic one, so a uniform thin destroys exactly the pools the "
+                     "fixture exists to exercise. Genic variants and variants at or "
+                     "above --thin-maf are always kept.")
+ap.add_argument("--thin-maf", type=float, default=0.01,
+                help="MAF at or above which a variant is never thinned")
 a = ap.parse_args()
 
 rng = np.random.default_rng(a.seed)
+# Separate stream: with --thin-intergenic at its 1.0 default no draw is taken
+# and the main stream is bit-identical to an unthinned run, so turning thinning
+# on changes which variants exist WITHOUT also reshuffling every effect size.
+rng_thin = np.random.default_rng(a.seed + 90001)
 t0 = time.time()
 
 
@@ -153,9 +168,15 @@ bim = open(f"{a.outdir}/{a.prefix}.bim", "w")
 
 buf, BUFMAX = [], 4000
 pos_l, ac_l, gene_l = [], [], []
-cod_dose, cod_idx = [], []
+cod_idx = []
+# Coding dosages go straight to disk as raw int8 and are read back as a memmap.
+# Held as a list of N-vectors they cost n_coding * N bytes resident, which
+# np.stack then briefly DOUBLES -- 2.5 GB each at N=50,000.
+cod_path = f"{a.outdir}/_coding_dosage.i8"
+cod_fh = open(cod_path, "wb")
 ev_ptr = 0
-n_seen = n_kept = n_multi = 0
+n_seen = n_kept = n_multi = n_thinned = 0
+thin = a.thin_intergenic
 
 for var in ts.variants(samples=founder_nodes, copy=False):
     n_seen += 1
@@ -175,6 +196,13 @@ for var in ts.variants(samples=founder_nodes, copy=False):
     ac = int(dose.sum())
     if ac == 0 or ac == 2 * N:
         continue
+    k = np.searchsorted(ex_s, p, "right") - 1
+    gi = int(ex_g[k]) if (k >= 0 and p < ex_e[k]) else -1
+    if thin < 1.0 and gi < 0:
+        af_i = ac / (2 * N)
+        if min(af_i, 1 - af_i) < a.thin_maf and rng_thin.random() >= thin:
+            n_thinned += 1
+            continue
     codes = CODE[dose].reshape(-1, 4)
     buf.append(codes[:, 0] | (codes[:, 1] << 2) | (codes[:, 2] << 4) | (codes[:, 3] << 6))
     if len(buf) >= BUFMAX:
@@ -183,13 +211,11 @@ for var in ts.variants(samples=founder_nodes, copy=False):
     ip = int(p)
     ref, alt = var.alleles[0], var.alleles[1]
     bim.write(f"20\t20:{ip}:{ref}:{alt}\t0\t{ip}\t{alt}\t{ref}\n")
-    k = np.searchsorted(ex_s, p, "right") - 1
-    gi = int(ex_g[k]) if (k >= 0 and p < ex_e[k]) else -1
     pos_l.append(ip)
     ac_l.append(ac)
     gene_l.append(gi)
     if gi >= 0:
-        cod_dose.append(dose.copy())
+        cod_fh.write(dose.tobytes())
         cod_idx.append(n_kept)
     n_kept += 1
 
@@ -197,8 +223,12 @@ if buf:
     bed.write(np.concatenate(buf).tobytes())
 bed.close()
 bim.close()
+cod_fh.close()
 say(f"sites seen {n_seen:,} (dropped {n_multi:,} non-biallelic); "
     f"kept {n_kept:,} polymorphic in EUR; coding {len(cod_idx):,}")
+if thin < 1.0:
+    say(f"thinned {n_thinned:,} intergenic variants with MAF < {a.thin_maf} "
+        f"(retention {thin}); genic and MAF >= {a.thin_maf} untouched")
 
 pos = np.array(pos_l)
 ac = np.array(ac_l, np.int64)
@@ -225,6 +255,27 @@ with open(f"{a.outdir}/{a.prefix}.fam", "w") as fh:
     for i in range(N):
         fh.write(f"{fid[i]} {iid[i]} {pat[i]} {mat[i]} {sex[i]} -9\n")
 
+# Pedigree truth: every nonzero off-diagonal of the relatedness matrix that
+# step 0 is trying to estimate. Founders are drawn from the coalescent and the
+# two parents of a family are unrelated, so first-degree pairs within a family
+# are the complete list. With this on disk, step 0 becomes a CONTROL -- compare
+# its .mtx against this -- instead of an unchecked dependency of everything
+# downstream. "grm" is the SAIGE scale (2 * kinship: 1.0 self, 0.5 first-degree).
+with open(f"{a.outdir}/{a.prefix}.pedigree_truth.txt", "w") as fh:
+    fh.write("IID1\tIID2\tkinship\tgrm\trelation\n")
+    for i in range(N):
+        fh.write(f"{iid[i]}\t{iid[i]}\t0.5\t1.0\tself\n")
+    n_pair = 0
+    for f in range(a.n_families):
+        b = a.n_singletons + 4 * f
+        fa, mo, c1, c2 = iid[b], iid[b + 1], iid[b + 2], iid[b + 3]
+        for x, y, rel in ((fa, c1, "parent-offspring"), (fa, c2, "parent-offspring"),
+                          (mo, c1, "parent-offspring"), (mo, c2, "parent-offspring"),
+                          (c1, c2, "full-sib")):
+            fh.write(f"{x}\t{y}\t0.25\t0.5\t{rel}\n")
+            n_pair += 1
+say(f"pedigree truth: {N} self + {n_pair:,} first-degree pairs")
+
 np.save(f"{a.outdir}/_pos.npy", pos)
 np.save(f"{a.outdir}/_ac.npy", ac)
 np.save(f"{a.outdir}/_gene.npy", gene)
@@ -235,8 +286,8 @@ say("wrote bed/bim/fam")
 
 # ------------------------------------------- 5. annotations + effect classes
 cod_idx = np.array(cod_idx)
-D = np.stack(cod_dose).astype(np.int8) if len(cod_idx) else np.zeros((0, N), np.int8)
-del cod_dose
+D = (np.memmap(cod_path, np.int8, "r", shape=(len(cod_idx), N))
+     if len(cod_idx) else np.zeros((0, N), np.int8))
 cmaf = maf[cod_idx]
 u = -np.log10(cmaf)
 z = (u - u.mean()) / u.std()
@@ -259,22 +310,48 @@ say(f"cor(anno, true effect class) = {np.corrcoef(a_lat, e_lat)[0, 1]:.3f} (late
     f"{np.corrcoef(anno, eclass)[0, 1]:.3f} (after cutting)")
 
 # ------------------------------------------------------ 6. spike-and-slab
+gcode = gene[cod_idx]
+n_var_per_gene = np.bincount(gcode[gcode >= 0], minlength=a.n_genes)
+# The group file skips genes with < 2 coding variants, so such a gene cannot be
+# tested at all; making it "causal" only pollutes the positive-control set.
+eligible = np.where(n_var_per_gene >= 2)[0]
 n_causal_genes = int(round(a.frac_causal_genes * a.n_genes))
-causal_genes = np.sort(rng.choice(a.n_genes, n_causal_genes, replace=False))
-is_cg = np.isin(gene[cod_idx], causal_genes)
+if n_causal_genes > len(eligible):
+    print(f"WARNING: only {len(eligible)} genes have >= 2 coding variants; "
+          f"lowering causal genes {n_causal_genes} -> {len(eligible)}", flush=True)
+    n_causal_genes = len(eligible)
+causal_genes = np.sort(rng.choice(eligible, n_causal_genes, replace=False))
+is_cg = np.isin(gcode, causal_genes)
 scale = (2 * cmaf * (1 - cmaf)) ** (a.alpha / 2)      # slab sd multiplier
 
 PI = np.array([0.02, 0.35, 0.55])                     # P(causal | true class)
 SD = np.array([0.25, 1.00, 1.20])                     # slab sd  | true class
 beta_c = np.zeros(len(cod_idx))
 causal = (rng.random(len(cod_idx)) < PI[eclass]) & is_cg
+# Causal variants are drawn independently per variant, so a causal gene can come
+# out with ZERO of them -- it then has h2 exactly 0 while still counting as a
+# positive control, which drags the control's rank statistic toward the null and
+# makes a correct pipeline look like it failed. (Before this: 7 of the top-10
+# causal genes in the smoke run were h2 = 0.) Force one per empty causal gene,
+# sampled with the same per-class propensity so the effect-class mix is kept.
+n_forced = 0
+for _gi in causal_genes:
+    _m = np.where(gcode == _gi)[0]
+    if causal[_m].any():
+        continue
+    _w = PI[eclass[_m]]
+    causal[_m[rng.choice(len(_m), p=_w / _w.sum())]] = True
+    n_forced += 1
+_have = np.array([bool(causal[gcode == g].any()) for g in causal_genes])
+assert _have.all(), f"{(~_have).sum()} causal genes still have no causal variant"
 draw = rng.normal(0, SD[eclass] * scale)
 # class 2 (pLoF-like) is directional: 90% positive
 flip = np.where(rng.random(len(cod_idx)) < 0.90, 1.0, -1.0)
 draw = np.where(eclass == 2, flip * np.abs(draw), draw)
 beta_c[causal] = draw[causal]
 say(f"{n_causal_genes} causal genes; {int(causal.sum()):,} causal coding variants "
-    f"({causal.sum() / max(is_cg.sum(), 1) * 100:.1f}% of variants in causal genes)")
+    f"({causal.sum() / max(is_cg.sum(), 1) * 100:.1f}% of variants in causal genes); "
+    f"{n_forced} gene(s) needed a forced variant")
 
 def dot_chunked(mat, b, n_out, step=2000):
     """sum_j b_j * mat[j, :] without materialising mat as float64 (2.6 GB)."""
@@ -334,15 +411,21 @@ say(f"scaled: var(g)={g.var():.4g} (target h2 {a.h2}); "
 
 # per-gene true h2 (variance of the gene's own burden of causal effects)
 gene_h2 = np.zeros(a.n_genes)
-gcode = gene[cod_idx]
 for gi in causal_genes:
     sel = (gcode == gi) & causal
     if sel.any():
         gene_h2[gi] = dot_chunked(D[sel], beta_c[sel], N).var()
-top = np.argsort(-gene_h2)[:10]
-say("top causal genes by true h2 (and expected 1-df NCP at N=%d):" % N)
-for gi in top:
+# List CAUSAL genes only. Ranking all n_genes and taking the top 10 pads the
+# table with null genes at h2 = 0 exactly whenever there are fewer than 10
+# causal genes, which reads as "causal genes with no effect" and is not.
+_ord = causal_genes[np.argsort(-gene_h2[causal_genes])]
+_n0 = int((gene_h2[causal_genes] == 0).sum())
+say(f"causal genes by true h2 (expected 1-df NCP at N={N}); "
+    f"{_n0} of {len(causal_genes)} have h2 == 0:")
+for gi in _ord[:10]:
     say(f"   GENE{gi + 1:04d}  h2={gene_h2[gi]:.3e}  NCP={N * gene_h2[gi]:.1f}")
+if len(_ord) > 10:
+    say(f"   ... {len(_ord) - 10} more causal genes")
 
 # ------------------------------------------------------- 8. phenotypes
 age = np.clip(rng.normal(50, 8, N), 20, 80)
@@ -437,6 +520,16 @@ json.dump({"N": N, "n_variants": int(n_kept), "n_coding": int(len(cod_idx)),
            "n_genes": a.n_genes, "n_causal_genes": int(n_causal_genes),
            "alpha": a.alpha, "h2": a.h2, "h2_pc": a.h2_pc, "h2_poly": a.h2_poly,
            "frac_h2_coding": a.frac_h2_coding, "prevalence": a.prevalence,
-           "seed": a.seed, "n_families": a.n_families},
+           "seed": a.seed, "n_families": a.n_families,
+           "n_singletons": a.n_singletons, "n_forced_causal_var": int(n_forced),
+           "thin_intergenic": a.thin_intergenic, "thin_maf": a.thin_maf,
+           "n_thinned": int(n_thinned)},
           open(f"{a.outdir}/sim_meta.json", "w"), indent=2)
+
+# n_coding * N bytes of scratch (2.5 GB at N=50,000); nothing downstream reads it
+del D
+try:
+    os.remove(cod_path)
+except OSError:
+    pass
 say("done")
