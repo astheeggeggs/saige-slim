@@ -27,6 +27,18 @@ test_that("rel_err behaves", {
   expect_identical(rel_err(1, c(1, 2)), Inf)
 })
 
+test_that("rel_err on non-finite values: matches pass, mismatches are maximal", {
+  # null control: a column that is bit-for-bit itself must compare equal even
+  # when it holds infinities and NaNs (goldens do -- see LEDGER #44).
+  x <- c(-Inf, Inf, NaN, 1.5)
+  expect_equal(rel_err(x, x), 0)
+  # positive controls: every way of getting it wrong must still be caught
+  expect_identical(rel_err(-Inf, Inf), Inf)      # sign flip
+  expect_identical(rel_err(-Inf, -1e300), Inf)   # infinity vs a huge finite
+  expect_identical(rel_err(NaN, 0), Inf)         # NaN vs a value
+  expect_gt(rel_err(c(-Inf, 1.5), c(-Inf, 1.6)), 0.03)  # finite entries still count
+})
+
 test_that("byte comparator: null control passes, perturbation fails", {
   a <- make_tsv(base_df)
   expect_true(files_byte_identical(a, make_tsv(base_df)))
@@ -57,6 +69,11 @@ test_that("numeric comparator: catches every planted defect class", {
   n <- base_df; n$BETA[3] <- "0.1"                          # NA -> value
   r <- tables_equivalence(a, make_tsv(n))
   expect_false(r$ok); expect_match(r$problems, "NA pattern", all = FALSE)
+
+  inf_df <- base_df; inf_df$BETA[1] <- "-inf"               # the LEDGER #44 shape
+  expect_true(tables_equivalence(make_tsv(inf_df), make_tsv(inf_df))$ok)
+  flipped <- inf_df; flipped$BETA[1] <- "inf"
+  expect_false(tables_equivalence(make_tsv(inf_df), make_tsv(flipped))$ok)
 
   expect_false(tables_equivalence(a, make_tsv(base_df[, -3]))$ok)  # lost column
   expect_false(tables_equivalence(a, make_tsv(base_df[-2, ]))$ok)  # lost row

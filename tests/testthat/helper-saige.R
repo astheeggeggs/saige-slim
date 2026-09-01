@@ -38,11 +38,22 @@ skip_if_no_goldens <- function() {
 saige_compare_mode <- function() Sys.getenv("SAIGE_COMPARE_MODE", unset = "byte")
 
 # Symmetric relative error, same formula as harness/compare_step1.R.
+#
+# Non-finite values are compared exactly, not by the ratio: `Inf - Inf` is NaN,
+# so without this a column containing an infinity could never compare equal to
+# itself. Two goldens print them -- plink_marker_sparse.txt and
+# plink_marker_noadjCov.txt carry BETA = -inf / SE = nan on the two fixture
+# markers that are collinear with the covariates (LEDGER #44) -- so this is a
+# live path, not a hypothetical. A non-finite value facing a finite one, or an
+# infinity of the opposite sign, is a maximal error rather than a match.
 rel_err <- function(a, b) {
   a <- as.numeric(a); b <- as.numeric(b)
   if (length(a) != length(b)) return(Inf)
   d <- abs(a - b) / (abs(a) + abs(b) + .Machine$double.eps)
-  d[is.na(a) & is.na(b)] <- 0
+  d[is.na(a) & is.na(b)] <- 0                       # NA and NaN both land here
+  same_inf <- is.infinite(a) & is.infinite(b) & (sign(a) == sign(b))
+  d[same_inf] <- 0
+  if (any(is.finite(a) != is.finite(b))) return(Inf)  # finite vs not
   if (anyNA(d)) return(Inf)  # NA in one but not the other
   max(d, 0)
 }

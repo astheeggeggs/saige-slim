@@ -111,6 +111,35 @@ run step1_binary_denseGRM.log R2 step1_fitNULLGLMM.R \
   --IsOverwriteVarianceRatioFile=TRUE \
   --outputPrefix="$GOLD/step1/binary_denseGRM"
 
+# Binary, sparse GRM to fit the null, PLUS --useSparseGRMforVarRatio=TRUE. The
+# ONLY reason this exists: it is the only configuration that emits `sparse`
+# variance-ratio rows (R/SAIGE_fitGLMM_fast.R:2467), and the step-2 MARKER path
+# needs sparse VR rows AND null_noXadj rows in the same file to take its
+# sparse-GRM branch. The committed example_binary_sparseGRM.varianceRatio.txt
+# has sparse+null but no null_noXadj, so single-variant tests refuse it
+# (SAIGE_Test_main.R:400, the LEDGER #10 guard); our other step-1 goldens have
+# null+null_noXadj but no sparse. Hence P27-P29 below.
+# Config is binary_sparseGRM_a's with the one flag added, and that is load-bearing:
+# the resulting .rda is BYTE-IDENTICAL to binary_sparseGRM_a.rda and the null /
+# null_noXadj rows are identical too (the flag only appends sparse rows), so a
+# diff of P27-P29 against P1 isolates the step-2 branch and not the model.
+# tests/testthat/test-invariants-goldens.R pins that identity.
+run step1_binary_sparseGRM_vr.log R2 step1_fitNULLGLMM.R \
+  --plinkFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr \
+  --sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx \
+  --sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt \
+  --useSparseGRMtoFitNULL=TRUE \
+  --useSparseGRMforVarRatio=TRUE \
+  --phenoFile=./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt \
+  --phenoCol=y_binary \
+  --covarColList=x1,x2,a9,a10 \
+  --qCovarColList=a9,a10 \
+  --sampleIDColinphenoFile=IID \
+  --traitType=binary \
+  --IsOverwriteVarianceRatioFile=TRUE \
+  --isCateVarianceRatio=TRUE \
+  --outputPrefix="$GOLD/step1/binary_sparseGRM_vr"
+
 ##################### step 2: association tests (frozen inputs) #####################
 SG="--sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx --sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt"
 
@@ -125,6 +154,7 @@ SG="--sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersU
 # is exercised by --minMAC=1 (ultra-rare MAC<=4 markers exist in the 100-marker set).
 BIN_MODEL="--GMMATmodelFile=$GOLD/step1/binary_sparseGRM_a.rda --varianceRatioFile=$GOLD/step1/binary_sparseGRM_a.varianceRatio.txt"
 QUANT_MODEL="--GMMATmodelFile=$GOLD/step1/quant_sparseGRM.rda --varianceRatioFile=$GOLD/step1/quant_sparseGRM.varianceRatio.txt"
+VR_MODEL="--GMMATmodelFile=$GOLD/step1/binary_sparseGRM_vr.rda --varianceRatioFile=$GOLD/step1/binary_sparseGRM_vr.varianceRatio.txt"
 GRP_MODEL="--GMMATmodelFile=./output/example_binary_sparseGRM.rda --varianceRatioFile=./output/example_binary_sparseGRM.varianceRatio.txt"
 PLINK_G="--bedFile=./input/genotype_100markers.bed --bimFile=./input/genotype_100markers.bim --famFile=./input/genotype_100markers.fam --AlleleOrder=alt-first"
 
@@ -496,6 +526,116 @@ run step2_pgen_group_cond_burden.log R2 step2_SPAtests.R \
   --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
   --maxMAF_in_groupTest=0.0001,0.001,0.01 \
   --r.corr=1 --is_fastTest=FALSE --condition=rs30,rs79
+
+# P27-P33 (S0 of the step-2 threading/speedup work): the MARKER-path coverage
+# gap. Before these, every single-variant golden (P1/P4/P7/P11/P12) ran the same
+# one branch of the getMarkerPval cascade -- scoreTestFast_noadjCov -- so a
+# change to any other branch left every golden byte-identical while being
+# completely untested. Verified with an instrumented build (counters on each
+# branch, run at 61ac4be9 and discarded); the per-run counts are in the commit
+# message and are quoted per golden below. All seven share P1's fixture and
+# filters, so a diff against P1 isolates exactly one thing.
+# No PGEN mirrors: these vary the TEST kernel, not the reader, and the reader is
+# already mirrored P13-P26 over the same fixture.
+
+# P27: single-variant with a sparse GRM -- the marker-path scoreTest + PCG.
+# 70/70 markers take the sparse branch (SAIGE_test.cpp:522), 70 PCG solves /
+# 94 iterations, and 4 SPA calls go to SPA rather than SPA_fast (the
+# p_iIndexComVecSize >= 0.5 && !m_flagSparseGRM_cur split at :692).
+run step2_plink_marker_sparse.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_marker_sparse.txt" \
+  --chrom=1 --minMAF=0 --minMAC=1 --LOCO=FALSE \
+  $VR_MODEL $SG \
+  --is_output_moreDetails=TRUE \
+  --is_fastTest=FALSE
+
+# P28: single-variant fastTest -- the RE-TEST block at Main.cpp:436-475, which
+# no golden reached (the group goldens P2/P3/P8/P10 use fastTest, but the
+# re-test is marker-loop code). 73 getMarkerPval calls for 70 markers: the 3
+# markers with p < 0.05 and MAC > MACCutoffforER are re-tested, all 3 through
+# scoreTestFast. The sparse arm of the re-test's own branch is live here (the
+# sparse GRM is supplied) but not selected -- all 3 have MAC above the last
+# category bound; P29 selects it.
+run step2_plink_marker_fastTest.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_marker_fastTest.txt" \
+  --chrom=1 --minMAF=0 --minMAC=1 --LOCO=FALSE \
+  $VR_MODEL $SG \
+  --is_output_moreDetails=TRUE \
+  --is_fastTest=TRUE
+
+# P29: fastTest re-test, SPARSE arm. --max_MAC_for_ER=0 turns the ER path off,
+# which is what lets the two ultra-rare markers (rs44 MAC=1, rs56 MAC=2) reach
+# the re-test at all -- it is gated on MAC > MACCutoffforER, so at the default
+# cutoff of 4 they are answered by ER and never re-tested. 75 calls (5
+# re-tests), of which 2 take the sparse branch and 3 scoreTestFast; ER runs 0
+# times, which is itself the only golden coverage of "ER disabled".
+run step2_plink_marker_fastTest_sparse.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_marker_fastTest_sparse.txt" \
+  --chrom=1 --minMAF=0 --minMAC=1 --LOCO=FALSE \
+  $VR_MODEL $SG \
+  --is_output_moreDetails=TRUE \
+  --is_fastTest=TRUE --max_MAC_for_ER=0
+
+# P30: --is_noadjCov=FALSE, no sparse GRM -- the third arm of the branch at
+# SAIGE_test.cpp:514-528, scoreTestFast, on all 70 markers. P1's model, so the
+# diff against P1 is exactly "regress the covariates out of the genotype".
+run step2_plink_marker_noadjCov.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_marker_noadjCov.txt" \
+  --chrom=1 --minMAF=0 --minMAC=1 --LOCO=FALSE \
+  $BIN_MODEL \
+  --is_output_moreDetails=TRUE \
+  --is_noadjCov=FALSE
+
+# P31: the Firth arm -- the last step of the cascade, live in the test suite
+# (test-step2-firth.R) since Phase 3 but pinned by no golden. 5 of the 70
+# markers qualify at pCutoffforFirth=0.05: 3 through the SPA path
+# (SAIGE_test.cpp:777/784) and 2 through the ER path (:835), a site the SPA-path
+# reading of the code misses. Do NOT raise the cutoff further -- above it the
+# penalised fit stops converging and drifts to maxstep*maxit (LEDGER #26).
+run step2_plink_marker_firth.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_marker_firth.txt" \
+  --chrom=1 --minMAF=0 --minMAC=1 --LOCO=FALSE \
+  $BIN_MODEL \
+  --is_output_moreDetails=TRUE \
+  --is_Firth_beta=TRUE --pCutoffforFirth=0.05
+
+# P32: the quantitative marker path, UNCONDITIONAL. P4 is the only other
+# quantitative marker golden and it passes --condition, so the plain
+# quantitative single-variant run -- the most ordinary use of step 2 there is --
+# was gated by nothing. No ER and no SPA on this path (both are binary-only), so
+# it is also the only marker golden where the cascade stops at the score test.
+run step2_plink_marker_quantitative.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_marker_quantitative.txt" \
+  --chrom=1 --minMAF=0 --minMAC=1 --LOCO=FALSE \
+  $QUANT_MODEL \
+  --is_output_moreDetails=TRUE
+
+# P33: the ER RESAMPLING branch. ER itself runs in P1 (2 markers, both
+# ultra-rare), but with k <= 2 carriers it always takes SKAT_Exact_Recurse; the
+# resampling arm (Binary_ComputeExact.cpp:367, and the SL_setseed(1) that the
+# threading verdict doc calls the single highest-risk fact in step 2) needs
+# n_total = 2^k > 2e6, i.e. k >= 21 carriers, which no marker can reach while
+# ER is capped at MAC <= 4. Raising the cap to 200 pulls in exactly one more
+# marker, rs38 (MAC 102, 98 carriers): ER=3, and its p-value moves 1.004E-02
+# (SPA) -> 1.367E-02 (ER), same order of magnitude, which is the sanity check
+# that the resampling arm is not producing nonsense.
+# The verdict doc proposed --max_MAC_for_ER=25 for this; MEASURED, 25 is
+# byte-identical to P1 (so are 20, 50 and 100) because the extra markers it
+# admits all have |Z| below the SPA cutoff and never take ER. A golden at 25
+# would have gated nothing.
+run step2_plink_marker_er.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_marker_er.txt" \
+  --chrom=1 --minMAF=0 --minMAC=1 --LOCO=FALSE \
+  $BIN_MODEL \
+  --is_output_moreDetails=TRUE \
+  --max_MAC_for_ER=200
 
 # B1/B2 (bgen runs) and V1/V2 (vcf runs) retired to harness/goldens_retired/
 # when the BGEN (Strip 6) and VCF/SAV (Strip 5) readers were stripped. Their

@@ -128,9 +128,11 @@ at runtime by the installed R package.
   rows), and comparator self-tests (the suite's own null + positive controls
   in `test-meta-comparators.R`).
 - **standard** (~2.5 min, default): fast + the four PLINK step-2 CLI runs
-  compared against `harness/goldens/step2/`, the multi-weight runs, and the
-  live Firth path (`test-step2-firth.R`, mirrored through the pgen reader in
-  `test-step2-pgen.R`).
+  compared against `harness/goldens/step2/`, the multi-weight runs, the
+  marker-path goldens P27-P33 (`test-step2-marker-paths.R`, kept as its own
+  file so its seven CLI runs go in parallel with `test-step2-goldens.R`'s),
+  and the live Firth path (`test-step2-firth.R`, mirrored through the pgen
+  reader in `test-step2-pgen.R`).
 - **full** (~20+ min, same-platform only): standard + full golden regeneration,
   step-1 determinism double-run, permuted-phenotype negative control.
 
@@ -218,6 +220,16 @@ Three standing traps when adding tests here:
   arm is still the thing to reach for — it was the reference that proved the
   ref-first construction sound while the default path was broken, and it is
   what any future change to this path should be measured against.
+- **Two of the 100 bundled markers ARE covariates.** `rs20` and `rs22` in
+  `genotype_100markers.bed` are, genotype for level, the categorical covariates
+  `a9` and `a10` (R² = 1.000000 against the model matrix; next highest marker
+  0.0223). Any path that regresses the covariates out of the genotype therefore
+  tests a vector that is exactly zero: the sparse `scoreTest` reports
+  `BETA=-inf SE=nan var=0` for them and `scoreTestFast` reports `SE=6.1e6`
+  (LEDGER #44 — the `var1 <= min` guard covers the p-value only). The default
+  `is_noadjCov=TRUE` path does not adjust, so P1 shows them as ordinary null
+  markers and nothing noticed until S0. Expect two degenerate rows in any new
+  covariate-adjusting marker golden, and do not read them as a signal.
 - **A statistic over forced/degenerate output can invent a bug.** The #26
   entry was first written as "Firth effect sizes are wrong" on the strength
   of a Pearson correlation that two ±750 outliers had dragged to zero;
@@ -258,13 +270,15 @@ dead files).
   `parallel_reduce`; empirically confirmed — see LEDGER.md #7). Sparse-GRM
   fits are byte-stable either way.
 - `bash harness/make_goldens.sh <dir>` — regenerates step0 (sparse GRM), step1
-  (binary ×2 sparse / quantitative sparse / **binary dense**), and step2: 14
-  PLINK runs (P1-P12 + P25, with P8b as a
+  (binary ×2 sparse / quantitative sparse / **binary dense** / **binary sparse-VR**),
+  and step2: 21
+  PLINK runs (P1-P12 + P25 + P27-P33, with P8b as a
   separate composed-set golden — single-variant marker/marker-conditional
   ×2 (quantitative P4, binary P12), group fastTest/conditional/BURDEN/SKAT-O
   ×2 (K=1 P2/P3/P5/P6, multi-weight P8/P9/P8b/P10), chunked marker P7, and the
-  ref-first characterization golden P11, and the BURDEN-conditional golden P25
-  added with the LEDGER #41 fix) plus 13 PGEN mirrors added across
+  ref-first characterization golden P11, the BURDEN-conditional golden P25
+  added with the LEDGER #41 fix, and the seven marker-path goldens P27-P33
+  added by S0 — see the marker-path bullet below) plus 13 PGEN mirrors added across
   Phase 7 and its coverage-extension follow-up: P13-P15 (marker/region/
   conditional parity, mirroring P1/P2/P3) and P16-P24 (mirroring, in order,
   P4/P12/P5/P6/P7/P8/P9/P8b/P10 — quantitative conditional, the LEDGER #40
@@ -309,6 +323,24 @@ dead files).
   tolerance above is for cross-platform regeneration, so a same-machine change
   claiming bit-identity should be checked with `cmp`, which is strictly
   stronger than what `compare_goldens.sh` asserts.
+- **P27-P33 close the step-2 MARKER-path coverage gap (S0).** Before them every
+  single-variant golden (P1/P4/P7/P11/P12) took the same one arm of the
+  `getMarkerPval` cascade — `scoreTestFast_noadjCov` — so the sparse `scoreTest`
+  + PCG, the `scoreTestFast` (`--is_noadjCov=FALSE`) arm, the fastTest re-test
+  block at `Main.cpp:436-475`, the Firth arm, the ER **resampling** arm and the
+  unconditional quantitative path were all gated by nothing. Each is now one
+  golden that is P1's command with ONE flag changed, with the per-arm counts
+  measured on an instrumented build and recorded beside the runs in
+  `make_goldens.sh`; `tests/testthat/test-step2-marker-paths.R` drives them.
+  Two things worth keeping: the sparse marker path needs a variance-ratio file
+  with **both** `sparse` and `null_noXadj` rows, which only
+  `--useSparseGRMforVarRatio=TRUE` in step 1 produces (hence the fifth step-1
+  golden `binary_sparseGRM_vr`, whose `.rda` is byte-identical to
+  `binary_sparseGRM_a`'s); and `--max_MAC_for_ER=25`, the value the threading
+  verdict doc proposed for ER coverage, is **byte-identical to P1** here (so are
+  20/50/100) — reaching the resampling arm needs a marker with ≥21 carriers,
+  i.e. `--max_MAC_for_ER=200` on this fixture. A golden that reproduces P1 gates
+  nothing; check that a new one actually differs.
 - `bash harness/make_controls.sh <dir>` — permuted-phenotype negative control
   through the full pipeline + KS uniformity check (`harness/check_null.R`),
   run through both the PLINK and PGEN readers (Phase 7) over the same

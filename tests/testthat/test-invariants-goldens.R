@@ -289,3 +289,30 @@ test_that("ACAT-V recomputes from the single-variant p-values and the fixture we
               1e-12)
   }
 })
+
+test_that("useSparseGRMforVarRatio changes only the variance-ratio file", {
+  # binary_sparseGRM_vr is binary_sparseGRM_a's step-1 command plus
+  # --useSparseGRMforVarRatio=TRUE. The flag adds `sparse` rows to the variance
+  # ratio file and touches nothing else: the fitted model is byte-identical and
+  # the null / null_noXadj rows are unchanged. That is what makes P27-P29
+  # diffable against P1 -- if this fails, those diffs stop isolating the step-2
+  # branch and start including a different model.
+  skip_if_no_goldens()
+  s1 <- function(f) file.path(saige_goldens, "step1", f)
+  skip_if_not(file.exists(s1("binary_sparseGRM_vr.rda")), "vr step-1 golden absent")
+  expect_identical(tools::md5sum(s1("binary_sparseGRM_vr.rda"))[[1]],
+                   tools::md5sum(s1("binary_sparseGRM_a.rda"))[[1]])
+
+  vr <- read.table(s1("binary_sparseGRM_vr.varianceRatio.txt"))
+  a <- read.table(s1("binary_sparseGRM_a.varianceRatio.txt"))
+  expect_identical(sort(unique(vr$V2)), c("null", "null_noXadj", "sparse"))
+  # the non-sparse rows are the same numbers, types and categories, in order
+  keep <- vr$V2 != "sparse"
+  expect_identical(vr$V1[keep], a$V1)
+  expect_identical(vr$V2[keep], a$V2)
+  expect_identical(vr$V3[keep], a$V3)
+  # sparse rows: one per MAC category, and near 1 (full-GRM numerator over
+  # sparse-GRM denominator on a fixture whose relatedness is nearly all captured)
+  expect_identical(sum(vr$V2 == "sparse"), sum(a$V2 == "null"))
+  expect_true(all(abs(vr$V1[vr$V2 == "sparse"] - 1) < 1e-3))
+})
