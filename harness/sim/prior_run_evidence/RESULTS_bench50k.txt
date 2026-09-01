@@ -1,0 +1,195 @@
+
+=== y_quant : gene-based (ACAT-O per region) ===
+210 regions (21 causal), 3128 sub-tests
+  NEGATIVE control (non-causal genes, n=189): observed vs nominal tail
+     P(p<0.05)=0.0370 [0.05]  P(p<0.01)=0.0106 [0.01]  P(p<0.001)=0.0000 [0.001]  min p=6.82e-03
+     (median-based lambda=0.5724, saturated: 25% of rows have p==1)
+  POSITIVE control (causal genes)   : lambda=0.702  min p=8.57e-04  n<1.6e-05: 0
+  causal genes in the top 20 by p   : 5 / 20   (rank-sum p=0.29)
+   Region        P causal       h2 NCP_quant n_causal_var
+ GENE0050 0.000857      1 0.000278      13.9           14
+ GENE0047 0.006822      0 0.000000       0.0            0
+ GENE0135 0.008162      0 0.000000       0.0            0
+ GENE0163 0.013753      1 0.000965      48.2            9
+ GENE0063 0.015156      0 0.000000       0.0            0
+ GENE0107 0.021075      1 0.000947      47.4           32
+ GENE0019 0.024628      0 0.000000       0.0            0
+ GENE0199 0.041721      0 0.000000       0.0            0
+  LADDER control: Spearman(NCP_quant, -log10 p) over 21 causal genes = 0.195 (p=0.396)
+     NCP_quant range over causal genes: 1.01 - 59.71
+  A1 degeneracy by max_MAF (SKAT==BURDEN exactly / cells with >=4 real markers):
+     max_MAF=1e-04    1042 cells  identical 1042 (100.0%)  usable    0 (  0.0%)
+     max_MAF=0.001    1043 cells  identical  223 ( 21.4%)  usable  530 ( 50.8%)
+     max_MAF=0.01     1043 cells  identical  223 ( 21.4%)  usable  541 ( 51.9%)
+  -> ranking controls below use 1071 of 3128 sub-test cells
+  DIRECTIONALITY control: Spearman(dir, log10 P_SKAT/P_BURDEN) = 0.180 (p=0.0678) over 104 cells in 21 genes
+     predicted > 0 (directional genes favour BURDEN). dir range 0.02-0.50
+  min p by annotation mask (causal genes):
+           high     high;medium high;medium;low             low          medium 
+       0.001410        0.000156        0.003960        0.001950        0.000111 
+  sub-test lambda by annotation mask (non-causal genes; these are NOT saturated):
+           high     high;medium high;medium;low             low          medium 
+         0.7807          1.0120          0.8406          0.9484          0.9396 
+  sub-test tail (non-causal): P(p<0.05)=0.0465 P(p<0.01)=0.0082 P(p<0.001)=0.0014  n=2816
+
+=== y_quant : single variant (70709 markers with MAC>=20) ===
+  lambda_GC (all)      = 1.038
+  lambda_GC (beta==0)  = 1.038   <- negative control
+  causal markers tested: 81; cor(BETA_hat, beta_true) = 0.828 (Pearson), 0.616 (Spearman)
+  min p among causal = 2.67e-09; min p among null = 9.43e-10
+
+=== y_binary : gene-based (ACAT-O per region) ===
+210 regions (21 causal), 3128 sub-tests
+  NEGATIVE control (non-causal genes, n=189): observed vs nominal tail
+     P(p<0.05)=0.0317 [0.05]  P(p<0.01)=0.0053 [0.01]  P(p<0.001)=0.0000 [0.001]  min p=9.86e-03
+     (median-based lambda=0.5577, saturated: 28% of rows have p==1)
+  POSITIVE control (causal genes)   : lambda=24.09  min p=7.16e-21  n<1.6e-05: 4
+  causal genes in the top 20 by p   : 16 / 20   (rank-sum p=9.5e-09)
+   Region        P causal       h2 NCP_binary n_causal_var
+ GENE0147 7.16e-21      1 8.76e-04      43.80          115
+ GENE0107 2.19e-12      1 9.47e-04      47.35           32
+ GENE0012 5.95e-06      1 1.19e-03      59.71           48
+ GENE0005 1.08e-05      1 2.37e-04      11.84           20
+ GENE0056 1.62e-05      1 8.38e-04      41.88            9
+ GENE0037 3.41e-05      1 9.26e-05       4.63           12
+ GENE0011 3.42e-05      1 1.32e-04       6.58           31
+ GENE0076 5.82e-05      1 5.32e-04      26.59           56
+  LADDER control: Spearman(NCP_binary, -log10 p) over 21 causal genes = 0.682 (p=0.00066)
+     NCP_binary range over causal genes: 1.01 - 59.71
+  A1 degeneracy by max_MAF (SKAT==BURDEN exactly / cells with >=4 real markers):
+     max_MAF=1e-04    1042 cells  identical 1042 (100.0%)  usable    0 (  0.0%)
+     max_MAF=0.001    1043 cells  identical  222 ( 21.3%)  usable  530 ( 50.8%)
+     max_MAF=0.01     1043 cells  identical  222 ( 21.3%)  usable  541 ( 51.9%)
+  -> ranking controls below use 1071 of 3128 sub-test cells
+  DIRECTIONALITY control: Spearman(dir, log10 P_SKAT/P_BURDEN) = 0.093 (p=0.35) over 104 cells in 21 genes
+     predicted > 0 (directional genes favour BURDEN). dir range 0.02-0.50
+  min p by annotation mask (causal genes):
+           high     high;medium high;medium;low             low          medium 
+       1.03e-12        2.42e-21        8.81e-16        2.50e-06        8.59e-22 
+  sub-test lambda by annotation mask (non-causal genes; these are NOT saturated):
+           high     high;medium high;medium;low             low          medium 
+         0.2818          0.8778          1.1910          1.1710          0.8584 
+  sub-test tail (non-causal): P(p<0.05)=0.0479 P(p<0.01)=0.0064 P(p<0.001)=0.0000  n=2816
+
+=== y_binary : single variant (70709 markers with MAC>=20) ===
+  lambda_GC (all)      = 0.9957
+  lambda_GC (beta==0)  = 0.9944   <- negative control
+  causal markers tested: 81; cor(BETA_hat, beta_true) = 0.504 (Pearson), 0.545 (Spearman)
+  min p among causal = 2.24e-26; min p among null = 1.96e-06
+
+=== y_quant_pc : gene-based (ACAT-O per region) ===
+210 regions (21 causal), 3128 sub-tests
+  NEGATIVE control (non-causal genes, n=189): observed vs nominal tail
+     P(p<0.05)=0.0899 [0.05]  P(p<0.01)=0.0476 [0.01]  P(p<0.001)=0.0159 [0.001]  min p=1.51e-05
+     (median-based lambda=0.9986, saturated: 21% of rows have p==1)
+  POSITIVE control (causal genes)   : lambda=16.66  min p=3.78e-28  n<1.6e-05: 7
+  causal genes in the top 20 by p   : 11 / 20   (rank-sum p=1.2e-06)
+   Region        P causal       h2 NCP_quant n_causal_var
+ GENE0163 3.78e-28      1 9.65e-04     48.23            9
+ GENE0122 9.54e-27      1 2.06e-04     10.28           11
+ GENE0107 1.40e-11      1 9.47e-04     47.35           32
+ GENE0127 6.38e-11      1 4.36e-04     21.82           60
+ GENE0147 1.36e-10      1 8.76e-04     43.80          115
+ GENE0050 3.24e-09      1 2.78e-04     13.89           14
+ GENE0037 2.52e-06      1 9.26e-05      4.63           12
+ GENE0148 1.51e-05      0 0.00e+00      0.00            0
+  LADDER control: Spearman(NCP_quant, -log10 p) over 21 causal genes = 0.401 (p=0.0718)
+     NCP_quant range over causal genes: 1.01 - 59.71
+  A1 degeneracy by max_MAF (SKAT==BURDEN exactly / cells with >=4 real markers):
+     max_MAF=1e-04    1042 cells  identical 1042 (100.0%)  usable    0 (  0.0%)
+     max_MAF=0.001    1043 cells  identical  223 ( 21.4%)  usable  530 ( 50.8%)
+     max_MAF=0.01     1043 cells  identical  223 ( 21.4%)  usable  541 ( 51.9%)
+  -> ranking controls below use 1071 of 3128 sub-test cells
+  DIRECTIONALITY control: Spearman(dir, log10 P_SKAT/P_BURDEN) = 0.085 (p=0.389) over 104 cells in 21 genes
+     predicted > 0 (directional genes favour BURDEN). dir range 0.02-0.50
+  min p by annotation mask (causal genes):
+           high     high;medium high;medium;low             low          medium 
+       1.63e-12        7.83e-11        1.11e-27        3.15e-29        1.77e-11 
+  sub-test lambda by annotation mask (non-causal genes; these are NOT saturated):
+           high     high;medium high;medium;low             low          medium 
+         1.1300          0.8278          1.2870          1.3970          1.2530 
+  sub-test tail (non-causal): P(p<0.05)=0.0668 P(p<0.01)=0.0160 P(p<0.001)=0.0053  n=2816
+
+=== y_quant_pc : single variant (70709 markers with MAC>=20) ===
+  lambda_GC (all)      = 1.785
+  lambda_GC (beta==0)  = 1.781   <- negative control
+  causal markers tested: 81; cor(BETA_hat, beta_true) = 0.978 (Pearson), 0.973 (Spearman)
+  min p among causal = 3.46e-107; min p among null = 1.08e-106
+
+=== y_binary_pc : gene-based (ACAT-O per region) ===
+210 regions (21 causal), 3128 sub-tests
+  NEGATIVE control (non-causal genes, n=189): observed vs nominal tail
+     P(p<0.05)=0.0582 [0.05]  P(p<0.01)=0.0212 [0.01]  P(p<0.001)=0.0053 [0.001]  min p=1.64e-09
+     (median-based lambda=0.7388, saturated: 20% of rows have p==1)
+  POSITIVE control (causal genes)   : lambda=46.3  min p=7.72e-75  n<1.6e-05: 11
+  causal genes in the top 20 by p   : 16 / 20   (rank-sum p=2.5e-09)
+   Region        P causal       h2 NCP_binary n_causal_var
+ GENE0147 7.72e-75      1 0.000876      43.80          115
+ GENE0011 4.97e-17      1 0.000132       6.58           31
+ GENE0107 3.33e-16      1 0.000947      47.35           32
+ GENE0055 1.13e-14      1 0.000321      16.04           19
+ GENE0076 1.41e-13      1 0.000532      26.59           56
+ GENE0127 6.91e-12      1 0.000436      21.82           60
+ GENE0005 1.04e-09      1 0.000237      11.84           20
+ GENE0145 1.64e-09      0 0.000000       0.00            0
+  LADDER control: Spearman(NCP_binary, -log10 p) over 21 causal genes = 0.614 (p=0.0037)
+     NCP_binary range over causal genes: 1.01 - 59.71
+  A1 degeneracy by max_MAF (SKAT==BURDEN exactly / cells with >=4 real markers):
+     max_MAF=1e-04    1042 cells  identical 1042 (100.0%)  usable    0 (  0.0%)
+     max_MAF=0.001    1043 cells  identical  222 ( 21.3%)  usable  530 ( 50.8%)
+     max_MAF=0.01     1043 cells  identical  222 ( 21.3%)  usable  541 ( 51.9%)
+  -> ranking controls below use 1071 of 3128 sub-test cells
+  DIRECTIONALITY control: Spearman(dir, log10 P_SKAT/P_BURDEN) = -0.037 (p=0.708) over 104 cells in 21 genes
+     predicted > 0 (directional genes favour BURDEN). dir range 0.02-0.50
+  min p by annotation mask (causal genes):
+           high     high;medium high;medium;low             low          medium 
+       3.99e-16        1.98e-75        1.08e-60        4.22e-18        1.16e-75 
+  sub-test lambda by annotation mask (non-causal genes; these are NOT saturated):
+           high     high;medium high;medium;low             low          medium 
+         0.2875          0.9074          1.2210          1.1010          0.8465 
+  sub-test tail (non-causal): P(p<0.05)=0.0526 P(p<0.01)=0.0124 P(p<0.001)=0.0036  n=2816
+
+=== y_binary_pc : single variant (70709 markers with MAC>=20) ===
+  lambda_GC (all)      = 1.099
+  lambda_GC (beta==0)  = 1.098   <- negative control
+  causal markers tested: 81; cor(BETA_hat, beta_true) = 0.684 (Pearson), 0.701 (Spearman)
+  min p among causal = 5.06e-75; min p among null = 6.64e-21
+
+=== y_null : gene-based (ACAT-O per region) ===
+210 regions (21 causal), 3128 sub-tests
+  NEGATIVE control (non-causal genes, n=189): observed vs nominal tail
+     P(p<0.05)=0.0317 [0.05]  P(p<0.01)=0.0000 [0.01]  P(p<0.001)=0.0000 [0.001]  min p=1.97e-02
+     (median-based lambda=0.7362, saturated: 25% of rows have p==1)
+  POSITIVE control (causal genes)   : lambda=0.3849  min p=7.42e-02  n<1.6e-05: 0
+  causal genes in the top 20 by p   : 2 / 20   (rank-sum p=0.76)
+   Region      P causal h2 NCP_quant n_causal_var
+ GENE0081 0.0197      0  0         0            0
+ GENE0064 0.0343      0  0         0            0
+ GENE0154 0.0358      0  0         0            0
+ GENE0015 0.0375      0  0         0            0
+ GENE0165 0.0407      0  0         0            0
+ GENE0201 0.0495      0  0         0            0
+ GENE0137 0.0549      0  0         0            0
+ GENE0197 0.0559      0  0         0            0
+  LADDER control: Spearman(NCP_quant, -log10 p) over 21 causal genes = 0.085 (p=0.713)
+     NCP_quant range over causal genes: 1.01 - 59.71
+  A1 degeneracy by max_MAF (SKAT==BURDEN exactly / cells with >=4 real markers):
+     max_MAF=1e-04    1042 cells  identical 1042 (100.0%)  usable    0 (  0.0%)
+     max_MAF=0.001    1043 cells  identical  221 ( 21.2%)  usable  530 ( 50.8%)
+     max_MAF=0.01     1043 cells  identical  221 ( 21.2%)  usable  541 ( 51.9%)
+  -> ranking controls below use 1071 of 3128 sub-test cells
+  DIRECTIONALITY control: Spearman(dir, log10 P_SKAT/P_BURDEN) = 0.040 (p=0.69) over 104 cells in 21 genes
+     predicted > 0 (directional genes favour BURDEN). dir range 0.02-0.50
+  min p by annotation mask (causal genes):
+           high     high;medium high;medium;low             low          medium 
+        0.02730         0.00580         0.01690         0.01570         0.00688 
+  sub-test lambda by annotation mask (non-causal genes; these are NOT saturated):
+           high     high;medium high;medium;low             low          medium 
+         1.2370          0.8876          1.2040          1.2420          0.8535 
+  sub-test tail (non-causal): P(p<0.05)=0.0497 P(p<0.01)=0.0050 P(p<0.001)=0.0000  n=2816
+
+=== y_null : single variant (70709 markers with MAC>=20) ===
+  lambda_GC (all)      = 0.9381
+  lambda_GC (beta==0)  = 0.9376   <- negative control
+  causal markers tested: 81; cor(BETA_hat, beta_true) = -0.307 (Pearson), -0.269 (Spearman)
+  min p among causal = 1.20e-03; min p among null = 7.13e-05
