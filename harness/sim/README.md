@@ -62,6 +62,20 @@ identical to `.fam` order -- and the row sums land at 1.0 / 2.0 / 2.5 for
 singletons / parents / children, which is the pedigree arithmetic derived
 independently of the file.
 
+**Measured at bench50k size, and it confirms the argument.** LD pruning the
+25 Mb window leaves **1,216** markers, against **3,055** for the full
+chromosome:
+
+    markers  1216 / 3055 = 0.40
+    cM         41 / 108  = 0.38
+
+The usable independent-marker count tracks GENETIC length, not physical length
+and not variant count -- this window has 8.4x the variants per Mb of a pruned
+array and 0.40x the usable GRM markers. It also means the recipe's
+`numRandomMarkerforSparseKin` of 2,000-5,000 would make step 0 hard-`stop()`
+here (`R/SAIGE_createSparseGRM.R:79-85`), so the truth GRM sidesteps a failure
+that would otherwise block the run outright.
+
 ### What the prior run actually measured, and one trap in reading it
 
 Two GRM configurations were run on the SAME N=10,000 full-chr20 dataset, and
