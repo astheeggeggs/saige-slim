@@ -34,5 +34,6 @@ fi
 
 rm -f src/*.o src/*.so
 pixi run Rscript -e 'Rcpp::compileAttributes(".")' > /dev/null
+mkdir -p harness/work
 pixi run R CMD INSTALL . > harness/work/build.log 2>&1 || { echo "INSTALL FAILED"; grep -iE "error" harness/work/build.log | head -20; exit 1; }
 echo "clean install OK ($(git rev-parse --short HEAD))"
