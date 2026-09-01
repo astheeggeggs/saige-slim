@@ -177,6 +177,10 @@ Get_MultiMarkersBySample_StdGeno <- function(markerIndexVec, stdGenoMultiMarkers
     invisible(.Call('_SAIGE_Get_MultiMarkersBySample_StdGeno', PACKAGE = 'SAIGE', markerIndexVec, stdGenoMultiMarkers))
 }
 
+parallelCrossProdMat <- function(BMat) {
+    .Call('_SAIGE_parallelCrossProdMat', PACKAGE = 'SAIGE', BMat)
+}
+
 parallelCrossProd <- function(bVec) {
     .Call('_SAIGE_parallelCrossProd', PACKAGE = 'SAIGE', bVec)
 }

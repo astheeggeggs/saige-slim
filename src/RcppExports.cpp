@@ -579,6 +579,17 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// parallelCrossProdMat
+arma::fmat parallelCrossProdMat(arma::fmat& BMat);
+RcppExport SEXP _SAIGE_parallelCrossProdMat(SEXP BMatSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::fmat& >::type BMat(BMatSEXP);
+    rcpp_result_gen = Rcpp::wrap(parallelCrossProdMat(BMat));
+    return rcpp_result_gen;
+END_RCPP
+}
 // parallelCrossProd
 arma::fvec parallelCrossProd(arma::fcolvec& bVec);
 RcppExport SEXP _SAIGE_parallelCrossProd(SEXP bVecSEXP) {
@@ -984,12 +995,12 @@ BEGIN_RCPP
 END_RCPP
 }
 // GetTrace
-float GetTrace(arma::fmat Sigma_iX, arma::fmat& Xmat, arma::fvec& wVec, arma::fvec& tauVec, arma::fmat& cov1, int nrun, int maxiterPCG, float tolPCG, float traceCVcutoff);
+float GetTrace(arma::fmat& Sigma_iX, arma::fmat& Xmat, arma::fvec& wVec, arma::fvec& tauVec, arma::fmat& cov1, int nrun, int maxiterPCG, float tolPCG, float traceCVcutoff);
 RcppExport SEXP _SAIGE_GetTrace(SEXP Sigma_iXSEXP, SEXP XmatSEXP, SEXP wVecSEXP, SEXP tauVecSEXP, SEXP cov1SEXP, SEXP nrunSEXP, SEXP maxiterPCGSEXP, SEXP tolPCGSEXP, SEXP traceCVcutoffSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::fmat >::type Sigma_iX(Sigma_iXSEXP);
+    Rcpp::traits::input_parameter< arma::fmat& >::type Sigma_iX(Sigma_iXSEXP);
     Rcpp::traits::input_parameter< arma::fmat& >::type Xmat(XmatSEXP);
     Rcpp::traits::input_parameter< arma::fvec& >::type wVec(wVecSEXP);
     Rcpp::traits::input_parameter< arma::fvec& >::type tauVec(tauVecSEXP);
@@ -1154,12 +1165,12 @@ BEGIN_RCPP
 END_RCPP
 }
 // GetTrace_q
-arma::fvec GetTrace_q(arma::fmat Sigma_iX, arma::fmat& Xmat, arma::fvec& wVec, arma::fvec& tauVec, arma::fmat& cov1, int nrun, int maxiterPCG, float tolPCG, float traceCVcutoff);
+arma::fvec GetTrace_q(arma::fmat& Sigma_iX, arma::fmat& Xmat, arma::fvec& wVec, arma::fvec& tauVec, arma::fmat& cov1, int nrun, int maxiterPCG, float tolPCG, float traceCVcutoff);
 RcppExport SEXP _SAIGE_GetTrace_q(SEXP Sigma_iXSEXP, SEXP XmatSEXP, SEXP wVecSEXP, SEXP tauVecSEXP, SEXP cov1SEXP, SEXP nrunSEXP, SEXP maxiterPCGSEXP, SEXP tolPCGSEXP, SEXP traceCVcutoffSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::fmat >::type Sigma_iX(Sigma_iXSEXP);
+    Rcpp::traits::input_parameter< arma::fmat& >::type Sigma_iX(Sigma_iXSEXP);
     Rcpp::traits::input_parameter< arma::fmat& >::type Xmat(XmatSEXP);
     Rcpp::traits::input_parameter< arma::fvec& >::type wVec(wVecSEXP);
     Rcpp::traits::input_parameter< arma::fvec& >::type tauVec(tauVecSEXP);
@@ -1946,6 +1957,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_getMsub_MAFge_minMAFtoConstructGRM_singleChr", (DL_FUNC) &_SAIGE_getMsub_MAFge_minMAFtoConstructGRM_singleChr, 0},
     {"_SAIGE_Get_MultiMarkersBySample_StdGeno_Mat", (DL_FUNC) &_SAIGE_Get_MultiMarkersBySample_StdGeno_Mat, 0},
     {"_SAIGE_Get_MultiMarkersBySample_StdGeno", (DL_FUNC) &_SAIGE_Get_MultiMarkersBySample_StdGeno, 2},
+    {"_SAIGE_parallelCrossProdMat", (DL_FUNC) &_SAIGE_parallelCrossProdMat, 1},
     {"_SAIGE_parallelCrossProd", (DL_FUNC) &_SAIGE_parallelCrossProd, 1},
     {"_SAIGE_innerProductFun", (DL_FUNC) &_SAIGE_innerProductFun, 2},
     {"_SAIGE_parallelCrossProd_full", (DL_FUNC) &_SAIGE_parallelCrossProd_full, 2},

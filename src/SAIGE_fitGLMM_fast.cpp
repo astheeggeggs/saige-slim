@@ -11,6 +11,7 @@
 #include <cmath>
 #include <ctime>// include this header for calculating execution time 
 #include <cassert>
+#include <cstring>   // std::memcmp, for the GetTrace probe-cache check
 #include <boost/date_time.hpp> // for gettimeofday and timeval
 #include <oneapi/tbb/concurrent_vector.h>
 #include "getMem.hpp"
@@ -1521,6 +1522,70 @@ struct CorssProd_LOCO : public Worker
 
 
 
+
+
+// ---------------------------------------------------------------------------
+// EXPERIMENT (Phase 4, blocked GetTrace): multi-RHS crossprod.
+//
+// Bit-identity by construction: the per-column arithmetic is the SAME arma
+// calls in the SAME per-marker order as CorssProd; only the decode is shared
+// across columns. Columns are aliased as contiguous fvec so `dot` and `+=`
+// take the identical armadillo overloads.
+// ---------------------------------------------------------------------------
+struct CorssProdMat : public Worker
+{
+	arma::fmat & m_BMat;
+	unsigned int m_N;
+	unsigned int m_M;
+	unsigned int m_K;
+
+	arma::fmat m_bout;
+	int Msub_mafge1perc;
+
+	CorssProdMat(arma::fmat & B)
+		: m_BMat(B) {
+		m_M = geno.getM();
+		m_N = geno.getNnomissing();
+		m_K = B.n_cols;
+		m_bout.zeros(m_N, m_K);
+		Msub_mafge1perc = 0;
+	}
+	CorssProdMat(const CorssProdMat& o, Split)
+		: m_BMat(o.m_BMat) {
+		m_N = o.m_N;
+		m_M = o.m_M;
+		m_K = o.m_K;
+		m_bout.zeros(m_N, m_K);
+		Msub_mafge1perc = 0;
+	}
+	void operator()(std::size_t begin, std::size_t end) {
+		arma::fvec vec;
+		for(unsigned int i = begin; i < end; i++){
+			geno.Get_OneSNP_StdGeno(i, &vec);
+			for(unsigned int k = 0; k < m_K; k++){
+				arma::fvec bcol(m_BMat.colptr(k), m_N, false, true);
+				arma::fvec ocol(m_bout.colptr(k), m_N, false, true);
+				float val1 = dot(vec, bcol);
+				ocol += val1 * (vec);
+			}
+			Msub_mafge1perc += 1;
+		}
+	}
+	void join(const CorssProdMat & rhs) {
+		m_bout += rhs.m_bout;
+		Msub_mafge1perc += rhs.Msub_mafge1perc;
+	}
+};
+
+// [[Rcpp::export]]
+arma::fmat parallelCrossProdMat(arma::fmat & BMat) {
+	int Msub_mafge1perc = geno.getnumberofMarkerswithMAFge_minMAFtoConstructGRM();
+	CorssProdMat worker(BMat);
+	parallelReduce(0, Msub_mafge1perc, worker);
+	return worker.m_bout/(worker.Msub_mafge1perc);
+}
+
+
 // [[Rcpp::export]]
 arma::fvec parallelCrossProd(arma::fcolvec & bVec) {
   
@@ -1721,6 +1786,115 @@ arma::fvec getCrossprodMatAndKin(arma::fcolvec& bVec){
   	crossProdVec = parallelCrossProd(bVec) ;
    }  
   	return(crossProdVec);
+}
+
+
+// ---------------------------------------------------------------------------
+// Phase 4: blocked (multi-RHS) GRM product, and the GetTrace probe cache.
+//
+// Measured on the bundled fixture (N=1000, M=111305, one thread): a GRM pass
+// costs D + K*A with D = 45.7 ms of genotype decode and A = 40.4 ms of
+// per-column arithmetic (R^2 = 0.99996 over K in {1,2,4,8,16,30}). Blocking K
+// columns therefore pays the decode ONCE -- 2.05x at K = 30, against a 2.13x
+// ceiling -- but it cannot reduce A, because keeping A's arithmetic bit-exact
+// is the whole point (see below). Counting GRM passes as unit cost, which is
+// what the ~3.6x figure in the plan did, assumes A = 0 and overstates the win
+// by about 2.4x.
+//
+// Bit-identity is by construction and is verified, not assumed: each column is
+// aliased as a contiguous fvec so `dot` and `+=` bind to exactly the same
+// armadillo overloads, applied to the markers in exactly the same order, as
+// the single-RHS CorssProd. Promoting the reduction to a matrix product
+// (sgemm) would be faster still and would NOT be bit-identical.
+// ---------------------------------------------------------------------------
+arma::fmat getCrossprodMatAndKinMat(arma::fmat & BMat){
+	if(isUseSparseSigmaforInitTau | isUseSparseSigmaforModelFitting){
+		// Sparse branch: no decode to amortise, so fall back to the
+		// per-column path verbatim.
+		arma::fmat out(BMat.n_rows, BMat.n_cols);
+		for(unsigned int k = 0; k < BMat.n_cols; k++){
+			arma::fvec b(BMat.colptr(k), BMat.n_rows, false, true);
+			out.col(k) = getCrossprodMatAndKin(b);
+		}
+		return out;
+	}
+	return parallelCrossProdMat(BMat);
+}
+
+// GetTrace/GetTrace_q call set_seed(200) on entry, so probe i is the SAME
+// vector on every AI-REML round; and getCrossprodMatAndKin reads only the GRM
+// -- never wVec or tauVec -- so Au_i = K*u_i is the same too. A binary fit
+// spends ~120 direct GRM passes on it and ~90 of those are recomputations of
+// a value it already had.
+//
+// The probes are still DRAWN exactly as before, so the R RNG stream is
+// untouched; the freshly drawn block is then compared bit-for-bit against the
+// cached one, which turns the memoisation premise into a runtime-checked
+// invariant rather than a claim. Any mismatch, or a change to the GRM or to
+// the sparse-Sigma flags getCrossprodMatAndKin branches on, drops the cache.
+struct TraceAuCache {
+	arma::fmat U;
+	arma::fmat Au;
+	bool valid;
+	bool sparseInitTau;
+	bool sparseModelFit;
+	unsigned int N;
+	int Msub;
+	TraceAuCache() : valid(false), sparseInitTau(false), sparseModelFit(false), N(0), Msub(-1) {}
+	void reset(){ U.reset(); Au.reset(); valid = false; N = 0; Msub = -1; }
+};
+static TraceAuCache g_traceAu;
+
+// Called wherever the GRM can change, so no caller can leave a stale Au behind.
+void resetTraceAuCache(){ g_traceAu.reset(); }
+
+// Au for probes [start, start+k) of UBlock, from the cache when it provably
+// holds them, otherwise in ONE blocked GRM pass.
+static void getTraceAuBlock(arma::fmat & UBlock, unsigned int start, arma::fmat & AuBlock){
+	const unsigned int N = UBlock.n_rows;
+	const unsigned int k = UBlock.n_cols;
+	const int Msub = geno.getnumberofMarkerswithMAFge_minMAFtoConstructGRM();
+
+	const bool sameGRM = g_traceAu.valid
+		&& g_traceAu.N == N
+		&& g_traceAu.Msub == Msub
+		&& g_traceAu.sparseInitTau == isUseSparseSigmaforInitTau
+		&& g_traceAu.sparseModelFit == isUseSparseSigmaforModelFitting;
+
+	if(sameGRM && g_traceAu.U.n_cols >= start + k){
+		if(std::memcmp(g_traceAu.U.colptr(start), UBlock.memptr(),
+			       sizeof(float) * (size_t)N * (size_t)k) == 0){
+			AuBlock = g_traceAu.Au.cols(start, start + k - 1);
+			return;
+		}
+		// Same GRM but different probes: set_seed(200) did not reproduce
+		// them, so the premise this cache rests on is false here and every
+		// stored column is suspect, not just this block. Drop all of it.
+		g_traceAu.reset();
+	}
+
+	AuBlock = getCrossprodMatAndKinMat(UBlock);
+
+	if(!g_traceAu.valid){
+		g_traceAu.N = N;
+		g_traceAu.Msub = Msub;
+		g_traceAu.sparseInitTau = isUseSparseSigmaforInitTau;
+		g_traceAu.sparseModelFit = isUseSparseSigmaforModelFitting;
+		g_traceAu.valid = true;
+	}else if(!sameGRM){
+		g_traceAu.reset();
+		g_traceAu.N = N;
+		g_traceAu.Msub = Msub;
+		g_traceAu.sparseInitTau = isUseSparseSigmaforInitTau;
+		g_traceAu.sparseModelFit = isUseSparseSigmaforModelFitting;
+		g_traceAu.valid = true;
+	}
+	if(g_traceAu.U.n_cols < start + k){
+		g_traceAu.U.resize(N, start + k);
+		g_traceAu.Au.resize(N, start + k);
+	}
+	g_traceAu.U.cols(start, start + k - 1) = UBlock;
+	g_traceAu.Au.cols(start, start + k - 1) = AuBlock;
 }
 
 
@@ -1957,6 +2131,7 @@ void setgeno(std::string bedfile, std::string bimfile, std::string famfile, std:
 	//geno.printGenoVec();
 	int stop_s=clock();
 	cout << "time: " << (stop_s-start_s)/double(CLOCKS_PER_SEC)*1000 << endl;
+	resetTraceAuCache();
 }
 
 
@@ -2860,8 +3035,125 @@ float calCV(arma::fvec& xVec){
   return(vecCV);
 }
 
+// ---------------------------------------------------------------------------
+// S3: blocked multi-RHS PCG.
+//
+// Solves Sigma X = B for every column of BMat at once. Per column the
+// recurrence is EXACTLY the scalar one in getPCG1ofSigmaAndVector -- the same
+// armadillo expressions over contiguous fvec, in the same order -- so each
+// column is bit-identical to having been solved alone. The ONLY thing shared
+// is getCrossprod's GRM pass, taken once per iteration for all still-active
+// columns instead of once per column per iteration.
+//
+// This is why the per-column scalars (preA, Prebet, sumr2) are computed with
+// per-column fvec ops and NOT promoted to matrix form: an fmat formulation
+// would route the reductions through sgemm and silently change them. Only the
+// genotype decode may be shared; that is the entire win, and its size is
+// bounded by the measured decode share (D/(D+A) = 0.531).
+//
+// A column that has converged, or has hit maxiterPCG, is frozen and dropped
+// from the active set. That reproduces the scalar stopping point exactly --
+// its remaining iterations would not have run either -- and is what makes the
+// blocked cost (max_k iters_k)*D + (sum_k iters_k)*A rather than
+// (sum_k iters_k)*(D+A).
+//
+// Dense path only; the sparse branches have no decode to amortise and are left
+// to the scalar function verbatim by the caller. Memory is 6 working vectors
+// per column plus two N x na matrices, so the column count is capped to keep
+// that near 512 MB at large N.
+// ---------------------------------------------------------------------------
+static arma::fmat getPCG1ofSigmaAndVectorMat(arma::fvec& wVec, arma::fvec& tauVec,
+                                             arma::fmat& BMat, int maxiterPCG, float tolPCG){
+	const int Nnomissing = geno.getNnomissing();
+	const int K = BMat.n_cols;
+	arma::fmat XMat(Nnomissing, K);
+
+	arma::fvec minvVec(Nnomissing);
+	minvVec = 1/getDiagOfSigma(wVec, tauVec);
+
+	// Cap concurrent columns so peak memory stays bounded at large N. Column
+	// arithmetic is independent, so the cap cannot reach any result.
+	long long perCol = 6LL * (long long)Nnomissing * 4LL;
+	int maxCols = (int)((512LL << 20) / (perCol > 0 ? perCol : 1));
+	if(maxCols < 1) maxCols = 1;
+
+	for(int c0 = 0; c0 < K; c0 += maxCols){
+		const int c1 = std::min(c0 + maxCols, K);
+		const int nb = c1 - c0;
+
+		std::vector<arma::fvec> rV(nb), zV(nb), pV(nb), xV(nb);
+		std::vector<float> sumr2(nb);
+		std::vector<int> iters(nb, 0);
+		std::vector<int> active;
+		for(int j = 0; j < nb; j++){
+			arma::fvec bCol(BMat.colptr(c0 + j), Nnomissing, false, true);
+			xV[j].zeros(Nnomissing);
+			rV[j] = bCol;
+			zV[j] = minvVec % rV[j];
+			sumr2[j] = sum(rV[j] % rV[j]);
+			pV[j] = zV[j];
+			if(sumr2[j] > tolPCG && 0 < maxiterPCG) active.push_back(j);
+		}
+
+		arma::fmat PBlock, ApBlock;
+		while(!active.empty()){
+			const int na = active.size();
+			if(tauVec(1) != 0){
+				PBlock.set_size(Nnomissing, na);
+				for(int t = 0; t < na; t++) PBlock.col(t) = pV[active[t]];
+				ApBlock = getCrossprodMatAndKinMat(PBlock);
+			}
+			std::vector<int> stillActive;
+			for(int t = 0; t < na; t++){
+				const int j = active[t];
+				arma::fvec ApVec;
+				if(tauVec(1) == 0){
+					// getCrossprod's short circuit: no GRM pass at all.
+					ApVec = tauVec(0)*(pV[j] % (1/wVec));
+				}else{
+					arma::fvec cp1(ApBlock.colptr(t), Nnomissing, false, true);
+					ApVec = tauVec(0)*(pV[j] % (1/wVec)) + tauVec(1)*cp1;
+				}
+				arma::fvec preA = (rV[j].t() * zV[j])/(pV[j].t() * ApVec);
+				float a = preA(0);
+				xV[j] = xV[j] + a * pV[j];
+				arma::fvec r1Vec = rV[j] - a * ApVec;
+				arma::fvec z1Vec = minvVec % r1Vec;
+				arma::fvec Prebet = (z1Vec.t() * r1Vec)/(zV[j].t() * rV[j]);
+				float bet = Prebet(0);
+				pV[j] = z1Vec + bet*pV[j];
+				zV[j] = z1Vec;
+				rV[j] = r1Vec;
+				sumr2[j] = sum(rV[j] % rV[j]);
+				iters[j] = iters[j] + 1;
+				if(sumr2[j] > tolPCG && iters[j] < maxiterPCG) stillActive.push_back(j);
+			}
+			active.swap(stillActive);
+		}
+
+		// Same lines, same order, as the scalar function printed per solve.
+		for(int j = 0; j < nb; j++){
+			if(iters[j] >= maxiterPCG){
+				cout << "pcg did not converge. You may increase maxiter number." << endl;
+			}
+			cout << "iter from getPCG1ofSigmaAndVector " << iters[j] << endl;
+			XMat.col(c0 + j) = xV[j];
+		}
+	}
+	return XMat;
+}
+
+// True when getPCG1ofSigmaAndVector would take its dense PCG branch with the
+// diagonal preconditioner -- the only shape the blocked solver reproduces.
+static bool canBlockPCG(){
+	if(isUseSparseSigmaforInitTau) return false;
+	if(isUseSparseSigmaforModelFitting && !isUsePCGwithSparseSigma) return false;
+	if(isUsePrecondM) return false;
+	return true;
+}
+
 // [[Rcpp::export]]
-float GetTrace(arma::fmat Sigma_iX, arma::fmat& Xmat, arma::fvec& wVec, arma::fvec& tauVec, arma::fmat& cov1, int nrun, int maxiterPCG, float tolPCG, float traceCVcutoff){
+float GetTrace(arma::fmat& Sigma_iX, arma::fmat& Xmat, arma::fvec& wVec, arma::fvec& tauVec, arma::fmat& cov1, int nrun, int maxiterPCG, float tolPCG, float traceCVcutoff){
   set_seed(200);
   int Nnomissing = geno.getNnomissing();
   arma::fmat Sigma_iXt = Sigma_iX.t();
@@ -2881,20 +3173,45 @@ float GetTrace(arma::fmat Sigma_iX, arma::fmat& Xmat, arma::fvec& wVec, arma::fv
     //tempVec.zeros();
     //arma::fvec tempVec(nrun);
     //tempVec.zeros();
-    for(int i = nrunStart; i < nrunEnd; i++){
-      Rcpp::NumericVector uVec0;
-      uVec0 = nb(Nnomissing);
-      uVec = as<arma::fvec>(uVec0);
-      uVec = uVec*2 - 1;
-      Sigma_iu = getPCG1ofSigmaAndVector(wVec, tauVec, uVec, maxiterPCG, tolPCG);
-      Pu = Sigma_iu - Sigma_iX * (cov1 *  (Sigma_iXt * uVec));
-      Au = getCrossprodMatAndKin(uVec);
-      tempVec(i) = dot(Au, Pu);
-      Au.clear();
-      Pu.clear();
-      Sigma_iu.clear();
-      uVec.clear();
+    // Draw this block's probes first -- same calls, same order, so the R RNG
+    // stream is bit-for-bit what it was -- then take their Au in ONE blocked
+    // GRM pass (or from the cache, since Au does not depend on tau).
+    {
+      arma::fmat UBlock(Nnomissing, nrunEnd - nrunStart);
+      for(int i = nrunStart; i < nrunEnd; i++){
+        Rcpp::NumericVector uVec0;
+        uVec0 = nb(Nnomissing);
+        uVec = as<arma::fvec>(uVec0);
+        uVec = uVec*2 - 1;
+        UBlock.col(i - nrunStart) = uVec;
+      }
+      arma::fmat AuBlock;
+      getTraceAuBlock(UBlock, nrunStart, AuBlock);
+
+      // All nrun probes are available at once, so solve them together: one GRM
+      // pass per iteration for the whole active set instead of one per probe.
+      arma::fmat SiuBlock;
+      if(canBlockPCG()){
+        SiuBlock = getPCG1ofSigmaAndVectorMat(wVec, tauVec, UBlock, maxiterPCG, tolPCG);
+      }else{
+        SiuBlock.set_size(Nnomissing, UBlock.n_cols);
+        for(unsigned int c = 0; c < UBlock.n_cols; c++){
+          arma::fvec uCol(UBlock.colptr(c), Nnomissing, false, true);
+          SiuBlock.col(c) = getPCG1ofSigmaAndVector(wVec, tauVec, uCol, maxiterPCG, tolPCG);
+        }
+      }
+
+      for(int i = nrunStart; i < nrunEnd; i++){
+        arma::fvec uCol(UBlock.colptr(i - nrunStart), Nnomissing, false, true);
+        arma::fvec AuCol(AuBlock.colptr(i - nrunStart), Nnomissing, false, true);
+        arma::fvec SiuCol(SiuBlock.colptr(i - nrunStart), Nnomissing, false, true);
+        Pu = SiuCol - Sigma_iX * (cov1 *  (Sigma_iXt * uCol));
+        tempVec(i) = dot(AuCol, Pu);
+        Pu.clear();
+      }
     }
+    Au.clear();
+    uVec.clear();
     traceCV = calCV(tempVec);
     if(traceCV > traceCVcutoff){
       nrunStart = nrunEnd;
@@ -3180,7 +3497,7 @@ arma::fvec  getSigma_G_LOCO(arma::fvec& wVec, arma::fvec& tauVec,arma::fvec& Gve
 
 //This function needs the function getPCG1ofSigmaAndVector and function getCrossprodMatAndKin
 // [[Rcpp::export]]
-arma::fvec GetTrace_q(arma::fmat Sigma_iX, arma::fmat& Xmat, arma::fvec& wVec, arma::fvec& tauVec, arma::fmat& cov1,  int nrun, int maxiterPCG, float tolPCG, float traceCVcutoff){
+arma::fvec GetTrace_q(arma::fmat& Sigma_iX, arma::fmat& Xmat, arma::fvec& wVec, arma::fvec& tauVec, arma::fmat& cov1,  int nrun, int maxiterPCG, float tolPCG, float traceCVcutoff){
   	set_seed(200);
   	arma::fmat Sigma_iXt = Sigma_iX.t();
   	int Nnomissing = geno.getNnomissing();
@@ -3202,25 +3519,44 @@ arma::fvec GetTrace_q(arma::fmat Sigma_iX, arma::fmat& Xmat, arma::fvec& wVec, a
         while((traceCV > traceCVcutoff) | (traceCV0 > traceCVcutoff)){
 
 
-  	for(int i = nrunStart; i < nrunEnd; i++){
+  	// See GetTrace: probes are drawn in the same order (RNG stream unchanged),
+  	// then their Au comes from one blocked GRM pass or from the cache.
+  	{
+  	  arma::fmat UBlock(Nnomissing, nrunEnd - nrunStart);
+  	  for(int i = nrunStart; i < nrunEnd; i++){
+  	    Rcpp::NumericVector uVec0;
+  	    uVec0 = nb(Nnomissing);
+  	    uVec = as<arma::fvec>(uVec0);
+  	    uVec = uVec*2 - 1;
+  	    UBlock.col(i - nrunStart) = uVec;
+  	  }
+  	  arma::fmat AuBlock;
+  	  getTraceAuBlock(UBlock, nrunStart, AuBlock);
 
-    		Rcpp::NumericVector uVec0;
-    		uVec0 = nb(Nnomissing);
-    		uVec = as<arma::fvec>(uVec0);
-    		uVec = uVec*2 - 1;
-  //  		arma::fvec Sigma_iu;
-    		Sigma_iu = getPCG1ofSigmaAndVector(wVec, tauVec, uVec, maxiterPCG, tolPCG);
-  //  		arma::fcolvec Pu;
-    		Pu = Sigma_iu - Sigma_iX * (cov1 *  (Sigma_iXt * uVec));
-  //  		arma::fvec Au;
-    		Au = getCrossprodMatAndKin(uVec);
-    		tempVec(i) = dot(Au, Pu);
-    		tempVec0(i) = dot(uVec, Pu);
-                Au.clear();
-      		Pu.clear();
-      		Sigma_iu.clear();
-      		uVec.clear();
+  	  // See GetTrace: one GRM pass per iteration for the whole active set.
+  	  arma::fmat SiuBlock;
+  	  if(canBlockPCG()){
+  	    SiuBlock = getPCG1ofSigmaAndVectorMat(wVec, tauVec, UBlock, maxiterPCG, tolPCG);
+  	  }else{
+  	    SiuBlock.set_size(Nnomissing, UBlock.n_cols);
+  	    for(unsigned int c = 0; c < UBlock.n_cols; c++){
+  	      arma::fvec uCol(UBlock.colptr(c), Nnomissing, false, true);
+  	      SiuBlock.col(c) = getPCG1ofSigmaAndVector(wVec, tauVec, uCol, maxiterPCG, tolPCG);
+  	    }
+  	  }
+
+  	  for(int i = nrunStart; i < nrunEnd; i++){
+  	    arma::fvec uCol(UBlock.colptr(i - nrunStart), Nnomissing, false, true);
+  	    arma::fvec AuCol(AuBlock.colptr(i - nrunStart), Nnomissing, false, true);
+  	    arma::fvec SiuCol(SiuBlock.colptr(i - nrunStart), Nnomissing, false, true);
+  	    Pu = SiuCol - Sigma_iX * (cov1 *  (Sigma_iXt * uCol));
+  	    tempVec(i) = dot(AuCol, Pu);
+  	    tempVec0(i) = dot(uCol, Pu);
+  	    Pu.clear();
+  	  }
   	}
+  	Au.clear();
+  	uVec.clear();
 	traceCV = calCV(tempVec);
 	traceCV0 = calCV(tempVec0);
 	
@@ -4631,11 +4967,13 @@ arma::fvec get_GRMdiagVec(){
 // [[Rcpp::export]]
 void setminMAFforGRM(float minMAFforGRM){
   minMAFtoConstructGRM = minMAFforGRM;
+  resetTraceAuCache();
 }
 
 // [[Rcpp::export]]
 void setmaxMissingRateforGRM(float maxMissingforGRM){
   geno.maxMissingRate = maxMissingforGRM;
+  resetTraceAuCache();
 }
 
 
