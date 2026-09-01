@@ -1,0 +1,19 @@
+=== STEP 1 (relatednessCutoff=0.125) ===
+  OK   s1_y_quant  (5s)
+  OK   s1_y_binary  (5s)
+  OK   s1_y_quant_pc  (5s)
+  OK   s1_y_binary_pc  (5s)
+  OK   s1_y_null  (4s)
+=== STEP 2 group (SAIGE-GENE+) ===
+  OK   s2g_y_quant  (354s)
+  OK   s2g_y_binary  (445s)
+  OK   s2g_y_quant_pc  (431s)
+  OK   s2g_y_binary_pc  (346s)
+  OK   s2g_y_null  (331s)
+=== STEP 2 single (SAIGE-variant) ===
+  OK   s2s_y_quant  (48s)
+  OK   s2s_y_binary  (76s)
+  OK   s2s_y_quant_pc  (42s)
+  OK   s2s_y_binary_pc  (90s)
+  OK   s2s_y_null  (43s)
+=== pipeline done ===

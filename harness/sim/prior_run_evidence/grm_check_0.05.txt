@@ -1,0 +1,18 @@
+sparse GRM sparseGRM_relatednessCutoff_0.05_5000_randomMarkersUsed.sparseGRM.mtx
+  10000 x 10000, 1118079 off-diagonal pairs, 2500 true pairs planted
+  value on TRUE pairs : median 0.493 (IQR 0.455-0.536)   [expected 0.5]
+  value on OTHER pairs: median 0.075, 99.9% 0.467, max 1.037
+  diagonal: median 0.986, range 0.228-2.230
+
+cutoff      extra_prs  true_prs   sens% extra/true mass_ratio maxRowSum
+0.050         1115586      2493    99.7      447.5      83.46    177.95
+0.075          556000      2489    99.6      223.4      55.96    177.16
+0.100          272654      2485    99.4      109.7      36.67    175.23
+0.125          160046      2470    98.8       64.8      26.79    173.28
+0.150          121113      2456    98.2       49.3      22.63    172.60
+0.200           80018      2438    97.5       32.8      16.95    168.29
+0.250           37124      2416    96.6       15.4       9.28    166.88
+0.300           20967      2394    95.8        8.8       5.80    165.49
+0.400            2176      2305    92.2        0.9       0.88    135.00
+
+CHOSEN_CUTOFF 0.4  (no candidate met the rule; using the largest)

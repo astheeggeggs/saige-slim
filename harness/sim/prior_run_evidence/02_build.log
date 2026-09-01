@@ -1,0 +1,28 @@
+[    3.0s] EUR individuals 9000; founders 9000; output N 10000 (8000 unrelated + 500 families of 4)
+[    3.0s] chr20 genetic length 108.1 cM
+[    3.1s] 2000 transmissions, 2123 crossovers (1.06 per meiosis)
+[    3.1s] 550 genes, 9010 exons, 1,440,898 coding bp (2.24% of chr20)
+[  892.0s] sites seen 2,972,707 (dropped 46,529 non-biallelic); kept 2,267,192 polymorphic in EUR; coding 49,318
+[  893.4s] wrote bed/bim/fam
+[  895.2s] annotation x MAF: high n=2466 medianMAF=5.00e-05, medium n=14795 medianMAF=5.00e-05, low n=32057 medianMAF=1.00e-04
+[  895.2s] cor(anno, true effect class) = 0.741 (latent), 0.521 (after cutting)
+[  895.2s] 55 causal genes; 739 causal coding variants (14.6% of variants in causal genes)
+[  897.8s] non-coding causal variants: 2,255 of 2,217,874
+[  898.7s] raw genetic variance: coding 2.483, non-coding 55.81
+[  898.7s] scaled: var(g)=0.01009 (target h2 0.01); beta_c range [-0.756, 0.669]
+[  898.7s] top causal genes by true h2 (and expected 1-df NCP at N=10000):
+[  898.7s]    GENE0362  h2=1.166e-03  NCP=11.7
+[  898.7s]    GENE0179  h2=5.315e-04  NCP=5.3
+[  898.7s]    GENE0425  h2=5.179e-04  NCP=5.2
+[  898.7s]    GENE0214  h2=3.910e-04  NCP=3.9
+[  898.7s]    GENE0199  h2=3.373e-04  NCP=3.4
+[  898.7s]    GENE0137  h2=2.929e-04  NCP=2.9
+[  898.7s]    GENE0215  h2=1.503e-04  NCP=1.5
+[  898.7s]    GENE0014  h2=1.362e-04  NCP=1.4
+[  898.7s]    GENE0221  h2=1.209e-04  NCP=1.2
+[  898.7s]    GENE0314  h2=1.087e-04  NCP=1.1
+[  898.7s] var(poly)=0.349 (target 0.35)
+[  898.7s] h2=0.01: var(y)=1.018  cases=1000 (10.0%)
+[  898.7s] h2=0.2 (positive control): var(y)=0.994  cases=1000 (10.0%)
+[  919.1s] group file: 550 genes
+[  919.1s] done

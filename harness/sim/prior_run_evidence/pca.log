@@ -1,0 +1,26 @@
+PLINK v2.0.0-a.6.9 64-bit (29 Jan 2025)
+Options in effect:
+  --bfile harness/work/sim/data_for_grm
+  --nonfounders
+  --out harness/work/sim/pca
+  --pca 10
+  --silent
+
+Hostname: Duncans-MacBook-Pro.local
+Working directory: /Users/dpalmer/Repositories/SAIGE
+Start time: Tue Sep  1 16:51:16 2026
+
+Random number seed: 1788277876
+16384 MiB RAM detected; reserving 8192 MiB for main workspace.
+Using up to 8 compute threads.
+10000 samples (4994 females, 5006 males; 9000 founders) loaded from
+harness/work/sim/data_for_grm.fam.
+3055 variants loaded from harness/work/sim/data_for_grm.bim.
+Note: No phenotype data present.
+Calculating allele frequencies... done.
+Constructing GRM: done.
+Extracting eigenvalues and eigenvectors... done.
+--pca: Eigenvectors written to harness/work/sim/pca.eigenvec , and eigenvalues
+written to harness/work/sim/pca.eigenval .
+
+End time: Tue Sep  1 16:52:48 2026

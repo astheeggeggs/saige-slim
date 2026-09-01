@@ -1,0 +1,136 @@
+### prep chain finished
+### GRM diagnostic at the recipe default (0.05)
+sparse GRM sparseGRM_relatednessCutoff_0.05_5000_randomMarkersUsed.sparseGRM.mtx
+  10000 x 10000, 1118079 off-diagonal pairs, 2500 true pairs planted
+  value on TRUE pairs : median 0.493 (IQR 0.455-0.536)   [expected 0.5]
+  value on OTHER pairs: median 0.075, 99.9% 0.467, max 1.037
+  diagonal: median 0.986, range 0.228-2.230
+
+cutoff      extra_prs  true_prs   sens% extra/true mass_ratio maxRowSum
+0.050         1115586      2493    99.7      447.5      83.46    177.95
+0.075          556000      2489    99.6      223.4      55.96    177.16
+0.100          272654      2485    99.4      109.7      36.67    175.23
+0.125          160046      2470    98.8       64.8      26.79    173.28
+0.150          121113      2456    98.2       49.3      22.63    172.60
+0.200           80018      2438    97.5       32.8      16.95    168.29
+0.250           37124      2416    96.6       15.4       9.28    166.88
+0.300           20967      2394    95.8        8.8       5.80    165.49
+0.400            2176      2305    92.2        0.9       0.88    135.00
+
+CHOSEN_CUTOFF 0.4  (no candidate met the rule; using the largest)
+### chosen relatedness cutoff: 0.4
+### re-running step 0 at cutoff 0.4
+sparse GRM sparseGRM_relatednessCutoff_0.4_5000_randomMarkersUsed.sparseGRM.mtx
+  10000 x 10000, 3795 off-diagonal pairs, 2500 true pairs planted
+  value on TRUE pairs : median 0.501 (IQR 0.469-0.545)   [expected 0.5]
+  value on OTHER pairs: median 0.484, 99.9% 0.971, max 1.037
+  diagonal: median 0.986, range 0.228-2.230
+
+cutoff      extra_prs  true_prs   sens% extra/true mass_ratio maxRowSum
+0.050            1603      2192    87.7        0.7       0.71    130.82
+0.075            1603      2192    87.7        0.7       0.71    130.82
+0.100            1603      2192    87.7        0.7       0.71    130.82
+0.125            1603      2192    87.7        0.7       0.71    130.82
+0.150            1603      2192    87.7        0.7       0.71    130.82
+0.200            1603      2192    87.7        0.7       0.71    130.82
+0.250            1603      2192    87.7        0.7       0.71    130.82
+0.300            1603      2192    87.7        0.7       0.71    130.82
+0.400            1603      2192    87.7        0.7       0.71    130.82
+
+CHOSEN_CUTOFF 0.4  (no candidate met the rule; using the largest)
+### pipeline
+=== STEP 1 (relatednessCutoff=0.4) ===
+  FAIL s1_y_quant  (3s)  -- tail:
+       isUsePCGwithSparseSigma 0
+       use sparse kinship to fit the model 
+       Error: spsolve(): solution not found
+       Timing stopped at: 0.376 0.076 0.552
+       Execution halted
+  FAIL s1_y_binary  (2s)  -- tail:
+       isUsePCGwithSparseSigma 0
+       use sparse kinship to fit the model 
+       Error: spsolve(): solution not found
+       Timing stopped at: 0.359 0.029 0.519
+       Execution halted
+  FAIL s1_y_quant_pc  (3s)  -- tail:
+       isUsePCGwithSparseSigma 0
+       use sparse kinship to fit the model 
+       Error: spsolve(): solution not found
+       Timing stopped at: 0.386 0.035 0.438
+       Execution halted
+  FAIL s1_y_binary_pc  (3s)  -- tail:
+       isUsePCGwithSparseSigma 0
+       use sparse kinship to fit the model 
+       Error: spsolve(): solution not found
+       Timing stopped at: 0.374 0.029 0.424
+       Execution halted
+  FAIL s1_y_null  (3s)  -- tail:
+       isUsePCGwithSparseSigma 0
+       use sparse kinship to fit the model 
+       Error: spsolve(): solution not found
+       Timing stopped at: 0.342 0.026 0.376
+       Execution halted
+=== STEP 2 group (SAIGE-GENE+) ===
+  FAIL s2g_y_quant  (1s)  -- tail:
+       group-based test will be performed
+       Ultra rare variants with MAC <=  10  will be collpased for set-based tests in the 'absence or presence' way.
+       Error in load(GMMATmodelFile) : empty (zero-byte) input file
+       Calls: do.call -> <Anonymous> -> ReadModel -> load
+       Execution halted
+  FAIL s2g_y_binary  (2s)  -- tail:
+       group-based test will be performed
+       Ultra rare variants with MAC <=  10  will be collpased for set-based tests in the 'absence or presence' way.
+       Error in load(GMMATmodelFile) : empty (zero-byte) input file
+       Calls: do.call -> <Anonymous> -> ReadModel -> load
+       Execution halted
+  FAIL s2g_y_quant_pc  (2s)  -- tail:
+       group-based test will be performed
+       Ultra rare variants with MAC <=  10  will be collpased for set-based tests in the 'absence or presence' way.
+       Error in load(GMMATmodelFile) : empty (zero-byte) input file
+       Calls: do.call -> <Anonymous> -> ReadModel -> load
+       Execution halted
+  FAIL s2g_y_binary_pc  (1s)  -- tail:
+       group-based test will be performed
+       Ultra rare variants with MAC <=  10  will be collpased for set-based tests in the 'absence or presence' way.
+       Error in load(GMMATmodelFile) : empty (zero-byte) input file
+       Calls: do.call -> <Anonymous> -> ReadModel -> load
+       Execution halted
+  FAIL s2g_y_null  (2s)  -- tail:
+       group-based test will be performed
+       Ultra rare variants with MAC <=  10  will be collpased for set-based tests in the 'absence or presence' way.
+       Error in load(GMMATmodelFile) : empty (zero-byte) input file
+       Calls: do.call -> <Anonymous> -> ReadModel -> load
+       Execution halted
+=== STEP 2 single (SAIGE-variant) ===
+  FAIL s2s_y_quant  (2s)  -- tail:
+       Any dosages <=  0.2  for genetic variants with MAC <=  10  are set to be 0.
+       single-variant association test will be performed
+       Error in load(GMMATmodelFile) : empty (zero-byte) input file
+       Calls: do.call -> <Anonymous> -> ReadModel -> load
+       Execution halted
+  FAIL s2s_y_binary  (1s)  -- tail:
+       Any dosages <=  0.2  for genetic variants with MAC <=  10  are set to be 0.
+       single-variant association test will be performed
+       Error in load(GMMATmodelFile) : empty (zero-byte) input file
+       Calls: do.call -> <Anonymous> -> ReadModel -> load
+       Execution halted
+  FAIL s2s_y_quant_pc  (2s)  -- tail:
+       Any dosages <=  0.2  for genetic variants with MAC <=  10  are set to be 0.
+       single-variant association test will be performed
+       Error in load(GMMATmodelFile) : empty (zero-byte) input file
+       Calls: do.call -> <Anonymous> -> ReadModel -> load
+       Execution halted
+  FAIL s2s_y_binary_pc  (1s)  -- tail:
+       Any dosages <=  0.2  for genetic variants with MAC <=  10  are set to be 0.
+       single-variant association test will be performed
+       Error in load(GMMATmodelFile) : empty (zero-byte) input file
+       Calls: do.call -> <Anonymous> -> ReadModel -> load
+       Execution halted
+  FAIL s2s_y_null  (2s)  -- tail:
+       Any dosages <=  0.2  for genetic variants with MAC <=  10  are set to be 0.
+       single-variant association test will be performed
+       Error in load(GMMATmodelFile) : empty (zero-byte) input file
+       Calls: do.call -> <Anonymous> -> ReadModel -> load
+       Execution halted
+=== pipeline done ===
+### ALL DONE

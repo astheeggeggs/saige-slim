@@ -1,0 +1,29 @@
+PLINK v2.0.0-a.6.9 64-bit (29 Jan 2025)
+Options in effect:
+  --bfile harness/work/sim/chr20_sim
+  --indep-pairwise 50 5 0.05
+  --maf 0.01
+  --nonfounders
+  --out harness/work/sim/grm
+  --silent
+
+Hostname: Duncans-MacBook-Pro.local
+Working directory: /Users/dpalmer/Repositories/SAIGE
+Start time: Tue Sep  1 16:40:13 2026
+
+Random number seed: 1788277213
+16384 MiB RAM detected; reserving 8192 MiB for main workspace.
+Using up to 8 compute threads.
+10000 samples (4994 females, 5006 males; 9000 founders) loaded from
+harness/work/sim/chr20_sim.fam.
+2267192 variants loaded from harness/work/sim/chr20_sim.bim.
+Note: No phenotype data present.
+Calculating allele frequencies... done.
+2126468 variants removed due to allele frequency threshold(s)
+(--maf/--max-maf/--mac/--max-mac).
+140724 variants remaining after main filters.
+--indep-pairwise (1 compute thread): 126677/140724 variants removed.
+Variant lists written to harness/work/sim/grm.prune.in and
+harness/work/sim/grm.prune.out .
+
+End time: Tue Sep  1 16:40:23 2026

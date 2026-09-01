@@ -1,0 +1,1618 @@
+=== step 2 (SAIGE-variant, all variants MAC>=20): y_quant_pc ===
+Loading required package: RhpcBLASctl
+R version 4.4.3 (2025-02-28)
+Platform: x86_64-apple-darwin13.4.0
+Running under: macOS 26.6.2
+
+Matrix products: default
+BLAS/LAPACK: /Users/dpalmer/Repositories/SAIGE/.pixi/envs/default/lib/libopenblasp-r0.3.30.dylib;  LAPACK version 3.12.0
+
+locale:
+[1] C.UTF-8/C.UTF-8/C.UTF-8/C/C.UTF-8/C.UTF-8
+
+time zone: Europe/London
+tzcode source: system (macOS)
+
+attached base packages:
+[1] parallel  stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+[1] data.table_1.18.4   optparse_1.8.2      RhpcBLASctl_0.23-42
+[4] SAIGE_1.5.2        
+
+loaded via a namespace (and not attached):
+[1] compiler_4.4.3        Matrix_1.7-6          tools_4.4.3          
+[4] Rcpp_1.1.2            grid_4.4.3            RcppParallel_5.1.11-2
+[7] lattice_0.23-1       
+$bedFile
+[1] "harness/work/sim/chr20_sim.bed"
+
+$bimFile
+[1] "harness/work/sim/chr20_sim.bim"
+
+$famFile
+[1] "harness/work/sim/chr20_sim.fam"
+
+$pgenFile
+[1] ""
+
+$pvarFile
+[1] ""
+
+$psamFile
+[1] ""
+
+$AlleleOrder
+[1] "alt-first"
+
+$idstoIncludeFile
+[1] ""
+
+$rangestoIncludeFile
+[1] ""
+
+$chrom
+[1] "20"
+
+$is_imputed_data
+[1] FALSE
+
+$minMAF
+[1] 0
+
+$minMAC
+[1] 20
+
+$minGroupMAC_in_BurdenTest
+[1] 5
+
+$minInfo
+[1] 0
+
+$maxMissing
+[1] 0.15
+
+$impute_method
+[1] "best_guess"
+
+$LOCO
+[1] FALSE
+
+$GMMATmodelFile
+[1] "harness/work/sim/step1_y_quant_pc.rda"
+
+$varianceRatioFile
+[1] "harness/work/sim/step1_y_quant_pc.varianceRatio.txt"
+
+$SAIGEOutputFile
+[1] "harness/work/sim/step2_single_y_quant_pc.txt"
+
+$markers_per_chunk
+[1] 10000
+
+$groups_per_chunk
+[1] 100
+
+$is_output_moreDetails
+[1] FALSE
+
+$is_overwrite_output
+[1] TRUE
+
+$maxMAF_in_groupTest
+[1] "0.0001,0.001,0.01"
+
+$maxMAC_in_groupTest
+[1] "0"
+
+$annotation_in_groupTest
+[1] "lof,missense;lof,missense;lof;synonymous"
+
+$groupFile
+[1] ""
+
+$sparseGRMFile
+[1] "harness/work/sim/sparseGRM_relatednessCutoff_0.125_3000_randomMarkersUsed.sparseGRM.mtx"
+
+$sparseGRMSampleIDFile
+[1] "harness/work/sim/sparseGRM_relatednessCutoff_0.125_3000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt"
+
+$relatednessCutoff
+[1] 0
+
+$sampleFile_male
+[1] ""
+
+$X_PARregion
+[1] ""
+
+$is_rewrite_XnonPAR_forMales
+[1] FALSE
+
+$MACCutoff_to_CollapseUltraRare
+[1] 10
+
+$cateVarRatioMinMACVecExclude
+[1] "10,20.5"
+
+$cateVarRatioMaxMACVecInclude
+[1] "20.5"
+
+$weights.beta
+[1] "1,25"
+
+$r.corr
+[1] 0
+
+$markers_per_chunk_in_groupTest
+[1] 100
+
+$condition
+[1] ""
+
+$SPAcutoff
+[1] 2
+
+$dosage_zerod_cutoff
+[1] 0.2
+
+$dosage_zerod_MAC_cutoff
+[1] 10
+
+$is_single_in_groupTest
+[1] FALSE
+
+$is_no_weight_in_groupTest
+[1] FALSE
+
+$is_output_weight_column
+[1] FALSE
+
+$is_output_markerList_in_groupTest
+[1] FALSE
+
+$is_Firth_beta
+[1] TRUE
+
+$pCutoffforFirth
+[1] 0.1
+
+$is_fastTest
+[1] TRUE
+
+$is_noadjCov
+[1] TRUE
+
+$max_MAC_for_ER
+[1] 4
+
+$nThreads
+[1] 6
+
+$subSampleFile
+[1] ""
+
+$help
+[1] FALSE
+
+[1] "opt$r.corr"
+[1] 0
+is_noadjCov  TRUE 
+is_fastTest  TRUE 
+dosage_zerod_cutoff  0.2 
+Any dosages <=  0.2  for genetic variants with MAC <=  10  are set to be 0.
+single-variant association test will be performed
+[1] "Leave-one-chromosome-out is not applied"
+[1] "LOCO = FASLE and leave-one-chromosome-out is not applied"
+length(sparseGRMSampleID$IndexGRM):  10000 
+nrow(sparseGRMSampleID):  10000 
+10000  samples have been used to fit the glmm null model
+[1] 10000     3
+      IID IndexInModel IndexGRM
+1 S000001            1        1
+2 S000002            2        2
+3 S000003            3        3
+4 S000004            4        4
+5 S000005            5        5
+6 S000006            6        6
+[1] "Subsetting GRM"
+isSparseGRM is  TRUE 
+variance Ratio null is  1.067654 1.080262 
+variance Ratio null_noXadj is provided
+[1] "ratioVec_sparse"
+[1] 0.9999653 0.9999581
+[1] "ratioVec_null"
+[1] 1.067654 1.080262
+[1] "ratioVec_null_noXadj"
+[1] 1.066537 1.067802
+is_fastTest is TRUE.
+The fast tests will be performed (when p-values >=  0.05 ).
+dosageFile type is  plink 
+allele order in the plink file is  alt-first .
+Reading bim file....
+Reading fam file....
+Setting position of samples in PLINK files....
+Marker analysis: 2267192 markers in 6 shards over 6 threads
+Number of all markers to test:	 377866 
+Number of markers in each chunk:	 10000 
+Number of chunks for all markers:	 38 
+Number of all markers to test:	 377866 
+Number of markers in each chunk:	 10000 
+Number of chunks for all markers:	 38 
+Number of all markers to test:	 377865 
+Number of markers in each chunk:	 10000 
+Number of chunks for all markers:	 38 
+Number of all markers to test:	 377865 
+Number of markers in each chunk:	 10000 
+Number of chunks for all markers:	 38 
+Number of all markers to test:	 377865 
+Number of markers in each chunk:	 10000 
+Number of chunks for all markers:	 38 
+Number of all markers to test:	 377865 
+Number of markers in each chunk:	 10000 
+Number of chunks for all markers:	 38 
+(2026-09-01 17:29:20.27782) ---- Analyzing Chunk 1/38: chrom 20 ---- 
+(2026-09-01 17:29:20.286055) ---- Analyzing Chunk 1/38: chrom 20 ---- 
+(2026-09-01 17:29:20.289243) ---- Analyzing Chunk 1/38: chrom 20 ---- 
+(2026-09-01 17:29:20.297175) ---- Analyzing Chunk 1/38: chrom 20 ---- 
+(2026-09-01 17:29:20.303593) ---- Analyzing Chunk 1/38: chrom 20 ---- 
+(2026-09-01 17:29:20.308377) ---- Analyzing Chunk 1/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+Completed 10000/10000 markers in the chunk.
+1090 markers were tested.
+write to output
+1279 markers were tested.
+write to output
+   user  system elapsed 
+  0.633   0.092  13.188 
+   user  system elapsed 
+  0.660   0.093  13.198 
+Completed 10000/10000 markers in the chunk.
+1227 markers were tested.
+Completed 10000/10000 markers in the chunk.
+write to output
+Completed 10000/10000 markers in the chunk.
+1320 markers were tested.
+write to output
+   user  system elapsed 
+  0.654   0.092  13.244 
+Completed 10000/10000 markers in the chunk.
+1236 markers were tested.
+write to output
+   user  system elapsed 
+  0.677   0.093  13.257 
+1299 markers were tested.
+write to output
+   user  system elapsed 
+  0.674   0.094  13.298 
+   user  system elapsed 
+  0.678   0.098  13.312 
+(2026-09-01 17:29:21.344347) ---- Analyzing Chunk 2/38: chrom 20 ---- 
+(2026-09-01 17:29:21.395703) ---- Analyzing Chunk 2/38: chrom 20 ---- 
+(2026-09-01 17:29:21.43664) ---- Analyzing Chunk 2/38: chrom 20 ---- 
+(2026-09-01 17:29:21.540271) ---- Analyzing Chunk 2/38: chrom 20 ---- 
+(2026-09-01 17:29:21.541612) ---- Analyzing Chunk 2/38: chrom 20 ---- 
+(2026-09-01 17:29:21.554062) ---- Analyzing Chunk 2/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+994 markers were tested.
+write to output
+   user  system elapsed 
+  1.225   0.159  14.084 
+(2026-09-01 17:29:22.140398) ---- Analyzing Chunk 3/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1179 markers were tested.
+write to output
+   user  system elapsed 
+  1.278   0.163  14.159 
+(2026-09-01 17:29:22.319797) ---- Analyzing Chunk 3/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+Completed 10000/10000 markers in the chunk.
+905 markers were tested.
+write to output
+   user  system elapsed 
+  1.266   0.157 Completed 10000/10000 markers in the chunk.
+ 14.339 
+Completed 10000/10000 markers in the chunk.
+1292 markers were tested.
+write to output
+1303 markers were tested.
+   user  system elapsed 
+  1.306   0.160  14.347 
+write to output
+1283 markers were tested.
+   user  system elapsed 
+  1.303   0.162  14.349 
+write to output
+   user  system elapsed 
+  1.307   0.165  14.352 
+(2026-09-01 17:29:22.400489) ---- Analyzing Chunk 3/38: chrom 20 ---- 
+(2026-09-01 17:29:22.429941) ---- Analyzing Chunk 3/38: chrom 20 ---- 
+(2026-09-01 17:29:22.434094) ---- Analyzing Chunk 3/38: chrom 20 ---- 
+(2026-09-01 17:29:22.444124) ---- Analyzing Chunk 3/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1268 markers were tested.
+write to output
+   user  system elapsed 
+  1.883   0.214  15.069 
+Completed 10000/10000 markers in the chunk.
+1132 markers were tested.
+write to output
+   user  system elapsed 
+  1.845   0.218  15.091 
+Completed 10000/10000 markers in the chunk.
+963 markers were tested.
+write to output
+   user  system elapsed 
+  1.845   0.207  15.100 
+(2026-09-01 17:29:23.11877) ---- Analyzing Chunk 4/38: chrom 20 ---- 
+(2026-09-01 17:29:23.143837) ---- Analyzing Chunk 4/38: chrom 20 ---- 
+(2026-09-01 17:29:23.15601) ---- Analyzing Chunk 4/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1154 markers were tested.
+write to output
+Completed 10000/10000 markers in the chunk.
+   user  system elapsed 
+  1.920   0.223  15.200 
+1229 markers were tested.
+write to output
+   user  system elapsed 
+  1.914   0.220  15.208 
+Completed 10000/10000 markers in the chunk.
+1166 markers were tested.
+write to output
+   user  system elapsed 
+  1.914   0.224  15.221 
+(2026-09-01 17:29:23.248121) ---- Analyzing Chunk 4/38: chrom 20 ---- 
+(2026-09-01 17:29:23.260119) ---- Analyzing Chunk 4/38: chrom 20 ---- 
+(2026-09-01 17:29:23.27535) ---- Analyzing Chunk 4/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1140 markers were tested.
+write to output
+   user  system elapsed 
+  2.461   0.266  15.784 
+Completed 10000/10000 markers in the chunk.
+(2026-09-01 17:29:23.826062) ---- Analyzing Chunk 5/38: chrom 20 ---- 
+983 markers were tested.
+write to output
+   user  system elapsed 
+  2.409   0.261  15.836 
+(2026-09-01 17:29:23.920583) ---- Analyzing Chunk 5/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1197 markers were tested.
+write to output
+   user  system elapsed 
+  2.487   0.275  16.001 
+(2026-09-01 17:29:24.082848) ---- Analyzing Chunk 5/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1165 markers were tested.
+write to output
+   user  system elapsed 
+  2.511   0.291  16.110 
+Completed 10000/10000 markers in the chunk.
+1266 markers were tested.
+write to output
+   user  system elapsed 
+  2.508   0.290  16.133 
+(2026-09-01 17:29:24.162771) ---- Analyzing Chunk 5/38: chrom 20 ---- 
+(2026-09-01 17:29:24.199247) ---- Analyzing Chunk 5/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1122 markers were tested.
+write to output
+   user  system elapsed 
+  2.464   0.319  16.209 
+(2026-09-01 17:29:24.293018) ---- Analyzing Chunk 5/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+Completed 10000/10000 markers in the chunk.
+1269 markers were tested.
+1037 markers were tested.
+write to output
+   user  system elapsed 
+  2.994   0.344  17.315 
+write to output
+   user  system elapsed 
+  3.106   0.356  17.321 
+(2026-09-01 17:29:25.57427) ---- Analyzing Chunk 6/38: chrom 20 ---- 
+(2026-09-01 17:29:25.592967) ---- Analyzing Chunk 6/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1234 markers were tested.
+write to output
+   user  system elapsed 
+  3.114   0.399  17.705 
+Completed 10000/10000 markers in the chunk.
+1212 markers were tested.
+write to output
+   user  system elapsed 
+  3.084   0.376  17.722 
+Completed 10000/10000 markers in the chunk.
+1177 markers were tested.
+write to output
+   user  system elapsed 
+  3.154   0.399  17.743 
+(2026-09-01 17:29:25.795378) ---- Analyzing Chunk 6/38: chrom 20 ---- 
+(2026-09-01 17:29:25.827406) ---- Analyzing Chunk 6/38: chrom 20 ---- 
+(2026-09-01 17:29:25.853076) ---- Analyzing Chunk 6/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1211 markers were tested.
+write to output
+   user  system elapsed 
+  3.177   0.498  18.346 
+Completed 10000/10000 markers in the chunk.
+1193 markers were tested.
+write to output
+   user  system elapsed 
+  3.587   0.451  18.357 
+Completed 10000/10000 markers in the chunk.
+1298 markers were tested.
+write to output
+   user  system elapsed 
+  3.726   0.467  18.394 
+(2026-09-01 17:29:26.434534) ---- Analyzing Chunk 6/38: chrom 20 ---- 
+(2026-09-01 17:29:26.452264) ---- Analyzing Chunk 7/38: chrom 20 ---- 
+(2026-09-01 17:29:26.500034) ---- Analyzing Chunk 7/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1237 markers were tested.
+write to output
+   user  system elapsed 
+  3.704   0.484  18.582 
+(2026-09-01 17:29:26.676831) ---- Analyzing Chunk 7/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1191 markers were tested.
+write to output
+   user  system elapsed 
+  3.732   0.504  18.712 
+(2026-09-01 17:29:26.788068) ---- Analyzing Chunk 7/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1238 markers were tested.
+write to output
+   user  system elapsed 
+  3.689   0.493  18.833 
+(2026-09-01 17:29:27.046602) ---- Analyzing Chunk 7/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1148 markers were tested.
+write to output
+   user  system elapsed 
+  4.151   0.538  19.349 
+Completed 10000/10000 markers in the chunk.
+1164 markers were tested.
+write to output
+   user  system elapsed 
+  4.305   0.551  19.378 
+(2026-09-01 17:29:27.397748) ---- Analyzing Chunk 8/38: chrom 20 ---- 
+(2026-09-01 17:29:27.431279) ---- Analyzing Chunk 8/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1276 markers were tested.
+write to output
+   user  system elapsed 
+  3.772   0.612  19.507 
+Completed 10000/10000 markers in the chunk.
+1119 markers were tested.
+write to output
+   user  system elapsed 
+  4.262   0.564  19.532 
+(2026-09-01 17:29:27.568346) ---- Analyzing Chunk 7/38: chrom 20 ---- 
+(2026-09-01 17:29:27.580966) ---- Analyzing Chunk 8/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1177 markers were tested.
+write to output
+   user  system elapsed 
+  4.274   0.578  19.624 
+(2026-09-01 17:29:27.678778) ---- Analyzing Chunk 8/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1262 markers were tested.
+write to output
+   user  system elapsed 
+  4.252   0.565  19.745 
+(2026-09-01 17:29:27.800209) ---- Analyzing Chunk 8/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1136 markers were tested.
+write to output
+   user  system elapsed 
+  4.682   0.596  20.027 
+Completed 10000/10000 markers in the chunk.
+1212 markers were tested.
+write to output
+   user  system elapsed 
+  4.856   0.603  20.037 
+(2026-09-01 17:29:28.069788) ---- Analyzing Chunk 9/38: chrom 20 ---- 
+(2026-09-01 17:29:28.080206) ---- Analyzing Chunk 9/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1192 markers were tested.
+write to output
+   user  system elapsed 
+  4.800   0.611  20.172 
+(2026-09-01 17:29:28.229474) ---- Analyzing Chunk 9/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1208 markers were tested.
+write to output
+   user  system elapsed 
+  4.824   0.632  20.303 
+(2026-09-01 17:29:28.346183) ---- Analyzing Chunk 9/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+Completed 10000/10000 markers in the chunk.
+1262 markers were tested.
+write to output
+   user  system elapsed 
+  4.368 1307 markers were tested.
+  0.701  20.407 
+write to output
+   user  system elapsed 
+  4.793   0.615  20.409 
+(2026-09-01 17:29:28.470254) ---- Analyzing Chunk 9/38: chrom 20 ---- 
+(2026-09-01 17:29:28.472358) ---- Analyzing Chunk 8/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1124 markers were tested.
+write to output
+   user  system elapsed 
+  5.227   0.637  20.682 
+Completed 10000/10000 markers in the chunk.
+1257 markers were tested.
+write to output
+   user  system elapsed 
+  5.413   0.647  20.705 
+(2026-09-01 17:29:28.729784) ---- Analyzing Chunk 10/38: chrom 20 ---- 
+(2026-09-01 17:29:28.754002) ---- Analyzing Chunk 10/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1135 markers were tested.
+write to output
+   user  system elapsed 
+  5.354   0.656  20.838 
+(2026-09-01 17:29:28.893044) ---- Analyzing Chunk 10/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1158 markers were tested.
+write to output
+   user  system elapsed 
+  5.387   0.675  20.990 
+(2026-09-01 17:29:29.030514) ---- Analyzing Chunk 10/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+997 markers were tested.
+write to output
+   user  system elapsed 
+  5.340   0.659  21.071 
+(2026-09-01 17:29:29.105468) ---- Analyzing Chunk 10/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1104 markers were tested.
+write to output
+   user  system elapsed 
+  4.996   0.762  21.224 
+(2026-09-01 17:29:29.262528) ---- Analyzing Chunk 9/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+Completed 10000/10000 markers in the chunk.
+1141 markers were tested.
+1264 markers were tested.
+write to output
+write to output
+   user  system elapsed 
+  5.942   0.686  21.371 
+   user  system elapsed 
+  5.765   0.679  21.372 
+(2026-09-01 17:29:29.407632) ---- Analyzing Chunk 11/38: chrom 20 ---- 
+(2026-09-01 17:29:29.408094) ---- Analyzing Chunk 11/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1051 markers were tested.
+write to output
+   user  system elapsed 
+  5.865   0.695  21.437 
+(2026-09-01 17:29:29.470217) ---- Analyzing Chunk 11/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1150 markers were tested.
+write to output
+   user  system elapsed 
+  5.913   0.711  21.573 
+(2026-09-01 17:29:29.607942) ---- Analyzing Chunk 11/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1108 markers were tested.
+write to output
+   user  system elapsed 
+  5.904   0.693  21.687 
+(2026-09-01 17:29:29.717424) ---- Analyzing Chunk 11/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1103 markers were tested.
+write to output
+   user  system elapsed 
+  5.551   0.803  21.864 
+(2026-09-01 17:29:29.900683) ---- Analyzing Chunk 10/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1138 markers were tested.
+write to output
+   user  system elapsed 
+  6.303   0.713  21.961 
+Completed 10000/10000 markers in the chunk.
+1102 markers were tested.
+write to output
+   user  system elapsed 
+  6.491   0.721  21.972 
+(2026-09-01 17:29:29.993937) ---- Analyzing Chunk 12/38: chrom 20 ---- 
+(2026-09-01 17:29:30.00769) ---- Analyzing Chunk 12/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1158 markers were tested.
+write to output
+   user  system elapsed 
+  6.393   0.729  22.012 
+(2026-09-01 17:29:30.042555) ---- Analyzing Chunk 12/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1237 markers were tested.
+write to output
+   user  system elapsed 
+  6.443   0.744  22.155 
+(2026-09-01 17:29:30.324951) ---- Analyzing Chunk 12/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1082 markers were tested.
+write to output
+   user  system elapsed 
+  6.463   0.726  22.436 
+(2026-09-01 17:29:30.465312) ---- Analyzing Chunk 12/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1268 markers were tested.
+write to output
+   user  system elapsed 
+  6.123   0.840  22.621 
+(2026-09-01 17:29:30.652053) ---- Analyzing Chunk 11/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+Completed 10000/10000 markers in the chunk.
+1192 markers were tested.
+write to output
+   user  system elapsed 
+  7.040   0.757  22.707 
+1228 markers were tested.
+Completed 10000/10000 markers in the chunk.
+write to output
+   user  system elapsed 
+  6.869   0.747  22.709 
+1065 markers were tested.
+write to output
+   user  system elapsed 
+  6.918   0.758  22.714 
+(2026-09-01 17:29:30.733986) ---- Analyzing Chunk 13/38: chrom 20 ---- 
+(2026-09-01 17:29:30.739341) ---- Analyzing Chunk 13/38: chrom 20 ---- 
+(2026-09-01 17:29:30.742583) ---- Analyzing Chunk 13/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1239 markers were tested.
+write to output
+   user  system elapsed 
+  7.003   0.776  22.893 
+(2026-09-01 17:29:30.922952) ---- Analyzing Chunk 13/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1106 markers were tested.
+write to output
+   user  system elapsed 
+  7.005   0.756  23.021 
+(2026-09-01 17:29:31.046179) ---- Analyzing Chunk 13/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1086 markers were tested.
+write to output
+   user  system elapsed 
+  6.640   0.872  23.183 
+(2026-09-01 17:29:31.21352) ---- Analyzing Chunk 12/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1209 markers were tested.
+write to output
+   user  system elapsed 
+  7.571   0.784  23.278 
+Completed 10000/10000 markers in the chunk.
+1218 markers were tested.
+write to output
+   user  system elapsed 
+  7.452   0.787  23.289 
+(2026-09-01 17:29:31.309355) ---- Analyzing Chunk 14/38: chrom 20 ---- 
+(2026-09-01 17:29:31.319787) ---- Analyzing Chunk 14/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1153 markers were tested.
+write to output
+   user  system elapsed 
+   7.45    0.78   23.34 
+(2026-09-01 17:29:31.371277) ---- Analyzing Chunk 14/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1193 markers were tested.
+write to output
+   user  system elapsed 
+  7.529   0.806  23.495 
+(2026-09-01 17:29:31.52517) ---- Analyzing Chunk 14/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1058 markers were tested.
+write to output
+   user  system elapsed 
+  7.527   0.783  23.604 
+(2026-09-01 17:29:31.63128) ---- Analyzing Chunk 14/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1153 markers were tested.
+write to output
+   user  system elapsed 
+  7.190   0.904  23.804 
+(2026-09-01 17:29:31.82986) ---- Analyzing Chunk 13/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1243 markers were tested.
+write to output
+Completed 10000/10000 markers in the chunk.
+   user  system elapsed 
+  8.125   0.817  23.908 
+1061 markers were tested.
+write to output
+   user  system elapsed 
+  7.994   0.817  23.915 
+(2026-09-01 17:29:31.93135) ---- Analyzing Chunk 15/38: chrom 20 ---- 
+(2026-09-01 17:29:31.939142) ---- Analyzing Chunk 15/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1288 markers were tested.
+write to output
+   user  system elapsed 
+  8.017   0.813  23.995 
+(2026-09-01 17:29:32.020322) ---- Analyzing Chunk 15/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1311 markers were tested.
+write to output
+   user  system elapsed 
+  8.110   0.839  24.145 
+(2026-09-01 17:29:32.174727) ---- Analyzing Chunk 15/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1136 markers were tested.
+write to output
+   user  system elapsed 
+  8.084   0.813  24.222 
+(2026-09-01 17:29:32.244725) ---- Analyzing Chunk 15/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1355 markers were tested.
+write to output
+   user  system elapsed 
+  7.784   0.935  24.466 
+(2026-09-01 17:29:32.493814) ---- Analyzing Chunk 14/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+Completed 10000/10000 markers in the chunk.
+1076 markers were tested.
+write to output
+   user  system elapsed 
+  8.529   0.845  24.517 
+1242 markers were tested.
+write to output
+   user  system elapsed 
+  8.669   0.844  24.521 
+(2026-09-01 17:29:32.540207) ---- Analyzing Chunk 16/38: chrom 20 ---- 
+(2026-09-01 17:29:32.542664) ---- Analyzing Chunk 16/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1287 markers were tested.
+write to output
+   user  system elapsed 
+  8.592   0.844  24.656 
+(2026-09-01 17:29:32.677057) ---- Analyzing Chunk 16/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1234 markers were tested.
+write to output
+   user  system elapsed 
+  8.672   0.870  24.781 
+(2026-09-01 17:29:32.803615) ---- Analyzing Chunk 16/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1025 markers were tested.
+write to output
+   user  system elapsed 
+  8.615   0.840  24.821 
+(2026-09-01 17:29:32.843108) ---- Analyzing Chunk 16/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1099 markers were tested.
+write to output
+   user  system elapsed 
+  8.341   0.967  25.103 
+(2026-09-01 17:29:33.132229) ---- Analyzing Chunk 15/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1203 markers were tested.
+write to output
+   user  system elapsed 
+  9.214   0.872  25.144 
+Completed 10000/10000 markers in the chunk.
+(2026-09-01 17:29:33.165857) ---- Analyzing Chunk 17/38: chrom 20 ---- 
+1218 markers were tested.
+write to output
+   user  system elapsed 
+  9.097   0.875  25.165 
+(2026-09-01 17:29:33.191099) ---- Analyzing Chunk 17/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1343 markers were tested.
+write to output
+   user  system elapsed 
+  9.163   0.871  25.299 
+(2026-09-01 17:29:33.319672) ---- Analyzing Chunk 17/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1209 markers were tested.
+write to output
+   user  system elapsed 
+  9.216   0.895  25.389 
+(2026-09-01 17:29:33.412422) ---- Analyzing Chunk 17/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1188 markers were tested.
+write to output
+   user  system elapsed 
+  9.208   0.870  25.490 
+(2026-09-01 17:29:33.513356) ---- Analyzing Chunk 17/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1307 markers were tested.
+write to output
+   user  system elapsed 
+  8.878   0.996  25.697 
+(2026-09-01 17:29:33.720486) ---- Analyzing Chunk 16/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1126 markers were tested.
+write to output
+   user  system elapsed 
+  9.758   0.896  25.732 
+Completed 10000/10000 markers in the chunk.
+1149 markers were tested.
+(2026-09-01 17:29:33.752992) ---- Analyzing Chunk 18/38: chrom 20 ---- 
+write to output
+   user  system elapsed 
+  9.629   0.900  25.748 
+(2026-09-01 17:29:33.768307) ---- Analyzing Chunk 18/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1135 markers were tested.
+write to output
+   user  system elapsed 
+  9.724   0.894  25.911 
+(2026-09-01 17:29:33.929071) ---- Analyzing Chunk 18/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1233 markers were tested.
+write to output
+   user  system elapsed 
+  9.769   0.919  25.999 
+(2026-09-01 17:29:34.019868) ---- Analyzing Chunk 18/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1065 markers were tested.
+write to output
+   user  system elapsed 
+  9.730   0.896  26.065 
+(2026-09-01 17:29:34.086524) ---- Analyzing Chunk 18/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1045 markers were tested.
+write to output
+   user  system elapsed 
+ 10.263   0.917  26.279 
+Completed 10000/10000 markers in the chunk.
+1148 markers were tested.
+write to output
+   user  system elapsed 
+  9.423   1.023  26.286 
+(2026-09-01 17:29:34.298756) ---- Analyzing Chunk 19/38: chrom 20 ---- 
+(2026-09-01 17:29:34.308292) ---- Analyzing Chunk 17/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1195 markers were tested.
+write to output
+   user  system elapsed 
+ 10.175   0.923  26.338 
+(2026-09-01 17:29:34.356532) ---- Analyzing Chunk 19/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1131 markers were tested.
+write to output
+   user  system elapsed 
+ 10.283   0.916  26.509 
+(2026-09-01 17:29:34.527661) ---- Analyzing Chunk 19/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1291 markers were tested.
+write to output
+   user  system elapsed 
+ 10.317   0.942  26.584 
+(2026-09-01 17:29:34.603986) ---- Analyzing Chunk 19/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1065 markers were tested.
+write to output
+   user  system elapsed 
+ 10.246   0.920  26.618 
+(2026-09-01 17:29:34.63966) ---- Analyzing Chunk 19/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1162 markers were tested.
+write to output
+Completed 10000/10000 markers in the chunk.
+   user  system elapsed 
+ 10.797   0.940  26.882 
+1217 markers were tested.
+write to output
+   user  system elapsed 
+  9.979   1.049  26.889 
+(2026-09-01 17:29:34.904971) ---- Analyzing Chunk 20/38: chrom 20 ---- 
+(2026-09-01 17:29:34.910725) ---- Analyzing Chunk 18/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1074 markers were tested.
+write to output
+   user  system elapsed 
+ 10.736   0.952  26.947 
+(2026-09-01 17:29:34.966001) ---- Analyzing Chunk 20/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1061 markers were tested.
+write to output
+   user  system elapsed 
+ 10.803   0.938  27.076 
+(2026-09-01 17:29:35.095474) ---- Analyzing Chunk 20/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1189 markers were tested.
+write to output
+   user  system elapsed 
+ 10.860   0.966  27.176 
+Completed 10000/10000 markers in the chunk.
+1149 markers were tested.
+(2026-09-01 17:29:35.19624) ---- Analyzing Chunk 20/38: chrom 20 ---- 
+write to output
+   user  system elapsed 
+ 10.772   0.944  27.191 
+(2026-09-01 17:29:35.209313) ---- Analyzing Chunk 20/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1103 markers were tested.
+write to output
+   user  system elapsed 
+ 11.324   0.964  27.454 
+(2026-09-01 17:29:35.474637) ---- Analyzing Chunk 21/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1189 markers were tested.
+write to output
+   user  system elapsed 
+ 10.533   1.072  27.489 
+(2026-09-01 17:29:35.50973) ---- Analyzing Chunk 19/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1131 markers were tested.
+write to output
+   user  system elapsed 
+ 11.277   0.975  27.569 
+(2026-09-01 17:29:35.588529) ---- Analyzing Chunk 21/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1064 markers were tested.
+write to output
+   user  system elapsed 
+ 11.324   0.959  27.638 
+(2026-09-01 17:29:35.657322) ---- Analyzing Chunk 21/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1194 markers were tested.
+write to output
+   user  system elapsed 
+ 11.395   0.987  27.748 
+(2026-09-01 17:29:35.76585) ---- Analyzing Chunk 21/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1302 markers were tested.
+write to output
+   user  system elapsed 
+ 11.393   0.967  27.849 
+(2026-09-01 17:29:35.869632) ---- Analyzing Chunk 21/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1171 markers were tested.
+write to output
+   user  system elapsed 
+ 11.868   0.988  28.043 
+(2026-09-01 17:29:36.062606) ---- Analyzing Chunk 22/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1123 markers were tested.
+write to output
+   user  system elapsed 
+ 11.069   1.094  28.066 
+(2026-09-01 17:29:36.084745) ---- Analyzing Chunk 20/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1181 markers were tested.
+write to output
+   user  system elapsed 
+ 11.821   0.997  28.163 
+(2026-09-01 17:29:36.182003) ---- Analyzing Chunk 22/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1044 markers were tested.
+write to output
+   user  system elapsed 
+ 11.871   0.982  28.229 
+(2026-09-01 17:29:36.247702) ---- Analyzing Chunk 22/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1280 markers were tested.
+write to output
+   user  system elapsed 
+ 11.929   1.009  28.323 
+(2026-09-01 17:29:36.341896) ---- Analyzing Chunk 22/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1272 markers were tested.
+write to output
+   user  system elapsed 
+ 11.946   0.991  28.445 
+(2026-09-01 17:29:36.462656) ---- Analyzing Chunk 22/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1260 markers were tested.
+write to output
+   user  system elapsed 
+ 12.384   1.009  28.715 
+(2026-09-01 17:29:36.733469) ---- Analyzing Chunk 23/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1219 markers were tested.
+write to output
+   user  system elapsed 
+ 11.590   1.116  28.744 
+(2026-09-01 17:29:36.763808) ---- Analyzing Chunk 21/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1149 markers were tested.
+write to output
+   user  system elapsed 
+ 12.341   1.017  28.830 
+(2026-09-01 17:29:36.848183) ---- Analyzing Chunk 23/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1035 markers were tested.
+write to output
+   user  system elapsed 
+ 12.393   1.003  28.902 
+(2026-09-01 17:29:36.921517) ---- Analyzing Chunk 23/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1171 markers were tested.
+write to output
+   user  system elapsed 
+ 12.488   1.032  29.039 
+(2026-09-01 17:29:37.058578) ---- Analyzing Chunk 23/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1076 markers were tested.
+write to output
+   user  system elapsed 
+ 12.478   1.011  29.136 
+(2026-09-01 17:29:37.15664) ---- Analyzing Chunk 23/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1215 markers were tested.
+write to output
+   user  system elapsed 
+ 12.918   1.032  29.295 
+(2026-09-01 17:29:37.313528) ---- Analyzing Chunk 24/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1294 markers were tested.
+write to output
+   user  system elapsed 
+ 12.122   1.138  29.321 
+(2026-09-01 17:29:37.340001) ---- Analyzing Chunk 22/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1113 markers were tested.
+write to output
+   user  system elapsed 
+ 12.863   1.038  29.400 
+(2026-09-01 17:29:37.417859) ---- Analyzing Chunk 24/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1051 markers were tested.
+write to output
+   user  system elapsed 
+ 12.945   1.025  29.498 
+(2026-09-01 17:29:37.517296) ---- Analyzing Chunk 24/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1210 markers were tested.
+write to output
+   user  system elapsed 
+ 13.040   1.055  29.634 
+(2026-09-01 17:29:37.652812) ---- Analyzing Chunk 24/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1207 markers were tested.
+write to output
+   user  system elapsed 
+ 13.026   1.035  29.740 
+(2026-09-01 17:29:37.760271) ---- Analyzing Chunk 24/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1194 markers were tested.
+write to output
+   user  system elapsed 
+ 13.470   1.057  29.926 
+(2026-09-01 17:29:37.945598) ---- Analyzing Chunk 25/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1221 markers were tested.
+write to output
+   user  system elapsed 
+ 12.706   1.163  29.985 
+(2026-09-01 17:29:38.004047) ---- Analyzing Chunk 23/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1209 markers were tested.
+write to output
+   user  system elapsed 
+ 13.424   1.062  30.054 
+(2026-09-01 17:29:38.071083) ---- Analyzing Chunk 25/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1068 markers were tested.
+write to output
+   user  system elapsed 
+ 13.504   1.050  30.135 
+(2026-09-01 17:29:38.155026) ---- Analyzing Chunk 25/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1148 markers were tested.
+write to output
+   user  system elapsed 
+ 13.593   1.079  30.274 
+(2026-09-01 17:29:38.290941) ---- Analyzing Chunk 25/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1267 markers were tested.
+write to output
+   user  system elapsed 
+ 13.573   1.059  30.356 
+(2026-09-01 17:29:38.373632) ---- Analyzing Chunk 25/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1233 markers were tested.
+write to output
+   user  system elapsed 
+ 14.016   1.079  30.523 
+(2026-09-01 17:29:38.54012) ---- Analyzing Chunk 26/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1068 markers were tested.
+write to output
+   user  system elapsed 
+ 13.233   1.184  30.563 
+(2026-09-01 17:29:38.583454) ---- Analyzing Chunk 24/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1268 markers were tested.
+write to output
+   user  system elapsed 
+ 13.978   1.084  30.655 
+(2026-09-01 17:29:38.672394) ---- Analyzing Chunk 26/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1042 markers were tested.
+write to output
+   user  system elapsed 
+ 14.044   1.072  30.719 
+(2026-09-01 17:29:38.737306) ---- Analyzing Chunk 26/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1123 markers were tested.
+write to output
+   user  system elapsed 
+ 14.122   1.100  30.847 
+(2026-09-01 17:29:38.86538) ---- Analyzing Chunk 26/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1120 markers were tested.
+write to output
+   user  system elapsed 
+ 14.106   1.079  30.927 
+(2026-09-01 17:29:38.946435) ---- Analyzing Chunk 26/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1307 markers were tested.
+Completed 10000/10000 markers in the chunk.
+write to output
+   user  system elapsed 
+ 14.561   1.100  31.103 
+1065 markers were tested.
+write to output
+   user  system elapsed 
+ 13.740   1.204  31.108 
+(2026-09-01 17:29:39.121308) ---- Analyzing Chunk 27/38: chrom 20 ---- 
+(2026-09-01 17:29:39.127733) ---- Analyzing Chunk 25/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1242 markers were tested.
+write to output
+   user  system elapsed 
+ 14.516   1.105  31.226 
+(2026-09-01 17:29:39.244091) ---- Analyzing Chunk 27/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1047 markers were tested.
+write to output
+   user  system elapsed 
+ 14.556   1.094  31.265 
+(2026-09-01 17:29:39.283058) ---- Analyzing Chunk 27/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1110 markers were tested.
+write to output
+   user  system elapsed 
+ 14.647   1.120  31.404 
+(2026-09-01 17:29:39.421399) ---- Analyzing Chunk 27/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1242 markers were tested.
+write to output
+   user  system elapsed 
+ 14.642   1.100  31.497 
+(2026-09-01 17:29:39.514947) ---- Analyzing Chunk 27/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1119 markers were tested.
+write to output
+   user  system elapsed 
+ 14.247   1.223  31.645 
+Completed 10000/10000 markers in the chunk.
+(2026-09-01 17:29:39.664463) ---- Analyzing Chunk 26/38: chrom 20 ---- 
+1193 markers were tested.
+write to output
+   user  system elapsed 
+ 15.092   1.119  31.665 
+(2026-09-01 17:29:39.681949) ---- Analyzing Chunk 28/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1164 markers were tested.
+write to output
+   user  system elapsed 
+ 15.043   1.125  31.784 
+(2026-09-01 17:29:39.800026) ---- Analyzing Chunk 28/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1028 markers were tested.
+write to output
+   user  system elapsed 
+ 15.091   1.114  31.831 
+(2026-09-01 17:29:39.848345) ---- Analyzing Chunk 28/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1036 markers were tested.
+write to output
+   user  system elapsed 
+ 15.153   1.138  31.945 
+(2026-09-01 17:29:39.962725) ---- Analyzing Chunk 28/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1276 markers were tested.
+write to output
+   user  system elapsed 
+ 15.185   1.122  32.175 
+Completed 10000/10000 markers in the chunk.
+1143 markers were tested.
+write to output
+   user  system elapsed 
+ 14.754   1.243  32.184 
+(2026-09-01 17:29:40.194037) ---- Analyzing Chunk 28/38: chrom 20 ---- 
+(2026-09-01 17:29:40.203639) ---- Analyzing Chunk 27/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1303 markers were tested.
+write to output
+   user  system elapsed 
+ 15.616   1.138  32.260 
+(2026-09-01 17:29:40.302041) ---- Analyzing Chunk 29/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1166 markers were tested.
+write to output
+   user  system elapsed 
+ 15.563   1.149  32.405 
+(2026-09-01 17:29:40.424664) ---- Analyzing Chunk 29/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1032 markers were tested.
+write to output
+   user  system elapsed 
+ 15.622   1.138  32.468 
+(2026-09-01 17:29:40.485053) ---- Analyzing Chunk 29/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1044 markers were tested.
+write to output
+   user  system elapsed 
+ 15.670   1.162  32.558 
+(2026-09-01 17:29:40.576027) ---- Analyzing Chunk 29/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+Completed 10000/10000 markers in the chunk.
+1346 markers were tested.
+write to output
+1149 markers were tested.
+   user  system elapsed 
+ 15.741   1.147  32.851 
+write to output
+   user  system elapsed 
+ 15.297   1.269  32.853 
+(2026-09-01 17:29:40.870023) ---- Analyzing Chunk 29/38: chrom 20 ---- 
+(2026-09-01 17:29:40.870739) ---- Analyzing Chunk 28/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1297 markers were tested.
+write to output
+   user  system elapsed 
+ 16.168   1.164  32.932 
+(2026-09-01 17:29:40.950508) ---- Analyzing Chunk 30/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1158 markers were tested.
+write to output
+   user  system elapsed 
+ 16.099   1.170  32.982 
+(2026-09-01 17:29:41.00107) ---- Analyzing Chunk 30/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1039 markers were tested.
+write to output
+   user  system elapsed 
+ 16.165   1.158  33.049 
+(2026-09-01 17:29:41.065278) ---- Analyzing Chunk 30/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1128 markers were tested.
+write to output
+   user  system elapsed 
+ 16.222   1.188  33.156 
+(2026-09-01 17:29:41.173828) ---- Analyzing Chunk 30/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1001 markers were tested.
+write to output
+   user  system elapsed 
+ 15.821   1.289  33.423 
+(2026-09-01 17:29:41.442869) ---- Analyzing Chunk 29/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1254 markers were tested.
+write to output
+   user  system elapsed 
+ 16.292   1.170  33.450 
+(2026-09-01 17:29:41.470371) ---- Analyzing Chunk 30/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1279 markers were tested.
+write to output
+   user  system elapsed 
+ 16.719   1.187  33.541 
+(2026-09-01 17:29:41.559514) ---- Analyzing Chunk 31/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1302 markers were tested.
+write to output
+   user  system elapsed 
+ 16.666   1.195  33.604 
+(2026-09-01 17:29:41.62343) ---- Analyzing Chunk 31/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1120 markers were tested.
+write to output
+   user  system elapsed 
+ 16.712   1.181  33.651 
+(2026-09-01 17:29:41.667844) ---- Analyzing Chunk 31/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1144 markers were tested.
+write to output
+   user  system elapsed 
+ 16.760   1.212  33.747 
+(2026-09-01 17:29:41.766657) ---- Analyzing Chunk 31/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1119 markers were tested.
+write to output
+   user  system elapsed 
+ 16.372   1.315  34.059 
+(2026-09-01 17:29:42.076961) ---- Analyzing Chunk 30/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1179 markers were tested.
+write to output
+   user  system elapsed 
+ 16.860   1.197  34.120 
+(2026-09-01 17:29:42.142834) ---- Analyzing Chunk 31/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1154 markers were tested.
+write to output
+   user  system elapsed 
+ 17.273   1.213  34.314 
+(2026-09-01 17:29:42.336589) ---- Analyzing Chunk 32/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1052 markers were tested.
+write to output
+   user  system elapsed 
+ 17.229   1.222  34.409 
+(2026-09-01 17:29:42.427015) ---- Analyzing Chunk 32/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1496 markers were tested.
+write to output
+   user  system elapsed 
+ 17.311   1.207  34.502 
+(2026-09-01 17:29:42.52072) ---- Analyzing Chunk 32/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1195 markers were tested.
+write to output
+   user  system elapsed 
+ 17.343   1.240  34.571 
+(2026-09-01 17:29:42.589783) ---- Analyzing Chunk 32/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1128 markers were tested.
+write to output
+   user  system elapsed 
+ 16.931   1.340  34.845 
+(2026-09-01 17:29:42.862012) ---- Analyzing Chunk 31/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1178 markers were tested.
+write to output
+   user  system elapsed 
+ 17.430   1.221  34.894 
+(2026-09-01 17:29:42.911623) ---- Analyzing Chunk 32/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1189 markers were tested.
+write to output
+   user  system elapsed 
+ 17.832   1.238  34.964 
+(2026-09-01 17:29:42.980808) ---- Analyzing Chunk 33/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1070 markers were tested.
+write to output
+   user  system elapsed 
+ 17.776   1.243  35.025 
+(2026-09-01 17:29:43.041216) ---- Analyzing Chunk 33/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+Completed 10000/10000 markers in the chunk.
+1705 markers were tested.
+write to output
+   user 1335 markers were tested.
+ system elapsed 
+ 17.961   1.232  35.218 
+write to output
+   user  system elapsed 
+ 17.932   1.263  35.221 
+(2026-09-01 17:29:43.237413) ---- Analyzing Chunk 33/38: chrom 20 ---- 
+(2026-09-01 17:29:43.24061) ---- Analyzing Chunk 33/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1283 markers were tested.
+write to output
+   user  system elapsed 
+ 17.481   1.359  35.436 
+(2026-09-01 17:29:43.453722) ---- Analyzing Chunk 32/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1284 markers were tested.
+write to output
+   user  system elapsed 
+ 17.980   1.244  35.485 
+(2026-09-01 17:29:43.501429) ---- Analyzing Chunk 33/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1135 markers were tested.
+write to output
+   user  system elapsed 
+ 18.362   1.260  35.533 
+(2026-09-01 17:29:43.550168) ---- Analyzing Chunk 34/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1140 markers were tested.
+write to output
+   user  system elapsed 
+ 18.321   1.266  35.618 
+(2026-09-01 17:29:43.636134) ---- Analyzing Chunk 34/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1035 markers were tested.
+write to output
+   user  system elapsed 
+ 18.467   1.287  35.807 
+(2026-09-01 17:29:43.825571) ---- Analyzing Chunk 34/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1335 markers were tested.
+write to output
+   user  system elapsed 
+ 18.581   1.258  35.891 
+(2026-09-01 17:29:43.909558) ---- Analyzing Chunk 34/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1344 markers were tested.
+write to output
+   user  system elapsed 
+ 18.052   1.382  36.072 
+(2026-09-01 17:29:44.091342) ---- Analyzing Chunk 33/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1115 markers were tested.
+write to output
+   user  system elapsed 
+ 18.930   1.284  36.175 
+(2026-09-01 17:29:44.193055) ---- Analyzing Chunk 35/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1354 markers were tested.
+write to output
+   user  system elapsed 
+ 18.629   1.270  36.208 
+(2026-09-01 17:29:44.225444) ---- Analyzing Chunk 34/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1080 markers were tested.
+write to output
+   user  system elapsed 
+ 18.878   1.287  36.249 
+(2026-09-01 17:29:44.268735) ---- Analyzing Chunk 35/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1274 markers were tested.
+write to output
+   user  system elapsed 
+ 19.057   1.312  36.482 
+(2026-09-01 17:29:44.499836) ---- Analyzing Chunk 35/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1252 markers were tested.
+write to output
+   user  system elapsed 
+ 19.162   1.282  36.561 
+(2026-09-01 17:29:44.579116) ---- Analyzing Chunk 35/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1038 markers were tested.
+write to output
+   user  system elapsed 
+ 18.605   1.403  36.693 
+(2026-09-01 17:29:44.709072) ---- Analyzing Chunk 34/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1112 markers were tested.
+write to output
+   user  system elapsed 
+ 19.468   1.305  36.773 
+(2026-09-01 17:29:44.79059) ---- Analyzing Chunk 36/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1090 markers were tested.
+write to output
+   user  system elapsed 
+ 19.198   1.295  36.849 
+(2026-09-01 17:29:44.868317) ---- Analyzing Chunk 35/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1253 markers were tested.
+write to output
+   user  system elapsed 
+ 19.460   1.311  36.902 
+(2026-09-01 17:29:44.920419) ---- Analyzing Chunk 36/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1301 markers were tested.
+write to output
+   user  system elapsed 
+ 19.657   1.337  37.155 
+(2026-09-01 17:29:45.191975) ---- Analyzing Chunk 36/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1321 markers were tested.
+write to output
+   user  system elapsed 
+ 19.764   1.308  37.286 
+(2026-09-01 17:29:45.30598) ---- Analyzing Chunk 36/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1226 markers were tested.
+write to output
+   user  system elapsed 
+ 19.228   1.431  37.442 
+(2026-09-01 17:29:45.461902) ---- Analyzing Chunk 35/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1201 markers were tested.
+write to output
+   user  system elapsed 
+ 20.094   1.336  37.540 
+(2026-09-01 17:29:45.558173) ---- Analyzing Chunk 37/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1122 markers were tested.
+write to output
+   user  system elapsed 
+ 19.831   1.325  37.623 
+Completed 10000/10000 markers in the chunk.
+1104 markers were tested.
+write to output
+   user  system elapsed 
+ 20.104   1.340  37.630 
+(2026-09-01 17:29:45.641593) ---- Analyzing Chunk 36/38: chrom 20 ---- 
+(2026-09-01 17:29:45.648692) ---- Analyzing Chunk 37/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1239 markers were tested.
+write to output
+   user  system elapsed 
+ 20.292   1.364  37.910 
+(2026-09-01 17:29:45.928411) ---- Analyzing Chunk 37/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1105 markers were tested.
+write to output
+   user  system elapsed 
+ 20.389   1.332  37.974 
+(2026-09-01 17:29:45.991989) ---- Analyzing Chunk 37/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1298 markers were tested.
+write to output
+   user  system elapsed 
+ 19.884   1.460  38.175 
+(2026-09-01 17:29:46.19423) ---- Analyzing Chunk 36/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1196 markers were tested.
+write to output
+   user  system elapsed 
+ 20.741   1.363  38.243 
+(2026-09-01 17:29:46.259748) ---- Analyzing Chunk 38/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1100 markers were tested.
+write to output
+   user  system elapsed 
+ 20.734   1.365  38.317 
+(2026-09-01 17:29:46.334421) ---- Analyzing Chunk 38/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1284 markers were tested.
+write to output
+   user  system elapsed 
+ 20.498   1.352  38.351 
+(2026-09-01 17:29:46.370235) ---- Analyzing Chunk 37/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1228 markers were tested.
+write to output
+   user  system elapsed 
+ 20.946   1.392  38.759 
+(2026-09-01 17:29:46.776629) ---- Analyzing Chunk 38/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1109 markers were tested.
+write to output
+   user  system elapsed 
+ 21.026   1.357  38.812 
+(2026-09-01 17:29:46.82823) ---- Analyzing Chunk 38/38: chrom 20 ---- 
+978 markers were tested.
+write to output
+   user  system elapsed 
+ 21.290   1.391  38.996 
+1168 markers were tested.
+write to output
+   user  system elapsed 
+ 21.257   1.387  39.022 
+Completed 10000/10000 markers in the chunk.
+1332 markers were tested.
+write to output
+   user  system elapsed 
+ 20.543   1.490  39.043 
+(2026-09-01 17:29:47.062788) ---- Analyzing Chunk 37/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1294 markers were tested.
+write to output
+   user  system elapsed 
+ 21.114   1.379  39.157 
+(2026-09-01 17:29:47.171104) ---- Analyzing Chunk 38/38: chrom 20 ---- 
+1017 markers were tested.
+write to output
+   user  system elapsed 
+ 21.386   1.413  39.240 
+716 markers were tested.
+write to output
+   user  system elapsed 
+ 21.425   1.373  39.246 
+1032 markers were tested.
+write to output
+Completed 10000/10000 markers in the chunk.
+   user  system elapsed 
+ 21.452   1.393  39.515 
+1233 markers were tested.
+write to output
+   user  system elapsed 
+ 20.993   1.511  39.523 
+(2026-09-01 17:29:47.53871) ---- Analyzing Chunk 38/38: chrom 20 ---- 
+1037 markers were tested.
+write to output
+   user  system elapsed 
+ 21.353   1.534  39.941 
+write to output
+[1] "Analysis done! The results have been saved to 'harness/work/sim/step2_single_y_quant_pc.txt'."

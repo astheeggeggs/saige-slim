@@ -1,0 +1,1847 @@
+=== step 2 (SAIGE-variant, all variants MAC>=20): y_binary_pc ===
+Loading required package: RhpcBLASctl
+R version 4.4.3 (2025-02-28)
+Platform: x86_64-apple-darwin13.4.0
+Running under: macOS 26.6.2
+
+Matrix products: default
+BLAS/LAPACK: /Users/dpalmer/Repositories/SAIGE/.pixi/envs/default/lib/libopenblasp-r0.3.30.dylib;  LAPACK version 3.12.0
+
+locale:
+[1] C.UTF-8/C.UTF-8/C.UTF-8/C/C.UTF-8/C.UTF-8
+
+time zone: Europe/London
+tzcode source: system (macOS)
+
+attached base packages:
+[1] parallel  stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+[1] data.table_1.18.4   optparse_1.8.2      RhpcBLASctl_0.23-42
+[4] SAIGE_1.5.2        
+
+loaded via a namespace (and not attached):
+[1] compiler_4.4.3        Matrix_1.7-6          tools_4.4.3          
+[4] Rcpp_1.1.2            grid_4.4.3            RcppParallel_5.1.11-2
+[7] lattice_0.23-1       
+$bedFile
+[1] "harness/work/sim/chr20_sim.bed"
+
+$bimFile
+[1] "harness/work/sim/chr20_sim.bim"
+
+$famFile
+[1] "harness/work/sim/chr20_sim.fam"
+
+$pgenFile
+[1] ""
+
+$pvarFile
+[1] ""
+
+$psamFile
+[1] ""
+
+$AlleleOrder
+[1] "alt-first"
+
+$idstoIncludeFile
+[1] ""
+
+$rangestoIncludeFile
+[1] ""
+
+$chrom
+[1] "20"
+
+$is_imputed_data
+[1] FALSE
+
+$minMAF
+[1] 0
+
+$minMAC
+[1] 20
+
+$minGroupMAC_in_BurdenTest
+[1] 5
+
+$minInfo
+[1] 0
+
+$maxMissing
+[1] 0.15
+
+$impute_method
+[1] "best_guess"
+
+$LOCO
+[1] FALSE
+
+$GMMATmodelFile
+[1] "harness/work/sim/step1_y_binary_pc.rda"
+
+$varianceRatioFile
+[1] "harness/work/sim/step1_y_binary_pc.varianceRatio.txt"
+
+$SAIGEOutputFile
+[1] "harness/work/sim/step2_single_y_binary_pc.txt"
+
+$markers_per_chunk
+[1] 10000
+
+$groups_per_chunk
+[1] 100
+
+$is_output_moreDetails
+[1] FALSE
+
+$is_overwrite_output
+[1] TRUE
+
+$maxMAF_in_groupTest
+[1] "0.0001,0.001,0.01"
+
+$maxMAC_in_groupTest
+[1] "0"
+
+$annotation_in_groupTest
+[1] "lof,missense;lof,missense;lof;synonymous"
+
+$groupFile
+[1] ""
+
+$sparseGRMFile
+[1] "harness/work/sim/sparseGRM_relatednessCutoff_0.125_3000_randomMarkersUsed.sparseGRM.mtx"
+
+$sparseGRMSampleIDFile
+[1] "harness/work/sim/sparseGRM_relatednessCutoff_0.125_3000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt"
+
+$relatednessCutoff
+[1] 0
+
+$sampleFile_male
+[1] ""
+
+$X_PARregion
+[1] ""
+
+$is_rewrite_XnonPAR_forMales
+[1] FALSE
+
+$MACCutoff_to_CollapseUltraRare
+[1] 10
+
+$cateVarRatioMinMACVecExclude
+[1] "10,20.5"
+
+$cateVarRatioMaxMACVecInclude
+[1] "20.5"
+
+$weights.beta
+[1] "1,25"
+
+$r.corr
+[1] 0
+
+$markers_per_chunk_in_groupTest
+[1] 100
+
+$condition
+[1] ""
+
+$SPAcutoff
+[1] 2
+
+$dosage_zerod_cutoff
+[1] 0.2
+
+$dosage_zerod_MAC_cutoff
+[1] 10
+
+$is_single_in_groupTest
+[1] FALSE
+
+$is_no_weight_in_groupTest
+[1] FALSE
+
+$is_output_weight_column
+[1] FALSE
+
+$is_output_markerList_in_groupTest
+[1] FALSE
+
+$is_Firth_beta
+[1] TRUE
+
+$pCutoffforFirth
+[1] 0.1
+
+$is_fastTest
+[1] TRUE
+
+$is_noadjCov
+[1] TRUE
+
+$max_MAC_for_ER
+[1] 4
+
+$nThreads
+[1] 6
+
+$subSampleFile
+[1] ""
+
+$help
+[1] FALSE
+
+[1] "opt$r.corr"
+[1] 0
+is_noadjCov  TRUE 
+is_fastTest  TRUE 
+dosage_zerod_cutoff  0.2 
+Any dosages <=  0.2  for genetic variants with MAC <=  10  are set to be 0.
+single-variant association test will be performed
+[1] "Leave-one-chromosome-out is not applied"
+P-values of genetic variants with MAC <=  4  will be calculated via effecient resampling.
+[1] "LOCO = FASLE and leave-one-chromosome-out is not applied"
+length(sparseGRMSampleID$IndexGRM):  10000 
+nrow(sparseGRMSampleID):  10000 
+10000  samples have been used to fit the glmm null model
+[1] 10000     3
+      IID IndexInModel IndexGRM
+1 S000001            1        1
+2 S000002            2        2
+3 S000003            3        3
+4 S000004            4        4
+5 S000005            5        5
+6 S000006            6        6
+[1] "Subsetting GRM"
+isSparseGRM is  TRUE 
+variance Ratio null is  0.9733364 0.9715826 
+variance Ratio null_noXadj is provided
+[1] "ratioVec_sparse"
+[1] 0.9999997 0.9999995
+[1] "ratioVec_null"
+[1] 0.9733364 0.9715826
+[1] "ratioVec_null_noXadj"
+[1] 0.9723594 0.9601613
+is_fastTest is TRUE.
+The fast tests will be performed (when p-values >=  0.05 ).
+dosageFile type is  plink 
+allele order in the plink file is  alt-first .
+Reading bim file....
+Reading fam file....
+Setting position of samples in PLINK files....
+Marker analysis: 2267192 markers in 6 shards over 6 threads
+Number of all markers to test:	 377866 
+Number of markers in each chunk:	 10000 
+Number of chunks for all markers:	 38 
+Number of all markers to test:	 377866 
+Number of markers in each chunk:	 10000 
+Number of chunks for all markers:	 38 
+Number of all markers to test:	 377865 
+Number of markers in each chunk:	 10000 
+Number of chunks for all markers:	 38 
+Number of all markers to test:	 377865 
+Number of markers in each chunk:	 10000 
+Number of chunks for all markers:	 38 
+Number of all markers to test:	 377865 
+Number of markers in each chunk:	 10000 
+Number of chunks for all markers:	 38 
+Number of all markers to test:	 377865 
+Number of markers in each chunk:	 10000 
+Number of chunks for all markers:	 38 
+(2026-09-01 17:30:02.295363) ---- Analyzing Chunk 1/38: chrom 20 ---- 
+(2026-09-01 17:30:02.29985) ---- Analyzing Chunk 1/38: chrom 20 ---- 
+(2026-09-01 17:30:02.313576) ---- Analyzing Chunk 1/38: chrom 20 ---- 
+(2026-09-01 17:30:02.317888) ---- Analyzing Chunk 1/38: chrom 20 ---- 
+(2026-09-01 17:30:02.323121) ---- Analyzing Chunk 1/38: chrom 20 ---- 
+(2026-09-01 17:30:02.325994) ---- Analyzing Chunk 1/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1090 markers were tested.
+Firth approx was applied to 63 markers. 63 sucessfully converged.
+write to output
+   user  system elapsed 
+  0.851   0.115  14.021 
+(2026-09-01 17:30:03.426938) ---- Analyzing Chunk 2/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1236 markers were tested.
+Firth approx was applied to 96 markers. 96 sucessfully converged.
+write to output
+   user  system elapsed 
+  0.983   0.121  14.171 
+(2026-09-01 17:30:03.573972) ---- Analyzing Chunk 2/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1299 markers were tested.
+Firth approx was applied to 106 markers. 106 sucessfully converged.
+write to output
+   user  system elapsed 
+  1.077   0.132  14.260 
+(2026-09-01 17:30:03.66955) ---- Analyzing Chunk 2/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1320 markers were tested.
+Firth approx was applied to 106 markers. 106 sucessfully converged.
+write to output
+   user  system elapsed 
+  1.161   0.129  14.359 
+Completed 10000/10000 markers in the chunk.
+(2026-09-01 17:30:03.76976) ---- Analyzing Chunk 2/38: chrom 20 ---- 
+1227 markers were tested.
+Firth approx was applied to 116 markers. 116 sucessfully converged.
+write to output
+   user  system elapsed 
+  1.211   0.136  14.446 
+(2026-09-01 17:30:03.852097) ---- Analyzing Chunk 2/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1279 markers were tested.
+Firth approx was applied to 155 markers. 155 sucessfully converged.
+write to output
+   user  system elapsed 
+  1.377   0.145  14.606 
+(2026-09-01 17:30:04.029155) ---- Analyzing Chunk 2/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+994 markers were tested.
+Firth approx was applied to 115 markers. 115 sucessfully converged.
+write to output
+   user  system elapsed 
+  1.844   0.203  15.281 
+(2026-09-01 17:30:04.68202) ---- Analyzing Chunk 3/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1292 markers were tested.
+Firth approx was applied to 92 markers. 92 sucessfully converged.
+write to output
+   user  system elapsed 
+  1.942   0.204  15.403 
+Completed 10000/10000 markers in the chunk.
+905 markers were tested.
+Firth approx was applied to 55 markers. 55 sucessfully converged.
+write to output
+   user  system elapsed 
+  1.969   0.200  15.430 
+(2026-09-01 17:30:04.799887) ---- Analyzing Chunk 3/38: chrom 20 ---- 
+(2026-09-01 17:30:04.82039) ---- Analyzing Chunk 3/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1283 markers were tested.
+Firth approx was applied to 94 markers. 94 sucessfully converged.
+write to output
+   user  system elapsed 
+  2.038   0.213  15.592 
+(2026-09-01 17:30:05.180675) ---- Analyzing Chunk 3/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1303 markers were tested.
+Firth approx was applied to 89 markers. 89 sucessfully converged.
+write to output
+   user  system elapsed 
+  2.153   0.225  16.062 
+(2026-09-01 17:30:05.571226) ---- Analyzing Chunk 3/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1179 markers were tested.
+Firth approx was applied to 106 markers. 106 sucessfully converged.
+write to output
+   user  system elapsed 
+  2.372   0.240  16.569 
+(2026-09-01 17:30:06.007874) ---- Analyzing Chunk 3/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+963 markers were tested.
+Firth approx was applied to 50 markers. 50 sucessfully converged.
+write to output
+   user  system elapsed 
+  2.765   0.276  17.181 
+(2026-09-01 17:30:06.570361) ---- Analyzing Chunk 4/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1229 markers were tested.
+Firth approx was applied to 95 markers. 95 sucessfully converged.
+write to output
+   user  system elapsed 
+  2.913   0.290  17.395 
+(2026-09-01 17:30:06.791092) ---- Analyzing Chunk 4/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1132 markers were tested.
+Firth approx was applied to 172 markers. 172 sucessfully converged.
+write to output
+   user  system elapsed 
+  3.113   0.316  17.761 
+(2026-09-01 17:30:07.153289) ---- Analyzing Chunk 4/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1268 markers were tested.
+Firth approx was applied to 167 markers. 167 sucessfully converged.
+write to output
+   user  system elapsed 
+  3.682   0.339  18.546 
+Completed 10000/10000 markers in the chunk.
+1154 markers were tested.
+Firth approx was applied to 205 markers. 205 sucessfully converged.
+write to output
+   user  system elapsed 
+  3.668   0.355  18.606 
+(2026-09-01 17:30:07.944432) ---- Analyzing Chunk 4/38: chrom 20 ---- 
+(2026-09-01 17:30:08.052195) ---- Analyzing Chunk 4/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+983 markers were tested.
+Firth approx was applied to 107 markers. 107 sucessfully converged.
+write to output
+   user  system elapsed 
+  3.811   0.361  18.769 
+(2026-09-01 17:30:08.189808) ---- Analyzing Chunk 5/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+Completed 10000/10000 markers in the chunk.
+1166 markers were tested.
+Firth approx was applied to 212 markers. 212 sucessfully converged.
+write to output
+   user  system elapsed 
+  3.942   0.352  19.067 
+(2026-09-01 17:30:08.458696) ---- Analyzing Chunk 4/38: chrom 20 ---- 
+1197 markers were tested.
+Firth approx was applied to 142 markers. 142 sucessfully converged.
+write to output
+   user  system elapsed 
+  4.020   0.378  19.237 
+(2026-09-01 17:30:08.624694) ---- Analyzing Chunk 5/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1122 markers were tested.
+Firth approx was applied to 130 markers. 130 sucessfully converged.
+write to output
+   user  system elapsed 
+  4.467   0.428  19.887 
+Completed 10000/10000 markers in the chunk.
+(2026-09-01 17:30:09.292284) ---- Analyzing Chunk 5/38: chrom 20 ---- 
+1140 markers were tested.
+Firth approx was applied to 75 markers. 75 sucessfully converged.
+write to output
+   user  system elapsed 
+  4.555   0.425  19.990 
+(2026-09-01 17:30:09.398163) ---- Analyzing Chunk 5/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1037 markers were tested.
+Firth approx was applied to 71 markers. 71 sucessfully converged.
+write to output
+   user  system elapsed 
+  4.702   0.440  20.156 
+(2026-09-01 17:30:09.552492) ---- Analyzing Chunk 6/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1165 markers were tested.
+Firth approx was applied to 143 markers. 143 sucessfully converged.
+write to output
+   user  system elapsed 
+  4.896   0.458  20.428 
+(2026-09-01 17:30:09.830944) ---- Analyzing Chunk 5/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1266 markers were tested.
+Firth approx was applied to 173 markers. 173 sucessfully converged.
+write to output
+   user  system elapsed 
+  5.198   0.445  20.765 
+(2026-09-01 17:30:10.182303) ---- Analyzing Chunk 5/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1212 markers were tested.
+Firth approx was applied to 146 markers. 146 sucessfully converged.
+write to output
+   user  system elapsed 
+  5.336   0.485  20.988 
+(2026-09-01 17:30:10.514288) ---- Analyzing Chunk 6/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1269 markers were tested.
+Firth approx was applied to 98 markers. 98 sucessfully converged.
+write to output
+   user  system elapsed 
+  5.591   0.532  21.347 
+(2026-09-01 17:30:10.740002) ---- Analyzing Chunk 6/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1193 markers were tested.
+Firth approx was applied to 114 markers. 114 sucessfully converged.
+write to output
+   user  system elapsed 
+  5.699   0.532  21.457 
+(2026-09-01 17:30:10.851513) ---- Analyzing Chunk 7/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1234 markers were tested.
+Firth approx was applied to 104 markers. 104 sucessfully converged.
+write to output
+   user  system elapsed 
+  6.225   0.551  22.405 
+(2026-09-01 17:30:11.859119) ---- Analyzing Chunk 6/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1148 markers were tested.
+Firth approx was applied to 52 markers. 52 sucessfully converged.
+write to output
+   user  system elapsed 
+  6.486   0.609  22.798 
+(2026-09-01 17:30:12.196739) ---- Analyzing Chunk 8/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1211 markers were tested.
+Firth approx was applied to 298 markers. 298 sucessfully converged.
+write to output
+   user  system elapsed 
+  6.892   0.617  23.400 
+(2026-09-01 17:30:12.846957) ---- Analyzing Chunk 6/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1298 markers were tested.
+Firth approx was applied to 171 markers. 171 sucessfully converged.
+write to output
+   user  system elapsed 
+  7.011   0.661  23.739 
+(2026-09-01 17:30:13.131943) ---- Analyzing Chunk 7/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1177 markers were tested.
+Firth approx was applied to 284 markers. 284 sucessfully converged.
+write to output
+   user  system elapsed 
+  7.263   0.642  24.063 
+(2026-09-01 17:30:13.486662) ---- Analyzing Chunk 6/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1237 markers were tested.
+Firth approx was applied to 131 markers. 131 sucessfully converged.
+write to output
+   user  system elapsed 
+  7.392   0.651  24.255 
+(2026-09-01 17:30:13.715385) ---- Analyzing Chunk 7/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1136 markers were tested.
+Firth approx was applied to 62 markers. 62 sucessfully converged.
+write to output
+   user  system elapsed 
+  7.350   0.748  24.487 
+(2026-09-01 17:30:13.861731) ---- Analyzing Chunk 9/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1238 markers were tested.
+Firth approx was applied to 236 markers. 236 sucessfully converged.
+write to output
+   user  system elapsed 
+  7.685   0.684  24.805 
+(2026-09-01 17:30:14.226848) ---- Analyzing Chunk 7/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1164 markers were tested.
+Firth approx was applied to 104 markers. 104 sucessfully converged.
+write to output
+   user  system elapsed 
+  7.971   0.750  24.982 
+(2026-09-01 17:30:14.360027) ---- Analyzing Chunk 8/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1276 markers were tested.
+Firth approx was applied to 215 markers. 215 sucessfully converged.
+write to output
+   user  system elapsed 
+  8.707   0.768  25.885 
+Completed 10000/10000 markers in the chunk.
+(2026-09-01 17:30:15.306971) ---- Analyzing Chunk 7/38: chrom 20 ---- 
+1124 markers were tested.
+Firth approx was applied to 59 markers. 59 sucessfully converged.
+write to output
+   user  system elapsed 
+  8.202   0.881  25.999 
+(2026-09-01 17:30:15.378161) ---- Analyzing Chunk 10/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1119 markers were tested.
+Firth approx was applied to 258 markers. 258 sucessfully converged.
+write to output
+   user  system elapsed 
+  9.002   0.787  26.373 
+Completed 10000/10000 markers in the chunk.
+1262 markers were tested.
+Firth approx was applied to 167 markers. 167 sucessfully converged.
+write to output
+   user  system elapsed 
+  8.903   0.787  26.403 
+(2026-09-01 17:30:15.747548) ---- Analyzing Chunk 8/38: chrom 20 ---- 
+(2026-09-01 17:30:15.787551) ---- Analyzing Chunk 8/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1191 markers were tested.
+Firth approx was applied to 295 markers. 295 sucessfully converged.
+write to output
+   user  system elapsed 
+  9.204   0.799  26.541 
+(2026-09-01 17:30:15.934372) ---- Analyzing Chunk 7/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1212 markers were tested.
+Firth approx was applied to 182 markers. 182 sucessfully converged.
+write to output
+   user  system elapsed 
+  9.352   0.870  26.872 
+(2026-09-01 17:30:16.253241) ---- Analyzing Chunk 9/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1141 markers were tested.
+Firth approx was applied to 165 markers. 165 sucessfully converged.
+write to output
+   user  system elapsed 
+  9.543   0.991  27.765 
+(2026-09-01 17:30:17.138337) ---- Analyzing Chunk 11/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1192 markers were tested.
+Firth approx was applied to 116 markers. 116 sucessfully converged.
+write to output
+   user  system elapsed 
+ 10.128   0.895  27.927 
+Completed 10000/10000 markers in the chunk.
+(2026-09-01 17:30:17.309613) ---- Analyzing Chunk 9/38: chrom 20 ---- 
+1307 markers were tested.
+Firth approx was applied to 122 markers. 122 sucessfully converged.
+write to output
+   user  system elapsed 
+ 10.027   0.911  27.984 
+(2026-09-01 17:30:17.382083) ---- Analyzing Chunk 9/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1257 markers were tested.
+Firth approx was applied to 88 markers. 88 sucessfully converged.
+write to output
+   user  system elapsed 
+ 10.402   0.964  28.365 
+(2026-09-01 17:30:17.764763) ---- Analyzing Chunk 10/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1177 markers were tested.
+Firth approx was applied to 194 markers. 194 sucessfully converged.
+write to output
+   user  system elapsed 
+ 10.732   0.917  28.596 
+(2026-09-01 17:30:17.982141) ---- Analyzing Chunk 8/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1138 markers were tested.
+Firth approx was applied to 89 markers. 89 sucessfully converged.
+write to output
+   user  system elapsed 
+ 10.546   1.058  29.065 
+Completed 10000/10000 markers in the chunk.
+(2026-09-01 17:30:18.43784) ---- Analyzing Chunk 12/38: chrom 20 ---- 
+1262 markers were tested.
+Firth approx was applied to 327 markers. 327 sucessfully converged.
+write to output
+   user  system elapsed 
+ 11.250   0.926  29.115 
+(2026-09-01 17:30:18.50315) ---- Analyzing Chunk 8/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1135 markers were tested.
+Firth approx was applied to 96 markers. 96 sucessfully converged.
+write to output
+   user  system elapsed 
+ 11.224   0.989  29.417 
+(2026-09-01 17:30:18.79017) ---- Analyzing Chunk 10/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+Completed 10000/10000 markers in the chunk.
+1264 markers were tested.
+Firth approx was applied to 82 markers. 82 sucessfully converged.
+write to output
+   user  system elapsed 
+ 11.435   1.029  29.579 
+997 markers were tested.
+Firth approx was applied to 86 markers. 86 sucessfully converged.
+write to output
+   user  system elapsed 
+ 11.108   1.044  29.583 
+(2026-09-01 17:30:18.951931) ---- Analyzing Chunk 11/38: chrom 20 ---- 
+(2026-09-01 17:30:18.954349) ---- Analyzing Chunk 10/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1228 markers were tested.
+Firth approx was applied to 62 markers. 62 sucessfully converged.
+write to output
+   user  system elapsed 
+ 11.545   1.123  30.236 
+(2026-09-01 17:30:19.615678) ---- Analyzing Chunk 13/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1208 markers were tested.
+Firth approx was applied to 131 markers. 131 sucessfully converged.
+write to output
+   user  system elapsed 
+ 12.151   1.043  30.456 
+(2026-09-01 17:30:19.844714) ---- Analyzing Chunk 9/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1051 markers were tested.
+Firth approx was applied to 76 markers. 76 sucessfully converged.
+write to output
+   user  system elapsed 
+ 12.269   1.063  30.778 
+(2026-09-01 17:30:20.191669) ---- Analyzing Chunk 11/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1102 markers were tested.
+Firth approx was applied to 111 markers. 111 sucessfully converged.
+write to output
+   user  system elapsed 
+ 12.666   1.111  31.266 
+(2026-09-01 17:30:20.65218) ---- Analyzing Chunk 12/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1108 markers were tested.
+Firth approx was applied to 119 markers. 119 sucessfully converged.
+write to output
+   user  system elapsed 
+ 12.502   1.148  31.539 
+(2026-09-01 17:30:20.935588) ---- Analyzing Chunk 11/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1153 markers were tested.
+Firth approx was applied to 92 markers. 92 sucessfully converged.
+write to output
+   user  system elapsed 
+ 12.792   1.206  31.970 
+(2026-09-01 17:30:21.364879) ---- Analyzing Chunk 14/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1158 markers were tested.
+Firth approx was applied to 106 markers. 106 sucessfully converged.
+write to output
+   user  system elapsed 
+ 13.488   1.200  32.645 
+(2026-09-01 17:30:22.047558) ---- Analyzing Chunk 10/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1158 markers were tested.
+Firth approx was applied to 128 markers. 128 sucessfully converged.
+write to output
+   user  system elapsed 
+ 13.714   1.173  32.766 
+(2026-09-01 17:30:22.14325) ---- Analyzing Chunk 12/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1192 markers were tested.
+Firth approx was applied to 134 markers. 134 sucessfully converged.
+write to output
+   user  system elapsed 
+ 14.083   1.202  33.123 
+(2026-09-01 17:30:22.487614) ---- Analyzing Chunk 13/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1082 markers were tested.
+Firth approx was applied to 93 markers. 93 sucessfully converged.
+write to output
+   user  system elapsed 
+ 13.767   1.238  33.206 
+(2026-09-01 17:30:22.583403) ---- Analyzing Chunk 12/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1288 markers were tested.
+Firth approx was applied to 67 markers. 67 sucessfully converged.
+write to output
+   user  system elapsed 
+ 13.959   1.286  33.547 
+(2026-09-01 17:30:22.916842) ---- Analyzing Chunk 15/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1065 markers were tested.
+Firth approx was applied to 72 markers. 72 sucessfully converged.
+write to output
+   user  system elapsed 
+ 14.893   1.246  34.326 
+(2026-09-01 17:30:23.691556) ---- Analyzing Chunk 13/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1150 markers were tested.
+Firth approx was applied to 98 markers. 98 sucessfully converged.
+write to output
+   user  system elapsed 
+ 14.732   1.293  34.377 
+(2026-09-01 17:30:23.861059) ---- Analyzing Chunk 11/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1106 markers were tested.
+Firth approx was applied to 79 markers. 79 sucessfully converged.
+write to output
+   user  system elapsed 
+ 15.015   1.324  34.914 
+(2026-09-01 17:30:24.276131) ---- Analyzing Chunk 13/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1209 markers were tested.
+Firth approx was applied to 150 markers. 150 sucessfully converged.
+write to output
+   user  system elapsed 
+ 15.592   1.289  35.162 
+(2026-09-01 17:30:24.534541) ---- Analyzing Chunk 14/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+Completed 10000/10000 markers in the chunk.
+1218 markers were tested.
+Firth approx was applied to 42 markers. 42 sucessfully converged.
+write to output
+   user  system elapsed 
+ 15.907   1.327  35.753 
+1287 markers were tested.
+Firth approx was applied to 144 markers. 144 sucessfully converged.
+write to output
+   user  system elapsed 
+ 15.521   1.396  35.762 
+(2026-09-01 17:30:25.11894) ---- Analyzing Chunk 14/38: chrom 20 ---- 
+(2026-09-01 17:30:25.126045) ---- Analyzing Chunk 16/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1237 markers were tested.
+Firth approx was applied to 109 markers. 109 sucessfully converged.
+write to output
+   user  system elapsed 
+ 16.106   1.396  36.285 
+(2026-09-01 17:30:25.678913) ---- Analyzing Chunk 12/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1104 markers were tested.
+Firth approx was applied to 477 markers. 477 sucessfully converged.
+write to output
+   user  system elapsed 
+ 16.760   1.287  36.562 
+(2026-09-01 17:30:25.956784) ---- Analyzing Chunk 9/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1058 markers were tested.
+Firth approx was applied to 111 markers. 111 sucessfully converged.
+write to output
+   user  system elapsed 
+ 16.495   1.424  36.811 
+(2026-09-01 17:30:26.176352) ---- Analyzing Chunk 14/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1061 markers were tested.
+Firth approx was applied to 81 markers. 81 sucessfully converged.
+write to output
+   user  system elapsed 
+ 17.109   1.404  37.195 
+(2026-09-01 17:30:26.562782) ---- Analyzing Chunk 15/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1239 markers were tested.
+Firth approx was applied to 79 markers. 79 sucessfully converged.
+write to output
+   user  system elapsed 
+ 17.210   1.467  37.574 
+(2026-09-01 17:30:26.951056) ---- Analyzing Chunk 13/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1243 markers were tested.
+Firth approx was applied to 200 markers. 200 sucessfully converged.
+write to output
+   user  system elapsed 
+ 17.685   1.418  37.740 
+(2026-09-01 17:30:27.101771) ---- Analyzing Chunk 15/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1136 markers were tested.
+Firth approx was applied to 67 markers. 67 sucessfully converged.
+write to output
+   user  system elapsed 
+ 17.629   1.491  38.190 
+(2026-09-01 17:30:27.556868) ---- Analyzing Chunk 15/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1343 markers were tested.
+Firth approx was applied to 247 markers. 247 sucessfully converged.
+write to output
+   user  system elapsed 
+ 17.925   1.529  38.693 
+(2026-09-01 17:30:28.053471) ---- Analyzing Chunk 17/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1193 markers were tested.
+Firth approx was applied to 91 markers. 91 sucessfully converged.
+write to output
+   user  system elapsed 
+ 18.511   1.550  39.201 
+(2026-09-01 17:30:28.568957) ---- Analyzing Chunk 14/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1076 markers were tested.
+Firth approx was applied to 170 markers. 170 sucessfully converged.
+write to output
+   user  system elapsed 
+ 18.891   1.508  39.382 
+(2026-09-01 17:30:28.749671) ---- Analyzing Chunk 16/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1025 markers were tested.
+Firth approx was applied to 93 markers. 93 sucessfully converged.
+write to output
+   user  system elapsed 
+ 18.942   1.583  39.807 
+(2026-09-01 17:30:29.168262) ---- Analyzing Chunk 16/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1242 markers were tested.
+Firth approx was applied to 180 markers. 180 sucessfully converged.
+write to output
+   user  system elapsed 
+ 19.575   1.523  40.049 
+(2026-09-01 17:30:29.413406) ---- Analyzing Chunk 16/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1218 markers were tested.
+Firth approx was applied to 146 markers. 146 sucessfully converged.
+write to output
+   user  system elapsed 
+ 20.432   1.602  41.232 
+(2026-09-01 17:30:30.600521) ---- Analyzing Chunk 17/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1103 markers were tested.
+Firth approx was applied to 348 markers. 348 sucessfully converged.
+write to output
+   user  system elapsed 
+ 20.530   1.589  41.395 
+Completed 10000/10000 markers in the chunk.
+1135 markers were tested.
+Firth approx was applied to 252 markers. 252 sucessfully converged.
+write to output
+   user  system elapsed 
+ 20.248   1.650  41.427 
+(2026-09-01 17:30:30.777435) ---- Analyzing Chunk 10/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+(2026-09-01 17:30:30.791533) ---- Analyzing Chunk 18/38: chrom 20 ---- 
+1311 markers were tested.
+Firth approx was applied to 160 markers. 160 sucessfully converged.
+write to output
+   user  system elapsed 
+ 20.394   1.666  41.460 
+(2026-09-01 17:30:30.824465) ---- Analyzing Chunk 15/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1203 markers were tested.
+Firth approx was applied to 98 markers. 98 sucessfully converged.
+write to output
+   user  system elapsed 
+ 20.834   1.599  41.562 
+(2026-09-01 17:30:30.919537) ---- Analyzing Chunk 17/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1188 markers were tested.
+Firth approx was applied to 181 markers. 181 sucessfully converged.
+write to output
+   user  system elapsed 
+ 20.732   1.677  41.991 
+(2026-09-01 17:30:31.359198) ---- Analyzing Chunk 17/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1149 markers were tested.
+Firth approx was applied to 93 markers. 93 sucessfully converged.
+write to output
+   user  system elapsed 
+ 21.637   1.681  42.746 
+(2026-09-01 17:30:32.10936) ---- Analyzing Chunk 18/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1126 markers were tested.
+Firth approx was applied to 84 markers. 84 sucessfully converged.
+write to output
+   user  system elapsed 
+ 21.933   1.668  42.958 
+(2026-09-01 17:30:32.31386) ---- Analyzing Chunk 18/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1234 markers were tested.
+Firth approx was applied to 119 markers. 119 sucessfully converged.
+write to output
+   user  system elapsed 
+ 21.760   1.749  43.163 
+(2026-09-01 17:30:32.529175) ---- Analyzing Chunk 16/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1065 markers were tested.
+Firth approx was applied to 122 markers. 122 sucessfully converged.
+write to output
+   user  system elapsed 
+ 22.012   1.758  43.635 
+(2026-09-01 17:30:32.997646) ---- Analyzing Chunk 18/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1131 markers were tested.
+Firth approx was applied to 214 markers. 214 sucessfully converged.
+write to output
+   user  system elapsed 
+ 22.367   1.756  44.050 
+(2026-09-01 17:30:33.41112) ---- Analyzing Chunk 19/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1045 markers were tested.
+Firth approx was applied to 71 markers. 71 sucessfully converged.
+write to output
+   user  system elapsed 
+ 22.959   1.723  44.306 
+(2026-09-01 17:30:33.673602) ---- Analyzing Chunk 19/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1209 markers were tested.
+Firth approx was applied to 92 markers. 92 sucessfully converged.
+write to output
+   user  system elapsed 
+ 22.819   1.807  44.558 
+Completed 10000/10000 markers in the chunk.
+1195 markers were tested.
+Firth approx was applied to 198 markers. 198 sucessfully converged.
+write to output
+   user  system elapsed 
+ 23.045   1.764  44.574 
+(2026-09-01 17:30:33.916884) ---- Analyzing Chunk 17/38: chrom 20 ---- 
+(2026-09-01 17:30:33.93264) ---- Analyzing Chunk 19/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1065 markers were tested.
+Firth approx was applied to 67 markers. 67 sucessfully converged.
+write to output
+   user  system elapsed 
+ 22.998   1.814  45.050 
+(2026-09-01 17:30:34.410337) ---- Analyzing Chunk 19/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1268 markers were tested.
+Firth approx was applied to 348 markers. 348 sucessfully converged.
+write to output
+   user  system elapsed 
+ 23.335   1.817  45.173 
+(2026-09-01 17:30:34.54457) ---- Analyzing Chunk 11/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1162 markers were tested.
+Firth approx was applied to 61 markers. 61 sucessfully converged.
+write to output
+   user  system elapsed 
+ 23.920   1.774  45.520 
+(2026-09-01 17:30:34.876646) ---- Analyzing Chunk 20/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1233 markers were tested.
+Firth approx was applied to 99 markers. 99 sucessfully converged.
+write to output
+   user  system elapsed 
+ 23.969   1.870  45.934 
+(2026-09-01 17:30:35.292474) ---- Analyzing Chunk 18/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1061 markers were tested.
+Firth approx was applied to 176 markers. 176 sucessfully converged.
+write to output
+   user  system elapsed 
+ 24.211   1.840  46.343 
+(2026-09-01 17:30:35.707871) ---- Analyzing Chunk 20/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1086 markers were tested.
+Firth approx was applied to 158 markers. 158 sucessfully converged.
+write to output
+   user  system elapsed 
+ 24.639   1.894  46.705 
+(2026-09-01 17:30:36.077376) ---- Analyzing Chunk 12/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1103 markers were tested.
+Firth approx was applied to 105 markers. 105 sucessfully converged.
+write to output
+   user  system elapsed 
+ 24.992   1.836  46.808 
+(2026-09-01 17:30:36.166921) ---- Analyzing Chunk 21/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1149 markers were tested.
+Firth approx was applied to 142 markers. 142 sucessfully converged.
+write to output
+   user  system elapsed 
+ 24.536   1.896  46.860 
+(2026-09-01 17:30:36.218174) ---- Analyzing Chunk 20/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1074 markers were tested.
+Firth approx was applied to 212 markers. 212 sucessfully converged.
+write to output
+   user  system elapsed 
+ 25.142   1.879  47.127 
+(2026-09-01 17:30:36.483395) ---- Analyzing Chunk 20/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1291 markers were tested.
+Firth approx was applied to 118 markers. 118 sucessfully converged.
+write to output
+   user  system elapsed 
+ 25.209   1.952  47.471 
+(2026-09-01 17:30:36.837296) ---- Analyzing Chunk 19/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1171 markers were tested.
+Firth approx was applied to 131 markers. 131 sucessfully converged.
+write to output
+   user  system elapsed 
+ 26.219   1.907  48.318 
+(2026-09-01 17:30:37.676477) ---- Analyzing Chunk 22/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1064 markers were tested.
+Firth approx was applied to 199 markers. 199 sucessfully converged.
+write to output
+   user  system elapsed 
+ 26.135   1.944  48.758 
+(2026-09-01 17:30:38.11801) ---- Analyzing Chunk 21/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1153 markers were tested.
+Firth approx was applied to 216 markers. 216 sucessfully converged.
+write to output
+   user  system elapsed 
+ 26.472   2.006  49.009 
+(2026-09-01 17:30:38.376919) ---- Analyzing Chunk 13/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1189 markers were tested.
+Firth approx was applied to 126 markers. 126 sucessfully converged.
+write to output
+   user  system elapsed 
+ 26.442   2.023  49.056 
+(2026-09-01 17:30:38.413974) ---- Analyzing Chunk 20/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1260 markers were tested.
+Firth approx was applied to 85 markers. 85 sucessfully converged.
+write to output
+   user  system elapsed 
+ 27.298   1.966  49.671 
+(2026-09-01 17:30:39.027135) ---- Analyzing Chunk 23/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1131 markers were tested.
+Firth approx was applied to 251 markers. 251 sucessfully converged.
+write to output
+   user  system elapsed 
+ 27.456   2.007  49.987 
+(2026-09-01 17:30:39.345574) ---- Analyzing Chunk 21/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1194 markers were tested.
+Firth approx was applied to 120 markers. 120 sucessfully converged.
+write to output
+   user  system elapsed 
+ 27.631   2.084  50.424 
+(2026-09-01 17:30:39.776878) ---- Analyzing Chunk 21/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1215 markers were tested.
+Firth approx was applied to 105 markers. 105 sucessfully converged.
+write to output
+   user  system elapsed 
+ 28.476   2.027  51.078 
+(2026-09-01 17:30:40.432384) ---- Analyzing Chunk 24/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1044 markers were tested.
+Firth approx was applied to 200 markers. 200 sucessfully converged.
+write to output
+   user  system elapsed 
+ 28.126   2.035  51.135 
+(2026-09-01 17:30:40.493614) ---- Analyzing Chunk 22/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1181 markers were tested.
+Firth approx was applied to 85 markers. 85 sucessfully converged.
+write to output
+   user  system elapsed 
+ 28.518   2.065  51.290 
+(2026-09-01 17:30:40.649192) ---- Analyzing Chunk 22/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1302 markers were tested.
+Firth approx was applied to 405 markers. 405 sucessfully converged.
+write to output
+   user  system elapsed 
+ 28.428   2.061  51.618 
+Completed 10000/10000 markers in the chunk.
+(2026-09-01 17:30:40.971918) ---- Analyzing Chunk 21/38: chrom 20 ---- 
+1280 markers were tested.
+Firth approx was applied to 56 markers. 56 sucessfully converged.
+write to output
+   user  system elapsed 
+ 28.577   2.135  51.652 
+(2026-09-01 17:30:41.008928) ---- Analyzing Chunk 22/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1355 markers were tested.
+Firth approx was applied to 311 markers. 311 sucessfully converged.
+write to output
+   user  system elapsed 
+ 29.081   2.165  52.332 
+(2026-09-01 17:30:41.70559) ---- Analyzing Chunk 14/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1194 markers were tested.
+Firth approx was applied to 108 markers. 108 sucessfully converged.
+write to output
+   user  system elapsed 
+ 29.565   2.085  52.433 
+(2026-09-01 17:30:41.788508) ---- Analyzing Chunk 25/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1149 markers were tested.
+Firth approx was applied to 119 markers. 119 sucessfully converged.
+write to output
+   user  system elapsed 
+ 29.645   2.124  52.689 
+(2026-09-01 17:30:42.046581) ---- Analyzing Chunk 23/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1171 markers were tested.
+Firth approx was applied to 126 markers. 126 sucessfully converged.
+write to output
+   user  system elapsed 
+ 29.717   2.196  53.042 
+(2026-09-01 17:30:42.394977) ---- Analyzing Chunk 23/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1272 markers were tested.
+Firth approx was applied to 111 markers. 111 sucessfully converged.
+write to output
+   user  system elapsed 
+ 29.698   2.134  53.154 
+(2026-09-01 17:30:42.50883) ---- Analyzing Chunk 22/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1035 markers were tested.
+Firth approx was applied to 194 markers. 194 sucessfully converged.
+write to output
+   user  system elapsed 
+ 30.034   2.123  53.473 
+(2026-09-01 17:30:42.830477) ---- Analyzing Chunk 23/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1233 markers were tested.
+Firth approx was applied to 75 markers. 75 sucessfully converged.
+write to output
+   user  system elapsed 
+ 30.533   2.141  53.642 
+(2026-09-01 17:30:42.993842) ---- Analyzing Chunk 26/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1113 markers were tested.
+Firth approx was applied to 65 markers. 65 sucessfully converged.
+write to output
+   user  system elapsed 
+ 30.549   2.167  53.744 
+(2026-09-01 17:30:43.096768) ---- Analyzing Chunk 24/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1099 markers were tested.
+Firth approx was applied to 149 markers. 149 sucessfully converged.
+write to output
+   user  system elapsed 
+ 30.318   2.241  53.830 
+(2026-09-01 17:30:43.195846) ---- Analyzing Chunk 15/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1076 markers were tested.
+Firth approx was applied to 82 markers. 82 sucessfully converged.
+write to output
+   user  system elapsed 
+ 30.593   2.176  54.271 
+(2026-09-01 17:30:43.620282) ---- Analyzing Chunk 23/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1210 markers were tested.
+Firth approx was applied to 133 markers. 133 sucessfully converged.
+write to output
+   user  system elapsed 
+ 30.814   2.248  54.380 
+(2026-09-01 17:30:43.72917) ---- Analyzing Chunk 24/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1307 markers were tested.
+Firth approx was applied to 97 markers. 97 sucessfully converged.
+write to output
+   user  system elapsed 
+ 31.423   2.182  54.711 
+(2026-09-01 17:30:44.061707) ---- Analyzing Chunk 27/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1307 markers were tested.
+Firth approx was applied to 65 markers. 65 sucessfully converged.
+write to output
+   user  system elapsed 
+ 31.158   2.289  54.845 
+(2026-09-01 17:30:44.204885) ---- Analyzing Chunk 16/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1209 markers were tested.
+Firth approx was applied to 90 markers. 90 sucessfully converged.
+write to output
+   user  system elapsed 
+ 31.531   2.213  54.903 
+(2026-09-01 17:30:44.254304) ---- Analyzing Chunk 25/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1148 markers were tested.
+Firth approx was applied to 71 markers. 71 sucessfully converged.
+write to output
+   user  system elapsed 
+ 31.642   2.287  55.265 
+(2026-09-01 17:30:44.6142) ---- Analyzing Chunk 25/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1051 markers were tested.
+Firth approx was applied to 195 markers. 195 sucessfully converged.
+write to output
+   user  system elapsed 
+ 31.747   2.199  55.425 
+(2026-09-01 17:30:44.777811) ---- Analyzing Chunk 24/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1207 markers were tested.
+Firth approx was applied to 169 markers. 169 sucessfully converged.
+write to output
+   user  system elapsed 
+ 31.754   2.228  55.503 
+(2026-09-01 17:30:44.854728) ---- Analyzing Chunk 24/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1268 markers were tested.
+Firth approx was applied to 81 markers. 81 sucessfully converged.
+write to output
+   user  system elapsed 
+ 32.369   2.252  55.798 
+(2026-09-01 17:30:45.15144) ---- Analyzing Chunk 26/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1193 markers were tested.
+Firth approx was applied to 122 markers. 122 sucessfully converged.
+write to output
+   user  system elapsed 
+ 32.632   2.241  56.015 
+(2026-09-01 17:30:45.366535) ---- Analyzing Chunk 28/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1123 markers were tested.
+Firth approx was applied to 127 markers. 127 sucessfully converged.
+write to output
+   user  system elapsed 
+ 32.780   2.339  56.511 
+(2026-09-01 17:30:45.861074) ---- Analyzing Chunk 26/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1267 markers were tested.
+Firth approx was applied to 101 markers. 101 sucessfully converged.
+write to output
+   user  system elapsed 
+ 32.786   2.274  56.624 
+(2026-09-01 17:30:45.975146) ---- Analyzing Chunk 25/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1303 markers were tested.
+Firth approx was applied to 47 markers. 47 sucessfully converged.
+write to output
+   user  system elapsed 
+ 33.394   2.275  56.847 
+(2026-09-01 17:30:46.199121) ---- Analyzing Chunk 29/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1242 markers were tested.
+Firth approx was applied to 111 markers. 111 sucessfully converged.
+write to output
+   user  system elapsed 
+ 33.354   2.299  56.875 
+(2026-09-01 17:30:46.226094) ---- Analyzing Chunk 27/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1148 markers were tested.
+Firth approx was applied to 357 markers. 357 sucessfully converged.
+write to output
+   user  system elapsed 
+ 33.218   2.418  57.129 
+(2026-09-01 17:30:46.487024) ---- Analyzing Chunk 17/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1068 markers were tested.
+Firth approx was applied to 198 markers. 198 sucessfully converged.
+write to output
+   user  system elapsed 
+ 33.391   2.274  57.225 
+(2026-09-01 17:30:46.578808) ---- Analyzing Chunk 25/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1110 markers were tested.
+Firth approx was applied to 113 markers. 113 sucessfully converged.
+write to output
+   user  system elapsed 
+ 33.708   2.382  57.539 
+(2026-09-01 17:30:46.890267) ---- Analyzing Chunk 27/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1120 markers were tested.
+Firth approx was applied to 75 markers. 75 sucessfully converged.
+write to output
+   user  system elapsed 
+ 33.679   2.318  57.611 
+(2026-09-01 17:30:46.962039) ---- Analyzing Chunk 26/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1297 markers were tested.
+Firth approx was applied to 108 markers. 108 sucessfully converged.
+write to output
+   user  system elapsed 
+ 34.432   2.326  57.996 
+(2026-09-01 17:30:47.349013) ---- Analyzing Chunk 30/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1164 markers were tested.
+Firth approx was applied to 136 markers. 136 sucessfully converged.
+write to output
+   user  system elapsed 
+ 34.718   2.367  58.393 
+(2026-09-01 17:30:47.744223) ---- Analyzing Chunk 28/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1036 markers were tested.
+Firth approx was applied to 72 markers. 72 sucessfully converged.
+write to output
+   user  system elapsed 
+ 34.523   2.421  58.451 
+(2026-09-01 17:30:47.803316) ---- Analyzing Chunk 28/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1242 markers were tested.
+Firth approx was applied to 86 markers. 86 sucessfully converged.
+write to output
+   user  system elapsed 
+ 34.609   2.362  58.637 
+(2026-09-01 17:30:47.99131) ---- Analyzing Chunk 27/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1279 markers were tested.
+Firth approx was applied to 74 markers. 74 sucessfully converged.
+write to output
+   user  system elapsed 
+ 35.335   2.371  58.989 
+(2026-09-01 17:30:48.342677) ---- Analyzing Chunk 31/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1042 markers were tested.
+Firth approx was applied to 205 markers. 205 sucessfully converged.
+write to output
+   user  system elapsed 
+ 35.211   2.352  59.217 
+(2026-09-01 17:30:48.57008) ---- Analyzing Chunk 26/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1166 markers were tested.
+Firth approx was applied to 82 markers. 82 sucessfully converged.
+write to output
+   user  system elapsed 
+ 35.659   2.412  59.423 
+Completed 10000/10000 markers in the chunk.
+(2026-09-01 17:30:48.775422) ---- Analyzing Chunk 29/38: chrom 20 ---- 
+1217 markers were tested.
+Firth approx was applied to 259 markers. 259 sucessfully converged.
+write to output
+   user  system elapsed 
+ 35.298   2.555  59.446 
+(2026-09-01 17:30:48.801266) ---- Analyzing Chunk 18/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1044 markers were tested.
+Firth approx was applied to 125 markers. 125 sucessfully converged.
+write to output
+   user  system elapsed 
+ 35.575   2.469  59.602 
+(2026-09-01 17:30:48.953703) ---- Analyzing Chunk 29/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1276 markers were tested.
+Firth approx was applied to 134 markers. 134 sucessfully converged.
+write to output
+   user  system elapsed 
+ 35.753   2.419  59.889 
+Completed 10000/10000 markers in the chunk.
+(2026-09-01 17:30:49.242467) ---- Analyzing Chunk 28/38: chrom 20 ---- 
+1154 markers were tested.
+Firth approx was applied to 66 markers. 66 sucessfully converged.
+write to output
+   user  system elapsed 
+ 36.174   2.414  59.910 
+(2026-09-01 17:30:49.261031) ---- Analyzing Chunk 32/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1158 markers were tested.
+Firth approx was applied to 100 markers. 100 sucessfully converged.
+write to output
+   user  system elapsed 
+ 36.658   2.467  60.510 
+(2026-09-01 17:30:49.861961) ---- Analyzing Chunk 30/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+Completed 10000/10000 markers in the chunk.
+1189 markers were tested.
+Firth approx was applied to 225 markers. 225 sucessfully converged.
+write to output
+   user  system elapsed 
+ 36.758   2.619  61.013 
+1047 markers were tested.
+Firth approx was applied to 180 markers. 180 sucessfully converged.
+write to output
+   user  system elapsed 
+ 36.877   2.420  61.015 
+Completed 10000/10000 markers in the chunk.
+1189 markers were tested.
+Firth approx was applied to 98 markers. 98 sucessfully converged.
+(2026-09-01 17:30:50.367344) ---- Analyzing Chunk 19/38: chrom 20 ---- 
+(2026-09-01 17:30:50.367362) ---- Analyzing Chunk 27/38: chrom 20 ---- 
+write to output
+   user  system elapsed 
+ 37.202   2.468  61.032 
+(2026-09-01 17:30:50.382749) ---- Analyzing Chunk 33/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1346 markers were tested.
+Firth approx was applied to 126 markers. 126 sucessfully converged.
+write to output
+   user  system elapsed 
+ 36.849   2.471  61.070 
+(2026-09-01 17:30:50.422408) ---- Analyzing Chunk 29/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+Completed 10000/10000 markers in the chunk.
+1128 markers were tested.
+Firth approx was applied to 366 markers. 366 sucessfully converged.
+write to output
+   user  system elapsed 
+ 37.830   2.591  62.386 
+1123 markers were tested.
+Firth approx was applied to 58 markers. 58 sucessfully converged.
+write to output
+   user  system elapsed 
+ 37.707   2.686  62.397 
+(2026-09-01 17:30:51.741121) ---- Analyzing Chunk 30/38: chrom 20 ---- 
+(2026-09-01 17:30:51.758652) ---- Analyzing Chunk 20/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1135 markers were tested.
+Firth approx was applied to 85 markers. 85 sucessfully converged.
+write to output
+   user  system elapsed 
+ 38.269   2.547  62.705 
+(2026-09-01 17:30:52.086051) ---- Analyzing Chunk 34/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1254 markers were tested.
+Firth approx was applied to 110 markers. 110 sucessfully converged.
+write to output
+   user  system elapsed 
+ 37.999   2.553  62.868 
+(2026-09-01 17:30:52.219394) ---- Analyzing Chunk 30/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1219 markers were tested.
+Firth approx was applied to 63 markers. 63 sucessfully converged.
+write to output
+   user  system elapsed 
+ 38.604   2.739  63.584 
+Completed 10000/10000 markers in the chunk.
+(2026-09-01 17:30:52.940514) ---- Analyzing Chunk 21/38: chrom 20 ---- 
+1028 markers were tested.
+Firth approx was applied to 212 markers. 212 sucessfully converged.
+write to output
+   user  system elapsed 
+ 38.765   2.523  63.610 
+(2026-09-01 17:30:52.963448) ---- Analyzing Chunk 28/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1144 markers were tested.
+Firth approx was applied to 106 markers. 106 sucessfully converged.
+write to output
+   user  system elapsed 
+ 38.842   2.646  63.693 
+(2026-09-01 17:30:53.046214) ---- Analyzing Chunk 31/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1302 markers were tested.
+Firth approx was applied to 259 markers. 259 sucessfully converged.
+write to output
+   user  system elapsed 
+ 39.300   2.578  63.890 
+(2026-09-01 17:30:53.242965) ---- Analyzing Chunk 31/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1115 markers were tested.
+Firth approx was applied to 114 markers. 114 sucessfully converged.
+write to output
+   user  system elapsed 
+ 39.359   2.605  63.953 
+(2026-09-01 17:30:53.303788) ---- Analyzing Chunk 35/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1179 markers were tested.
+Firth approx was applied to 129 markers. 129 sucessfully converged.
+write to output
+   user  system elapsed 
+ 39.118   2.601  64.087 
+(2026-09-01 17:30:53.43929) ---- Analyzing Chunk 31/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1294 markers were tested.
+Firth approx was applied to 113 markers. 113 sucessfully converged.
+write to output
+   user  system elapsed 
+ 39.752   2.796  64.909 
+(2026-09-01 17:30:54.264119) ---- Analyzing Chunk 22/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1112 markers were tested.
+Firth approx was applied to 78 markers. 78 sucessfully converged.
+write to output
+   user  system elapsed 
+ 40.326   2.646  65.044 
+(2026-09-01 17:30:54.395681) ---- Analyzing Chunk 36/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1052 markers were tested.
+Firth approx was applied to 92 markers. 92 sucessfully converged.
+write to output
+   user  system elapsed 
+ 40.360   2.631  65.092 
+Completed 10000/10000 markers in the chunk.
+(2026-09-01 17:30:54.444419) ---- Analyzing Chunk 32/38: chrom 20 ---- 
+1195 markers were tested.
+Firth approx was applied to 134 markers. 134 sucessfully converged.
+write to output
+   user  system elapsed 
+ 40.097   2.719  65.122 
+(2026-09-01 17:30:54.472494) ---- Analyzing Chunk 32/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1178 markers were tested.
+Firth approx was applied to 173 markers. 173 sucessfully converged.
+write to output
+   user  system elapsed 
+ 40.547   2.665  65.691 
+(2026-09-01 17:30:55.043388) ---- Analyzing Chunk 32/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1032 markers were tested.
+Firth approx was applied to 194 markers. 194 sucessfully converged.
+write to output
+   user  system elapsed 
+ 40.696   2.604  65.760 
+(2026-09-01 17:30:55.111507) ---- Analyzing Chunk 29/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1201 markers were tested.
+Firth approx was applied to 140 markers. 140 sucessfully converged.
+write to output
+   user  system elapsed 
+ 41.649   2.712  66.495 
+(2026-09-01 17:30:55.846071) ---- Analyzing Chunk 37/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1070 markers were tested.
+Firth approx was applied to 161 markers. 161 sucessfully converged.
+write to output
+   user  system elapsed 
+ 41.718   2.693  66.579 
+(2026-09-01 17:30:55.931153) ---- Analyzing Chunk 33/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1335 markers were tested.
+Firth approx was applied to 230 markers. 230 sucessfully converged.
+write to output
+   user  system elapsed 
+ 41.843   2.818  67.063 
+(2026-09-01 17:30:56.414573) ---- Analyzing Chunk 33/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1221 markers were tested.
+Firth approx was applied to 237 markers. 237 sucessfully converged.
+write to output
+   user  system elapsed 
+ 41.801   2.895  67.171 
+(2026-09-01 17:30:56.523539) ---- Analyzing Chunk 23/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1284 markers were tested.
+Firth approx was applied to 200 markers. 200 sucessfully converged.
+write to output
+   user  system elapsed 
+ 42.144   2.750  67.470 
+(2026-09-01 17:30:56.820313) ---- Analyzing Chunk 33/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1140 markers were tested.
+Firth approx was applied to 76 markers. 76 sucessfully converged.
+write to output
+   user  system elapsed 
+ 42.694   2.757  67.717 
+(2026-09-01 17:30:57.092908) ---- Analyzing Chunk 34/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1196 markers were tested.
+Firth approx was applied to 124 markers. 124 sucessfully converged.
+write to output
+   user  system elapsed 
+ 42.813   2.778  67.843 
+(2026-09-01 17:30:57.192884) ---- Analyzing Chunk 38/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1039 markers were tested.
+Firth approx was applied to 206 markers. 206 sucessfully converged.
+write to output
+   user  system elapsed 
+ 42.609   2.686  67.911 
+(2026-09-01 17:30:57.263813) ---- Analyzing Chunk 30/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1035 markers were tested.
+Firth approx was applied to 63 markers. 63 sucessfully converged.
+write to output
+   user  system elapsed 
+ 42.766   2.883  68.168 
+(2026-09-01 17:30:57.520422) ---- Analyzing Chunk 34/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1068 markers were tested.
+Firth approx was applied to 74 markers. 74 sucessfully converged.
+write to output
+   user  system elapsed 
+ 42.729   2.950  68.408 
+(2026-09-01 17:30:57.765442) ---- Analyzing Chunk 24/38: chrom 20 ---- 
+978 markers were tested.
+Firth approx was applied to 68 markers. 68 sucessfully converged.
+write to output
+   user  system elapsed 
+ 43.586   2.829  68.983 
+Completed 10000/10000 markers in the chunk.
+1080 markers were tested.
+Firth approx was applied to 87 markers. 87 sucessfully converged.
+write to output
+   user  system elapsed 
+ 43.769   2.815  69.201 
+(2026-09-01 17:30:58.553462) ---- Analyzing Chunk 35/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1274 markers were tested.
+Firth approx was applied to 109 markers. 109 sucessfully converged.
+write to output
+   user  system elapsed 
+ 43.869   2.948  69.679 
+(2026-09-01 17:30:59.033374) ---- Analyzing Chunk 35/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1065 markers were tested.
+Firth approx was applied to 193 markers. 193 sucessfully converged.
+write to output
+   user  system elapsed 
+ 43.956   3.013  69.910 
+(2026-09-01 17:30:59.263623) ---- Analyzing Chunk 25/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1120 markers were tested.
+Firth approx was applied to 203 markers. 203 sucessfully converged.
+write to output
+   user  system elapsed 
+ 44.375   2.769  70.151 
+(2026-09-01 17:30:59.503987) ---- Analyzing Chunk 31/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1253 markers were tested.
+Firth approx was applied to 86 markers. 86 sucessfully converged.
+write to output
+   user  system elapsed 
+ 44.712   2.864  70.227 
+(2026-09-01 17:30:59.578089) ---- Analyzing Chunk 36/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1119 markers were tested.
+Firth approx was applied to 198 markers. 198 sucessfully converged.
+write to output
+   user  system elapsed 
+ 45.361   3.108  71.458 
+(2026-09-01 17:31:00.80996) ---- Analyzing Chunk 26/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1301 markers were tested.
+Firth approx was applied to 227 markers. 227 sucessfully converged.
+write to output
+   user  system elapsed 
+ 45.618   3.054  71.593 
+(2026-09-01 17:31:00.945999) ---- Analyzing Chunk 36/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1496 markers were tested.
+Firth approx was applied to 147 markers. 147 sucessfully converged.
+write to output
+Completed 10000/10000 markers in the chunk.
+   user  system elapsed 
+ 45.768   2.836  71.665 
+1104 markers were tested.
+Firth approx was applied to 126 markers. 126 sucessfully converged.
+write to output
+   user  system elapsed 
+ 46.033   2.939  71.672 
+(2026-09-01 17:31:01.016357) ---- Analyzing Chunk 32/38: chrom 20 ---- 
+(2026-09-01 17:31:01.022416) ---- Analyzing Chunk 37/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1354 markers were tested.
+Firth approx was applied to 420 markers. 420 sucessfully converged.
+write to output
+   user  system elapsed 
+ 45.930   2.917  71.937 
+(2026-09-01 17:31:01.293479) ---- Analyzing Chunk 34/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1143 markers were tested.
+Firth approx was applied to 79 markers. 79 sucessfully converged.
+write to output
+   user  system elapsed 
+ 46.246   3.146  72.414 
+(2026-09-01 17:31:01.767095) ---- Analyzing Chunk 27/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1239 markers were tested.
+Firth approx was applied to 80 markers. 80 sucessfully converged.
+write to output
+   user  system elapsed 
+ 46.475   3.098  72.546 
+(2026-09-01 17:31:01.898635) ---- Analyzing Chunk 37/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1090 markers were tested.
+Firth approx was applied to 98 markers. 98 sucessfully converged.
+write to output
+   user  system elapsed 
+ 47.070   2.987  73.281 
+(2026-09-01 17:31:02.635602) ---- Analyzing Chunk 35/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1100 markers were tested.
+Firth approx was applied to 184 markers. 184 sucessfully converged.
+write to output
+   user  system elapsed 
+ 47.435   3.013  73.316 
+(2026-09-01 17:31:02.664931) ---- Analyzing Chunk 38/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1705 markers were tested.
+Firth approx was applied to 167 markers. 167 sucessfully converged.
+write to output
+   user  system elapsed 
+ 47.297   2.918  73.456 
+(2026-09-01 17:31:02.807484) ---- Analyzing Chunk 33/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1149 markers were tested.
+Firth approx was applied to 162 markers. 162 sucessfully converged.
+write to output
+   user  system elapsed 
+ 47.335   3.212  73.741 
+(2026-09-01 17:31:03.09576) ---- Analyzing Chunk 28/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1228 markers were tested.
+Firth approx was applied to 217 markers. 217 sucessfully converged.
+write to output
+   user  system elapsed 
+ 47.923   3.178  74.270 
+(2026-09-01 17:31:03.618149) ---- Analyzing Chunk 38/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1122 markers were tested.
+Firth approx was applied to 70 markers. 70 sucessfully converged.
+write to output
+   user  system elapsed 
+ 47.940   3.039  74.319 
+(2026-09-01 17:31:03.669038) ---- Analyzing Chunk 36/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1001 markers were tested.
+Firth approx was applied to 65 markers. 65 sucessfully converged.
+write to output
+   user  system elapsed 
+ 48.122   3.256  74.639 
+(2026-09-01 17:31:03.991195) ---- Analyzing Chunk 29/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1335 markers were tested.
+Firth approx was applied to 138 markers. 138 sucessfully converged.
+write to output
+   user  system elapsed 
+ 48.521   2.984  74.858 
+(2026-09-01 17:31:04.208853) ---- Analyzing Chunk 34/38: chrom 20 ---- 
+1017 markers were tested.
+Firth approx was applied to 177 markers. 177 sucessfully converged.
+write to output
+Completed 10000/10000 markers in the chunk.
+   user  system elapsed 
+ 49.246   3.258  75.986 
+1119 markers were tested.
+Firth approx was applied to 102 markers. 102 sucessfully converged.
+write to output
+   user  system elapsed 
+ 49.142   3.329  75.998 
+(2026-09-01 17:31:05.349963) ---- Analyzing Chunk 30/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1252 markers were tested.
+Firth approx was applied to 49 markers. 49 sucessfully converged.
+write to output
+Completed 10000/10000 markers in the chunk.
+   user  system elapsed 
+ 49.395   3.050  76.079 
+1284 markers were tested.
+Firth approx was applied to 145 markers. 145 sucessfully converged.
+write to output
+   user  system elapsed 
+ 49.334   3.127  76.088 
+(2026-09-01 17:31:05.431019) ---- Analyzing Chunk 35/38: chrom 20 ---- 
+(2026-09-01 17:31:05.443072) ---- Analyzing Chunk 37/38: chrom 20 ---- 
+1168 markers were tested.
+Firth approx was applied to 374 markers. 374 sucessfully converged.
+write to output
+   user  system elapsed 
+ 49.767   3.138  76.185 
+Completed 10000/10000 markers in the chunk.
+1321 markers were tested.
+Firth approx was applied to 136 markers. 136 sucessfully converged.
+write to output
+   user  system elapsed 
+ 50.367   3.115  77.989 
+(2026-09-01 17:31:07.36018) ---- Analyzing Chunk 36/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1128 markers were tested.
+Firth approx was applied to 144 markers. 144 sucessfully converged.
+write to output
+   user  system elapsed 
+ 50.229   3.410  78.059 
+(2026-09-01 17:31:07.407673) ---- Analyzing Chunk 31/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1294 markers were tested.
+Firth approx was applied to 127 markers. 127 sucessfully converged.
+write to output
+   user  system elapsed 
+ 50.408   3.202  78.117 
+(2026-09-01 17:31:07.468536) ---- Analyzing Chunk 38/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1105 markers were tested.
+Firth approx was applied to 103 markers. 103 sucessfully converged.
+write to output
+   user  system elapsed 
+ 51.085   3.161  78.877 
+(2026-09-01 17:31:08.225012) ---- Analyzing Chunk 37/38: chrom 20 ---- 
+1032 markers were tested.
+Firth approx was applied to 92 markers. 92 sucessfully converged.
+write to output
+   user  system elapsed 
+ 51.156   3.251  79.012 
+Completed 10000/10000 markers in the chunk.
+1109 markers were tested.
+Firth approx was applied to 68 markers. 68 sucessfully converged.
+write to output
+   user  system elapsed 
+ 51.736   3.206  79.634 
+(2026-09-01 17:31:08.981837) ---- Analyzing Chunk 38/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1283 markers were tested.
+Firth approx was applied to 320 markers. 320 sucessfully converged.
+write to output
+   user  system elapsed 
+ 51.715   3.511  79.806 
+(2026-09-01 17:31:09.154608) ---- Analyzing Chunk 32/38: chrom 20 ---- 
+716 markers were tested.
+Firth approx was applied to 45 markers. 45 sucessfully converged.
+write to output
+   user  system elapsed 
+ 52.164   3.232  80.110 
+Completed 10000/10000 markers in the chunk.
+1344 markers were tested.
+Firth approx was applied to 309 markers. 309 sucessfully converged.
+write to output
+   user  system elapsed 
+ 53.304   3.634  81.887 
+(2026-09-01 17:31:11.237283) ---- Analyzing Chunk 33/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1038 markers were tested.
+Firth approx was applied to 122 markers. 122 sucessfully converged.
+write to output
+   user  system elapsed 
+ 54.107   3.703  83.120 
+(2026-09-01 17:31:12.477032) ---- Analyzing Chunk 34/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1226 markers were tested.
+Firth approx was applied to 91 markers. 91 sucessfully converged.
+write to output
+   user  system elapsed 
+ 54.756   3.756  83.902 
+(2026-09-01 17:31:13.252475) ---- Analyzing Chunk 35/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1298 markers were tested.
+Firth approx was applied to 322 markers. 322 sucessfully converged.
+write to output
+   user  system elapsed 
+ 56.089   3.835  85.376 
+(2026-09-01 17:31:14.723859) ---- Analyzing Chunk 36/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1332 markers were tested.
+Firth approx was applied to 191 markers. 191 sucessfully converged.
+write to output
+   user  system elapsed 
+ 56.969   3.888  86.366 
+(2026-09-01 17:31:15.714754) ---- Analyzing Chunk 37/38: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+1233 markers were tested.
+Firth approx was applied to 182 markers. 182 sucessfully converged.
+write to output
+   user  system elapsed 
+ 57.892   3.946  87.377 
+(2026-09-01 17:31:16.723363) ---- Analyzing Chunk 38/38: chrom 20 ---- 
+1037 markers were tested.
+Firth approx was applied to 170 markers. 170 sucessfully converged.
+write to output
+   user  system elapsed 
+ 58.653   4.026  88.373 
+write to output
+[1] "Analysis done! The results have been saved to 'harness/work/sim/step2_single_y_binary_pc.txt'."

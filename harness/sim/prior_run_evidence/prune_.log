@@ -1,0 +1,17 @@
+PLINK v2.0.0-a.6.9 64-bit (29 Jan 2025)
+Options in effect:
+  --bfile harness/work/sim/chr20_sim
+  --indep-pairwise 5000kb 0.05 w5000
+  --maf 0.01
+  --nonfounders
+  --out harness/work/sim/prune_
+  --silent
+
+Hostname: Duncans-MacBook-Pro.local
+Working directory: /Users/dpalmer/Repositories/SAIGE
+Start time: Tue Sep  1 16:46:17 2026
+
+Error: --indep-pairwise requires at least 2 arguments.
+For more info, try "plink2 --help <flag name>" or "plink2 --help | more".
+
+End time: Tue Sep  1 16:46:17 2026

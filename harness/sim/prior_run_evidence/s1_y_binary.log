@@ -1,0 +1,1139 @@
+=== step 1: y_binary (binary) ===
+R version 4.4.3 (2025-02-28)
+Platform: x86_64-apple-darwin13.4.0
+Running under: macOS 26.6.2
+
+Matrix products: default
+BLAS/LAPACK: /Users/dpalmer/Repositories/SAIGE/.pixi/envs/default/lib/libopenblasp-r0.3.30.dylib;  LAPACK version 3.12.0
+
+locale:
+[1] C.UTF-8/C.UTF-8/C.UTF-8/C/C.UTF-8/C.UTF-8
+
+time zone: Europe/London
+tzcode source: system (macOS)
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] optparse_1.8.2 SAIGE_1.5.2   
+
+loaded via a namespace (and not attached):
+[1] compiler_4.4.3        Matrix_1.7-6          tools_4.4.3          
+[4] Rcpp_1.1.2            grid_4.4.3            data.table_1.18.4    
+[7] RcppParallel_5.1.11-2 lattice_0.23-1       
+$seed
+[1] 1
+
+$plinkFile
+[1] "harness/work/sim/data_for_vr"
+
+$bedFile
+[1] ""
+
+$bimFile
+[1] ""
+
+$famFile
+[1] ""
+
+$phenoFile
+[1] "harness/work/sim/pheno_pcs.txt"
+
+$phenoCol
+[1] "y_binary"
+
+$traitType
+[1] "binary"
+
+$invNormalize
+[1] FALSE
+
+$covarColList
+[1] "age,sex,PC1,PC2,PC3,PC4"
+
+$qCovarColList
+[1] "sex"
+
+$sampleIDColinphenoFile
+[1] "IID"
+
+$tol
+[1] 0.02
+
+$maxiter
+[1] 20
+
+$tolPCG
+[1] 1e-05
+
+$maxiterPCG
+[1] 500
+
+$nThreads
+[1] 1
+
+$SPAcutoff
+[1] 2
+
+$numRandomMarkerforVarianceRatio
+[1] 30
+
+$skipModelFitting
+[1] FALSE
+
+$skipVarianceRatioEstimation
+[1] FALSE
+
+$memoryChunk
+[1] 2
+
+$tauInit
+[1] "0,0"
+
+$LOCO
+[1] TRUE
+
+$isLowMemLOCO
+[1] FALSE
+
+$traceCVcutoff
+[1] 0.0025
+
+$nrun
+[1] 30
+
+$ratioCVcutoff
+[1] 0.001
+
+$outputPrefix
+[1] "harness/work/sim/step1_y_binary"
+
+$outputPrefix_varRatio
+[1] ""
+
+$IsOverwriteVarianceRatioFile
+[1] TRUE
+
+$sparseGRMFile
+[1] "harness/work/sim/sparseGRM_relatednessCutoff_0.125_3000_randomMarkersUsed.sparseGRM.mtx"
+
+$sparseGRMSampleIDFile
+[1] "harness/work/sim/sparseGRM_relatednessCutoff_0.125_3000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt"
+
+$isCateVarianceRatio
+[1] TRUE
+
+$relatednessCutoff
+[1] 0.125
+
+$cateVarRatioMinMACVecExclude
+[1] "10,20.5"
+
+$cateVarRatioMaxMACVecInclude
+[1] "20.5"
+
+$isCovariateTransform
+[1] TRUE
+
+$isDiagofKinSetAsOne
+[1] FALSE
+
+$useSparseGRMtoFitNULL
+[1] TRUE
+
+$usePCGwithSparseGRM
+[1] FALSE
+
+$useSparseGRMforVarRatio
+[1] TRUE
+
+$minMAFforGRM
+[1] 0.01
+
+$maxMissingRateforGRM
+[1] 0.15
+
+$minCovariateCount
+[1] -1
+
+$includeNonautoMarkersforVarRatio
+[1] FALSE
+
+$FemaleOnly
+[1] FALSE
+
+$MaleOnly
+[1] FALSE
+
+$sexCol
+[1] ""
+
+$FemaleCode
+[1] "1"
+
+$MaleCode
+[1] "0"
+
+$isCovariateOffset
+[1] TRUE
+
+$SampleIDIncludeFile
+[1] ""
+
+$help
+[1] FALSE
+
+tauInit  is  0 0 
+cateVarRatioMinMACVecExclude  is  10 20.5 
+cateVarRatioMaxMACVecInclude  is  20.5 
+The variance ratio file  harness/work/sim/step1_y_binary.varianceRatio.txt  already exists. IsOverwriteVarianceRatioFile=TRUE so the file will be overwritten
+sparse GRM will be used to fit the NULL model and nThreads is set to 1
+Leave-one-chromosome-out is not applied
+1  threads will be used  
+10000  samples have genotypes
+sex are categorical covariates
+formula is  y_binary~age+sex+PC1+PC2+PC3+PC4 
+10000  samples have non-missing phenotypes
+10000  samples are in the sparse GRM
+10000  samples who have non-missing phenotypes are also in the sparse GRM
+10000  samples will be used for analysis
+      IID X.Intercept.   age sex1         PC1         PC2         PC3
+1 S000001            1 52.03    0  0.00219972 -0.00167123 -0.00464215
+2 S000002            1 59.80    0  0.00555281 -0.00410843  0.00284277
+3 S000003            1 56.37    1 -0.00459616 -0.00764368 -0.00295876
+4 S000004            1 50.94    1 -0.00215612 -0.00158792 -0.00301196
+5 S000005            1 56.54    1  0.01186910  0.01246060 -0.00292104
+6 S000006            1 54.17    0  0.00773312  0.00625480  0.00118765
+           PC4 y_binary IndexPheno IndexGeno
+1 -0.006200980        1          1         1
+2  0.001435170        0          2         2
+3  0.014821100        0          3         3
+4 -0.014858800        0          4         4
+5 -0.007538820        0          5         5
+6 -0.000330667        0          6         6
+qr transformation has been performed on covariates
+colnames(data.new) is  y_binary minus1 age sex1 PC1 PC2 PC3 PC4 
+out.transform$Param.transform$qrr:  7 7 
+[1] "isCovariateOffset=TRUE, so fixed effects coefficients won't be estimated."
+extract sparse GRM
+[1] 18862
+set elements in the sparse GRM <=  0.125  to zero
+[1] 18862
+10000  samples have been used to fit the glmm null model
+Setting up sparse GRM using  harness/work/sim/sparseGRM_relatednessCutoff_0.125_3000_randomMarkersUsed.sparseGRM.mtx  and  harness/work/sim/sparseGRM_relatednessCutoff_0.125_3000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt 
+Dimension of the sparse GRM is  10000 10000 
+2 locationMat.n_rows 
+18862 locationMat.n_cols 
+18862 valueVec.n_elem 
+Categorical variance ratios will be estimated. Please make sure there are at least 200 markers in each MAC category.
+geno.g_minMACVarRatio 10
+geno.g_maxMACVarRatio 20.5
+Markers in the Plink file with MAF <  0.01  will be removed before constructing GRM
+Markers in the Plink file with missing rate >  0.15  will be removed before constructing GRM
+y_binary  is a binary trait
+[1] "formula.new"
+y_binary ~ 1
+<environment: 0x7ff59d03e398>
+[1] "head(data.new)"
+  y_binary minus1        age       sex1        PC1        PC2        PC3
+1        1     -1 -0.2435610  1.0037162  0.2024288  0.1600000  0.4586821
+2        0     -1 -1.2122825  1.0135174  0.5355350  0.3942147 -0.3004940
+3        0     -1 -0.7846487 -0.9909130 -0.4445389  0.7613698  0.2902006
+4        0     -1 -0.1076657 -0.9977625 -0.1989254  0.1624594  0.3029356
+5        0     -1 -0.8058434 -0.9906986  1.2021792 -1.2492190  0.2860700
+6        0     -1 -0.5103646  1.0064157  0.7552297 -0.6352251 -0.1273359
+          PC4   covoffset
+1 -0.60520822 -0.24617385
+2  0.14918628  0.39338121
+3  1.45774490  0.81293868
+4 -1.50444822  0.27807959
+5 -0.77936812  0.74954838
+6 -0.02080064 -0.01236813
+glm:
+
+Call:  glm(formula = formula.new, family = binomial, data = data.new, 
+    offset = covoffset)
+
+Coefficients:
+(Intercept)  
+     -2.362  
+
+Degrees of Freedom: 9999 Total (i.e. Null);  9999 Residual
+Null Deviance:	    6141 
+Residual Deviance: 6141 	AIC: 6143
+
+Call:
+glm(formula = formula.new, family = binomial, data = data.new, 
+    offset = covoffset)
+
+Coefficients:
+            Estimate Std. Error z value Pr(>|z|)    
+(Intercept) -2.36245    0.03401  -69.47   <2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 6141.3  on 9999  degrees of freedom
+Residual deviance: 6141.3  on 9999  degrees of freedom
+AIC: 6143.3
+
+Number of Fisher Scoring iterations: 5
+
+usePCGwithSparseGRM:  FALSE 
+Start fitting the NULL GLMM
+   user  system elapsed 
+  1.864   0.253   2.157 
+   user  system elapsed 
+  1.950   0.257   2.249 
+[1] "Start reading genotype plink file here"
+nbyte: 2500
+nbyte: 2500
+reserve: 10008000
+
+M: 4000, N: 10000
+setgeno mark1
+setgeno mark2
+816 markers with MAF >= 0.01 and missing rate <= 0.15
+time: 319.859
+[1] "Genotype reading is done"
+inital tau is  1 0 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+Tau:
+[1] 1 0
+Fixed-effect coefficients:
+          [,1]
+[1,] -2.362454
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+Variance component estimates:
+[1] 1 0
+
+Iteration  1 1 0 :
+tau0_v1:  1 0 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+Tau:
+[1] 1 0
+Fixed-effect coefficients:
+          [,1]
+[1,] -2.362454
+Updating fix effect coeffcieints took
+   user  system elapsed 
+  0.006   0.004   0.010 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+Updating variance component estimate took
+   user  system elapsed 
+  0.104   0.064   0.170 
+[1] 0.0000000 0.8917877
+tau:  1 0.1648218 
+tau0:  1 0 
+
+Iteration  2 1 0.1648218 :
+tau0_v1:  1 0.1648218 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+Tau:
+[1] 1.0000000 0.1648218
+Fixed-effect coefficients:
+          [,1]
+[1,] -2.362495
+Updating fix effect coeffcieints took
+   user  system elapsed 
+  0.009   0.005   0.014 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+Updating variance component estimate took
+   user  system elapsed 
+  0.152   0.075   0.232 
+[1] 0.00000000 0.03146576
+tau:  1 0.176181 
+tau0:  1 0.1648218 
+
+Iteration  3 1 0.176181 :
+tau0_v1:  1 0.176181 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+Tau:
+[1] 1.000000 0.176181
+Fixed-effect coefficients:
+          [,1]
+[1,] -2.363797
+Updating fix effect coeffcieints took
+   user  system elapsed 
+  0.010   0.006   0.015 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+Updating variance component estimate took
+   user  system elapsed 
+  0.151   0.077   0.236 
+[1] 0.00000000 0.05090256
+tau:  1 0.1581449 
+tau0:  1 0.176181 
+
+Iteration  4 1 0.1581449 :
+tau0_v1:  1 0.1581449 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+Tau:
+[1] 1.0000000 0.1581449
+Fixed-effect coefficients:
+          [,1]
+[1,] -2.363537
+Updating fix effect coeffcieints took
+   user  system elapsed 
+  0.009   0.006   0.014 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+Updating variance component estimate took
+   user  system elapsed 
+  0.148   0.076   0.230 
+[1] 0.00000000 0.01052325
+tau:  1 0.1546429 
+tau0:  1 0.1581449 
+
+Final  1 0.1546429 :
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+Tau:
+[1] 1.0000000 0.1546429
+Fixed-effect coefficients:
+          [,1]
+[1,] -2.363504
+t_end_null - t_begin, fitting the NULL model without LOCO took
+   user  system elapsed 
+  1.086   0.414   1.530 
+   user  system elapsed 
+  3.278   0.703   4.069 
+t_end - t_begin, fitting the NULL model took
+   user  system elapsed 
+  1.414   0.450   1.912 
+Start estimating variance ratios
+
+Family: binomial 
+Link function: logit 
+
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+sparse GRM will be used
+sparse GRM has been specified
+read in sparse GRM from  harness/work/sim/sparseGRM_relatednessCutoff_0.125_3000_randomMarkersUsed.sparseGRM.mtx 
+length(sparseGRMSampleID$IndexGRM):  10000 
+nrow(sparseGRMSampleID):  10000 
+10000  samples have been used to fit the glmm null model
+[1] 10000     3
+      IID IndexInModel IndexGRM
+1 S000001            1        1
+2 S000002            2        2
+3 S000003            3        3
+4 S000004            4        4
+5 S000005            5        5
+6 S000006            6        6
+length(MACvector):  816 
+length(MACvector_forVarRatio):  2478 
+Categorical variance ratios will be estimated.
+10 < MAC <=  20.5 
+20.5 < MAC
+2315 th marker in geno  1 
+MAC:  17 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1199 th marker in geno  1 
+MAC:  12 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+869 th marker in geno  1 
+MAC:  12 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+947 th marker in geno  1 
+MAC:  13 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+512 th marker in geno  1 
+MAC:  12 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+484 th marker in geno  1 
+MAC:  13 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+331 th marker in geno  1 
+MAC:  13 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1686 th marker in geno  1 
+MAC:  12 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1508 th marker in geno  1 
+MAC:  12 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1728 th marker in geno  1 
+MAC:  13 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1628 th marker in geno  1 
+MAC:  13 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+846 th marker in geno  1 
+MAC:  14 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1984 th marker in geno  1 
+MAC:  13 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+2455 th marker in geno  1 
+MAC:  11 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+786 th marker in geno  1 
+MAC:  19 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+619 th marker in geno  1 
+MAC:  16 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+570 th marker in geno  1 
+MAC:  14 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+594 th marker in geno  1 
+MAC:  11 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1001 th marker in geno  1 
+MAC:  11 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+455 th marker in geno  1 
+MAC:  12 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1007 th marker in geno  1 
+MAC:  13 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1969 th marker in geno  1 
+MAC:  14 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+2063 th marker in geno  1 
+MAC:  14 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+280 th marker in geno  1 
+MAC:  14 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1619 th marker in geno  1 
+MAC:  12 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1957 th marker in geno  1 
+MAC:  11 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1071 th marker in geno  1 
+MAC:  15 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+2029 th marker in geno  1 
+MAC:  13 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+599 th marker in geno  1 
+MAC:  12 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+839 th marker in geno  1 
+MAC:  14 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+CV for variance ratio estimate using  30  markers is  9.863988e-05  <  0.001 
+varRatio_sparse 0.9999999 
+varRatio_null 0.9829436 
+varRatio_null_noXadj 0.9819711 
+1816 th marker in geno  1 
+MAC:  2613 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+5 th marker in geno  1 
+MAC:  2892 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1857 th marker in geno  1 
+MAC:  22 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1867 th marker in geno  1 
+MAC:  208 
+G0 0 0 0 0 0 0 1 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+379 th marker in geno  1 
+MAC:  7810 
+G0 1 2 2 1 1 1 1 2 1 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1477 th marker in geno  1 
+MAC:  1401 
+G0 0 0 0 2 1 1 1 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1318 th marker in geno  1 
+MAC:  76 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+137 th marker in geno  1 
+MAC:  43 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+2085 th marker in geno  1 
+MAC:  773 
+G0 0 0 0 0 0 0 1 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1618 th marker in geno  1 
+MAC:  86 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1298 th marker in geno  1 
+MAC:  1154 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1349 th marker in geno  1 
+MAC:  87 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+2259 th marker in geno  1 
+MAC:  406 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+579 th marker in geno  1 
+MAC:  223 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+314 th marker in geno  1 
+MAC:  57 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1526 th marker in geno  1 
+MAC:  2873 
+G0 0 0 0 0 0 1 0 0 0 1 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1015 th marker in geno  1 
+MAC:  83 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+355 th marker in geno  1 
+MAC:  25 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+2133 th marker in geno  1 
+MAC:  77 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+595 th marker in geno  1 
+MAC:  1137 
+G0 2 2 2 2 2 2 2 2 2 2 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+2057 th marker in geno  1 
+MAC:  1133 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+309 th marker in geno  1 
+MAC:  32 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+2403 th marker in geno  1 
+MAC:  108 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1422 th marker in geno  1 
+MAC:  7021 
+G0 0 2 1 1 1 2 0 2 2 1 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1198 th marker in geno  1 
+MAC:  3946 
+G0 1 0 0 0 0 0 2 0 0 1 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+979 th marker in geno  1 
+MAC:  5819 
+G0 0 1 0 0 0 1 0 1 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+749 th marker in geno  1 
+MAC:  344 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1862 th marker in geno  1 
+MAC:  22 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1545 th marker in geno  1 
+MAC:  4819 
+G0 0 1 2 1 2 2 2 2 2 2 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+1484 th marker in geno  1 
+MAC:  287 
+G0 0 0 0 0 0 0 0 0 0 0 
+CHR  20 
+isUsePCGwithSparseSigma 0
+use sparse kinship to fit the model 
+CV for variance ratio estimate using  30  markers is  3.353612e-05  <  0.001 
+varRatio_sparse 0.9999998 
+varRatio_null 0.9815299 
+varRatio_null_noXadj 0.9698453 
+         V1          V2 V3
+1 0.9999999      sparse  1
+2 0.9829436        null  1
+3 0.9819711 null_noXadj  1
+4 0.9999998      sparse  2
+5 0.9815299        null  2
+6 0.9698453 null_noXadj  2
+closed the plinkFile!

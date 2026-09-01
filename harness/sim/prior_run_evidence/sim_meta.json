@@ -1,0 +1,15 @@
+{
+  "N": 10000,
+  "n_variants": 2267192,
+  "n_coding": 49318,
+  "n_genes": 550,
+  "n_causal_genes": 55,
+  "alpha": -0.3,
+  "h2": 0.01,
+  "h2_pc": 0.2,
+  "h2_poly": 0.35,
+  "frac_h2_coding": 0.6,
+  "prevalence": 0.1,
+  "seed": 7,
+  "n_families": 500
+}

@@ -1,0 +1,150 @@
+
+=== y_quant : gene-based (ACAT-O per region) ===
+550 regions (55 causal), 8083 sub-tests
+  NEGATIVE control (non-causal genes, n=495): observed vs nominal tail
+     P(p<0.05)=0.0545 [0.05]  P(p<0.01)=0.0101 [0.01]  P(p<0.001)=0.0000 [0.001]  min p=4.01e-03
+     (median-based lambda=0.6473, saturated: 23% of rows have p==1)
+  POSITIVE control (causal genes)   : lambda=0.5876  min p=2.00e-02  n<6.2e-06: 0
+  causal genes in the top 20 by p   : 1 / 20   (rank-sum p=0.72)
+   Region       P causal h2 NCP n_causal_var
+ GENE0331 0.00401      0  0   0            0
+ GENE0333 0.00417      0  0   0            0
+ GENE0020 0.00807      0  0   0            0
+ GENE0080 0.00903      0  0   0            0
+ GENE0084 0.00908      0  0   0            0
+ GENE0437 0.01011      0  0   0            0
+ GENE0386 0.01350      0  0   0            0
+ GENE0226 0.01537      0  0   0            0
+  min p by annotation mask (causal genes):
+           high     high;medium high;medium;low             low          medium 
+        0.00672         0.01150         0.00398         0.01410         0.02060 
+  sub-test lambda by annotation mask (non-causal genes; these are NOT saturated):
+           high     high;medium high;medium;low             low          medium 
+         1.0830          1.0240          1.0190          0.9903          0.9861 
+  sub-test tail (non-causal): P(p<0.05)=0.0469 P(p<0.01)=0.0099 P(p<0.001)=0.0007  n=7273
+
+=== y_quant : single variant (268003 markers with MAC>=20) ===
+  lambda_GC (all)      = 1.023
+  lambda_GC (beta==0)  = 1.023   <- negative control
+  causal markers tested: 282; cor(BETA_hat, beta_true) = 0.288 (Pearson), 0.237 (Spearman)
+  min p among causal = 7.63e-05; min p among null = 3.28e-07
+
+=== y_binary : gene-based (ACAT-O per region) ===
+550 regions (55 causal), 8083 sub-tests
+  NEGATIVE control (non-causal genes, n=495): observed vs nominal tail
+     P(p<0.05)=0.0424 [0.05]  P(p<0.01)=0.0101 [0.01]  P(p<0.001)=0.0020 [0.001]  min p=7.13e-04
+     (median-based lambda=0.712, saturated: 21% of rows have p==1)
+  POSITIVE control (causal genes)   : lambda=0.1379  min p=2.63e-02  n<6.2e-06: 0
+  causal genes in the top 20 by p   : 1 / 20   (rank-sum p=0.96)
+   Region        P causal h2 NCP n_causal_var
+ GENE0446 0.000713      0  0   0            0
+ GENE0230 0.002404      0  0   0            0
+ GENE0126 0.007136      0  0   0            0
+ GENE0350 0.008249      0  0   0            0
+ GENE0271 0.009147      0  0   0            0
+ GENE0138 0.017229      0  0   0            0
+ GENE0058 0.017518      0  0   0            0
+ GENE0017 0.020794      0  0   0            0
+  min p by annotation mask (causal genes):
+           high     high;medium high;medium;low             low          medium 
+        0.00266         0.02270         0.00316         0.00515         0.01670 
+  sub-test lambda by annotation mask (non-causal genes; these are NOT saturated):
+           high     high;medium high;medium;low             low          medium 
+         0.8926          1.0690          0.9554          0.8876          1.0800 
+  sub-test tail (non-causal): P(p<0.05)=0.0404 P(p<0.01)=0.0093 P(p<0.001)=0.0005  n=7273
+
+=== y_binary : single variant (268003 markers with MAC>=20) ===
+  lambda_GC (all)      = 1.021
+  lambda_GC (beta==0)  = 1.021   <- negative control
+  causal markers tested: 282; cor(BETA_hat, beta_true) = 0.176 (Pearson), 0.149 (Spearman)
+  min p among causal = 7.47e-04; min p among null = 7.87e-06
+
+=== y_quant_pc : gene-based (ACAT-O per region) ===
+550 regions (55 causal), 8083 sub-tests
+  NEGATIVE control (non-causal genes, n=495): observed vs nominal tail
+     P(p<0.05)=0.0687 [0.05]  P(p<0.01)=0.0182 [0.01]  P(p<0.001)=0.0081 [0.001]  min p=3.52e-04
+     (median-based lambda=0.8208, saturated: 20% of rows have p==1)
+  POSITIVE control (causal genes)   : lambda=2.809  min p=1.47e-18  n<6.2e-06: 1
+  causal genes in the top 20 by p   : 7 / 20   (rank-sum p=9.6e-05)
+   Region        P causal       h2  NCP n_causal_var
+ GENE0362 1.47e-18      1 1.17e-03 11.7           45
+ GENE0417 2.63e-04      1 9.01e-05  0.9           13
+ GENE0212 3.52e-04      0 0.00e+00  0.0            0
+ GENE0252 7.15e-04      0 0.00e+00  0.0            0
+ GENE0519 8.95e-04      0 0.00e+00  0.0            0
+ GENE0239 9.16e-04      0 0.00e+00  0.0            0
+ GENE0207 1.95e-03      0 0.00e+00  0.0            0
+ GENE0003 5.67e-03      0 0.00e+00  0.0            0
+  min p by annotation mask (causal genes):
+           high     high;medium high;medium;low             low          medium 
+       3.66e-05        1.63e-03        1.03e-19        2.21e-18        2.59e-03 
+  sub-test lambda by annotation mask (non-causal genes; these are NOT saturated):
+           high     high;medium high;medium;low             low          medium 
+         1.1900          0.9959          1.0970          1.0560          1.1080 
+  sub-test tail (non-causal): P(p<0.05)=0.0617 P(p<0.01)=0.0131 P(p<0.001)=0.0019  n=7273
+
+=== y_quant_pc : single variant (268003 markers with MAC>=20) ===
+  lambda_GC (all)      = 1.388
+  lambda_GC (beta==0)  = 1.386   <- negative control
+  causal markers tested: 282; cor(BETA_hat, beta_true) = 0.713 (Pearson), 0.610 (Spearman)
+  min p among causal = 1.94e-33; min p among null = 3.88e-32
+
+=== y_binary_pc : gene-based (ACAT-O per region) ===
+550 regions (55 causal), 8083 sub-tests
+  NEGATIVE control (non-causal genes, n=495): observed vs nominal tail
+     P(p<0.05)=0.0283 [0.05]  P(p<0.01)=0.0040 [0.01]  P(p<0.001)=0.0000 [0.001]  min p=6.58e-03
+     (median-based lambda=0.5793, saturated: 21% of rows have p==1)
+  POSITIVE control (causal genes)   : lambda=0.9771  min p=7.13e-14  n<6.2e-06: 1
+  causal genes in the top 20 by p   : 10 / 20   (rank-sum p=0.012)
+   Region        P causal       h2   NCP n_causal_var
+ GENE0362 7.13e-14      1 1.17e-03 11.66           45
+ GENE0179 3.40e-03      1 5.31e-04  5.31           41
+ GENE0370 6.58e-03      0 0.00e+00  0.00            0
+ GENE0084 6.65e-03      0 0.00e+00  0.00            0
+ GENE0314 1.06e-02      1 1.09e-04  1.09            7
+ GENE0047 1.23e-02      0 0.00e+00  0.00            0
+ GENE0372 1.24e-02      1 6.99e-05  0.70           14
+ GENE0213 1.57e-02      0 0.00e+00  0.00            0
+  min p by annotation mask (causal genes):
+           high     high;medium high;medium;low             low          medium 
+       1.76e-03        2.17e-03        5.32e-15        4.47e-14        6.51e-04 
+  sub-test lambda by annotation mask (non-causal genes; these are NOT saturated):
+           high     high;medium high;medium;low             low          medium 
+         0.9170          0.9742          0.9314          0.9474          1.0240 
+  sub-test tail (non-causal): P(p<0.05)=0.0404 P(p<0.01)=0.0059 P(p<0.001)=0.0001  n=7273
+
+=== y_binary_pc : single variant (268003 markers with MAC>=20) ===
+  lambda_GC (all)      = 1.146
+  lambda_GC (beta==0)  = 1.145   <- negative control
+  causal markers tested: 282; cor(BETA_hat, beta_true) = 0.600 (Pearson), 0.517 (Spearman)
+  min p among causal = 8.36e-17; min p among null = 5.77e-17
+
+=== y_null : gene-based (ACAT-O per region) ===
+550 regions (55 causal), 8083 sub-tests
+  NEGATIVE control (non-causal genes, n=495): observed vs nominal tail
+     P(p<0.05)=0.0808 [0.05]  P(p<0.01)=0.0202 [0.01]  P(p<0.001)=0.0040 [0.001]  min p=7.15e-04
+     (median-based lambda=0.6837, saturated: 25% of rows have p==1)
+  POSITIVE control (causal genes)   : lambda=0.6006  min p=5.46e-03  n<6.2e-06: 0
+  causal genes in the top 20 by p   : 2 / 20   (rank-sum p=0.78)
+   Region        P causal       h2  NCP n_causal_var
+ GENE0399 0.000715      0 0.00e+00 0.00            0
+ GENE0167 0.000889      0 0.00e+00 0.00            0
+ GENE0232 0.002261      0 0.00e+00 0.00            0
+ GENE0394 0.002923      0 0.00e+00 0.00            0
+ GENE0514 0.003135      0 0.00e+00 0.00            0
+ GENE0165 0.003619      0 0.00e+00 0.00            0
+ GENE0293 0.005463      1 7.13e-05 0.71            9
+ GENE0294 0.005502      1 9.04e-05 0.90            5
+  min p by annotation mask (causal genes):
+           high     high;medium high;medium;low             low          medium 
+       0.001450        0.002100        0.005760        0.000735        0.026400 
+  sub-test lambda by annotation mask (non-causal genes; these are NOT saturated):
+           high     high;medium high;medium;low             low          medium 
+         1.1330          0.9662          1.0690          1.0010          0.9242 
+  sub-test tail (non-causal): P(p<0.05)=0.0595 P(p<0.01)=0.0155 P(p<0.001)=0.0018  n=7273
+
+=== y_null : single variant (268003 markers with MAC>=20) ===
+  lambda_GC (all)      = 0.9749
+  lambda_GC (beta==0)  = 0.9748   <- negative control
+  causal markers tested: 282; cor(BETA_hat, beta_true) = -0.115 (Pearson), -0.034 (Spearman)
+  min p among causal = 7.16e-04; min p among null = 3.54e-06
