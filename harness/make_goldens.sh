@@ -91,6 +91,26 @@ run step1_quant_sparseGRM.log R2 step1_fitNULLGLMM.R \
   --isCateVarianceRatio=TRUE \
   --outputPrefix="$GOLD/step1/quant_sparseGRM"
 
+# Binary, FULL (dense) GRM -- the only step-1 golden that is not a sparse-GRM
+# fit. Without it, getCrossprodMatAndKin always takes its sparse branch and the
+# dense TBB kernel (parallelCrossProd / GetTrace's Au) is exercised by NO
+# golden; a change to it would leave every golden byte-identical while being
+# completely untested. Config mirrors the s1_full bench workload so bench rows
+# and golden runs describe the same code path. ~50 s.
+run step1_binary_denseGRM.log R2 step1_fitNULLGLMM.R \
+  --plinkFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr \
+  --phenoFile=./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt \
+  --phenoCol=y_binary \
+  --covarColList=x1,x2,a9,a10 \
+  --qCovarColList=a9,a10 \
+  --sampleIDColinphenoFile=IID \
+  --traitType=binary \
+  --nThreads=1 \
+  --LOCO=FALSE \
+  --minMAFforGRM=0.01 \
+  --IsOverwriteVarianceRatioFile=TRUE \
+  --outputPrefix="$GOLD/step1/binary_denseGRM"
+
 ##################### step 2: association tests (frozen inputs) #####################
 SG="--sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx --sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt"
 
