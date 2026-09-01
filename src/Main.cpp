@@ -649,7 +649,7 @@ bool Unified_getOneMarker(std::string & t_genoType,   // "PLINK"
 {
   //arma::vec GVec(g_model->m_n);
   bool isBoolRead = true;
-  if(t_genoType == "plink"){
+  if(t_genoType == "plink" || t_genoType == "pgen"){
    Geno::MarkerMeta meta;
    isBoolRead = g_reader->getOneMarker(t_gIndex, meta,
                                        t_isOutputIndexForMissing, t_indexForMissing,
@@ -684,7 +684,7 @@ void processMale_XnonPAR(arma::vec & t_GVec,  uint32_t& t_pd , arma::umat & t_XP
 // [[Rcpp::export]]
 uint32_t Unified_getSampleSizeinGeno(std::string & t_genoType){
     uint32_t N0;
-    if(t_genoType == "plink"){
+    if(t_genoType == "plink" || t_genoType == "pgen"){
 	N0 = g_reader->getN0();
     }
     return(N0);
@@ -693,7 +693,7 @@ uint32_t Unified_getSampleSizeinGeno(std::string & t_genoType){
 // [[Rcpp::export]]
 uint32_t Unified_getSampleSizeinAnalysis(std::string & t_genoType){
     uint32_t N;
-    if(t_genoType == "plink"){
+    if(t_genoType == "plink" || t_genoType == "pgen"){
         N = g_reader->getN();
     }
     return(N);
@@ -760,6 +760,18 @@ void setPLINKobjInCPP(std::string t_bimFile,
                                        Rcpp::Named("bedFile") = t_bedFile,
                                        Rcpp::Named("AlleleOrder") = t_AlleleOrder);
   g_reader = Geno::makeReader("plink", spec, t_SampleInModel);
+}
+
+// [[Rcpp::export]]
+void setPGENobjInCPP(std::string t_pgenFile,
+                     std::string t_pvarFile,
+                     std::string t_psamFile,
+                     std::vector<std::string> & t_SampleInModel)
+{
+  Rcpp::List spec = Rcpp::List::create(Rcpp::Named("pgenFile") = t_pgenFile,
+                                       Rcpp::Named("pvarFile") = t_pvarFile,
+                                       Rcpp::Named("psamFile") = t_psamFile);
+  g_reader = Geno::makeReader("pgen", spec, t_SampleInModel);
 }
 
 //////// ---------- Main functions to set objects for different analysis methods --------- ////////////
@@ -2506,7 +2518,7 @@ arma::vec fast_logistf_fit(arma::mat & x,
 // [[Rcpp::export]]
 void closeGenoFile(std::string & t_genoType)
 {
-  if(t_genoType == "plink"){
+  if(t_genoType == "plink" || t_genoType == "pgen"){
     g_reader->close();
   }
 }

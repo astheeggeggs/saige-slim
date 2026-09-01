@@ -56,6 +56,9 @@ parse_weights_beta <- function(weights.beta) {
 #' @param bedFile character. Path to bed file (PLINK)
 #' @param bimFile character. Path to bim file (PLINK)
 #' @param famFile character. Path to fam file (PLINK)
+#' @param pgenFile character. Path to pgen file (PGEN/plink2). Mutually exclusive with bedFile
+#' @param pvarFile character. Path to pvar file (PGEN/plink2)
+#' @param psamFile character. Path to psam file (PGEN/plink2)
 #' @param AlleleOrder character. alt-first or ref-first for bgen or PLINK files. By default, alt-first
 #' @param idstoIncludeFile character. Path to a file containing variant ids to be included from the dosage file. The file does not have a header and each line is for a marker ID. Variant ids are in the format chr:pos_ref/alt
 #' @param rangestoIncludeFile character. Path to a file containing genome regions to be included from the dosage file. The file contains three columns for chromosome, start, and end respectively with no header. Note for vcf and sav files, only the first line in the file will be used.
@@ -108,6 +111,9 @@ parse_weights_beta <- function(weights.beta) {
 SPAGMMATtest <- function(bedFile = "",
                          bimFile = "",
                          famFile = "",
+                         pgenFile = "",
+                         pvarFile = "",
+                         psamFile = "",
                          AlleleOrder = "alt-first", # new
                          idstoIncludeFile = "",
                          rangestoIncludeFile = "",
@@ -462,6 +468,9 @@ SPAGMMATtest <- function(bedFile = "",
     bedFile = bedFile,
     bimFile = bimFile,
     famFile = famFile,
+    pgenFile = pgenFile,
+    pvarFile = pvarFile,
+    psamFile = psamFile,
     idstoIncludeFile = idstoIncludeFile,
     rangestoIncludeFile = rangestoIncludeFile,
     chrom = chrom,

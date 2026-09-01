@@ -31,6 +31,24 @@ option_list <- list(
     help = "Path to fam file (PLINK)"
   ),
   make_option(
+    "--pgenFile",
+    type = "character",
+    default = "",
+    help = "Path to pgen file (PGEN/plink2). Mutually exclusive with --bedFile"
+  ),
+  make_option(
+    "--pvarFile",
+    type = "character",
+    default = "",
+    help = "Path to pvar file (PGEN/plink2)"
+  ),
+  make_option(
+    "--psamFile",
+    type = "character",
+    default = "",
+    help = "Path to psam file (PGEN/plink2)"
+  ),
+  make_option(
     "--AlleleOrder",
     type = "character",
     default = "alt-first",
@@ -618,6 +636,9 @@ fixed_params <- list(
   bedFile = opt$bedFile,
   bimFile = opt$bimFile,
   famFile = opt$famFile,
+  pgenFile = opt$pgenFile,
+  pvarFile = opt$pvarFile,
+  psamFile = opt$psamFile,
   AlleleOrder = opt$AlleleOrder,
   rangestoIncludeFile = opt$rangestoIncludeFile,
   chrom = opt$chrom,

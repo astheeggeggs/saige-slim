@@ -6,12 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **This is the `strip` branch**: SAIGE reduced to step 0 (createSparseGRM), step 1
 (fitNULLGLMM), and step 2 (SPAGMMATtest: single-variant + region/gene tests),
-with **PLINK bed/bim/fam as the only genotype input**. The BGEN/VCF/SAV/PGEN
-readers, step 3 (LD matrices), and RareEffect were stripped in commits
-"Strip 1"–"Strip 7", each verified byte-exact against `main`-HEAD goldens.
-`main` holds the full upstream fork (docs: https://saigegit.github.io/SAIGE-doc/).
-Binary and quantitative traits are supported; survival-trait support was
-removed in Phase 3a of the refactor.
+with **PLINK bed/bim/fam and PGEN (plink2 native format) pgen/pvar/psam as
+genotype input**. The BGEN/VCF/SAV readers, step 3 (LD matrices), and
+RareEffect were stripped in commits "Strip 1"–"Strip 7", each verified
+byte-exact against `main`-HEAD goldens; the PGEN reader (also stripped there,
+in Strip 4) was added back in Phase 7 as fresh code implementing the
+`GenoReader` interface (step 2 only, single-threaded-only in v1 --
+`--nThreads > 1` refuses cleanly on a pgen input), not a restore of `main`'s
+pre-refactor `PgenClass`. `main` holds the full upstream fork (docs:
+https://saigegit.github.io/SAIGE-doc/). Binary and quantitative traits are
+supported; survival-trait support was removed in Phase 3a of the refactor.
 
 **The working plan lives at `~/.claude/plans/based-on-this-repository-silly-shore.md`**
 (it supersedes `rosy-munching-pudding.md`, which holds the Phase 0-5 history):
@@ -81,10 +85,21 @@ pixi run R CMD INSTALL .
 
 (The former CRAN `lintools` step left with survival support in Phase 3a.)
 
-Works natively on macOS and linux (no plink-ng step anymore — it died with the
-PGEN reader). `src/Makevars` still hardcodes `-I../.pixi/envs/default/include`,
-so the in-tree `.pixi/` env is required. `make` at the repo root runs the
-Docker build.
+Works natively on macOS and linux. `src/Makevars` still hardcodes
+`-I../.pixi/envs/default/include`, so the in-tree `.pixi/` env is required.
+`make` at the repo root runs the Docker build.
+
+**plink-ng (pgenlib) is fetched and compiled automatically.** PGEN support
+(Phase 7) needs `libplink2_includes.a`, built from a plink-ng source tarball;
+it is not vendored in git (`.gitignore` excludes `plink-ng/`). `harness/build.sh`
+fetches+compiles it into `.pixi/envs/default/lib` on first run (guarded on the
+`.a` not already existing there, so repeat builds are a no-op), using the
+pixi-env compiler (`$CXX`) so it works on both macOS and Linux; `docker/Dockerfile`
+carries the equivalent layer for the Docker image. `plink2` (the CLI, bioconda,
+`linux-64`/`osx-64` only -- no `osx-arm64` build, hence the per-platform
+`[target.*.dependencies]` split in `pixi.toml`) is a pixi dependency too, but
+only for generating PGEN test fixtures in the harness scripts -- never needed
+at runtime by the installed R package.
 
 ## Test suite (Phase 2)
 
@@ -101,7 +116,8 @@ Docker build.
   in `test-meta-comparators.R`).
 - **standard** (~2.5 min, default): fast + the four PLINK step-2 CLI runs
   compared against `harness/goldens/step2/`, the multi-weight runs, and the
-  live Firth path (`test-step2-firth.R`).
+  live Firth path (`test-step2-firth.R`, mirrored through the pgen reader in
+  `test-step2-pgen.R`).
 - **full** (~20+ min, same-platform only): standard + full golden regeneration,
   step-1 determinism double-run, permuted-phenotype negative control.
 
@@ -228,18 +244,44 @@ dead files).
   Without it, full-GRM step-1 fits are nondeterministic (TBB float
   `parallel_reduce`; empirically confirmed — see LEDGER.md #7). Sparse-GRM
   fits are byte-stable either way.
-- `bash harness/make_goldens.sh <dir>` — regenerates the 8 runs (step0 sparse
-  GRM; step1 binary ×2 / quantitative; step2 PLINK marker, group
-  fastTest, group conditional, marker conditional). Step-2 runs consume frozen
-  model inputs: our committed step-1 goldens plus
+- `bash harness/make_goldens.sh <dir>` — regenerates step0 (sparse GRM), step1
+  (binary ×2 / quantitative), and step2: 13 PLINK runs (P1-P12, with P8b as a
+  separate composed-set golden — single-variant marker/marker-conditional
+  ×2 (quantitative P4, binary P12), group fastTest/conditional/BURDEN/SKAT-O
+  ×2 (K=1 P2/P3/P5/P6, multi-weight P8/P9/P8b/P10), chunked marker P7, and the
+  ref-first characterization golden P11) plus 12 PGEN mirrors added across
+  Phase 7 and its coverage-extension follow-up: P13-P15 (marker/region/
+  conditional parity, mirroring P1/P2/P3) and P16-P24 (mirroring, in order,
+  P4/P12/P5/P6/P7/P8/P9/P8b/P10 — quantitative conditional, the LEDGER #40
+  binary-conditional path, BURDEN, non-fastTest SKAT-O, chunking, and the full
+  multi-weight schema including composed sets and conditional multi-weight).
+  P11 has no PGEN mirror: `--AlleleOrder=ref-first` is a PLINK bim-specific
+  toggle, and pvar's fixed REF/ALT columns give it no ref-first/alt-first
+  ambiguity to mirror. Step-2 runs consume frozen model inputs: our committed
+  step-1 goldens plus
   `extdata/output/example_binary_sparseGRM.{rda,varianceRatio.txt}` (the only
   legacy committed artifact still HEAD-compatible — the 2022-era ones crash,
-  LEDGER.md #10).
+  LEDGER.md #10). The PGEN fixtures
+  (`extdata/input/genotype_100markers.{pgen,pvar,psam}` for P13-P19/P21-P24,
+  `extdata/input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.{pgen,pvar,psam}`
+  for the chunked P20) were each generated once from their bed/bim/fam
+  counterpart via `plink2 --bfile <prefix> --make-pgen --out <prefix>` and
+  committed; P13-P15 were byte-identical to P1/P2/P3 on this platform
+  (verified at generation time), which is a stronger result than the
+  numeric-tolerance reconciliation the test suite asserts — see the standing
+  rule below about not asserting bit-identity between two different code
+  paths as a general claim. P16-P24 are reconciled against their PLINK
+  mirrors at float tolerance in `tests/testthat/test-step2-pgen.R` (same
+  reasoning); they are not asserted to be byte-identical to the PLINK
+  goldens, only to their own frozen PGEN goldens and to the PLINK mirror at
+  tolerance.
 - `bash harness/compare_goldens.sh harness/goldens <candidate-dir>` — byte
   compare for step0/step2; toleranced step1 (θ/varianceRatio 1e-2 relative —
   AI-REML `tol=0.02` makes tighter meaningless; vectors 1e-3).
 - `bash harness/make_controls.sh <dir>` — permuted-phenotype negative control
-  through the full pipeline + KS uniformity check (`harness/check_null.R`).
+  through the full pipeline + KS uniformity check (`harness/check_null.R`),
+  run through both the PLINK and PGEN readers (Phase 7) over the same
+  permuted-phenotype model.
 - Baseline goldens (committed): `harness/goldens/`. Retired bgen/vcf goldens:
   `harness/goldens_retired/`. Full verification cycle:
   `compileAttributes && R CMD INSTALL . && make_goldens.sh harness/work/candidate && compare_goldens.sh`.
@@ -300,17 +342,34 @@ R pushes state into C++ **globals** via `set*InCPP()` calls, then invokes one
 long-running `main*InCPP()` loop that writes output files from C++
 (`std::ofstream`s in `Main.cpp`; R only writes the `.index` progress file).
 
-- `src/Main.cpp` — step-2 bridge: static `ptr_gPLINKobj`/`ptr_gSAIGEobj`
-  singletons, ~25 `g_*` settings, `mainMarkerInCPP`, `mainRegionInCPP`,
-  `Unified_getOneMarker`. Forgetting a `set*_GlobalVarsInCPP` call silently
-  leaves stale values. `Main.hpp` declarations are stale (LEDGER.md #5) —
-  don't trust them as a contract.
+- `src/Main.cpp` — step-2 bridge: a single static `std::unique_ptr<Geno::GenoReader>
+  g_reader` (format-agnostic; see `src/GenoReader.hpp`/`src/GenoReaderRegistry.cpp`),
+  ~25 `g_*` settings, `mainMarkerInCPP`, `mainRegionInCPP`, `Unified_getOneMarker`.
+  The only per-format code left is `setPLINKobjInCPP`/`setPGENobjInCPP` (each
+  builds a `spec` list and calls `Geno::makeReader("plink"/"pgen", ...)`) and
+  four `if (t_genoType == "plink" || t_genoType == "pgen")` guards
+  (`Unified_getOneMarker`, `Unified_getSampleSizeinGeno`,
+  `Unified_getSampleSizeinAnalysis`, `closeGenoFile`) — grep for
+  `t_genoType ==` before assuming that list is exhaustive if you add a format.
+  Forgetting a `set*_GlobalVarsInCPP` call silently leaves stale values.
+  `Main.hpp` declarations are stale (LEDGER.md #5) — don't trust them as a
+  contract.
+- `src/GenoReaderRegistry.cpp` — the two `GenoReader` implementations:
+  `PlinkReader` (wraps `PLINK::PlinkClass`, `src/PLINK.{hpp,cpp}`) and
+  `PgenReader` (wraps `PGEN::PgenClass`, `src/PGEN.{hpp,cpp}`, added Phase 7 —
+  fresh code implementing the interface, not a restore of `main`'s
+  pre-refactor `PgenClass`, which predates `GenoReader` and used out-param
+  overloads instead of `MarkerMeta`). Both `clone()` throw ("Deferred to the
+  Phase-4 shared-metadata implementation"); `PgenReader::isForkSafe()` is
+  unconditionally `false` (v1 decision — no fork-safety work done for PGEN
+  yet, unlike PLINK's conditional mmap-path check).
 - `src/SAIGE_fitGLMM_fast.cpp` (~7400 lines) — step-1 engine, separate from
   Main.cpp. Single **global** `genoClass geno` holds the bit-packed GRM
-  genotypes; there is a second, independent PLINK reader (`src/PLINK.cpp` /
-  `PlinkClass`) for step 2. Algorithms exist as near-duplicate families —
-  base, `_LOCO`, `_q` (quantitative) — after the `_Surv` variants were
-  removed with survival support in Phase 3a.
+  genotypes; step 1 never took PGEN even on `main`'s pre-refactor
+  architecture, and Phase 7 does not change that — PGEN is step-2 only.
+  Algorithms exist as near-duplicate families — base, `_LOCO`, `_q`
+  (quantitative) — after the `_Surv` variants were removed with survival
+  support in Phase 3a.
 - `src/SAIGE_test.cpp` — `SAIGEClass`: `getMarkerPval` cascade (score → SPA if
   |Z| > cutoff → ER exact test if binary & MAC ≤ `max_MAC_for_ER` → Firth),
   per-MAC variance-ratio selection. `src/Binary_*`/`src/ER_binary_func.cpp`
@@ -345,10 +404,14 @@ Three things this rests on, each verified rather than assumed:
   and the child silently loses everything past the stream's 192 KiB buffer
   boundary *while still returning success*. Hence `closeOutfile_single()` at
   the end of `SAIGE.Marker` — byte-neutral serially, mandatory in a shard.
-- **The reader must be fork-safe.** The mmap path is (pointer arithmetic into
-  a `MAP_PRIVATE` mapping); the `fread` fallback is not (children would share
-  one file offset). `isGenoReaderForkSafeInCPP()` errors at `nThreads > 1`
-  rather than silently decoding each other's records.
+- **The reader must be fork-safe.** For PLINK, the mmap path is (pointer
+  arithmetic into a `MAP_PRIVATE` mapping); the `fread` fallback is not
+  (children would share one file offset). PGEN (Phase 7) is unconditionally
+  not fork-safe in v1 — no pgenlib fork-safety work has been done, so
+  `PgenReader::isForkSafe()` always returns `false`. Either way,
+  `isGenoReaderForkSafeInCPP()` errors at `nThreads > 1` rather than silently
+  decoding each other's records; region/group tests already warn and drop to
+  one thread regardless of format.
 
 Byte-exactness IS the right claim here, despite the cross-path trap below:
 each shard is ONE code path re-run over a disjoint subset, no marker's

@@ -56,4 +56,20 @@ run control_step2.log R2 step2_SPAtests.R \
 
 # 4. uniformity check
 R2 "$REPO/harness/check_null.R" "$GOLD/control/null_marker.txt"
+
+# 5. step 2, PGEN single-variant, same permuted-phenotype model -- confirms
+# the new reader doesn't fabricate signal either (Phase 7).
+run control_step2_pgen.log R2 step2_SPAtests.R \
+  --pgenFile=./input/genotype_100markers.pgen \
+  --pvarFile=./input/genotype_100markers.pvar \
+  --psamFile=./input/genotype_100markers.psam \
+  --SAIGEOutputFile="$GOLD/control/null_marker_pgen.txt" \
+  --chrom=1 --minMAF=0 --minMAC=1 \
+  --GMMATmodelFile="$GOLD/control/null_binary.rda" \
+  --varianceRatioFile="$GOLD/control/null_binary.varianceRatio.txt" \
+  --LOCO=FALSE
+
+# 6. uniformity check, PGEN path
+R2 "$REPO/harness/check_null.R" "$GOLD/control/null_marker_pgen.txt"
+
 echo "=== controls complete: $GOLD/control"

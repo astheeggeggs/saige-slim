@@ -1,8 +1,10 @@
-// Reader registry + the PLINK implementation (wrapping PLINK::PlinkClass by
-// composition — the decode logic itself is untouched; see GenoReader.hpp).
+// Reader registry + the PLINK/PGEN implementations (wrapping PLINK::PlinkClass
+// and PGEN::PgenClass by composition — the decode logic itself is untouched;
+// see GenoReader.hpp).
 
 #include "GenoReader.hpp"
 #include "PLINK.hpp"
+#include "PGEN.hpp"
 #include <map>
 #include <stdexcept>
 
@@ -63,6 +65,52 @@ private:
   PLINK::PlinkClass m_impl;
 };
 
+// PGEN v1 (Phase 7): pgenlib decode, single-threaded only (isForkSafe() is
+// always false here -- no mmap path exists for PGEN, unlike PlinkReader's
+// conditional mmap fork-safety). clone() throws, matching PlinkReader's
+// current stance (Phase-4 shared-metadata work, deferred for both readers).
+class PgenReader : public GenoReader {
+public:
+  PgenReader(const Rcpp::List& spec, const std::vector<std::string>& sampleInModel)
+      : m_sampleInModel(sampleInModel),
+        m_impl(Rcpp::as<std::string>(spec["pgenFile"]),
+               Rcpp::as<std::string>(spec["psamFile"]),
+               Rcpp::as<std::string>(spec["pvarFile"]),
+               m_sampleInModel) {}
+
+  std::string formatName() const override { return "pgen"; }
+  uint32_t getN0() const override { return const_cast<PGEN::PgenClass&>(m_impl).getN0(); }
+  uint32_t getN() const override { return const_cast<PGEN::PgenClass&>(m_impl).getN(); }
+
+  bool getOneMarker(uint64_t t_gIndex, MarkerMeta& t_meta,
+                    bool t_isOutputIndexForMissing, std::vector<uint>& t_indexForMissing,
+                    bool t_isOnlyOutputNonZero, std::vector<uint>& t_indexForNonZero,
+                    arma::vec& t_GVec) override {
+    m_impl.getOneMarker(t_gIndex, t_meta.ref, t_meta.alt, t_meta.id,
+                        t_meta.pos, t_meta.chr,
+                        t_meta.altFreq, t_meta.altCounts, t_meta.missingRate,
+                        t_meta.imputeInfo,
+                        t_isOutputIndexForMissing, t_indexForMissing,
+                        t_isOnlyOutputNonZero, t_indexForNonZero,
+                        t_GVec);
+    return true;
+  }
+
+  void close() override { m_impl.closegenofile(); }
+
+  // v1 decision (Phase 7 plan): conservatively not fork-safe, same posture
+  // as PLINK's fread fallback. Real pgenlib fork-safety is a later phase.
+  bool isForkSafe() const override { return false; }
+
+  std::unique_ptr<GenoReader> clone() const override {
+    throw std::logic_error("PgenReader::clone() not implemented yet");
+  }
+
+private:
+  std::vector<std::string> m_sampleInModel;  // PgenClass stores a reference during construction only
+  PGEN::PgenClass m_impl;
+};
+
 void registerBuiltinReaders() {
   static bool done = false;
   if (done) return;
@@ -70,6 +118,10 @@ void registerBuiltinReaders() {
   registerReader("plink", [](const Rcpp::List& spec,
                              const std::vector<std::string>& sampleInModel) {
     return std::unique_ptr<GenoReader>(new PlinkReader(spec, sampleInModel));
+  });
+  registerReader("pgen", [](const Rcpp::List& spec,
+                            const std::vector<std::string>& sampleInModel) {
+    return std::unique_ptr<GenoReader>(new PgenReader(spec, sampleInModel));
   });
 }
 

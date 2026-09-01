@@ -6,6 +6,13 @@
 # The full tier (step-1 regeneration, determinism, negative control) is
 # same-platform only and stays local: bash harness/run_tests.sh full
 #
+# PGEN support (Phase 7) needs pgenlib (plink-ng) compiled into
+# .pixi/envs/default/lib/libplink2_includes.a; harness/build.sh fetches and
+# builds it if missing, so the install step below runs that script rather
+# than a bare `R CMD INSTALL .`. The plink-ng archive+compile step is cached
+# across runs (keyed on the pinned version) since runners are ephemeral and
+# harness/build.sh's own guard only helps within a single run.
+#
 # NOTE: authored offline; not yet exercised on an actual runner.
 name: tests
 on:
@@ -27,7 +34,12 @@ jobs:
         run: |
           pixi install
           pixi run Rscript -e 'install.packages("lintools", repos="https://cloud.r-project.org")'
+      - name: Cache plink-ng build
+        uses: actions/cache@v4
+        with:
+          path: .pixi/envs/default/lib/libplink2_includes.a
+          key: plink-ng-v2.0.0-a.6.16-${{ runner.os }}
       - name: Build and install SAIGE
-        run: pixi run R CMD INSTALL .
+        run: bash harness/build.sh
       - name: Run tests (standard tier, numeric compare)
         run: SAIGE_COMPARE_MODE=numeric bash harness/run_tests.sh standard

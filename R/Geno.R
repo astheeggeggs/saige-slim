@@ -1,12 +1,20 @@
 checkGenoInput <- function(bedFile = "",
                            bimFile = "",
                            famFile = "",
+                           pgenFile = "",
+                           pvarFile = "",
+                           psamFile = "",
                            sampleInModel = NULL) {
   if (is.null(sampleInModel)) {
     stop("sampleInModel is not specified.")
   }
   # genotype data
-  if (bedFile != "") {
+  if (bedFile != "" && pgenFile != "") {
+    stop(
+      "bedFile and pgenFile are mutually exclusive: specify PLINK ",
+      "bed/bim/fam OR PGEN pgen/pvar/psam, not both\n"
+    )
+  } else if (bedFile != "") {
     Check_File_Exist(bedFile, "bedFile")
     if (bimFile == "") {
       bimFile <- gsub("bed$", "bim", bedFile)
@@ -17,10 +25,21 @@ checkGenoInput <- function(bedFile = "",
     Check_File_Exist(bimFile, "bimFile")
     Check_File_Exist(famFile, "famFile")
     dosageFileType <- "plink"
+  } else if (pgenFile != "") {
+    Check_File_Exist(pgenFile, "pgenFile")
+    if (pvarFile == "") {
+      pvarFile <- gsub("pgen$", "pvar", pgenFile)
+    }
+    if (psamFile == "") {
+      psamFile <- gsub("pgen$", "psam", pgenFile)
+    }
+    Check_File_Exist(pvarFile, "pvarFile")
+    Check_File_Exist(psamFile, "psamFile")
+    dosageFileType <- "pgen"
   } else {
     stop(
-      "bedFile is required: PLINK bed/bim/fam is the only ",
-      "supported genotype input on this branch\n"
+      "Either bedFile (PLINK bed/bim/fam) or pgenFile (PGEN pgen/pvar/psam) ",
+      "is required as genotype input on this branch\n"
     )
   }
 
@@ -32,6 +51,9 @@ checkGenoInput <- function(bedFile = "",
 setGenoInput <- function(bedFile = "",
                          bimFile = "",
                          famFile = "",
+                         pgenFile = "",
+                         pvarFile = "",
+                         psamFile = "",
                          idstoIncludeFile = "",
                          rangestoIncludeFile = "",
                          chrom = "",
@@ -43,6 +65,9 @@ setGenoInput <- function(bedFile = "",
     bedFile = bedFile,
     bimFile = bimFile,
     famFile = famFile,
+    pgenFile = pgenFile,
+    pvarFile = pvarFile,
+    psamFile = psamFile,
     sampleInModel = sampleInModel
   )
 
@@ -83,6 +108,32 @@ setGenoInput <- function(bedFile = "",
     setPLINKobjInCPP(bimFile, famFile, bedFile, sampleInModel, AlleleOrder)
   }
 
+  ########## ----------  PGEN format ---------- ##########
+
+  if (dosageFileType == "pgen") {
+    if (pvarFile == "") {
+      pvarFile <- gsub("pgen$", "pvar", pgenFile)
+    }
+    if (psamFile == "") {
+      psamFile <- gsub("pgen$", "psam", pgenFile)
+    }
+    # pvar is always REF/ALT-ordered -- unlike bim, there is no
+    # AlleleOrder-dependent column swap to apply here.
+    markerInfo <- data.table::fread(pvarFile, header = TRUE, skip = "#CHROM")
+    names(markerInfo)[1:5] <- c("CHROM", "POS", "ID", "REF", "ALT")
+    markerInfo$genoIndex <- 1:nrow(markerInfo) - 1 # -1 is to convert 'R' to 'C++'
+    if (chrom != "") {
+      markerInfo <- markerInfo[which(markerInfo[, 1] == chrom), ]
+    }
+    markerInfo[, REF := NULL]
+    markerInfo[, ALT := NULL]
+    # Match the PLINK path's column order (CHROM, ID, POS, genoIndex) so
+    # downstream code sees the same markerInfo shape regardless of genoType.
+    setcolorder(markerInfo, c("CHROM", "ID", "POS", "genoIndex"))
+    setkeyv(markerInfo, c("ID"))
+    setPGENobjInCPP(pgenFile, pvarFile, psamFile, sampleInModel)
+  }
+
   # time_geno_2 = proc.time()
 
   # cat("time_geno_2 - time_geno_1\n")
@@ -106,7 +157,7 @@ setGenoInput <- function(bedFile = "",
       cat(length(IDsToInclude), " marker IDs are found in the idstoIncludeFile file\n")
     }
 
-    if (dosageFileType == "plink") {
+    if (dosageFileType %in% c("plink", "pgen")) {
       if (!is.null(markerInfo$ID2)) {
         posRows <- which((markerInfo$ID %in% IDsToInclude) | (markerInfo$ID2 %in% IDsToInclude))
       } else {
@@ -195,7 +246,7 @@ setGenoInput <- function(bedFile = "",
   # cat("Based on the 'GenoFile' and 'GenoFileIndex',", genoType, "format is used for genotype data.\n")
 
   if (anyInclude) {
-    if (dosageFileType == "plink") {
+    if (dosageFileType %in% c("plink", "pgen")) {
       markerInfo <- subset(markerInfo, ID %in% markersInclude)
     }
   }

@@ -4,6 +4,7 @@
 # repeatedly in one session, results unaffected.
 
 bed100 <- function() file.path(saige_extdata, "input", "genotype_100markers.bed")
+pgen100 <- function() file.path(saige_extdata, "input", "genotype_100markers.pgen")
 fam_ids <- function() {
   fam <- utils::read.table(file.path(saige_extdata, "input", "genotype_100markers.fam"),
                            colClasses = "character")
@@ -15,9 +16,19 @@ test_that("checkGenoInput validation", {
                "sampleInModel is not specified")
   expect_error(checkGenoInput(bedFile = "/nope.bed", sampleInModel = "a"),
                "does not exsit")  # typo verbatim
-  # LEDGER #15c fixed: missing bedFile now stops cleanly
+  # LEDGER #15c fixed: missing genotype input now stops cleanly. Phase 7
+  # widened this from "bedFile is required" to accept pgenFile too.
   expect_error(checkGenoInput(bedFile = "", sampleInModel = "a"),
-               "bedFile is required")
+               "is required as genotype input")
+  # Phase 7: bedFile and pgenFile are mutually exclusive.
+  expect_error(checkGenoInput(bedFile = bed100(), pgenFile = pgen100(),
+                              sampleInModel = "a"),
+               "mutually exclusive")
+})
+
+test_that("checkGenoInput accepts pgen input and defaults pvar/psam from pgenFile", {
+  obj <- checkGenoInput(pgenFile = pgen100(), sampleInModel = "a")
+  expect_identical(obj, "pgen")
 })
 
 test_that("setGenoInput builds the plink markerInfo contract", {
@@ -34,6 +45,25 @@ test_that("setGenoInput builds the plink markerInfo contract", {
 
   # second call replaces the C++ reader and returns identical results
   obj2 <- setGenoInput(bedFile = bed100(), sampleInModel = fam_ids())
+  expect_identical(obj$markerInfo, obj2$markerInfo)
+})
+
+test_that("setGenoInput builds the pgen markerInfo contract, matching plink", {
+  # PgenReader seam (Phase 7): a real, lightweight pgenlib load (not a full
+  # CLI run), over the SAME fixture as the plink test above, so the two
+  # markerInfo tables should agree on everything but genoType.
+  plink_obj <- setGenoInput(bedFile = bed100(), sampleInModel = fam_ids())
+  obj <- setGenoInput(pgenFile = pgen100(), sampleInModel = fam_ids())
+  expect_identical(obj$genoType, "pgen")
+  expect_false(obj$anyInclude)
+  mi <- obj$markerInfo
+  expect_identical(nrow(mi), 100L)
+  expect_identical(colnames(mi), c("CHROM", "ID", "POS", "genoIndex"))
+  expect_identical(data.table::key(mi), "ID")
+  expect_identical(mi, plink_obj$markerInfo)
+
+  # second call replaces the C++ reader and returns identical results
+  obj2 <- setGenoInput(pgenFile = pgen100(), sampleInModel = fam_ids())
   expect_identical(obj$markerInfo, obj2$markerInfo)
 })
 

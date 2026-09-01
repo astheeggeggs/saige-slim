@@ -22,3 +22,12 @@ r-skat = "*"
 r-testthat = "*"
 superlu = "*"
 tbb = "*"
+
+# plink2 is used only to generate PGEN/pvar/psam test fixtures (harness/
+# make_goldens.sh), never by the installed R package. bioconda ships no
+# osx-arm64 build, so it is restricted to the platforms that have one.
+[target.linux-64.dependencies]
+plink2 = "*"
+
+[target.osx-64.dependencies]
+plink2 = "*"

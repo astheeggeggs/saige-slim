@@ -287,6 +287,169 @@ run step2_plink_marker_reffirst.log R2 step2_SPAtests.R \
   $BIN_MODEL \
   --is_output_moreDetails=TRUE
 
+# P13-P15 (Phase 7): PGEN (plink2 native format) full-format-parity goldens.
+# genotype_100markers.{pgen,pvar,psam} was generated once via
+# `plink2 --bfile genotype_100markers --make-pgen --out genotype_100markers`
+# (deterministic, committed like the bed/bim/fam fixture it mirrors). pvar
+# REF/ALT for every marker matches the alt-first bim's REF/ALT exactly (both
+# label the same allele ALT), so PGEN and PLINK runs over the SAME phenotype/
+# covariate/model inputs should reconcile at float tolerance, not just look
+# structurally similar -- see the numeric reconciliation check in
+# tests/testthat/test-step2-pgen.R. Same model inputs, chrom/MAF/MAC cutoffs
+# as the PLINK runs they mirror (P1/P2/P3) so a diff isolates the reader.
+PGEN_G="--pgenFile=./input/genotype_100markers.pgen --pvarFile=./input/genotype_100markers.pvar --psamFile=./input/genotype_100markers.psam"
+
+# P13: single-variant, binary, minMAC=1 (mirrors P1; ER path exercised)
+run step2_pgen_marker_binary.log R2 step2_SPAtests.R \
+  $PGEN_G \
+  --SAIGEOutputFile="$GOLD/step2/pgen_marker_binary.txt" \
+  --chrom=1 --minMAF=0 --minMAC=1 --LOCO=FALSE \
+  $BIN_MODEL \
+  --is_output_moreDetails=TRUE
+
+# P14: group test, binary, fastTest (mirrors P2)
+run step2_pgen_group_fastTest.log R2 step2_SPAtests.R \
+  $PGEN_G \
+  --SAIGEOutputFile="$GOLD/step2/pgen_group_fastTest.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --is_fastTest=TRUE
+
+# P15: group test conditional, binary (mirrors P3; rs30,rs79) -- exercises
+# region + conditional logic together through the pgen reader in one golden.
+run step2_pgen_group_cond.log R2 step2_SPAtests.R \
+  $PGEN_G \
+  --SAIGEOutputFile="$GOLD/step2/pgen_group_cond_binary.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --condition=rs30,rs79 --is_fastTest=TRUE
+
+# P16-P24 (Phase 7 coverage extension): PGEN mirrors of every DISTINCT code
+# path the PLINK goldens exercise beyond P1-P3 (P13-P15's mirrors), except
+# P11 (--AlleleOrder=ref-first is a PLINK bim-specific toggle; pvar carries
+# fixed REF/ALT columns, so there is no ref-first/alt-first ambiguity to
+# mirror). Same model/phenotype/sparse-GRM inputs as each PLINK counterpart,
+# so a diff isolates the reader -- exactly the P13-P15 pattern.
+
+# P16: single-variant conditional, QUANTITATIVE (mirrors P4) -- the pgen path
+# had ZERO quantitative-trait coverage before this; QUANT_MODEL is fit on the
+# same step-1 quant golden P4 uses.
+run step2_pgen_marker_cond_quant.log R2 step2_SPAtests.R \
+  $PGEN_G \
+  --SAIGEOutputFile="$GOLD/step2/pgen_marker_cond_quantitative.txt" \
+  --chrom=1 --minMAF=0 --minMAC=20 --LOCO=FALSE \
+  $QUANT_MODEL \
+  --is_output_moreDetails=TRUE \
+  --condition=rs13,rs79
+
+# P17: single-variant conditional, BINARY, minMAC=1 (mirrors P12) -- the
+# LEDGER #40 conditional-SPA fix path (reached via the ER path); confirms the
+# pgen reader hands the ER-path markers the same decoded values as PLINK.
+run step2_pgen_marker_cond_binary.log R2 step2_SPAtests.R \
+  $PGEN_G \
+  --SAIGEOutputFile="$GOLD/step2/pgen_marker_cond_binary.txt" \
+  --chrom=1 --minMAF=0 --minMAC=1 --LOCO=FALSE \
+  $BIN_MODEL \
+  --is_output_moreDetails=TRUE \
+  --condition=rs13,rs79
+
+# P18: group test, BURDEN only, r.corr=1, is_fastTest=FALSE (mirrors P5) --
+# the BURDEN OutFile writer through the pgen reader.
+run step2_pgen_group_burden.log R2 step2_SPAtests.R \
+  $PGEN_G \
+  --SAIGEOutputFile="$GOLD/step2/pgen_group_burden.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --r.corr=1 --is_fastTest=FALSE
+
+# P19: group test, SKAT-O, is_fastTest=FALSE (mirrors P6) -- the non-fastTest
+# sparse-GRM region path through the pgen reader.
+run step2_pgen_group_nofast.log R2 step2_SPAtests.R \
+  $PGEN_G \
+  --SAIGEOutputFile="$GOLD/step2/pgen_group_nofast.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --is_fastTest=FALSE
+
+# P20: single-variant, multi-chunk (mirrors P7) -- uses a DIFFERENT, larger
+# fixture (the 128k-marker step-1 bed filtered to chr1), so this also
+# regenerates a second committed PGEN fixture:
+# nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.{pgen,pvar,psam},
+# generated once via `plink2 --bfile
+# nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr --make-pgen --out
+# nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr` the same way as
+# the 100-marker fixture. Exercises per-chunk append through the pgen reader.
+PGEN_CHUNK_G="--pgenFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.pgen --pvarFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.pvar --psamFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.psam"
+run step2_pgen_marker_chunked.log R2 step2_SPAtests.R \
+  $PGEN_CHUNK_G \
+  --SAIGEOutputFile="$GOLD/step2/pgen_marker_chunked.txt" \
+  --chrom=1 --minMAF=0 --minMAC=1 --LOCO=FALSE \
+  $BIN_MODEL \
+  --markers_per_chunk=1000
+
+# P21: group test, SKAT-O, K=2 custom weight sets, is_fastTest=TRUE (mirrors
+# P8) -- the multi-weight Weight/Pvalue_ACATV/Pvalue_ACATO schema through the
+# pgen reader.
+run step2_pgen_group_multiweight.log R2 step2_SPAtests.R \
+  $PGEN_G \
+  --SAIGEOutputFile="$GOLD/step2/pgen_group_multiweight.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid_multiWeights.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --is_fastTest=TRUE
+
+# P22: group test, multiweight BURDEN, r.corr=1, is_fastTest=FALSE (mirrors
+# P9) -- the C7 Weight column in the C++ BURDEN writer through the pgen
+# reader.
+run step2_pgen_group_multiweight_burden.log R2 step2_SPAtests.R \
+  $PGEN_G \
+  --SAIGEOutputFile="$GOLD/step2/pgen_group_multiweight_burden.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid_multiWeights.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --r.corr=1 --is_fastTest=FALSE
+
+# P23: group test, "composed" set -- beta weights + appended No_Weights
+# (mirrors P8b) -- the C8 set-composition path (D10) through the pgen reader.
+run step2_pgen_group_composed.log R2 step2_SPAtests.R \
+  $PGEN_G \
+  --SAIGEOutputFile="$GOLD/step2/pgen_group_composed.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --weights.beta="1,25;1,1" --is_no_weight_in_groupTest=TRUE \
+  --is_fastTest=TRUE
+
+# P24: group test, conditional multi-weight (mirrors P10) -- design D7's
+# per-set G1-side adjustment through the pgen reader.
+run step2_pgen_group_cond_multiweight.log R2 step2_SPAtests.R \
+  $PGEN_G \
+  --SAIGEOutputFile="$GOLD/step2/pgen_group_cond_multiweight.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid_multiWeights.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --condition=rs30,rs79 --is_fastTest=TRUE
+
 # B1/B2 (bgen runs) and V1/V2 (vcf runs) retired to harness/goldens_retired/
 # when the BGEN (Strip 6) and VCF/SAV (Strip 5) readers were stripped. Their
 # PLINK counterparts P1-P4 continue; before retirement, the bgen group

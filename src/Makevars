@@ -4,9 +4,10 @@ CXX_STD = CXX14
 
 PKG_LIBS = $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) -lsuperlu -llapack
 
-PKG_CPPFLAGS += -I../.pixi/envs/default/include
+PKG_CPPFLAGS += -I../.pixi/envs/default/include -I../plink-ng/2.0/include
+PKG_LIBS += -L.. -lplink2_includes
 
-OBJECTS = RcppExports.o GenoReaderRegistry.o SAIGE_fitGLMM_fast.o getMem.o PLINK.o SAIGE_test.o SPA_binary.o SPA.o UTIL.o Main.o CCT.o Binary_HyperGeo.o Binary_ComputeExact.o Binary_global.o Binary_ComputeExactSKATO.o Binary_resampling.o Binary_Permu_SKAT.o ER_binary_func.o 
+OBJECTS = RcppExports.o GenoReaderRegistry.o SAIGE_fitGLMM_fast.o getMem.o PLINK.o PGEN.o SAIGE_test.o SPA_binary.o SPA.o UTIL.o Main.o CCT.o Binary_HyperGeo.o Binary_ComputeExact.o Binary_global.o Binary_ComputeExactSKATO.o Binary_resampling.o Binary_Permu_SKAT.o ER_binary_func.o
 
 all: $(SHLIB)
 $(SHLIB): ${OBJECTS} Makevars

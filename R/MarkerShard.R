@@ -208,7 +208,7 @@ runMarkerScan <- function(traitType,
   # SAIGE.Marker applies the LOCO filter itself; applying it here as well
   # (idempotently) keeps the shards balanced over the markers that will
   # actually be tested rather than over the whole genome.
-  if (LOCO && genoType == "plink") {
+  if (LOCO && genoType %in% c("plink", "pgen")) {
     keep <- which(CHROM == chrom)
     genoIndex <- genoIndex[keep]
     CHROM <- CHROM[keep]
@@ -221,10 +221,11 @@ runMarkerScan <- function(traitType,
 
   if (!isGenoReaderForkSafeInCPP()) {
     stop(
-      "--nThreads > 1 requires a memory-mapped genotype reader, but the ",
-      ".bed file could not be memory mapped and the buffered fallback is ",
-      "in use. Forked workers would share one file offset and silently ",
-      "decode each other's records. Re-run with --nThreads=1."
+      "--nThreads > 1 requires a fork-safe genotype reader. For PLINK, the ",
+      ".bed file could not be memory mapped and the buffered fallback is in ",
+      "use; for PGEN, the reader is not fork-safe in this version. Forked ",
+      "workers would share one file offset and silently decode each other's ",
+      "records. Re-run with --nThreads=1."
     )
   }
 

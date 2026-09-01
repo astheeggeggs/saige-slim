@@ -36,7 +36,7 @@ SAIGE.Marker <- function(traitType,
   }
 
   ## set up an object for genotype
-  if (genoType == "plink") {
+  if (genoType %in% c("plink", "pgen")) {
     # markerInfo = objGeno$markerInfo
     if (LOCO) {
       genoIndex <- genoIndex[which(CHROM == chrom)]
@@ -77,7 +77,7 @@ SAIGE.Marker <- function(traitType,
     # time_left = system.time({
 
 
-    if (genoType == "plink") {
+    if (genoType %in% c("plink", "pgen")) {
       tempList <- genoIndexList[[i]]
       genoIndex <- as.character(format(tempList$genoIndex, scientific = FALSE))
       tempChrom <- tempList$chrom
