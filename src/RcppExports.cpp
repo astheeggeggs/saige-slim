@@ -402,6 +402,28 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// testReadMarkersInCPP
+Rcpp::List testReadMarkersInCPP(std::vector<int> t_gIndexVec);
+RcppExport SEXP _SAIGE_testReadMarkersInCPP(SEXP t_gIndexVecSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::vector<int> >::type t_gIndexVec(t_gIndexVecSEXP);
+    rcpp_result_gen = Rcpp::wrap(testReadMarkersInCPP(t_gIndexVec));
+    return rcpp_result_gen;
+END_RCPP
+}
+// testGenoReaderCloneInCPP
+Rcpp::List testGenoReaderCloneInCPP(std::vector<int> t_gIndexVec);
+RcppExport SEXP _SAIGE_testGenoReaderCloneInCPP(SEXP t_gIndexVecSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::vector<int> >::type t_gIndexVec(t_gIndexVecSEXP);
+    rcpp_result_gen = Rcpp::wrap(testGenoReaderCloneInCPP(t_gIndexVec));
+    return rcpp_result_gen;
+END_RCPP
+}
 // set_flagSparseGRM_cur_SAIGE
 void set_flagSparseGRM_cur_SAIGE(bool t_flagSparseGRM_cur);
 RcppExport SEXP _SAIGE_set_flagSparseGRM_cur_SAIGE(SEXP t_flagSparseGRM_curSEXP) {
@@ -1939,6 +1961,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_closeOutfile_single", (DL_FUNC) &_SAIGE_closeOutfile_single, 0},
     {"_SAIGE_setSingleOutputPrefixInCPP", (DL_FUNC) &_SAIGE_setSingleOutputPrefixInCPP, 1},
     {"_SAIGE_isGenoReaderForkSafeInCPP", (DL_FUNC) &_SAIGE_isGenoReaderForkSafeInCPP, 0},
+    {"_SAIGE_testReadMarkersInCPP", (DL_FUNC) &_SAIGE_testReadMarkersInCPP, 1},
+    {"_SAIGE_testGenoReaderCloneInCPP", (DL_FUNC) &_SAIGE_testGenoReaderCloneInCPP, 1},
     {"_SAIGE_set_flagSparseGRM_cur_SAIGE", (DL_FUNC) &_SAIGE_set_flagSparseGRM_cur_SAIGE, 1},
     {"_SAIGE_set_flagSparseGRM_cur_SAIGE_org", (DL_FUNC) &_SAIGE_set_flagSparseGRM_cur_SAIGE_org, 0},
     {"_SAIGE_copy_singleInGroup", (DL_FUNC) &_SAIGE_copy_singleInGroup, 0},

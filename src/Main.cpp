@@ -2557,6 +2557,77 @@ bool isGenoReaderForkSafeInCPP(){
 }
 
 
+// ---- S5 test hooks -------------------------------------------------------
+// Not used by the pipeline. They exist because the reader's ownership and
+// cloning behaviour is invisible from R otherwise: no golden can see whether a
+// clone decodes the same bytes as its primary, or whether the map survives the
+// primary's close. Same reasoning as the S2 seed counter -- a change the
+// goldens cannot see carries its own measurement.
+
+namespace {
+
+// Decode a list of bim rows through one reader. Returns the genotype vectors
+// alongside the metadata so a caller can compare decodes, not just summaries.
+Rcpp::List readMarkersThrough(Geno::GenoReader& t_reader,
+                              const std::vector<int>& t_gIndexVec)
+{
+  uint32_t n = t_reader.getN();
+  size_t q = t_gIndexVec.size();
+  Rcpp::List gvecs(q);
+  Rcpp::CharacterVector ids(q);
+  Rcpp::NumericVector altFreq(q), altCounts(q), missingRate(q);
+  for(size_t k = 0; k < q; k++){
+    Geno::MarkerMeta meta;
+    std::vector<uint> indexForMissing, indexForNonZero;
+    arma::vec GVec(n);
+    t_reader.getOneMarker((uint64_t)t_gIndexVec[k], meta,
+                          true, indexForMissing, false, indexForNonZero, GVec);
+    gvecs[k] = Rcpp::wrap(GVec);
+    ids[k] = meta.id;
+    altFreq[k] = meta.altFreq;
+    altCounts[k] = meta.altCounts;
+    missingRate[k] = meta.missingRate;
+  }
+  return Rcpp::List::create(Rcpp::Named("g") = gvecs,
+                            Rcpp::Named("id") = ids,
+                            Rcpp::Named("altFreq") = altFreq,
+                            Rcpp::Named("altCounts") = altCounts,
+                            Rcpp::Named("missingRate") = missingRate);
+}
+
+}  // namespace
+
+// Read the given bim rows through the reader currently set up.
+// [[Rcpp::export]]
+Rcpp::List testReadMarkersInCPP(std::vector<int> t_gIndexVec){
+  if(!g_reader){
+    Rcpp::stop("No genotype reader has been set up.");
+  }
+  return readMarkersThrough(*g_reader, t_gIndexVec);
+}
+
+// Read the same rows three ways: through the primary, through a clone, and
+// through the clone AFTER the primary has been closed. The third is the one
+// that matters -- it is the claim that the map dies with the last owner rather
+// than with whoever calls close() first.
+// NOTE: this closes the primary, so the reader must be set up again before any
+// further use in the same process.
+// [[Rcpp::export]]
+Rcpp::List testGenoReaderCloneInCPP(std::vector<int> t_gIndexVec){
+  if(!g_reader){
+    Rcpp::stop("No genotype reader has been set up.");
+  }
+  std::unique_ptr<Geno::GenoReader> cloned = g_reader->clone();
+  Rcpp::List fromPrimary = readMarkersThrough(*g_reader, t_gIndexVec);
+  Rcpp::List fromClone = readMarkersThrough(*cloned, t_gIndexVec);
+  g_reader->close();
+  Rcpp::List fromCloneAfterClose = readMarkersThrough(*cloned, t_gIndexVec);
+  return Rcpp::List::create(Rcpp::Named("primary") = fromPrimary,
+                            Rcpp::Named("clone") = fromClone,
+                            Rcpp::Named("cloneAfterPrimaryClose") = fromCloneAfterClose);
+}
+
+
 // S4: the writer now streams MarkerResult slots instead of ~30 parallel
 // q-length vectors. Same rows, same order, same skip-on-"NA" rule, same
 // numtest; it just reads one object per marker rather than indexing thirty.

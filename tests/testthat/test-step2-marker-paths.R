@@ -131,6 +131,28 @@ test_that("ER resampling branch matches golden (P33)", {
           c(mp_model("binary_sparseGRM_a"), "--max_MAC_for_ER=200"))
 })
 
+test_that("the pread fallback reproduces a marker golden end to end (S5)", {
+  # SAIGE can read a .bed two ways -- mmap, or a pread fallback when the map
+  # fails -- and until S5 the fallback was reachable only by an mmap failure,
+  # which does not happen for a small local file. So one of the two decode paths
+  # in this package was exercised by nothing at all, on any platform, in any
+  # golden. SAIGE_PLINK_NO_MMAP forces it.
+  #
+  # test-unit-genoreader.R compares the two paths' decoded genotype vectors for
+  # five markers, including the LEDGER #16 mid-stream row-0 pattern. This is the
+  # same claim over a whole run: every marker, every column, through the CLI.
+  # Byte-exactness IS the right standard here -- same file, same offsets, same
+  # decode -- unlike a comparison between two different code paths.
+  #
+  # The ER golden is the one chosen because it has no covariate-collinear
+  # degenerate rows (the default noadjCov path does not adjust), so it compares
+  # in full in both modes.
+  Sys.setenv(SAIGE_PLINK_NO_MMAP = "1")
+  on.exit(Sys.unsetenv("SAIGE_PLINK_NO_MMAP"), add = TRUE)
+  mp_case("plink_marker_er.txt",
+          c(mp_model("binary_sparseGRM_a"), "--max_MAC_for_ER=200"))
+})
+
 test_that("every new marker golden differs from P1 in the intended direction", {
   # Guard against a golden that gates nothing: --max_MAC_for_ER=25 was proposed
   # for the ER case and is byte-identical to P1 on this fixture. Each golden

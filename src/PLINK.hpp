@@ -31,10 +31,10 @@ private:
   
   // input file stream of .bed file
   //std::ifstream m_ibedFile;
-  FILE *m_fin; 
+  FILE *m_fin = NULL;
   // Phase 4: read-only memory map of the .bed file (NULL if mmap failed;
-  // the fread path below is the fallback). Avoids a seek+read syscall pair
-  // and a buffer copy per marker.
+  // the pread path below is the fallback). Avoids a read syscall and a buffer
+  // copy per marker.
   const unsigned char* m_map = NULL;
   size_t m_mapLen = 0;
 
@@ -60,15 +60,18 @@ private:
   std::vector<int8_t> m_genoMaps_alt_first = {{2, -1, 1, 0}};
   std::vector<int8_t> m_genoMaps_ref_first = {{0, -1, 1, 2}};
   
-  // pipeline: OneMarkerG4 --> bufferG4 --> bufferG1 --> OneMarkerG1
-  std::vector<unsigned char> m_OneMarkerG4;
-  
+  // S5: the fallback's read buffer used to be the member m_OneMarkerG4, which
+  // is the whole reason getOneMarker could not be const -- one shared scratch
+  // buffer that every read wrote through. It is now a local in the fallback
+  // branch, which runs only when mmap failed and already pays a syscall per
+  // marker, so one small allocation there is not measurable.
+
   // void setChrMaps();
   void readBimFile();
   void readFamFile();
   
   // extract geno (0,1,2,3) at specific pos (0,1,2,3) of address c (1 byte)  
-  inline void getGenotype(const unsigned char c, const uint32_t pos, size_t& geno) {
+  inline void getGenotype(const unsigned char c, const uint32_t pos, size_t& geno) const {
     geno = (c >> (pos << 1)) & 0x3;  // 0b11 = 0x3 
   }
   
@@ -78,6 +81,14 @@ public:
              std::string t_famFile,
              std::string t_bedFile,
              std::string t_AlleleOrder);
+
+  // S5: ownership, not convention, releases the map and the FILE*. Nothing in
+  // R ever called the step-2 closeGenoFile(), so before this both survived to
+  // process exit. Copying would double-close, so the class is non-copyable --
+  // clones share ONE instance through a shared_ptr (see GenoReaderRegistry).
+  ~PlinkClass();
+  PlinkClass(const PlinkClass&) = delete;
+  PlinkClass& operator=(const PlinkClass&) = delete;
   
              //std::vector<std::string> t_SampleInModel,dd
   // setup PlinkClass
@@ -87,7 +98,11 @@ public:
   
   void setPosSampleInPlink(std::vector<std::string> & t_SampleInModel);
   
-  void getOneMarker(  			uint64_t & t_gIndex,        // different meanings for different genoType
+  // S5: const. It writes NO member -- the mmap branch is pointer arithmetic and
+  // the fallback preads into a local -- which is exactly what lets several
+  // threads run it on one shared PlinkClass. The compiler is the audit here, as
+  // it was for the model in S3: do NOT add a mutable member to get around it.
+  void getOneMarker(  			uint64_t t_gIndex,        // different meanings for different genoType
                          std::string& t_ref,       // REF allele
                          std::string& t_alt,       // ALT allele (should probably be minor allele, otherwise, computation time will increase)
                          std::string& t_marker,    // marker ID extracted from genotype file
@@ -97,26 +112,26 @@ public:
                          double& t_altCounts,      // counts of ALT allele
                          double& t_missingRate,    // missing rate
                          double& t_imputeInfo,     // imputation information score, i.e., R2 (all 1 for PLINK)
-                         bool & t_isOutputIndexForMissing,               // if true, output index of missing genotype data
+                         bool t_isOutputIndexForMissing,               // if true, output index of missing genotype data
                          std::vector<uint>& t_indexForMissing,     // index of missing genotype data
-                         bool & t_isOnlyOutputNonZero,                   // is true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
+                         bool t_isOnlyOutputNonZero,                   // is true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
                          std::vector<uint>& t_indexForNonZero,
-                         bool & t_isTrueGenotype, // only used in PLINK. check m_genoMaps for details about the genotype mapping in PLINK
-			 arma::vec & OneMarkerG1);
+                         bool t_isTrueGenotype, // only used in PLINK. check m_genoMaps for details about the genotype mapping in PLINK
+			 arma::vec & OneMarkerG1) const;
 			 //std::vector<double>& OneMarkerG1);
 
   // True when the .bed is read through the mmap path (no per-read seek on
   // the shared FILE*), i.e. when reads are safe from forked children.
-  bool isMemMapped(){return m_map != NULL;}
+  bool isMemMapped() const {return m_map != NULL;}
 
-  uint32_t getN0(){return m_N0;}
-  uint32_t getN(){return m_N;}
-  uint32_t getM0(){return m_M0;}
-  uint32_t getM(){return m_M;}
-  uint32_t getnumBytesofEachMarker0(){return m_numBytesofEachMarker0;}
-  uint32_t getnumBytesofEachMarker(){return m_numBytesofEachMarker;}
+  uint32_t getN0() const {return m_N0;}
+  uint32_t getN() const {return m_N;}
+  uint32_t getM0() const {return m_M0;}
+  uint32_t getM() const {return m_M;}
+  uint32_t getnumBytesofEachMarker0() const {return m_numBytesofEachMarker0;}
+  uint32_t getnumBytesofEachMarker() const {return m_numBytesofEachMarker;}
 
-  Rcpp::StringVector getChrVec()
+  Rcpp::StringVector getChrVec() const
   {
     Rcpp::StringVector chrVec(m_M0);
     for(unsigned int i = 0; i < m_M0; i++){

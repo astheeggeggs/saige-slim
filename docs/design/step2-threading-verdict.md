@@ -77,18 +77,53 @@ its commits have since landed and one of its stated gates was wrong.
   writes that outlives the call is its own `MarkerResult`, its `MarkerScratch`,
   the reader (S5) and the `std::cerr` in the `stod` catch (S6). One dead store
   fell out: the loop built a `CHR:POS:REF:ALT` string into an `infoVec` the
-  writer was never handed. Gate: full golden cycle, all 55 step-0/step-2
+  writer was never handed. Gate: full golden cycle, all 54 step-0/step-2
   goldens byte-identical and all five step-1 goldens at
   `max_rel_err 0.000e+00`; standard tier green in both compare modes.
+- **S5 DONE** (this commit). `PlinkReader` holds a
+  `std::shared_ptr<PLINK::PlinkClass>`; `clone()` shares it, `close()` releases
+  only that handle, and the map and `FILE*` die with the LAST owner -- so
+  closing the primary while a clone reads is safe by construction. What made
+  that possible is that `PlinkClass::getOneMarker` is now **`const`**, and not
+  by marking the fallback's state `mutable`, which would have made const
+  meaningless: the shared scratch buffer `m_OneMarkerG4` is gone and the
+  fallback's `fseek`+`fread` became one **`pread`**, which takes the offset as
+  an argument instead of mutating the file description's. Neither path writes a
+  member, so the compiler is the audit exactly as it was in S3. `closegenofile`
+  is idempotent, `~PlinkClass` calls it, and the class is non-copyable so the
+  destructor cannot double-close. Two findings fell out: **nothing in R has
+  ever called step-2's `closeGenoFile`**, so before this the map and the FILE*
+  both survived to process exit; and **the pread fallback had never been
+  executed by anything**, on any platform, in any golden -- reachable only by an
+  mmap failure, which does not happen for a small local file. `SAIGE_PLINK_NO_MMAP`
+  forces it, and it now has a unit test (decoded genotype vectors through both
+  paths, including the LEDGER #16 mid-stream row-0 pattern) plus an end-to-end
+  run reproducing golden P33. `isForkSafe()` still answers `isMemMapped()`, but
+  the REASON changed: pread removed the shared-offset hazard, so the fallback is
+  now fork-safe in fact and the `false` is conservatism about untested scale,
+  not a live hazard. `PgenReader::clone()` still throws (v1 decision unchanged).
+  Measured, since no golden can see any of this: two planted defects, each
+  caught -- a wrong pread offset makes the equivalence test report
+  `identical: FALSE` with 2 of 5 markers' `altFreq` diverging, and restoring the
+  pre-S5 `close()` (tear down regardless of other owners) makes the
+  clone-after-close read fail with `getOneMarker called after the .bed file was
+  closed`. Gate: full golden cycle, all 54 step-0/step-2 goldens byte-identical
+  and all five step-1 goldens at `max_rel_err 0.000e+00`.
 - **Line references in the plan below predate S0-S4 and have drifted.** Anchor
   on names, not numbers. After S4 the marker path is three named pieces --
   `testOneMarker` (one marker, all of it), `mainMarkerInCPP` (the slot vector,
   the scratch, the progress line, the `break`, the Firth tally, the writer call)
   and `writeOutfile_single` -- so a name is now a better address than a line
   number was even before the drift.
-- **Not yet done**: S5-S6 (reader clone, threading), S7. The marker path is now
-  free of member writes and its per-marker state is slot-owned; what remains
-  before threading is S5's reader `clone()`, which still throws, and then S6.
+- **Not yet done**: S6 (threading) and S7. The pieces S6 was waiting on are all
+  in place: the marker path writes no model state (S3), its per-marker state is
+  slot-owned (S4), and the reader clones with shared ownership and a const
+  decode (S5). What S6 still has to do itself is the deferral of the resampling
+  ER markers (G1's second half -- S2 closed the unconditional `SL_setseed`, but a
+  marker that genuinely DRAWS still enters the R RNG and must run on the main
+  thread), the `parallelFor` with explicit `numThreads` (F5), the contiguous
+  grain, break-truncation and progress re-emit, and the G2 positive/negative
+  control drills.
 
 
 All verification complete. Delivering the judgment.

@@ -56,8 +56,11 @@ public:
   // so concurrent readers silently decode each other's records.
   virtual bool isForkSafe() const = 0;
 
-  // Phase-4 hook: a clone shares immutable metadata but owns private
-  // stream/buffer state, enabling per-thread readers.
+  // A clone is an independent handle onto the SAME open genotype data, so a
+  // worker can read without coordinating with any other. Implementations own
+  // the underlying data jointly: whatever the last surviving handle releases is
+  // what gets released, so close() on one handle must never invalidate another.
+  // Implemented for PLINK on the mmap path (S5); PGEN still throws.
   virtual std::unique_ptr<GenoReader> clone() const = 0;
 };
 

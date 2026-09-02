@@ -58,8 +58,13 @@ void PlinkClass::setPlinkobj(std::string t_bimFile,
   fread(&magicNumber3, 1, 1, m_fin);
   fseek(m_fin, 3, SEEK_SET);    
 
-  // Phase 4: map the whole .bed read-only. Falls back to fread on failure.
-  {
+  // Phase 4: map the whole .bed read-only. Falls back to pread on failure.
+  // S5: SAIGE_PLINK_NO_MMAP forces that fallback. It exists because the
+  // fallback was reachable only by an mmap failure -- which does not happen for
+  // a small local file -- so NOTHING had ever exercised it, on any platform, in
+  // any golden. The same species of gap as F8/S0: untested is not the same as
+  // absent, and the two paths must decode identically.
+  if(getenv("SAIGE_PLINK_NO_MMAP") == NULL){
     int fd = fileno(m_fin);
     struct stat st;
     if(fstat(fd, &st) == 0 && st.st_size > 3){
@@ -121,8 +126,6 @@ void PlinkClass::readFamFile()
   }
   m_N = m_N0;
   m_numBytesofEachMarker0 = (m_N0 + 3) / 4;
-  m_OneMarkerG4.reserve(m_numBytesofEachMarker0);  
-  m_OneMarkerG4.resize(m_numBytesofEachMarker0);
 } 
 
 
@@ -172,14 +175,21 @@ void PlinkClass::setPosSampleInPlink(std::vector<std::string> & t_SampleInModel)
 //   return posMarkerInPlink;
 // }
 
+// S5: idempotent. The map was already guarded; the fclose was not, so a second
+// close was undefined behaviour -- which mattered the moment a clone could
+// outlive the owner that closed. Both handles are now cleared as they go.
 void PlinkClass::closegenofile(){
         if(m_map){ munmap((void*)m_map, m_mapLen); m_map = NULL; m_mapLen = 0; }
-        fclose(m_fin);
+        if(m_fin){ fclose(m_fin); m_fin = NULL; }
 	//m_ibedFile.close();
 }
 
+PlinkClass::~PlinkClass(){
+        closegenofile();
+}
 
-void PlinkClass::getOneMarker(				uint64_t & t_gIndex,        // different meanings for different genoType
+
+void PlinkClass::getOneMarker(				uint64_t t_gIndex,        // different meanings for different genoType
                                    std::string& t_ref,       // REF allele
                                    std::string& t_alt,       // ALT allele (should probably be minor allele, otherwise, computation time will increase)
                                    std::string& t_marker,    // marker ID extracted from genotype file
@@ -189,12 +199,12 @@ void PlinkClass::getOneMarker(				uint64_t & t_gIndex,        // different meani
                                    double& t_altCounts,      // counts of ALT allele
                                    double& t_missingRate,    // missing rate
                                    double& t_imputeInfo,     // imputation information score, i.e., R2 (all 1 for PLINK)
-                                   bool & t_isOutputIndexForMissing,               // if true, output index of missing genotype data
+                                   bool t_isOutputIndexForMissing,               // if true, output index of missing genotype data
                                    std::vector<uint>& t_indexForMissing,     // index of missing genotype data
-                                   bool & t_isOnlyOutputNonZero,                   // if true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
+                                   bool t_isOnlyOutputNonZero,                   // if true, only output a vector of non-zero genotype. (NOTE: if ALT allele is not minor allele, this might take much computation time)
                                    std::vector<uint>& t_indexForNonZero,     // only used when t_isOnlyOutputNonZero = TRUE
-                                   bool & t_isTrueGenotype,    // only used in PLINK. check m_genoMaps for details about the genotype mapping in PLINK.
-				   arma::vec & OneMarkerG1)
+                                   bool t_isTrueGenotype,    // only used in PLINK. check m_genoMaps for details about the genotype mapping in PLINK.
+				   arma::vec & OneMarkerG1) const
 				   //std::vector<double>& OneMarkerG1)
 {		
   
@@ -214,20 +224,25 @@ void PlinkClass::getOneMarker(				uint64_t & t_gIndex,        // different meani
   // it under row 0's marker ID (demonstrated via conditional analysis).
   uint64_t posSeek = 3 + m_numBytesofEachMarker0 * t_gIndex;
   const unsigned char* src;
+  // S5: the fallback was fseek + fread into the shared member buffer, which put
+  // TWO pieces of mutable state on every read -- the FILE*'s offset and the
+  // buffer. pread carries the offset as an argument and never touches the
+  // file description's own, so the fd can be shared; the buffer is a local. The
+  // bytes are identical (same offset, same length), and the mmap branch above
+  // is untouched.
+  std::vector<unsigned char> oneMarkerG4;
   if(m_map){
     src = m_map + posSeek;               // no syscalls, no copy
   }else{
-    fseek(m_fin, posSeek, SEEK_SET);
-  /*
-  uint64_t posSeek = 3 + m_numBytesofEachMarker0 * t_gIndex;
-  if(t_gIndex > 0){
-          fseek(m_fin, posSeek, SEEK_SET);
-  }
-  */
-  //m_ibedFile.seekg(posSeek);
-  //m_ibedFile.read((char*)(&m_OneMarkerG4[0]), m_numBytesofEachMarker0);
-    fread((char*)(&m_OneMarkerG4[0]), 1, m_numBytesofEachMarker0 , m_fin);
-    src = &m_OneMarkerG4[0];
+    if(!m_fin)
+      Rcpp::stop("PlinkClass::getOneMarker called after the .bed file was closed.");
+    oneMarkerG4.resize(m_numBytesofEachMarker0);
+    ssize_t nread = pread(fileno(m_fin), (void*)oneMarkerG4.data(),
+                          (size_t)m_numBytesofEachMarker0, (off_t)posSeek);
+    if(nread != (ssize_t)m_numBytesofEachMarker0)
+      Rcpp::stop("Short read from the .bed file at marker index %s.",
+                 std::to_string(t_gIndex));
+    src = oneMarkerG4.data();
   }
 
   t_indexForMissing.clear();

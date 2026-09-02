@@ -1,7 +1,7 @@
-# Step-2 threading sequence: S0-S4 landed (handoff, 2026-09-02)
+# Step-2 threading sequence: S0-S5 landed (handoff, 2026-09-02)
 
-Branch `strip`, pushed to `slim/strip`. S0-S3 plus the two CI fixes were green
-on CI (run 33621566011); **S4 has not been pushed yet** -- see "Where to start".
+Branch `strip`, pushed to `slim/strip`. Everything through `feb19ded` is green
+on CI (runs 33631137151 and 33632167654); **S5 is the only unpushed commit**.
 Commits, in order:
 
 | commit | what |
@@ -15,7 +15,9 @@ Commits, in order:
 | `1c7690e1` | CI — plink-ng headers guarded separately from the archive |
 | `f1d03251` | comparator — parse the non-finite spellings, not just their text |
 | `456f47d6` | docs — S4 anchored on names, current line numbers |
-| *this commit* | **S4** — `MarkerResult` + `MarkerScratch` + `testOneMarker`; the marker path's `vector<bool>` is gone |
+| `1c15e3b7` | **S4** — `MarkerResult` + `MarkerScratch` + `testOneMarker`; the marker path's `vector<bool>` is gone |
+| `feb19ded` | comparator — the covariate-collinear rows excluded from numeric compare (CI forced it, again) |
+| *this commit* | **S5** — reader clone with shared ownership; `getOneMarker` const; the pread fallback tested for the first time |
 
 The authoritative plan is the status block at the top of
 `docs/design/step2-threading-verdict.md`, which is current as of this commit.
@@ -26,9 +28,11 @@ message.
 ## State of the gates
 
 - Full `make_goldens.sh` + `compare_goldens.sh` cycle run on each of the five
-  code commits: every step-0 and step-2 golden byte-identical (55 files at S4),
+  code commits: every step-0 and step-2 golden byte-identical (54 files at S4),
   all five step-1 goldens at `max_rel_err 0.000e+00`.
 - Standard tier green in **both** compare modes at each of them.
+- S4 and S5 are byte-identical to the goldens by construction, so each carries
+  its own separate measurement -- see "Things worth knowing" below.
 - The installed package in `.pixi` was built from this exact tree (clean
   objects). No rebuild needed to pick the work up.
 
@@ -103,18 +107,45 @@ One dead store was dropped rather than carried into `MarkerResult`: the loop
 built a `CHR:POS:REF:ALT` string into an `infoVec` that the writer was never
 handed.
 
+## What S5 did
+
+`PlinkReader` holds a `std::shared_ptr<PLINK::PlinkClass>`; clones share it and
+`close()` releases only that handle, so the map dies with the LAST owner. The
+thing that made it sound is that **`PlinkClass::getOneMarker` is now `const`** --
+and NOT by marking the fallback's state `mutable`, which would have made const
+meaningless. The shared scratch buffer `m_OneMarkerG4` is gone and the
+fallback's `fseek`+`fread` is one `pread`, which takes the offset as an argument
+instead of mutating the file description's. Neither path writes a member.
+
+Two things surfaced that nobody had noticed:
+- **Step-2's `closeGenoFile` is never called from R.** The map and the `FILE*`
+  survived to process exit. `~PlinkClass` releases them now, and the class is
+  non-copyable so the destructor cannot double-close.
+- **The pread fallback had never been executed by anything** -- no test, no
+  golden, no platform. It was reachable only by an mmap failure, which does not
+  happen for a small local file. `SAIGE_PLINK_NO_MMAP=1` forces it; it now has a
+  unit test over decoded vectors and an end-to-end run reproducing golden P33.
+
+`isForkSafe()` still answers `isMemMapped()`, but the reason changed: pread
+removed the shared-offset hazard, so the fallback is fork-safe in fact and the
+`false` is conservatism about untested scale. Do not read it as a live hazard.
+
 ## Where to start
 
-**Push S4 first** -- it is the only unpushed commit, and the standing lesson
-below is that local green is not CI green.
-
-Then S5 in the verdict doc: the reader `clone()`, which still throws
-("Deferred to the Phase-4 shared-metadata implementation") in both
-`GenoReader` implementations. `PlinkReader`'s mmap path is member-write-free
-(F6) so clones can share it behind shared ownership; `closegenofile` needs to
-become idempotent so a clone cannot outlive the map. `PgenReader::isForkSafe()`
-is unconditionally false and no pgenlib work has been done, so PGEN is
-out of scope for threading in this pass.
+S6, the threading itself. Everything it was waiting on is in place: the marker
+path writes no model state (S3), per-marker state is slot-owned (S4), the reader
+clones with a const decode (S5). What S6 still owns:
+- **The ER resampling deferral** (G1's second half). S2 removed the
+  unconditional `SL_setseed`, but a marker that genuinely DRAWS still enters R's
+  RNG, so those markers must run on the main thread. The criterion is
+  `binary && MAC <= max_MAC_for_ER && nNonZero >= 21`; golden P33 is the one
+  that reaches it.
+- `parallelFor` with an EXPLICIT `numThreads` (F5: the explicit argument
+  overrides `RCPP_PARALLEL_NUM_THREADS`, so `harness/env.sh`'s pin does not
+  neuter a threaded test run), contiguous grain ~64, break-truncation, progress
+  re-emit.
+- The G2 drills: a deliberately-raced scratch build must FAIL the byte
+  comparator, and 1-thread-through-TBB must pass.
 
 ## Things worth knowing before touching this area
 
@@ -124,9 +155,13 @@ out of scope for threading in this pass.
   (`tests/testthat/test-step2-er-seeding.R` keeps that as a standing test), S3
   used the compiler as an exhaustive audit, S4 used the type system (`grep` for
   `std::vector<bool>`; every `g_model->`/`g_cfg.` inside `testOneMarker` read
-  back and confirmed a read). Plan for that; a green golden run is not evidence
-  for this class of change. What the golden cycle DID gate on S4 is the thing it
-  is good for: that a 460-line function was transcribed correctly.
+  back and confirmed a read), and **S5 planted defects and watched the new tests
+  catch them** -- a wrong pread offset (equivalence test reports
+  `identical: FALSE`, 2 of 5 markers diverge) and the pre-S5 `close()` semantics
+  (clone-after-close fails with "called after the .bed file was closed").
+  Plan for that; a green golden run is not evidence for this class of change.
+  What the golden cycle DID gate on S4 is the thing it is good for: that a
+  460-line function was transcribed correctly.
 - **Paired A/B with two installed libraries** is the only timing method that
   resolved anything here: `R CMD INSTALL -l <scratch lib>` for the baseline,
   the pixi env for the change, arms alternated within each rep, and the arm

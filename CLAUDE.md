@@ -426,10 +426,26 @@ long-running `main*InCPP()` loop that writes output files from C++
   `PgenReader` (wraps `PGEN::PgenClass`, `src/PGEN.{hpp,cpp}`, added Phase 7 —
   fresh code implementing the interface, not a restore of `main`'s
   pre-refactor `PgenClass`, which predates `GenoReader` and used out-param
-  overloads instead of `MarkerMeta`). Both `clone()` throw ("Deferred to the
-  Phase-4 shared-metadata implementation"); `PgenReader::isForkSafe()` is
-  unconditionally `false` (v1 decision — no fork-safety work done for PGEN
-  yet, unlike PLINK's conditional mmap-path check).
+  overloads instead of `MarkerMeta`). `PgenReader::clone()` still throws and
+  `PgenReader::isForkSafe()` is unconditionally `false` (v1 decision — no
+  fork-safety work done for PGEN yet).
+  **`PlinkReader` clones (S5).** It holds a `std::shared_ptr<PLINK::PlinkClass>`
+  and clones SHARE that one instance; `close()` releases only that handle, so
+  the map and the `FILE*` die with the LAST owner and closing the primary under
+  a live clone is safe by construction. This rests on
+  `PlinkClass::getOneMarker` being `const` — it writes no member on either read
+  path — so do NOT add a `mutable` member to work around it; that would silently
+  remove the only thing making concurrent reads safe. `clone()` refuses when the
+  .bed fell back to pread (conservatism about untested scale, not a hazard:
+  pread carries its own offset). **The two .bed read paths.** mmap is the
+  default; the `pread` fallback runs only if the map fails, which for a local
+  file it does not — so it was executed by NOTHING until S5. Force it with
+  `SAIGE_PLINK_NO_MMAP=1`; `tests/testthat/test-unit-genoreader.R` compares the
+  two paths' decoded vectors (plus the LEDGER #16 mid-stream row-0 pattern) and
+  `test-step2-marker-paths.R` reproduces golden P33 end-to-end through the
+  fallback. Note step-2's `closeGenoFile` is **never called from R**, so before
+  S5 the map and FILE* survived to process exit; `~PlinkClass` releases them now
+  and the class is non-copyable so the destructor cannot double-close.
 - `src/SAIGE_fitGLMM_fast.cpp` (~7400 lines) — step-1 engine, separate from
   Main.cpp. Single **global** `genoClass geno` holds the bit-packed GRM
   genotypes; step 1 never took PGEN even on `main`'s pre-refactor
