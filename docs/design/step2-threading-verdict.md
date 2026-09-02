@@ -62,6 +62,11 @@ its commits have since landed and one of its stated gates was wrong.
   `const arma::vec &`. One dead parameter fell out: `getMarkerPval`'s
   `t_isSparseGRM` was passed by every call site and never read (the body used the
   member), so a caller could disagree with the code and never know.
+- **Line references in the plan below predate S0-S3 and have drifted.** Anchor
+  on names, not numbers. Current as of `90f21c77`: the marker loop is
+  `Main.cpp:244-576` inside `mainMarkerInCPP` (`:155`), the writer call that
+  follows it is `:578`, and the per-marker slot vectors S4 folds into
+  `MarkerResult` (`isSPAConvergeVec` among them) are declared from `:197`.
 - **Not yet done**: S4-S6 (kernel extraction, reader clone, threading), S7. The
   marker path is now free of member writes; what remains before threading is
   S4's `MarkerResult`/`MarkerScratch` (the `vector<bool>` race and the
