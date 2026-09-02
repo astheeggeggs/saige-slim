@@ -147,7 +147,10 @@ test_that("the covariate-collinear fixture markers degenerate as LEDGER #44 reco
   i <- match(c("rs20", "rs22"), sp$MarkerID)
   expect_false(anyNA(i))
   expect_identical(sp$BETA[i], c("-inf", "-inf"))
-  expect_identical(sp$SE[i], c("nan", "nan"))
+  # NaN's printed spelling is the C library's: glibc writes "-nan" where macOS
+  # writes "nan" for the same sign-bit-set NaN. The committed golden carries
+  # whichever platform generated it, so accept either.
+  expect_true(all(grepl("^-?nan$", sp$SE[i])))
   expect_identical(sp$p.value[i], c("1.000000E+00", "1.000000E+00"))
   # the same two markers on the other covariate-adjusting path: finite, but the
   # variance has underflowed to ~1e-14 and the SE is ~1e6

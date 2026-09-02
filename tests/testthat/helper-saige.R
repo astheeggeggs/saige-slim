@@ -98,10 +98,31 @@ read_saige_table <- function(path) {
                     comment.char = "", na.strings = character(0))
 }
 
-# Column is treated as numeric if every non-"NA" entry parses as a number.
+# Parse a printed column, including the non-finite values.
+#
+# The spelling of a non-finite is the C library's, not R's: glibc prints a NaN
+# whose sign bit is set as "-nan" where macOS libc prints "nan", for the same
+# computation. Goldens P27 and P30 contain them (rs20/rs22, whose covariate-
+# adjusted variance underflows -- LEDGER #44), so this is a live path.
+#
+# as.numeric() handles "inf"/"-inf" but returns NaN for "nan"/"-nan", which
+# anyNA() cannot tell apart from a parse FAILURE. That is why a column holding a
+# NaN used to be classified non-numeric and compared as text -- and text is
+# exactly what differs across platforms. Map the spellings explicitly.
+.num <- function(x) {
+  x <- trimws(x)
+  out <- suppressWarnings(as.numeric(x))
+  out[grepl("^[+-]?nan$", x, ignore.case = TRUE)] <- NaN
+  out
+}
+
+# Column is treated as numeric if every non-"NA" entry parses as a number or as
+# a non-finite. A real parse failure gives NA (not NaN), which is what fails.
 .is_numeric_col <- function(x) {
   x2 <- x[!(x %in% c("NA", ""))]
-  length(x2) == 0 || !anyNA(suppressWarnings(as.numeric(x2)))
+  if (length(x2) == 0) return(TRUE)
+  v <- .num(x2)
+  all(!is.na(v) | is.nan(v))
 }
 
 # Tolerance-based table comparison for step-2 outputs: structure and string
@@ -121,8 +142,7 @@ tables_equivalence <- function(golden, candidate, tol = 1e-5) {
     if (.is_numeric_col(g[[col]]) && .is_numeric_col(c_[[col]])) {
       if (!identical(g[[col]] %in% c("NA", ""), c_[[col]] %in% c("NA", "")))
         problems <- c(problems, paste0("NA pattern differs [", col, "]"))
-      err <- rel_err(suppressWarnings(as.numeric(g[[col]])),
-                     suppressWarnings(as.numeric(c_[[col]])))
+      err <- rel_err(.num(g[[col]]), .num(c_[[col]]))
       if (!is.finite(err) || err > tol)
         problems <- c(problems, sprintf("numeric [%s] rel_err=%.3e > tol=%.0e", col, err, tol))
     } else if (!identical(g[[col]], c_[[col]])) {

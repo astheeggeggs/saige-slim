@@ -75,6 +75,19 @@ test_that("numeric comparator: catches every planted defect class", {
   flipped <- inf_df; flipped$BETA[1] <- "inf"
   expect_false(tables_equivalence(make_tsv(inf_df), make_tsv(flipped))$ok)
 
+  # The C library's NaN spelling is platform-dependent: glibc writes "-nan"
+  # where macOS libc writes "nan" for the same value (this is what turned CI red
+  # on P27). The two must compare EQUAL -- a NaN has no meaningful sign -- while
+  # a NaN facing a number must not.
+  nan_df <- base_df; nan_df$BETA[1] <- "nan"
+  neg_nan <- base_df; neg_nan$BETA[1] <- "-nan"
+  expect_true(tables_equivalence(make_tsv(nan_df), make_tsv(neg_nan))$ok)
+  num <- base_df; num$BETA[1] <- "0.5"
+  expect_false(tables_equivalence(make_tsv(nan_df), make_tsv(num))$ok)
+  # and a column of genuine non-numbers is still compared as text
+  txt <- base_df; txt$BETA[1] <- "banana"
+  expect_false(tables_equivalence(make_tsv(nan_df), make_tsv(txt))$ok)
+
   expect_false(tables_equivalence(a, make_tsv(base_df[, -3]))$ok)  # lost column
   expect_false(tables_equivalence(a, make_tsv(base_df[-2, ]))$ok)  # lost row
   expect_false(tables_equivalence(a, "/nope/missing.txt")$ok)
