@@ -147,6 +147,23 @@ clones with a const decode (S5). What S6 still owns:
 - The G2 drills: a deliberately-raced scratch build must FAIL the byte
   comparator, and 1-thread-through-TBB must pass.
 
+S6 deliberately leaves TWO parallelism mechanisms in the tree at once -- the
+existing fork/`mclapply` path in `R/MarkerShard.R` and the new in-process one,
+default OFF. **That is a temporary state with a written expiry**: the retirement
+criterion for the fork path is in the status block of
+`docs/design/step2-threading-verdict.md` and lists the evidence required before
+either one is deleted (byte-identity, feature parity item by item, a paired A/B
+showing in-process is not slower, and maxRSS). Do not let S7 close without
+resolving it -- two mechanisms with different semantics is exactly how this
+codebase grows a path nothing tests, which is what S5 found in the pread
+fallback and what S0 found in the marker-path arms.
+
+While reading that area: `varianceRatioBinsHaveGap` in `R/MarkerShard.R` had a
+comment claiming LEDGER #32 was "preserved (branch policy)". S3 FIXED #32 --
+`selectVarianceRatio` throws now, both arms stop, and the guard survives only
+because its message arrives earlier and reads better than the C++ throw. The
+comment is corrected; the guard's fate is one of the parity items above.
+
 ## Things worth knowing before touching this area
 
 - **The goldens cannot see a thread-safety change.** S2, S3 and S4 are all

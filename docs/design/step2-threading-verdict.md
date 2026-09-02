@@ -115,6 +115,41 @@ its commits have since landed and one of its stated gates was wrong.
   the scratch, the progress line, the `break`, the Firth tally, the writer call)
   and `writeOutfile_single` -- so a name is now a better address than a line
   number was even before the drift.
+- **THE TWO-MECHANISM OBLIGATION (agreed 2026-09-02, before S6 is written).**
+  S6 adds in-process threading **alongside** the existing fork/`mclapply` path
+  in `R/MarkerShard.R`, default OFF. That is deliberate -- it keeps S6
+  reviewable and keeps a working `--nThreads` throughout -- but **exactly one
+  of the two ships**. Carrying both permanently would mean two parallelism
+  mechanisms with different semantics (fork refuses PGEN and group tests and
+  restart; threads have their own rules), which is how a codebase acquires a
+  path nobody tests -- the same shape as the pread fallback S5 found, and as
+  F8's marker-path arms before S0. The retirement is part of S7, not a
+  someday-item, and it does not happen on taste. Required evidence, all of it:
+  1. **Byte-identity** at 1/2/4/8 threads x repeats over every marker golden.
+     (This is S6's own gate, so it is free.)
+  2. **Feature parity** with what fork does today, item by item: group tests
+     warn and drop to one thread; restart (`--is_overwrite_output=FALSE` with a
+     partial `.index`) is refused; a non-fork-safe reader is refused (PGEN);
+     and a decision is recorded for `varianceRatioBinsHaveGap`, which post-S3 is
+     only an earlier, friendlier message in front of a C++ throw -- keep it,
+     move it, or drop it, but say which.
+  3. **Paired A/B showing in-process is not slower**, by the method in
+     `harness/bench/NOTES.md` (two installed libraries, arms alternated within
+     each rep, order swapped between blocks). Fork is not obviously the loser
+     here: it pays ~1.08 s of SAIGE load per child but has zero shared-memory
+     contention. Measure at both bench sizes; an unpaired 3+3 will not resolve
+     it, as it failed to resolve F8.
+  4. **maxRSS at 4 threads**, in-process vs fork's copy-on-write children.
+  What is deleted with the fork path: `splitMarkerShards`, `appendShardBytes`,
+  `mergeShardOutputs` and `runMarkerScan`'s fork branch. What must **NOT** be
+  lost with it -- both are findings about THIS codebase, not about fork, and
+  both are recorded in `CLAUDE.md`: **E0**, chunk boundaries cannot reach the
+  output bytes (`markers_per_chunk` only drives a stdout progress line), and
+  **E1**, a forked child must close `g_out.single` explicitly because
+  `mcexit` calls `_exit()`, no static destructor runs, and the child silently
+  loses everything past the stream's 192 KiB buffer boundary *while still
+  returning success*. `closeOutfile_single()` at `R/SAIGE_SPATest_Marker.R:156`
+  is byte-neutral serially, so it may stay either way.
 - **Not yet done**: S6 (threading) and S7. The pieces S6 was waiting on are all
   in place: the marker path writes no model state (S3), its per-marker state is
   slot-owned (S4), and the reader clones with shared ownership and a const

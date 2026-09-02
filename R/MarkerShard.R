@@ -130,18 +130,24 @@ mergeShardOutputs <- function(shardFiles, OutputFile,
 
 # Do the categorical variance-ratio bins leave some MAC uncovered?
 #
-# C++ consults them per marker (SAIGEClass::assignVarianceRatio). A MAC in no
-# bin makes that function return FALSE, the marker loop discards the return
-# value (src/Main.cpp:408), and m_varRatioVal silently keeps the PREVIOUS
-# marker's value -- LEDGER #32. Serially the carry comes from the preceding
-# marker; inside a shard it comes from that shard's own predecessor, so a
-# gapped specification makes a threaded run differ from a serial one. Measured
-# on the bundled fixture with a hand-made gap at MAC = 3: nThreads in
-# {5, 6, 7, 10, 12, 15, 20, 30, 50} every one diverged from nThreads = 1.
+# WHY THIS STILL EXISTS, which is not the reason it was written. It was written
+# against LEDGER #32: a MAC in no bin left m_varRatioVal holding the PREVIOUS
+# marker's value, so a gapped specification made a threaded run differ from a
+# serial one (measured on the bundled fixture with a hand-made gap at MAC = 3:
+# nThreads in {5, 6, 7, 10, 12, 15, 20, 30, 50} all diverged from nThreads = 1).
 #
-# The underlying bug is preserved (branch policy). What is refused is running
-# it at nThreads > 1, where it would also break the guarantee that a threaded
-# run reproduces the serial one byte for byte.
+# **#32 was FIXED in S3** at the landmine: SAIGEClass::selectVarianceRatio now
+# THROWS on an uncovered MAC, naming the MAC and printing the bins, and the
+# marker path builds a TestContext per marker rather than writing the member --
+# so there is nothing left to carry and both arms now stop. The divergence this
+# guard was built to prevent can no longer happen.
+#
+# It is kept because the R-side message arrives EARLIER and reads better than
+# the C++ throw, which is what the (inverted) characterization test in
+# test-step2-threads.R now pins. That is a user-experience reason, not a
+# correctness one -- so if the fork path is retired (see the retirement
+# criterion in docs/design/step2-threading-verdict.md), this can go with it, or
+# move to wherever the surviving mechanism validates its arguments.
 #
 # Coverage is (-Inf, minMACExclude[1]] then each (minMACExclude[i],
 # maxMACInclude[i]] then (maxMACInclude[k], Inf); a gap is a bin whose lower
