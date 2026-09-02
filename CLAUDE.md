@@ -340,7 +340,11 @@ dead files).
   verdict doc proposed for ER coverage, is **byte-identical to P1** here (so are
   20/50/100) — reaching the resampling arm needs a marker with ≥21 carriers,
   i.e. `--max_MAC_for_ER=200` on this fixture. A golden that reproduces P1 gates
-  nothing; check that a new one actually differs.
+  nothing; check that a new one actually differs. **P33 is the gate for the ER
+  seeding change**: `ComputeExact::Run` used to call `SL_setseed(1)` -- which
+  enters the R API -- on every ER marker; it is now conditional on a resampling
+  arm actually running, and P1 (all-exact) plus P33 (one resampling marker) are
+  what make that checkable.
 - `bash harness/make_controls.sh <dir>` — permuted-phenotype negative control
   through the full pipeline + KS uniformity check (`harness/check_null.R`),
   run through both the PLINK and PGEN readers (Phase 7) over the same

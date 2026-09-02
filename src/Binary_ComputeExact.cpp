@@ -350,7 +350,40 @@ int     ComputeExact::Run(int test_type){
     int i, j, idx, l;
     vector<int> array(m_k);
     //SL_setseed(time(NULL));
-	SL_setseed(1);
+
+    // Seed only when a resampling arm will actually draw.
+    //
+    // SL_setseed enters the R API -- Rcpp::Environment("package:base"),
+    // Rcpp::Function set.seed, GetRNGstate (Binary_resampling.cpp:50-66, the
+    // LEDGER #2 fix) -- and Run() is reached for EVERY binary marker with
+    // MAC <= max_MAC_for_ER whose |Z| exceeds the SPA cutoff, which on a
+    // rare-variant scan is most of the ER markers. Only the two resampling
+    // arms below consume randomness (SKAT_Resampling -> SL_Sample,
+    // SKAT_Resampling_Random -> SL_Binary_Boot1); SKAT_Exact_Recurse and
+    // SKAT_Exact_Recurse_INV call nothing but CalTestStat/CalFisherProb. So an
+    // all-exact marker -- the only kind reachable at the default
+    // max_MAC_for_ER=4, where k <= 4 carriers can never make n_total exceed
+    // NResampling -- paid an R-heap round trip for nothing, and, because it is
+    // the R API, could not be run from a worker thread. That is F4 in
+    // docs/design/step2-threading-verdict.md, the one hazard that blocks
+    // threading the marker loop, and this is its S2 fix.
+    //
+    // Byte-neutral by construction: a marker that draws still re-seeds with 1
+    // at entry exactly as before, so its draw sequence is unchanged; a marker
+    // that does not draw cannot observe the seed. The only difference is the
+    // end state of .Random.seed, and nothing else in step 2 consumes the R
+    // stream (the other two RNG users, SKAT_ExactMC and SKAT_Permu, are
+    // commented out and callerless respectively).
+    bool needsRNG = false;
+    for(i = 0; i < m_k + 1; i++){
+        if(m_IsExact.at(i) != 1){
+            needsRNG = true;
+            break;
+        }
+    }
+    if(needsRNG){
+        SL_setseed(1);
+    }
   
 	for(i=0;i < m_k+1;i++){
         

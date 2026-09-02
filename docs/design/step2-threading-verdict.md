@@ -5,6 +5,41 @@
 
 > Judged architecture panel for an in-process multithreaded step-2 marker loop with byte-identical output
 
+## Status (updated 2026-09-02) -- READ THIS BEFORE USING THE PLAN BELOW
+
+The document below is the original judgment, verified against `64b0f677`. Two of
+its commits have since landed and one of its stated gates was wrong.
+
+- **S0 DONE** (`b87fcaba`). Goldens P27-P33 close the F8 coverage gap: the
+  marker-path sparse `scoreTest` + PCG, the `scoreTestFast` arm, the fastTest
+  re-test block, the Firth arm and the ER **resampling** arm each have a golden
+  now, with the per-arm counts measured on an instrumented build and recorded in
+  `harness/make_goldens.sh`. Two corrections to S0 as specified: (a) the sparse
+  arm needs a step-1 model with BOTH `sparse` and `null_noXadj` variance-ratio
+  rows, which only `--useSparseGRMforVarRatio=TRUE` produces, hence the new
+  step-1 golden `binary_sparseGRM_vr`; (b) **`--max_MAC_for_ER=25` gates
+  nothing** -- it is byte-identical to P1 on the bundled fixture, as are 20, 50
+  and 100. The ER golden that gates S2 is **P33, at `--max_MAC_for_ER=200`**,
+  the smallest value on this fixture that admits a marker with >= 21 carriers
+  and so reaches the resampling arm at all.
+- **S2 DONE** (this commit). `SL_setseed(1)` in `ComputeExact::Run` is now
+  conditional on some `m_IsExact[i] != 1`, i.e. on a resampling arm actually
+  running. Measured by tracing `base::set.seed` with both builds installed side
+  by side: at the default `max_MAC_for_ER=4` the call count on golden P1's
+  configuration goes **2 -> 0**, and at 200 (golden P33) **3 -> 1**, with all
+  four runs reproducing their goldens byte for byte. F4 -- "the single highest-
+  risk fact in the whole exercise", the R API entered from every ER marker -- is
+  therefore closed for the default configuration and for the resampling one:
+  the only remaining R-API entry is on markers that genuinely draw, and S6's
+  deferral of those is still required.
+- **F8's premise is spent**: the two per-marker allocation items C3 excluded for
+  want of coverage landed as `8959b5bd` (paired A/B: 1.9%, p = 0.023, on the new
+  `s2_marker_all_sparse` bench workload).
+- **Not yet done**: S1 (de-Rcpp the SPA kernels), S3-S6 (TestContext, kernel
+  extraction, reader clone, threading), S7. S1 remains a prerequisite for S6 for
+  the same reason S2 was.
+
+
 All verification complete. Delivering the judgment.
 
 ---
