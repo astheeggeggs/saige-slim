@@ -88,6 +88,7 @@ class SAIGEClass
       bool m_islog10p;
 	arma::sp_mat m_spSigmaMat; // Declare the sparse matrix attribute
 	arma::vec m_diagSigma;    // Precompute diagonal
+	arma::vec m_diagSigmaInv; // 1/diag: the PCG's Jacobi preconditioner, built once
 
 
   ////////////////////// -------------------- functions ----------------

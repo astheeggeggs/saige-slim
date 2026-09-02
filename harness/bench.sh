@@ -13,6 +13,12 @@
 #               -- ~90% process startup; kept for continuity, not for ratios
 #   s2_marker_all step-2 single-variant scan, all 128,868 markers in 22 chunks
 #               -- the workload a marker-kernel change can be measured on
+#   s2_marker_all_sparse  the same scan through the SPARSE scoreTest + PCG
+#               (--sparseGRMFile + the binary_sparseGRM_vr model, the only one
+#               whose variance-ratio file has both sparse and null_noXadj rows).
+#               s2_marker_all cannot measure that path: at default flags every
+#               marker goes to scoreTestFast_noadjCov and the PCG never runs.
+#               Added with the F8 work on getPCG1ofSigmaAndGtilde.
 #   s2_group    step-2 SKAT-O group test (golden P2 config; 100 markers, 2 genes,
 #               so also startup-dominated -- see harness/bench/NOTES.md)
 #
@@ -154,6 +160,21 @@ for rep in $(seq 1 "$REPS"); do
     --varianceRatioFile="$GOLD/step1/binary_sparseGRM_a.varianceRatio.txt" \
     --markers_per_chunk=10000 \
     --SAIGEOutputFile="$SCRATCH/s2_marker_all.txt"
+
+  # Same markers, same fixture, sparse-GRM branch: this is the only workload in
+  # which getPCG1ofSigmaAndGtilde and the marker-path scoreTest are on the
+  # clock. One PCG solve per marker (~1.3 iterations each at this N).
+  timed s2_marker_all_sparse default "$rep" \
+    pixi run --manifest-path "$REPO/pixi.toml" Rscript step2_SPAtests.R \
+    --bedFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.bed \
+    --bimFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.bim \
+    --famFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.fam \
+    --AlleleOrder=alt-first --minMAF=0 --minMAC=1 --LOCO=FALSE \
+    --GMMATmodelFile="$GOLD/step1/binary_sparseGRM_vr.rda" \
+    --varianceRatioFile="$GOLD/step1/binary_sparseGRM_vr.varianceRatio.txt" \
+    $SG --is_fastTest=FALSE \
+    --markers_per_chunk=10000 \
+    --SAIGEOutputFile="$SCRATCH/s2_marker_all_sparse.txt"
 
   timed s2_group default "$rep" \
     pixi run --manifest-path "$REPO/pixi.toml" Rscript step2_SPAtests.R \

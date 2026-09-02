@@ -124,6 +124,12 @@ SAIGEClass::SAIGEClass(
     	//m_valueVec = t_valueVec;
         m_spSigmaMat = arma::sp_mat(t_locationMat, t_valueVec, t_dimNum, t_dimNum);
 	m_diagSigma = arma::vec(m_spSigmaMat.diag());
+	// Jacobi preconditioner for getPCG1ofSigmaAndGtilde. m_spSigmaMat and
+	// m_diagSigma are written here and nowhere else, so the reciprocal is a
+	// constant of the model; it used to be rebuilt (an n-vector allocation and
+	// n divisions) on every PCG call, i.e. once per marker on the sparse-GRM
+	// marker path and once per marker per region elsewhere.
+	m_diagSigmaInv = 1.0 / m_diagSigma;
     }
 }    
 
@@ -1273,33 +1279,36 @@ arma::vec SAIGEClass::getPCG1ofSigmaAndGtilde(arma::vec& bVec, int maxiterPCG, d
     arma::vec xVec(Nnomissing, arma::fill::zeros); // Initialize xVec to zeros
     arma::vec rVec = bVec; // Residual vector
     arma::vec zVec(Nnomissing);
-    //arma::vec minvVec = 1.0 / spsigma.diag(); // Preconditioner (reciprocal of diagonal elements)
-arma::vec minvVec = 1.0 / m_diagSigma; // Convert diagonal view to dense vector
-    //m_diagSigma.print("m_diagSigma");
-    zVec = minvVec % rVec; // Apply preconditioner
+    // Preconditioner: m_diagSigmaInv is 1.0 / m_diagSigma, built once with the
+    // model instead of once per call (see the constructor).
+    zVec = m_diagSigmaInv % rVec; // Apply preconditioner
     double sumr2 = arma::dot(rVec, rVec); // Initial residual norm
     arma::vec pVec = zVec; // Search direction
+
+    // Hoisted out of the loop: each of these was a fresh n-double allocation on
+    // every iteration. Armadillo's operator= reuses the buffer when the
+    // dimensions already match, so they are allocated once per call and the
+    // expressions -- and therefore the arithmetic -- are untouched.
+    arma::vec ApVec, r1Vec, z1Vec;
 
     int iter = 0;
     while (sumr2 > tolPCG && iter < maxiterPCG) {
         iter++;
-        arma::vec ApVec = m_spSigmaMat * pVec; // Sparse matrix-vector multiplication
-	//ApVec.print("ApVec");
+        ApVec = m_spSigmaMat * pVec; // Sparse matrix-vector multiplication
         double alpha = arma::dot(rVec, zVec) / arma::dot(pVec, ApVec); // Step size
-	//std::cout << "alpha" << alpha << std::endl;
-        //pVec.print("pVec");
-	//xVec += alpha * pVec; // Update solution
         xVec = xVec + alpha * pVec;
-	
-	arma::vec r1Vec = rVec - alpha * ApVec; // Update residual
 
-        arma::vec z1Vec = minvVec % r1Vec; // Apply preconditioner to new residual
+        r1Vec = rVec - alpha * ApVec; // Update residual
+        z1Vec = m_diagSigmaInv % r1Vec; // Apply preconditioner to new residual
         double beta = arma::dot(z1Vec, r1Vec) / arma::dot(zVec, rVec); // Update beta
 
         pVec = z1Vec + beta * pVec; // Update search direction
-        zVec = z1Vec; // Update preconditioned residual
-        rVec = r1Vec; // Update residual
-	//xVec.print("xVec");
+        // Was `zVec = z1Vec; rVec = r1Vec;` -- two n-double copies per
+        // iteration. The old contents of z1Vec/r1Vec are dead (both are fully
+        // reassigned at the top of the next iteration), so exchanging the
+        // buffers leaves every value bit-identical and copies nothing.
+        zVec.swap(z1Vec); // Update preconditioned residual
+        rVec.swap(r1Vec); // Update residual
         sumr2 = arma::dot(rVec, rVec); // Update residual norm
     }
 

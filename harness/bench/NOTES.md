@@ -157,3 +157,54 @@ made the numbers look inconsistent.
 | S1+S2 (memoise + block Au) | 1.32x |
 | S1+S2+S3 (+ blocked multi-RHS PCG) | **2.37x** |
 
+
+
+## The sparse marker path, and what a 2% change looks like (2026-09-02)
+
+`s2_marker_all` cannot see anything in the marker-path `scoreTest` or in
+`getPCG1ofSigmaAndGtilde`: at default flags every marker goes to
+`scoreTestFast_noadjCov` and the PCG never runs. **`s2_marker_all_sparse`** is
+the same 128,868 markers through the sparse-GRM branch (`--sparseGRMFile` plus
+the `binary_sparseGRM_vr` model, the only one whose variance-ratio file carries
+both `sparse` and `null_noXadj` rows). Baseline at `b87fcaba`, 3 reps:
+**5.449 s work** against `s2_marker_all`'s 2.654 s, i.e. the covariate-adjusted
+score test plus one PCG solve per marker costs **2.05x** the fast path, ~22 us
+per marker at N = 1000.
+
+**Three reps could not resolve the F8 allocation change; eight paired reps
+could.** Unpaired 3+3 gave 5.449 -> 5.443 s (0.1%, inside a 1.2% within-arm
+spread) -- a non-result that reads as "no effect". Installing the two builds
+side by side (`R CMD INSTALL -l <scratch lib>` for the baseline, the pixi env
+for the change) and alternating arms within each rep gives:
+
+| rep | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | mean |
+|---|---|---|---|---|---|---|---|---|---|
+| before | 5.368 | 5.307 | 5.396 | 5.315 | 5.435 | 5.367 | 5.482 | 5.382 | 5.382 |
+| after | 5.262 | 5.301 | 5.194 | 5.177 | 5.240 | 5.277 | 5.569 | 5.201 | 5.278 |
+
+paired mean difference **0.104 s = 1.9%**, t = 2.91 on 7 df, **p = 0.023**,
+95% CI 0.4%-3.5%. Same conclusion as the reader comparison reached at N=50,000:
+**pair the arms**. Two libraries and an alternating loop cost one extra install
+and turn "unmeasurable" into a number with a confidence interval. The null
+control for the setup is in the script: each arm prints the `find.package`
+path it actually loaded, and the two `SAIGE.so` files are checksummed
+different; the outputs of the two arms are byte-identical over all 128,868
+markers, which is a stronger equality check than the golden comparison (same
+workload, 128,868 rows, not 70).
+
+Load average was 3-6 throughout, i.e. NOT a quiet machine -- which is exactly
+why the pairing matters and why the unpaired comparison failed.
+
+**Do not extrapolate the 1.9% to biobank N.** The mechanism is 3 allocations
+and 2 n-double copies removed per PCG iteration plus one n-vector reciprocal
+per call; at N = 1000 an n-vector is 8 KB, well inside malloc's fast path and
+L1-resident, so this is close to the smallest the change can ever be. Above
+n = 16,384 doubles each of those allocations crosses malloc's 128 KB mmap
+threshold and becomes an mmap/munmap pair, and the copies become DRAM traffic.
+That is a reason to expect the effect to grow, not a measurement of how much.
+
+One bookkeeping caveat on those rows: both the `f8-baseline` and `f8-after`
+labels in `results.tsv` carry commit `b87fcaba`, because the after-arm was
+measured from the working tree before the change was committed. The LABEL is
+the discriminator there, not the commit column, and the authoritative numbers
+for that change are the paired ones in the table above, not the 3-rep rows.
