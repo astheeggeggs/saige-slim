@@ -1,6 +1,7 @@
 # Step-2 threading sequence: S0-S3 landed (handoff, 2026-09-02)
 
-Branch `strip`, HEAD `0f828a14`. Working tree clean. Five commits, in order:
+Branch `strip`, pushed to `slim/strip`, **CI green** (run 33621566011). Working
+tree clean. Commits, in order:
 
 | commit | what |
 |---|---|
@@ -9,6 +10,9 @@ Branch `strip`, HEAD `0f828a14`. Working tree clean. Five commits, in order:
 | `fcb3feeb` | **S2** — ER seeds the R RNG only on markers that resample (closes F4) |
 | `357fb6df` | **S1** — POD returns for the SPA kernels; LEDGER #45, #46 |
 | `0f828a14` | **S3** — `TestContext` + const marker path; LEDGER #32 **fixed** |
+| `c10181fb` | this handoff record |
+| `1c7690e1` | CI — plink-ng headers guarded separately from the archive |
+| `f1d03251` | comparator — parse the non-finite spellings, not just their text |
 
 The authoritative plan is the status block at the top of
 `docs/design/step2-threading-verdict.md`, which is current as of this commit.
@@ -26,14 +30,34 @@ message.
 - The installed package in `.pixi` was built from this exact tree (clean
   objects). No rebuild needed to pick the work up.
 
-## The one thing that is NOT verified
+## What pushing cost, and what it was worth
 
-**Nothing here has been pushed, so CI has never seen it.** `strip` is 37
-commits ahead of `slim/strip`. CLAUDE.md's per-stage gate asks for green CI on
-`slim/strip`, and CI runs `SAIGE_COMPARE_MODE=numeric` on Linux, which is the
-arm that catches platform-dependent last-digit differences that a macOS byte
-run cannot. Both compare modes pass locally, which is the same check CI makes,
-but on one platform only. Push before treating S0-S3 as finished.
+CI was red twice before it was green, and NEITHER failure was in the work S0-S3
+did. Both are worth knowing about because both were latent and would have bitten
+whoever pushed next.
+
+1. **The build step, `pgenlib_read.h: No such file or directory`.** The workflow
+   cached only `.pixi/envs/default/lib/libplink2_includes.a` while
+   `harness/build.sh` guarded its whole fetch-and-compile block on that one
+   file -- but `plink-ng/` is gitignored, not cached, and `src/Makevars`
+   compiles everything with `-I../plink-ng/2.0/include`. So a cache HIT restored
+   the archive, skipped the fetch, and lost the headers: correct on a cold
+   cache, broken on every warm one. The 2026-09-01 green run is exactly what
+   populated the cache; ours was the first hit. Fixed in `1c7690e1` by guarding
+   the header tree and the archive independently (a warm run now re-fetches the
+   source in seconds and still skips the compile) and by caching both.
+2. **`P27` failed on Linux with "string column differs [SE]".** A comparator
+   gap, not a numeric one: `.is_numeric_col` asked `!anyNA(as.numeric(x))`, and
+   `as.numeric("nan")` returns NaN, which `anyNA()` cannot tell from a parse
+   failure -- so any column holding a NaN was compared as TEXT. And text is what
+   is not portable: glibc prints a sign-bit-set NaN as `-nan` where macOS prints
+   `nan`. P27/P30's rs20 and rs22 carry exactly that (LEDGER #44). Fixed in
+   `f1d03251`.
+
+The lesson for the next stage is the general one: **`SAIGE_COMPARE_MODE=numeric`
+passing locally is not the same check CI makes**, because on the golden-
+generating platform the numeric path can be reached with text that happens to
+match. Push early rather than at the end of a stage.
 
 ## Where to start
 
