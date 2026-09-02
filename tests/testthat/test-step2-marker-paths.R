@@ -36,7 +36,33 @@ mp_model <- function(prefix) c(
          file.path(saige_goldens, "step1", paste0(prefix, ".varianceRatio.txt")))
 )
 
-mp_case <- function(golden_base, extra_args) {
+# The two bundled markers that ARE the model's categorical covariates a9/a10
+# (R2 = 1.000000; CLAUDE.md records the identification). On any path that
+# regresses the covariates out of the genotype, the adjusted vector is exactly
+# zero, so Tstat and var are sums that cancel to nothing: in these goldens
+# |Tstat| ~ 3e-15 and var is 0 or ~3e-14, against [0.021, 14.5] and
+# [0.020, 39.9] for the 68 ordinary markers -- thirteen orders of magnitude
+# below the smallest real value in the same column.
+#
+# BETA is then Tstat/var, a RATIO of two noise quantities, which lands at O(0.1)
+# while carrying no information at all: -0.110908 here, something else entirely
+# under a different summation order. That is why these rows cannot be compared
+# across platforms at any relative tolerance, and why an absolute floor on the
+# value would not have caught the BETA column -- the failure is not that the
+# number is small, it is that the number is arbitrary. CI found it as
+# rel_err 1.2e-01 [BETA] / 1.6e-01 [Tstat] on Linux against macOS-generated
+# goldens.
+#
+# LEDGER #44 is the underlying bug: the `var1 <= min` guard covers the p-value
+# (1.0, portable and correct) but leaves BETA/SE/Tstat printed from the
+# underflowed variance. Fixing #44 -- emitting NA for a marker whose adjusted
+# variance has underflowed -- would make these rows portable and retire this
+# exclusion. Until then they are excluded from the NUMERIC comparison only; byte
+# mode still compares them, and the characterization test at the bottom of this
+# file still pins their degenerate values.
+MP_COVARIATE_MARKERS <- c("rs20", "rs22")
+
+mp_case <- function(golden_base, extra_args, drop_markers = character()) {
   skip_unless_level("standard")
   skip_if_no_goldens()
   out <- file.path(tempfile("step2_mp_"), golden_base)
@@ -46,7 +72,8 @@ mp_case <- function(golden_base, extra_args) {
     c(MP_PLINK, MP_COMMON, extra_args, paste0("--SAIGEOutputFile=", out))
   ))
   expect_output_matches_golden(
-    file.path(saige_goldens, "step2", golden_base), out
+    file.path(saige_goldens, "step2", golden_base), out,
+    drop_markers = drop_markers
   )
   invisible(out)
 }
@@ -56,7 +83,8 @@ test_that("marker-path sparse scoreTest + PCG matches golden (P27)", {
   # the binary_sparseGRM_vr model: sparse VR rows AND null_noXadj rows in one
   # file, which no other committed variance-ratio file has.
   mp_case("plink_marker_sparse.txt",
-          c(mp_model("binary_sparseGRM_vr"), MP_SG, "--is_fastTest=FALSE"))
+          c(mp_model("binary_sparseGRM_vr"), MP_SG, "--is_fastTest=FALSE"),
+          drop_markers = MP_COVARIATE_MARKERS)
 })
 
 test_that("marker fastTest re-test matches golden (P28)", {
@@ -77,7 +105,8 @@ test_that("marker fastTest re-test, sparse arm, matches golden (P29)", {
 test_that("marker scoreTestFast (is_noadjCov=FALSE) matches golden (P30)", {
   # The third arm of SAIGE_test.cpp:514-528, on all 70 markers.
   mp_case("plink_marker_noadjCov.txt",
-          c(mp_model("binary_sparseGRM_a"), "--is_noadjCov=FALSE"))
+          c(mp_model("binary_sparseGRM_a"), "--is_noadjCov=FALSE"),
+          drop_markers = MP_COVARIATE_MARKERS)
 })
 
 test_that("marker Firth path matches golden (P31)", {

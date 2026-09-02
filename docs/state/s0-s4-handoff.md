@@ -61,6 +61,26 @@ passing locally is not the same check CI makes**, because on the golden-
 generating platform the numeric path can be reached with text that happens to
 match. Push early rather than at the end of a stage.
 
+3. **And then the same two rows again, one layer down.** With the spelling
+   parsed, the comparison reaches the VALUES on those rows, and CI went red on
+   `456f47d6` -- a **docs-only** commit, which is what proves it is the goldens'
+   property and not any code change: `rel_err` 1.2e-01 [BETA] and 1.6e-01
+   [Tstat] on P27/P30. `rs20`/`rs22` ARE the model's covariates, so on any
+   covariate-adjusting path `|Tstat|` is ~3e-15 and `var` is 0 or ~3e-14 against
+   [0.021, 14.5] and [0.020, 39.9] for the other 68 markers -- thirteen orders
+   of magnitude of pure cancellation noise. `BETA = Tstat/var` is then a RATIO
+   of two noise quantities, O(0.1) and arbitrary, which is why an absolute
+   tolerance floor would not have caught it: **the number is not small, it is
+   meaningless**. Note the gate is INTERMITTENT, not deterministically red --
+   the very next run, on `1c15e3b7`, passed with the same goldens and the same
+   test code. That is the expected signature: low bits set by summation order,
+   so a different runner microarchitecture flips them. Handled by excluding
+   those two markers from the NUMERIC comparison of P27/P30 only, with controls
+   in `test-meta-comparators.R` proving the exclusion is narrow (dropping a
+   different row still fails; a relabelled or absent marker fails). **Fixing
+   LEDGER #44 retires the exclusion** -- emit `NA` under the predicate that
+   already forces `p = 1` -- and that is now the main argument for doing it.
+
 ## What S4 did
 
 `src/MarkerLoop.hpp` is new and holds the two types. `testOneMarker` is the loop

@@ -93,6 +93,28 @@ test_that("numeric comparator: catches every planted defect class", {
   expect_false(tables_equivalence(a, "/nope/missing.txt")$ok)
 })
 
+test_that("drop_markers excludes only the named rows and keeps the structural checks", {
+  a <- make_tsv(base_df)
+  drift <- base_df; drift$BETA[2] <- "0.6"          # rs2 moves by ~17%
+  # positive control FIRST: without the exclusion this must fail, or the test
+  # below proves nothing
+  expect_false(tables_equivalence(a, make_tsv(drift))$ok)
+  # dropping the row that moved passes; dropping a DIFFERENT row still fails
+  expect_true(tables_equivalence(a, make_tsv(drift), drop_markers = "rs2")$ok)
+  expect_false(tables_equivalence(a, make_tsv(drift), drop_markers = "rs3")$ok)
+  # null control: dropping nothing is the old behaviour
+  expect_true(tables_equivalence(a, make_tsv(base_df), drop_markers = character())$ok)
+  # the structural checks survive the exclusion: a table whose MarkerID column
+  # differs, or that lacks a named marker, fails rather than silently dropping
+  relabelled <- base_df; relabelled$MarkerID[3] <- "rs9"
+  expect_false(tables_equivalence(a, make_tsv(relabelled), drop_markers = "rs2")$ok)
+  expect_false(tables_equivalence(a, make_tsv(base_df), drop_markers = "rs404")$ok)
+  # and a row that differs OUTSIDE the dropped set is still caught even when the
+  # dropped row also differs
+  both <- drift; both$p.value[1] <- "1.000000E-01"
+  expect_false(tables_equivalence(a, make_tsv(both), drop_markers = "rs2")$ok)
+})
+
 test_that("comparators work on a real golden file", {
   skip_if_no_goldens()
   g <- file.path(saige_goldens, "step2", "plink_marker_binary.txt")

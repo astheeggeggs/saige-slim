@@ -128,7 +128,15 @@ read_saige_table <- function(path) {
 # Tolerance-based table comparison for step-2 outputs: structure and string
 # columns must match exactly; numeric columns within `tol` symmetric relative
 # error ("NA" must match "NA"). Returns list(ok, problems).
-tables_equivalence <- function(golden, candidate, tol = 1e-5) {
+#
+# `drop_markers` removes named rows from BOTH tables after the structural checks
+# (column sets, dims and the MarkerID column itself are still compared over the
+# full tables, so a run that lost or reordered a marker still fails). It exists
+# for rows whose statistics are numerically meaningless and therefore not
+# portable across platforms -- see the LEDGER #44 note at its only call site.
+# Use it for that, and never to quiet a difference that carries information.
+tables_equivalence <- function(golden, candidate, tol = 1e-5,
+                               drop_markers = character()) {
   problems <- character()
   if (!file.exists(golden)) problems <- c(problems, paste("missing golden:", golden))
   if (!file.exists(candidate)) problems <- c(problems, paste("missing candidate:", candidate))
@@ -138,6 +146,20 @@ tables_equivalence <- function(golden, candidate, tol = 1e-5) {
     return(list(ok = FALSE, problems = paste("column sets differ:", basename(golden))))
   if (!identical(dim(g), dim(c_)))
     return(list(ok = FALSE, problems = paste("dims differ:", basename(golden))))
+  if (length(drop_markers)) {
+    if (is.null(g[["MarkerID"]]))
+      return(list(ok = FALSE, problems = paste("drop_markers needs a MarkerID column:",
+                                               basename(golden))))
+    if (!identical(g[["MarkerID"]], c_[["MarkerID"]]))
+      return(list(ok = FALSE, problems = paste("string column differs [MarkerID]:",
+                                               basename(golden))))
+    if (!all(drop_markers %in% g[["MarkerID"]]))
+      return(list(ok = FALSE, problems = paste("drop_markers absent from table:",
+                                               basename(golden))))
+    keep <- !(g[["MarkerID"]] %in% drop_markers)
+    g <- g[keep, , drop = FALSE]
+    c_ <- c_[keep, , drop = FALSE]
+  }
   for (col in colnames(g)) {
     if (.is_numeric_col(g[[col]]) && .is_numeric_col(c_[[col]])) {
       if (!identical(g[[col]] %in% c("NA", ""), c_[[col]] %in% c("NA", "")))
@@ -159,17 +181,23 @@ expect_files_byte_identical <- function(golden, candidate) {
                                        " c=", file.exists(candidate), ")"))
 }
 
-expect_tables_equivalent <- function(golden, candidate, tol = 1e-5) {
-  r <- tables_equivalence(golden, candidate, tol = tol)
+expect_tables_equivalent <- function(golden, candidate, tol = 1e-5,
+                                     drop_markers = character()) {
+  r <- tables_equivalence(golden, candidate, tol = tol, drop_markers = drop_markers)
   testthat::expect_true(r$ok, label = paste0("tables equivalent: ", basename(golden),
                                              if (!r$ok) paste0(" [", paste(r$problems, collapse = "; "), "]")))
 }
 
-# Mode-dispatching comparison used by the end-to-end tests.
-expect_output_matches_golden <- function(golden, candidate, tol = 1e-5) {
+# Mode-dispatching comparison used by the end-to-end tests. `drop_markers`
+# reaches only the numeric path: byte mode is a claim about one code path re-run
+# on ONE platform, where even a meaningless row reproduces exactly, so nothing is
+# excluded there.
+expect_output_matches_golden <- function(golden, candidate, tol = 1e-5,
+                                         drop_markers = character()) {
   if (saige_compare_mode() == "byte") {
     expect_files_byte_identical(golden, candidate)
   } else {
-    expect_tables_equivalent(golden, candidate, tol = tol)
+    expect_tables_equivalent(golden, candidate, tol = tol,
+                             drop_markers = drop_markers)
   }
 }
