@@ -7,6 +7,7 @@
 
 
 
+#include <sstream>
 #include "SAIGE_test.hpp"
 #include "SPA.hpp"
 #include "ER_binary_func.hpp"
@@ -155,7 +156,8 @@ void SAIGEClass::scoreTest(arma::vec & t_GVec,
 		     arma::vec & t_P2Vec,
 		     double& t_gy, 
 		     bool t_is_region,
-		     arma::uvec & t_indexForNonZero){
+		     arma::uvec & t_indexForNonZero,
+		     const SAIGE::TestContext & t_ctx) const {
     arma::vec Sm, var2m;
     double S, var2;
     getadjGFast(t_GVec, t_gtilde, t_indexForNonZero);
@@ -171,10 +173,10 @@ void SAIGEClass::scoreTest(arma::vec & t_GVec,
 
     //std::cout << "S b " << S << std::endl;
 
-    if(!m_flagSparseGRM_cur){
+    if(!t_ctx.useSparseGRM){
       t_P2Vec = t_gtilde % m_mu2 *m_tauvec[0];  
       var2m = dot(t_P2Vec , t_gtilde);
-       //std::cout << "!m_flagSparseGRM_cur" << std::endl;
+       //std::cout << "!t_ctx.useSparseGRM" << std::endl;
     }else{
       //arma::sp_mat m_SigmaMat_sp = gen_sp_SigmaMat();
       //t_P2Vec = arma::spsolve(m_SigmaMat_sp, t_gtilde);
@@ -189,7 +191,7 @@ void SAIGEClass::scoreTest(arma::vec & t_GVec,
              //std::cout << "m_flagSparseGRM_cur" << std::endl;
     }	      
     var2 = var2m(0,0);
-    double var1 = var2 * m_varRatioVal;
+    double var1 = var2 * t_ctx.varRatioVal;
 
     double stat = S*S/var1;
     if (var1 <= std::numeric_limits<double>::min()){
@@ -242,7 +244,8 @@ void SAIGEClass::scoreTestFast(arma::vec & t_GVec,
                      double t_altFreq,
                      double &t_Tstat,
                      double &t_var1,
-                     double &t_var2){
+                     double &t_var2,
+                     const SAIGE::TestContext & t_ctx) const {
 
     arma::vec g1 = t_GVec.elem(t_indexForNonZero);
     arma::mat X1 = m_X.rows(t_indexForNonZero);
@@ -266,7 +269,7 @@ void SAIGEClass::scoreTestFast(arma::vec & t_GVec,
       var2 = ZtXVXZ(0,0)*m_tauvec[0] +  dot(g1,g1) - 2*Bmu2;
     }
 
-    var1 = var2 * m_varRatioVal;
+    var1 = var2 * t_ctx.varRatioVal;
     S1 = dot(res1, g1_tilde);
     arma::mat res1X1_temp = (res1.t()) * X1;
     arma::vec res1X1 = res1X1_temp.t();
@@ -326,7 +329,8 @@ void SAIGEClass::scoreTestFast_noadjCov(arma::vec & t_GVec,
                      double &t_Tstat,
                      double &t_var1,
                      double &t_var2,
-                     bool t_flip){
+                     bool t_flip,
+                     const SAIGE::TestContext & t_ctx) const {
 
     //arma::vec Sm, var2m;
       arma::vec g1 = t_GVec.elem(t_indexForNonZero);
@@ -366,7 +370,7 @@ void SAIGEClass::scoreTestFast_noadjCov(arma::vec & t_GVec,
 
 
     //var2 = var2m(0,0);
-    double var1 = var2 * m_varRatioVal;
+    double var1 = var2 * t_ctx.varRatioVal;
     //std::cout << "var1 " << var1 << std::endl;
     double stat = S*S/var1;
     if (var1 <= std::numeric_limits<double>::min()){
@@ -423,7 +427,7 @@ void SAIGEClass::getadjG(arma::vec & t_GVec, arma::vec & g){
 }
 
 
-void SAIGEClass::getadjGFast(arma::vec & t_GVec, arma::vec & g, arma::uvec & iIndex)
+void SAIGEClass::getadjGFast(arma::vec & t_GVec, arma::vec & g, arma::uvec & iIndex) const
 {
 
   // To increase computational efficiency when lots of GVec elements are 0
@@ -490,8 +494,8 @@ void SAIGEClass::getMarkerPval(arma::vec & t_GVec,
 				bool & t_isFirth,
 				bool & t_isFirthConverge, 
 				bool t_isER,
-				bool t_isnoadjCov,						bool t_isSparseGRM,
-				bool t_flip)
+				bool t_flip,
+				const SAIGE::TestContext & t_ctx) const
 {
 
 
@@ -503,7 +507,7 @@ void SAIGEClass::getMarkerPval(arma::vec & t_GVec,
   //iIndex = arma::find(t_GVec != 0);
   //arma::vec t_gtilde;
   bool isScoreFast = true;
-  if(m_flagSparseGRM_cur){
+  if(t_ctx.useSparseGRM){
     isScoreFast = false;
   }
 
@@ -518,21 +522,21 @@ void SAIGEClass::getMarkerPval(arma::vec & t_GVec,
   //	is_gtilde = true;
  // 	scoreTest(t_GVec, t_Beta, t_seBeta, t_pval_noSPA, pval_noadj, ispvallog, t_altFreq, t_Tstat, t_var1, t_var2, t_gtilde, t_P2Vec, t_gy, is_region, iIndex);
  // }else{
-if(!m_flagSparseGRM_cur && t_isnoadjCov){
+if(!t_ctx.useSparseGRM && t_ctx.noadjCov){
 	is_gtilde = false;
         isScoreFast = true;
-	scoreTestFast_noadjCov(t_GVec, iIndex, t_Beta, t_seBeta, t_pval_noSPA, pval_noadj, ispvallog, t_altFreq,t_Tstat, t_var1, t_var2, t_flip);
+	scoreTestFast_noadjCov(t_GVec, iIndex, t_Beta, t_seBeta, t_pval_noSPA, pval_noadj, ispvallog, t_altFreq,t_Tstat, t_var1, t_var2, t_flip, t_ctx);
 
-}else if(m_flagSparseGRM_cur){
+}else if(t_ctx.useSparseGRM){
 	is_gtilde = true;
         isScoreFast = false;
-        scoreTest(t_GVec, t_Beta, t_seBeta, t_pval_noSPA, pval_noadj, ispvallog, t_altFreq, t_Tstat, t_var1, t_var2, t_gtilde, t_P2Vec, t_gy, is_region, iIndex);
-	//std::cout << "m_flagSparseGRM_cur " << m_flagSparseGRM_cur << std::endl;
+        scoreTest(t_GVec, t_Beta, t_seBeta, t_pval_noSPA, pval_noadj, ispvallog, t_altFreq, t_Tstat, t_var1, t_var2, t_gtilde, t_P2Vec, t_gy, is_region, iIndex, t_ctx);
+	//std::cout << "useSparseGRM " << t_ctx.useSparseGRM << std::endl;
 }else{
 	is_gtilde = false;
         isScoreFast = true;
         //std::cout << "scoreTestFast "  << std::endl;
-        scoreTestFast(t_GVec, iIndex, t_Beta, t_seBeta, t_pval_noSPA, pval_noadj, ispvallog, t_altFreq, t_Tstat, t_var1, t_var2);	
+        scoreTestFast(t_GVec, iIndex, t_Beta, t_seBeta, t_pval_noSPA, pval_noadj, ispvallog, t_altFreq, t_Tstat, t_var1, t_var2, t_ctx);	
 }
 
 
@@ -697,7 +701,7 @@ if(!t_isER){
     	//bool logp=false;
 	double tol0 = std::numeric_limits<double>::epsilon();
 	tol1 = std::pow(tol0, 0.25);
-	if(p_iIndexComVecSize >= 0.5 && !m_flagSparseGRM_cur){
+	if(p_iIndexComVecSize >= 0.5 && !t_ctx.useSparseGRM){
 		//std::cout << "SPA_fast" << std::endl;
         	SPA_fast(m_mu, t_gtilde, q, qinv, pval_noadj, ispvallog, gNA, gNB, muNA, muNB, NAmu, NAsigma, tol1, m_traitType, t_SPApval, t_isSPAConverge);
 	
@@ -839,7 +843,7 @@ if(!t_isER){
         	getadjGFast(t_GVec, t_gtilde, iIndex);
         	is_gtilde = true;
         }
-        t_G1tilde_P_G2tilde = sqrt(m_varRatioVal) * t_gtilde.t() * m_P2Mat_cond;
+        t_G1tilde_P_G2tilde = sqrt(t_ctx.varRatioVal) * t_gtilde.t() * m_P2Mat_cond;
         arma::vec t_Tstat_ctemp =  t_G1tilde_P_G2tilde * m_VarInvMat_cond * m_Tstat_cond;
 	arma::mat tempgP2 = t_gtilde.t() * m_P2Mat_cond;
 
@@ -909,7 +913,7 @@ if(!t_isER){
         }
 
 
-        if(p_iIndexComVecSize >= 0.5 && !m_flagSparseGRM_cur){
+        if(p_iIndexComVecSize >= 0.5 && !t_ctx.useSparseGRM){
 		//std::cout << "SPA_fast " << std::endl;
                 // LEDGER #40 fixed: prepSPAContext() above fills these
                 // whenever p_iIndexComVecSize >= 0.5, which is exactly the
@@ -997,7 +1001,7 @@ if(!t_isER){
     if(is_region && isScoreFast){
 
       t_gy = dot(t_gtilde, m_y);
-      if(!m_flagSparseGRM_cur){
+      if(!t_ctx.useSparseGRM){
         t_P2Vec = t_gtilde % m_mu2 *m_tauvec[0];
       }else{
         //arma::sp_mat m_SigmaMat_sp = gen_sp_SigmaMat();
@@ -1008,84 +1012,113 @@ if(!t_isER){
 }
 
 
-bool SAIGEClass::assignVarianceRatio(double MAC, bool issparseforVR){
-    bool hasVarRatio = false;
-    arma::vec m_varRatio;
+// The bin search that the assign* family performs, with no member write, so the
+// marker path can own its result instead of parking it on the object between
+// markers (S3). The arithmetic and the comparison order are the originals.
+//
+// LEDGER #32 is fixed here rather than at the call sites: when a MAC falls in no
+// bin the old code returned false WITHOUT assigning, and every caller discarded
+// that return value, so the marker silently reused the previous marker's ratio.
+// Fixing it at the landmine means no caller can re-arm it. Coverage is
+// (-inf, minExc[0]], each (minExc[i], maxInc[i]], and (maxInc.back(), inf), so a
+// gap needs a specification whose bins leave a hole; the CLI validates only the
+// lengths of the two vectors, which is what makes it reachable.
+double SAIGEClass::selectVarianceRatio(double MAC, bool issparseforVR, bool isnoXadj, bool & t_hasVarRatio) const {
+    arma::vec varRatio;
     if(issparseforVR){
-	m_varRatio = m_varRatio_sparse;
+        varRatio = m_varRatio_sparse;
     }else{
-	m_varRatio = m_varRatio_null;
-    }
-    for(unsigned int i = 0; i < m_cateVarRatioMaxMACVecInclude.n_elem; i++)
-    {
-        if(MAC <= m_cateVarRatioMaxMACVecInclude(i) && MAC > m_cateVarRatioMinMACVecExclude(i)){    	    
-		m_varRatioVal = m_varRatio(i);
-		hasVarRatio = true;
-	}	
-    }
-
-    if(!hasVarRatio){	
-	if(MAC <= m_cateVarRatioMinMACVecExclude(0)){
-		m_varRatioVal = m_varRatio(0);
-		hasVarRatio = true;
-	}	
-    }
-
-    if(!hasVarRatio){
-        if(MAC > m_cateVarRatioMaxMACVecInclude.back()){
-		//m_varRatioVal = m_varRatio(a-1);
-		m_varRatioVal = m_varRatio.back();
-                hasVarRatio = true;
+        if(!isnoXadj){
+            varRatio = m_varRatio_null;
+        }else{
+            varRatio = m_varRatio_null_noXadj;
         }
     }
 
-    return(hasVarRatio);    
+    double varRatioVal = 0.0;
+    t_hasVarRatio = false;
+    for(unsigned int i = 0; i < m_cateVarRatioMaxMACVecInclude.n_elem; i++)
+    {
+        if(MAC <= m_cateVarRatioMaxMACVecInclude(i) && MAC > m_cateVarRatioMinMACVecExclude(i)){
+                varRatioVal = varRatio(i);
+                t_hasVarRatio = true;
+        }
+    }
+
+    if(!t_hasVarRatio){
+        if(MAC <= m_cateVarRatioMinMACVecExclude(0)){
+                varRatioVal = varRatio(0);
+                t_hasVarRatio = true;
+        }
+    }
+
+    if(!t_hasVarRatio){
+        if(MAC > m_cateVarRatioMaxMACVecInclude.back()){
+                varRatioVal = varRatio.back();
+                t_hasVarRatio = true;
+        }
+    }
+
+    if(!t_hasVarRatio){
+        std::ostringstream msg;
+        msg << "no categorical variance ratio covers MAC " << MAC
+            << "; the bins from --cateVarRatioMinMACVecExclude / "
+            << "--cateVarRatioMaxMACVecInclude leave a gap there. Bins (exclusive lower, "
+            << "inclusive upper]:";
+        for(unsigned int i = 0; i < m_cateVarRatioMaxMACVecInclude.n_elem; i++){
+            msg << " (" << m_cateVarRatioMinMACVecExclude(i) << ", "
+                << m_cateVarRatioMaxMACVecInclude(i) << "]";
+        }
+        throw std::runtime_error(msg.str());
+    }
+
+    return varRatioVal;
+}
+
+
+// Pure form of the two-argument assignSingleVarianceRatio. The arma::rowvec is
+// the original's, deliberately: assigning a multi-element arma::vec to a rowvec
+// throws "Mat::init(): requested size is not compatible with row vector layout"
+// (the LEDGER #10 message), so this is safe only for a single-ratio model, which
+// is exactly when its callers use it. Preserved rather than quietly widened.
+double SAIGEClass::selectSingleVarianceRatio(bool issparseforVR, bool isnoXadj) const {
+    arma::rowvec varRatio;
+    if(issparseforVR){
+        varRatio = m_varRatio_sparse;
+    }else{
+        if(isnoXadj){
+            varRatio = m_varRatio_null_noXadj;
+        }else{
+            varRatio = m_varRatio_null;
+        }
+    }
+    return varRatio(0);
+}
+
+
+// Snapshot of the three per-marker members for the region path, which still
+// drives them through the setters below.
+TestContext SAIGEClass::currentContext(bool t_noadjCov) const {
+    TestContext ctx;
+    ctx.varRatioVal = m_varRatioVal;
+    ctx.useSparseGRM = m_flagSparseGRM_cur;
+    ctx.noadjCov = t_noadjCov;
+    return ctx;
+}
+
+
+bool SAIGEClass::assignVarianceRatio(double MAC, bool issparseforVR){
+    bool hasVarRatio = false;
+    m_varRatioVal = selectVarianceRatio(MAC, issparseforVR, false, hasVarRatio);
+    return(hasVarRatio);
 }
 
 
 bool SAIGEClass::assignVarianceRatio(double MAC, bool issparseforVR, bool isnoXadj){
     bool hasVarRatio = false;
-    arma::vec m_varRatio;
-    if(issparseforVR){
-        m_varRatio = m_varRatio_sparse;
-    }else{
-        if(!isnoXadj){
-            //m_varRatio = m_varRatio_null;
-            m_varRatio = m_varRatio_null;
-        }else{
-        //m_varRatio_null_noXadj.print("m_varRatio_null_noXadj");
-            m_varRatio = m_varRatio_null_noXadj;
-            //m_varRatio.print("m_varRatio");
-        }
-    }
-    for(unsigned int i = 0; i < m_cateVarRatioMaxMACVecInclude.n_elem; i++)
-    {
-        if(MAC <= m_cateVarRatioMaxMACVecInclude(i) && MAC > m_cateVarRatioMinMACVecExclude(i)){
-                m_varRatioVal = m_varRatio(i);
-                hasVarRatio = true;
-        }
-    }
-
-    if(!hasVarRatio){
-        if(MAC <= m_cateVarRatioMinMACVecExclude(0)){
-                m_varRatioVal = m_varRatio(0);
-                hasVarRatio = true;
-        }
-    }
-
-    if(!hasVarRatio){
-        if(MAC > m_cateVarRatioMaxMACVecInclude.back()){
-                //m_varRatioVal = m_varRatio(a-1);
-                m_varRatioVal = m_varRatio.back();
-                hasVarRatio = true;
-        }
-    }
-
+    m_varRatioVal = selectVarianceRatio(MAC, issparseforVR, isnoXadj, hasVarRatio);
     return(hasVarRatio);
 }
-
-
-
 
 
 void SAIGEClass::assignSingleVarianceRatio(bool issparseforVR){ 
@@ -1100,22 +1133,8 @@ void SAIGEClass::assignSingleVarianceRatio(bool issparseforVR){
 
 
 void SAIGEClass::assignSingleVarianceRatio(bool issparseforVR, bool isnoXadj){
-    arma::rowvec m_varRatio;
-    //std::cout << "issparseforVR i0 " << issparseforVR << std::endl;
-    if(issparseforVR){
-        m_varRatio = m_varRatio_sparse;
-    }else{
-        if(isnoXadj){
-            m_varRatio = m_varRatio_null_noXadj;
-        }else{
-            m_varRatio = m_varRatio_null;
-        }
-    }
-    //std::cout << "assignSingleVarianceRatio" << std::endl;
-    //m_varRatio.print("m_varRatio");
-    m_varRatioVal = m_varRatio(0);
+    m_varRatioVal = selectSingleVarianceRatio(issparseforVR, isnoXadj);
 }
-
 
 
 void SAIGEClass::assignSingleVarianceRatio_withinput(double t_varRatioVal){
@@ -1169,8 +1188,8 @@ void SAIGEClass::extract_XV_XXVX_inv(arma::mat & t_XV, arma::mat & t_XXVX_inv){
 
 
 void SAIGEClass::fast_logistf_fit_simple(arma::mat & x,
-                arma::vec & y,
-                arma::vec & offset,
+                const arma::vec & y,
+                const arma::vec & offset,
                 bool firth,
         arma::vec init,
         int maxit,
@@ -1181,7 +1200,7 @@ void SAIGEClass::fast_logistf_fit_simple(arma::mat & x,
         double xconv,
         double & beta_G,
         double & sebeta_G, 
-	bool & isfirthconverge){
+	bool & isfirthconverge) const {
   isfirthconverge = false;	
   int n = x.n_rows;
   int k = x.n_cols;
@@ -1274,7 +1293,7 @@ void SAIGEClass::set_isnoadjCov_cur(bool t_isnoadjCov_cur){
         m_isnoadjCov_cur = t_isnoadjCov_cur;
 }
 
-arma::vec SAIGEClass::getPCG1ofSigmaAndGtilde(arma::vec& bVec, int maxiterPCG, double tolPCG) {
+arma::vec SAIGEClass::getPCG1ofSigmaAndGtilde(arma::vec& bVec, int maxiterPCG, double tolPCG) const {
     int Nnomissing = m_spSigmaMat.n_rows;
     arma::vec xVec(Nnomissing, arma::fill::zeros); // Initialize xVec to zeros
     arma::vec rVec = bVec; // Residual vector

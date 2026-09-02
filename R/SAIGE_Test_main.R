@@ -405,11 +405,11 @@ SPAGMMATtest <- function(bedFile = "",
     )
   }
 
-  # LEDGER #32: with categorical variance ratios, a MAC that falls in no bin
-  # silently reuses the previous marker's ratio. That carry is
-  # marker-order-dependent, so under nThreads > 1 it would make the threaded
-  # output differ from the serial output. Refuse rather than diverge; the
-  # serial behaviour is unchanged.
+  # LEDGER #32, fixed in S3: a MAC that falls in no bin used to reuse the
+  # previous marker's ratio; selectVarianceRatio now throws instead, so such a
+  # run stops at the first uncovered marker whatever nThreads is. This guard is
+  # kept because it is strictly better than that: it fires here, before a single
+  # marker is read, and says which flags are wrong rather than which MAC failed.
   if (nThreads > 1 & length(ratioVecList$ratioVec_null) > 1 &
     varianceRatioBinsHaveGap(cateVarRatioMinMACVecExclude, cateVarRatioMaxMACVecInclude)) {
     stop(

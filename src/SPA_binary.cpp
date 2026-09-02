@@ -20,7 +20,7 @@
 
 
 // [[Rcpp::export]]
-double Korg_Binom(double t1, arma::vec & mu, arma::vec & g)
+double Korg_Binom(double t1, const arma::vec & mu, const arma::vec & g)
 {
 	arma::vec temp = arma::log(1 - mu + mu % arma::exp(g * t1));
         double out = arma::sum(temp);
@@ -29,7 +29,7 @@ double Korg_Binom(double t1, arma::vec & mu, arma::vec & g)
 
 
 // [[Rcpp::export]]
-double K1_adj_Binom(double t1, arma::vec & mu, arma::vec & g, double q)
+double K1_adj_Binom(double t1, const arma::vec & mu, const arma::vec & g, double q)
 {
 	arma::vec temp1;
 	arma::vec temp2;
@@ -44,7 +44,7 @@ double K1_adj_Binom(double t1, arma::vec & mu, arma::vec & g, double q)
 
 
 // [[Rcpp::export]]
-double K2_Binom(double t1, arma::vec & mu, arma::vec & g)
+double K2_Binom(double t1, const arma::vec & mu, const arma::vec & g)
 {
         arma::vec temp0;
         arma::vec temp1;
@@ -69,13 +69,13 @@ double K2_Binom(double t1, arma::vec & mu, arma::vec & g)
 // The two full-length reductions over g, factored out so a caller that runs
 // getroot twice on the same g pays for them once. The expressions are the
 // originals, unchanged, so the values are bit-identical.
-void getGPosNeg_Binom(arma::vec & g, double & gpos, double & gneg){
+void getGPosNeg_Binom(const arma::vec & g, double & gpos, double & gneg){
 	gpos = arma::accu( g.elem( find(g > 0) ) );
 	gneg = arma::accu( g.elem( find(g < 0) ) );
 }
 
 // [[Rcpp::export]]
-Rcpp::List getroot_K1_Binom(double init, arma::vec & mu, arma::vec & g, double q, double tol, int maxiter){
+Rcpp::List getroot_K1_Binom(double init, const arma::vec & mu, const arma::vec & g, double q, double tol, int maxiter){
 	double gpos, gneg;
 	getGPosNeg_Binom(g, gpos, gneg);
 	SPARoot out = getroot_K1_Binom_core(init, mu, g, q, tol, gpos, gneg, maxiter);
@@ -86,7 +86,7 @@ Rcpp::List getroot_K1_Binom(double init, arma::vec & mu, arma::vec & g, double q
 	return(result);
 }
 
-SPARoot getroot_K1_Binom_core(double init, arma::vec & mu, arma::vec & g, double q, double tol, double gpos, double gneg, int maxiter){
+SPARoot getroot_K1_Binom_core(double init, const arma::vec & mu, const arma::vec & g, double q, double tol, double gpos, double gneg, int maxiter){
 	SPARoot result;
 	double root;
 	int niter;
@@ -160,7 +160,7 @@ SPARoot getroot_K1_Binom_core(double init, arma::vec & mu, arma::vec & g, double
 
 
 // [[Rcpp::export]]
-Rcpp::List Get_Saddle_Prob_Binom(double zeta,  arma::vec & mu, arma::vec & g, double q, bool logp)
+Rcpp::List Get_Saddle_Prob_Binom(double zeta,  const arma::vec & mu, const arma::vec & g, double q, bool logp)
 {
 	SPASaddle out = Get_Saddle_Prob_Binom_core(zeta, mu, g, q, logp);
 	Rcpp::List result;
@@ -170,7 +170,7 @@ Rcpp::List Get_Saddle_Prob_Binom(double zeta,  arma::vec & mu, arma::vec & g, do
 }
 
 
-SPASaddle Get_Saddle_Prob_Binom_core(double zeta,  arma::vec & mu, arma::vec & g, double q, bool logp)
+SPASaddle Get_Saddle_Prob_Binom_core(double zeta,  const arma::vec & mu, const arma::vec & g, double q, bool logp)
 {
 	double k1 = Korg_Binom(zeta, mu, g);
 	double k2 = K2_Binom(zeta, mu, g);
@@ -243,7 +243,7 @@ SPASaddle Get_Saddle_Prob_Binom_core(double zeta,  arma::vec & mu, arma::vec & g
 
 
 // [[Rcpp::export]]
-Rcpp::List SPA_binary(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_noadj, double tol, bool logp){
+Rcpp::List SPA_binary(const arma::vec & mu, const arma::vec & g, double q, double qinv, double pval_noadj, double tol, bool logp){
 	using namespace Rcpp;
 	List result;
 	double p1, p2, pval;
@@ -307,7 +307,7 @@ Rcpp::List SPA_binary(arma::vec & mu, arma::vec & g, double q, double qinv, doub
 
 
 // [[Rcpp::export]]
-double Korg_fast_Binom(double t1, arma::vec & mu, arma::vec & g,  arma::vec & gNA, arma::vec & gNB, arma::vec & muNA, arma::vec & muNB, double NAmu, double NAsigma)
+double Korg_fast_Binom(double t1, const arma::vec & mu, const arma::vec & g,  const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB, double NAmu, double NAsigma)
 {
 	arma::vec temp = arma::log(1 - muNB + muNB % (arma::exp(gNB * t1)));
         double out = arma::sum(temp) + NAmu*t1+ 0.5*NAsigma*pow(t1,2);
@@ -316,7 +316,7 @@ double Korg_fast_Binom(double t1, arma::vec & mu, arma::vec & g,  arma::vec & gN
 
 
 // [[Rcpp::export]]
-double K1_adj_fast_Binom(double t1, arma::vec & mu, arma::vec & g, double q, arma::vec & gNA, arma::vec & gNB, arma::vec & muNA, arma::vec & muNB,  double NAmu, double NAsigma)
+double K1_adj_fast_Binom(double t1, const arma::vec & mu, const arma::vec & g, double q, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma)
 {
 	arma::vec temp1;
 	arma::vec temp2;
@@ -334,7 +334,7 @@ double K1_adj_fast_Binom(double t1, arma::vec & mu, arma::vec & g, double q, arm
 
 
 // [[Rcpp::export]]
-double K2_fast_Binom(double t1, arma::vec & mu, arma::vec & g, arma::vec & gNA, arma::vec & gNB, arma::vec & muNA, arma::vec & muNB,  double NAmu, double NAsigma)
+double K2_fast_Binom(double t1, const arma::vec & mu, const arma::vec & g, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma)
 {
         arma::vec temp0;
         arma::vec temp1;
@@ -356,7 +356,7 @@ double K2_fast_Binom(double t1, arma::vec & mu, arma::vec & g, arma::vec & gNA, 
 
 
 // [[Rcpp::export]]
-Rcpp::List getroot_K1_fast_Binom(double init, arma::vec & mu, arma::vec & g, double q, arma::vec & gNA, arma::vec & gNB, arma::vec & muNA, arma::vec & muNB,  double NAmu, double NAsigma, double tol, int maxiter){
+Rcpp::List getroot_K1_fast_Binom(double init, const arma::vec & mu, const arma::vec & g, double q, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, double tol, int maxiter){
 	double gpos, gneg;
 	getGPosNeg_Binom(g, gpos, gneg);
 	SPARoot out = getroot_K1_fast_Binom_core(init, mu, g, q, gNA, gNB, muNA, muNB, NAmu, NAsigma, tol, gpos, gneg, maxiter);
@@ -367,7 +367,7 @@ Rcpp::List getroot_K1_fast_Binom(double init, arma::vec & mu, arma::vec & g, dou
 	return(result);
 }
 
-SPARoot getroot_K1_fast_Binom_core(double init, arma::vec & mu, arma::vec & g, double q, arma::vec & gNA, arma::vec & gNB, arma::vec & muNA, arma::vec & muNB,  double NAmu, double NAsigma, double tol, double gpos, double gneg, int maxiter){
+SPARoot getroot_K1_fast_Binom_core(double init, const arma::vec & mu, const arma::vec & g, double q, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, double tol, double gpos, double gneg, int maxiter){
 	SPARoot result;
 	double root;
 	int niter;
@@ -435,7 +435,7 @@ SPARoot getroot_K1_fast_Binom_core(double init, arma::vec & mu, arma::vec & g, d
 
 
 // [[Rcpp::export]]
-Rcpp::List Get_Saddle_Prob_fast_Binom(double zeta,  arma::vec & mu, arma::vec & g, double q, arma::vec & gNA, arma::vec & gNB, arma::vec & muNA, arma::vec & muNB,  double NAmu, double NAsigma, bool logp)
+Rcpp::List Get_Saddle_Prob_fast_Binom(double zeta,  const arma::vec & mu, const arma::vec & g, double q, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, bool logp)
 {
 	SPASaddle out = Get_Saddle_Prob_fast_Binom_core(zeta, mu, g, q, gNA, gNB, muNA, muNB, NAmu, NAsigma, logp);
 	Rcpp::List result;
@@ -445,7 +445,7 @@ Rcpp::List Get_Saddle_Prob_fast_Binom(double zeta,  arma::vec & mu, arma::vec & 
 }
 
 
-SPASaddle Get_Saddle_Prob_fast_Binom_core(double zeta,  arma::vec & mu, arma::vec & g, double q, arma::vec & gNA, arma::vec & gNB, arma::vec & muNA, arma::vec & muNB,  double NAmu, double NAsigma, bool logp)
+SPASaddle Get_Saddle_Prob_fast_Binom_core(double zeta,  const arma::vec & mu, const arma::vec & g, double q, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, bool logp)
 {
 	double k1 = Korg_fast_Binom(zeta, mu, g,  gNA,gNB,muNA,muNB,NAmu, NAsigma);
 	double k2 = K2_fast_Binom(zeta, mu, g,  gNA,gNB,muNA,muNB,NAmu, NAsigma);
@@ -513,7 +513,7 @@ SPASaddle Get_Saddle_Prob_fast_Binom_core(double zeta,  arma::vec & mu, arma::ve
 
 
 // [[Rcpp::export]]
-Rcpp::List SPA_binary_fast(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_noadj, bool logp, arma::vec & gNA, arma::vec & gNB, arma::vec & muNA, arma::vec & muNB,  double NAmu, double NAsigma, double tol){
+Rcpp::List SPA_binary_fast(const arma::vec & mu, const arma::vec & g, double q, double qinv, double pval_noadj, bool logp, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, double tol){
 	using namespace Rcpp;
 	List result;
 	double p1, p2, pval;

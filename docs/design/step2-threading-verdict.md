@@ -47,10 +47,25 @@ its commits have since landed and one of its stated gates was wrong.
   swapped between them, t = 7.53 on 15 df, 95% CI 8.4-15.1%), i.e. ~74 us per
   SPA-corrected marker. Consistent with the profile in `harness/bench/NOTES.md`,
   which put `SPA_fast` at 15% of the marker loop.
-- **Not yet done**: S3-S6 (TestContext, kernel extraction, reader clone,
-  threading), S7. With S1 and S2 in, the marker loop's remaining R-API entries
-  are the ER resampling seed (by design, on markers that draw) and whatever S3
-  turns up; the SPA kernels themselves are now callable from a worker thread.
+- **S3 DONE** (this commit). `TestContext` carries the three per-marker values
+  that were mutable members (`m_varRatioVal`, `m_flagSparseGRM_cur`,
+  `m_isnoadjCov_cur` -- exactly F2's inventory); `getMarkerPval`, the three
+  score tests, `getadjGFast`, `getPCG1ofSigmaAndGtilde` and
+  `fast_logistf_fit_simple` are `const`, and the marker loop builds a context per
+  marker instead of writing the model. The region path still drives the members
+  through the setters and snapshots them with `currentContext()`, so it is
+  unchanged by construction. **F3 (LEDGER #32) is fixed** at the landmine:
+  `selectVarianceRatio` throws on an uncovered MAC instead of leaving the
+  previous marker's ratio in place. The compiler was the audit -- const-ifying
+  surfaced every remaining write, and the only ones were the SPA kernels and
+  `fast_logistf_fit_simple` taking `arma::vec &` for read-only inputs, now
+  `const arma::vec &`. One dead parameter fell out: `getMarkerPval`'s
+  `t_isSparseGRM` was passed by every call site and never read (the body used the
+  member), so a caller could disagree with the code and never know.
+- **Not yet done**: S4-S6 (kernel extraction, reader clone, threading), S7. The
+  marker path is now free of member writes; what remains before threading is
+  S4's `MarkerResult`/`MarkerScratch` (the `vector<bool>` race and the
+  loop-hoisted buffers) and S5's reader `clone()`, which still throws.
 
 
 All verification complete. Delivering the judgment.

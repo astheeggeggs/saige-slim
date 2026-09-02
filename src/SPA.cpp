@@ -16,7 +16,7 @@
 #include "UTIL.hpp"
 
 // [[Rcpp::export]]
-void SPA(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, double & pval, bool & isSPAConverge){
+void SPA(const arma::vec & mu, const arma::vec & g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, double & pval, bool & isSPAConverge){
         double p1, p2;
         bool Isconverge = true;
         if( traitType != "binary"){
@@ -100,7 +100,7 @@ void SPA(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_noadj
 
 
 // [[Rcpp::export]]
-void SPA_fast(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_noadj, bool logp, arma::vec & gNA, arma::vec & gNB, arma::vec & muNA, arma::vec & muNB,  double NAmu, double NAsigma, double tol, std::string traitType, double & pval, bool & isSPAConverge){
+void SPA_fast(const arma::vec & mu, const arma::vec & g, double q, double qinv, double pval_noadj, bool logp, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, double tol, std::string traitType, double & pval, bool & isSPAConverge){
 
         double p1, p2;
         bool Isconverge = true;
@@ -190,7 +190,7 @@ void SPA_fast(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_
 
 
 // [[Rcpp::export]]
-double SPA_pval(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, bool & isSPAConverge){
+double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, bool & isSPAConverge){
        double pval;
         double p1, p2;
         bool Isconverge = true;

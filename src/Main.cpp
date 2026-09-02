@@ -402,16 +402,21 @@ void mainMarkerInCPP(
 
     //set_varianceRatio(MAC, isSingleVarianceRatio);
 
-    if(g_model->m_isFastTest){
-      g_model->set_flagSparseGRM_cur(false);
+    // S3: the marker path owns its test context instead of parking it on the
+    // model between markers. Same three values, same order of derivation --
+    // fastTest forces the non-sparse first pass, then the variance ratio is
+    // selected for that choice -- but nothing is written to g_model, so no
+    // marker can read what another one left behind (LEDGER #32) and two markers
+    // could be tested at once without racing.
+    SAIGE::TestContext ctx;
+    ctx.useSparseGRM = g_model->m_isFastTest ? false : g_model->m_flagSparseGRM;
+    ctx.noadjCov = g_model->m_isnoadjCov;
+    if(isSingleVarianceRatio){
+        ctx.varRatioVal = g_model->selectSingleVarianceRatio(ctx.useSparseGRM, ctx.noadjCov);
+        hasVarRatio = true;
     }else{
-      g_model->set_flagSparseGRM_cur(g_model->m_flagSparseGRM);	
+        ctx.varRatioVal = g_model->selectVarianceRatio(MAC, ctx.useSparseGRM, ctx.noadjCov, hasVarRatio);
     }
-      if(isSingleVarianceRatio){
-        g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM_cur, g_model->m_isnoadjCov);
-      }else{	
-        hasVarRatio = g_model->assignVarianceRatio(MAC, g_model->m_flagSparseGRM_cur, g_model->m_isnoadjCov);
-      }
       
     //}else{
     //  if(!isSingleVarianceRatio){
@@ -429,13 +434,13 @@ void mainMarkerInCPP(
 		    t_GVec, 
                           false, // bool t_isOnlyOutputNonZero, 
                           indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT,   
-			  altFreq, isSPAConverge, gtildeVec, is_gtilde, is_region, t_P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, g_model->m_isnoadjCov, g_model->m_flagSparseGRM_cur, flip);
+			  altFreq, isSPAConverge, gtildeVec, is_gtilde, is_region, t_P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
     }else{
       Unified_getMarkerPval( 
 		    t_GVec, 
                           false, // bool t_isOnlyOutputNonZero, 
                           indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT,   
-			  altFreq, isSPAConverge, gtildeVec, is_gtilde, is_region, t_P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, g_model->m_isnoadjCov, g_model->m_flagSparseGRM_cur, flip);
+			  altFreq, isSPAConverge, gtildeVec, is_gtilde, is_region, t_P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
     }
     double pval_num;
   
@@ -455,20 +460,19 @@ void mainMarkerInCPP(
 
     if(g_model->m_isFastTest && pval_num < (g_model->m_pval_cutoff_for_fastTest)){
       //g_model->set_flagSparseGRM_cur(true);
-     if(MAC > g_model->m_cateVarRatioMinMACVecExclude.back()){
-	g_model->set_flagSparseGRM_cur(false);
-      }else{
-        //std::cout << "MAC " << MAC << std::endl;
-        //std::cout << "pval_num " << pval_num << std::endl;
-        g_model->set_flagSparseGRM_cur(g_model->m_flagSparseGRM);
-      }
-      g_model->set_isnoadjCov_cur(false);
-      
-      if(!isSingleVarianceRatio){ 
-        hasVarRatio = g_model->assignVarianceRatio(MAC, g_model->m_flagSparseGRM_cur, g_model->m_isnoadjCov_cur);
-      }else{ 
-        g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM_cur, g_model->m_isnoadjCov_cur);
-      }
+     // The re-test escalates: a marker whose fast p-value cleared the cutoff is
+     // re-tested with the covariate adjustment on, and on the sparse GRM unless
+     // its MAC is above the last category bound. Same derivation as before, into
+     // a second context rather than back onto the model.
+     SAIGE::TestContext ctxRetest;
+     ctxRetest.useSparseGRM = (MAC > g_model->m_cateVarRatioMinMACVecExclude.back()) ? false : g_model->m_flagSparseGRM;
+     ctxRetest.noadjCov = false;
+     if(!isSingleVarianceRatio){
+        ctxRetest.varRatioVal = g_model->selectVarianceRatio(MAC, ctxRetest.useSparseGRM, ctxRetest.noadjCov, hasVarRatio);
+     }else{
+        ctxRetest.varRatioVal = g_model->selectSingleVarianceRatio(ctxRetest.useSparseGRM, ctxRetest.noadjCov);
+        hasVarRatio = true;
+     }
 
 
      //if(MAC > g_cfg.MACCutoffforER){
@@ -476,7 +480,7 @@ void mainMarkerInCPP(
                     t_GVec,
                           false, // bool t_isOnlyOutputNonZero,
                           indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT,
-                          altFreq, isSPAConverge, gtildeVec, is_gtilde, is_region, t_P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, g_model->m_isnoadjCov_cur, g_model->m_flagSparseGRM_cur, flip);
+                          altFreq, isSPAConverge, gtildeVec, is_gtilde, is_region, t_P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctxRetest);
      //}else{
       //std::cout << "ER " << std::endl;
    /*
@@ -732,15 +736,14 @@ void Unified_getMarkerPval(
 			   bool & t_isFirth,
 			   bool & t_isFirthConverge, 
 			   bool t_isER,
-			   bool t_isnoadjCov,
-                                bool t_isSparseGRM,
-			   bool t_flip )
+			   bool t_flip,
+			   const SAIGE::TestContext & t_ctx )
 {
     if(t_isOnlyOutputNonZero == true)
       Rcpp::stop("When using SAIGE method to calculate marker-level p-values, 't_isOnlyOutputNonZero' should be false.");
 
 
-    g_model->getMarkerPval(t_GVec, t_indexForNonZero_vec, t_indexForZero_vec, t_Beta, t_seBeta, t_pval, t_pval_noSPA, t_altFreq, t_Tstat, t_gy, t_varT, t_isSPAConverge, t_gtilde, is_gtilde, is_region, t_P2Vec, t_isCondition, t_Beta_c, t_seBeta_c, t_pval_c, t_pval_noSPA_c, t_Tstat_c, t_varT_c, t_G1tilde_P_G2tilde_Vec, t_isFirth, t_isFirthConverge, t_isER, t_isnoadjCov, t_isSparseGRM, t_flip); //SAIGE_new.cpp
+    g_model->getMarkerPval(t_GVec, t_indexForNonZero_vec, t_indexForZero_vec, t_Beta, t_seBeta, t_pval, t_pval_noSPA, t_altFreq, t_Tstat, t_gy, t_varT, t_isSPAConverge, t_gtilde, is_gtilde, is_region, t_P2Vec, t_isCondition, t_Beta_c, t_seBeta_c, t_pval_c, t_pval_noSPA_c, t_Tstat_c, t_varT_c, t_G1tilde_P_G2tilde_Vec, t_isFirth, t_isFirthConverge, t_isER, t_flip, t_ctx); //SAIGE_new.cpp
     
     //t_indexForNonZero_vec.clear();
   
@@ -1250,13 +1253,13 @@ Rcpp::List mainRegionInCPP(
           Unified_getMarkerPval(
                     GVec,
                     false, // bool t_isOnlyOutputNonZero,
-          indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, false, g_model->m_flagSparseGRM_cur, flip);
+          indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, g_model->currentContext(false));
 
 	}else{	
           Unified_getMarkerPval(
                     GVec,
                     false, // bool t_isOnlyOutputNonZero,
-          indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, false, g_model->m_flagSparseGRM_cur, flip);
+          indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, g_model->currentContext(false));
 	}
 
 
@@ -1634,9 +1637,9 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
 
 
 	    if(MAC <= g_cfg.MACCutoffforER && t_traitType == "binary" && erAllowedVec[r]){
-              g_model->getMarkerPval(genoURVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, false, g_model->m_flagSparseGRM_cur, flip);
+              g_model->getMarkerPval(genoURVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, g_model->currentContext(false));
 	    }else{
-              g_model->getMarkerPval(genoURVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, false, g_model->m_flagSparseGRM_cur, flip);
+              g_model->getMarkerPval(genoURVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, g_model->currentContext(false));
 	    }
 
             BetaVec.at(i) = Beta* (1 - 2*flip);
@@ -1956,9 +1959,9 @@ if(t_regionTestType == "BURDEN"){
 
 	  //arma::vec timeoutput_getp = getTime();
 	  if(MAC <= g_cfg.MACCutoffforER && t_traitType == "binary" && erAllowedVec[r] ){
-          g_model->getMarkerPval(genoSumVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, isregion, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, false, g_model->m_flagSparseGRM_cur, flip);
+          g_model->getMarkerPval(genoSumVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, isregion, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, g_model->currentContext(false));
 	  }else{
-          g_model->getMarkerPval(genoSumVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, isregion, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, false, g_model->m_flagSparseGRM_cur, flip);
+          g_model->getMarkerPval(genoSumVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, isregion, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, g_model->currentContext(false));
 	  }	  
 	  //arma::vec timeoutput_getp2 = getTime();
 	  //printTime(timeoutput_getp, timeoutput_getp2, "get p  done");
@@ -2364,12 +2367,12 @@ void assign_conditionMarkers_factors(
      Unified_getMarkerPval(
                     GVec,
                     false, // bool t_isOnlyOutputNonZero,
-                    indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, false, g_model->m_flagSparseGRM, flip);
+                    indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, g_model->currentContext(false));
   }else{
      Unified_getMarkerPval(
                     GVec,
                     false, // bool t_isOnlyOutputNonZero,
-                    indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, false, g_model->m_flagSparseGRM, flip);
+                    indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, g_model->currentContext(false));
 
   }
       P1Mat.row(i) = sqrt(g_model->m_varRatioVal)*gtildeVec.t();

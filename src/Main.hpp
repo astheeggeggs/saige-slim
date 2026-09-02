@@ -3,6 +3,7 @@
 
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
+#include "SAIGE_test.hpp"   // SAIGE::TestContext, carried by Unified_getMarkerPval
 
 
 void setAssocTest_GlobalVarsInCPP(std::string t_impute_method,
@@ -93,9 +94,8 @@ void Unified_getMarkerPval(
 			    bool & t_isFirth,
 			   bool & t_isFirthConverge,
 			   bool t_isER,
-			  bool t_isnoadjCov,
-			  bool t_isSparseGRM,
-			  bool t_flip);
+			  bool t_flip,
+			  const SAIGE::TestContext & t_ctx);
 
 
 Rcpp::List mainRegionInCPP(

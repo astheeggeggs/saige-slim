@@ -163,13 +163,20 @@ test_that("varianceRatioBinsHaveGap accepts contiguous bins, rejects gapped", {
   expect_true(SAIGE:::varianceRatioBinsHaveGap(c(0.5, NA), c(1.5, 2.5)))
 })
 
-test_that("gapped variance-ratio bins are refused at nThreads > 1", {
+test_that("gapped variance-ratio bins are refused, serially and threaded", {
   skip_unless_level("standard")
   skip_if_no_goldens()
-  # LEDGER #32: with this gap at MAC = 3 the serial run and the threaded run
-  # genuinely disagree (measured at nThreads 5,6,7,10,12,15,20,30,50), because
-  # the uncovered markers reuse whichever marker was tested before them. The
-  # serial run must still work; the threaded run must stop.
+  # LEDGER #32, now FIXED (S3). With this gap at MAC = 3 the uncovered markers
+  # used to reuse whichever marker was tested before them: wrong serially, and
+  # measurably order-dependent under threading (the serial run disagreed with
+  # the threaded one at nThreads 5,6,7,10,12,15,20,30,50). The carry is gone --
+  # selectVarianceRatio throws when a MAC falls in no bin -- so BOTH runs must
+  # now stop. This assertion was inverted with the fix: it previously required
+  # the serial run to succeed, which is what pinned the bug.
+  # The two arms stop for different reasons and that is deliberate: the threaded
+  # arm is refused up front in R by varianceRatioBinsHaveGap (a clearer message,
+  # before a single marker is read), the serial arm at the first marker that
+  # lands in the gap.
   gapArgs <- c(
     TH_PLINK_G, "--chrom=1", "--minMAF=0", "--minMAC=1", "--LOCO=FALSE",
     paste0("--GMMATmodelFile=",
@@ -182,9 +189,13 @@ test_that("gapped variance-ratio bins are refused at nThreads > 1", {
 
   out1 <- file.path(tempfile("step2_th_gap1_"), "marker.txt")
   dir.create(dirname(out1), recursive = TRUE)
-  expect_cli_ok(run_saige_cli("step2_SPAtests.R",
-                              c(gapArgs, paste0("--SAIGEOutputFile=", out1),
-                                "--nThreads=1")))
+  log1 <- tempfile(fileext = ".log")
+  status1 <- run_saige_cli("step2_SPAtests.R",
+                           c(gapArgs, paste0("--SAIGEOutputFile=", out1),
+                             "--nThreads=1"), log = log1)
+  expect_false(identical(as.integer(status1), 0L))
+  expect_true(any(grepl("no categorical variance ratio covers MAC",
+                        readLines(log1, warn = FALSE))))
 
   out2 <- file.path(tempfile("step2_th_gap2_"), "marker.txt")
   dir.create(dirname(out2), recursive = TRUE)

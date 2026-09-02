@@ -8,6 +8,22 @@
 
 namespace SAIGE{
 
+// Everything the per-marker test needs that used to live in mutable members of
+// SAIGEClass (S3 in docs/design/step2-threading-verdict.md). The marker loop
+// wrote three members before every call -- m_varRatioVal, m_flagSparseGRM_cur,
+// m_isnoadjCov_cur -- and getMarkerPval read them back, which is a data race the
+// moment two markers are tested at once, and (via m_varRatioVal) a genuine
+// cross-marker read even when they are not: see LEDGER #32.
+//
+// The marker path now builds one of these per marker and passes it down; the
+// region path still writes the members and snapshots them with
+// currentContext(), so its behaviour is unchanged by construction.
+struct TestContext {
+        double varRatioVal = 0.0;   // the variance ratio selected for this marker
+        bool useSparseGRM = false;  // was m_flagSparseGRM_cur
+        bool noadjCov = false;      // was the t_isnoadjCov argument / m_isnoadjCov_cur
+};
+
 class SAIGEClass
 {
     private:
@@ -147,7 +163,8 @@ class SAIGEClass
                      arma::vec & t_P2Vec,
 		     double& t_gy,
                      bool t_is_region,
-		     arma::uvec & t_indexForNonZero);
+		     arma::uvec & t_indexForNonZero,
+		     const TestContext & t_ctx) const;
 
 
 void scoreTestFast(arma::vec & t_GVec,
@@ -160,7 +177,8 @@ void scoreTestFast(arma::vec & t_GVec,
                      double t_altFreq,
                      double &t_Tstat,
                      double &t_var1,
-                     double &t_var2);
+                     double &t_var2,
+                     const TestContext & t_ctx) const;
 
 // t_flip: true when imputeGenoAndFlip() mirrored this marker (ALT was the major
 // allele), in which case t_GVec is minor-coded while t_altFreq has been restored
@@ -176,7 +194,8 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
                      double &t_Tstat,
                      double &t_var1,
                      double &t_var2,
-                     bool t_flip);
+                     bool t_flip,
+                     const TestContext & t_ctx) const;
 
 
 
@@ -185,7 +204,7 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
      void get_mu(arma::vec & t_mu);
 
      void getadjG(arma::vec & t_GVec, arma::vec & g);
-     void getadjGFast(arma::vec & t_GVec, arma::vec & g,  arma::uvec & iIndex);
+     void getadjGFast(arma::vec & t_GVec, arma::vec & g,  arma::uvec & iIndex) const;
 
      void getMarkerPval(arma::vec & t_GVec,
 			        arma::uvec & iIndex,
@@ -214,8 +233,8 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
 				bool & t_isFirth,
                                 bool & t_isFirthConverge, 
 				bool t_isER,
-                                bool t_isnoadjCov,                                              bool t_isSparseGRM,
-				bool t_flip);
+				bool t_flip,
+				const TestContext & t_ctx) const;
 
     void getindices(arma::uvec & t_case_indices,
       arma::uvec & t_ctrl_indices);
@@ -224,6 +243,16 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
     //void setupSparseMat(int r, arma::umat & locationMatinR, arma::vec & valueVecinR);
 
     //arma::sp_mat gen_sp_SigmaMat();
+
+    // Pure selectors: the bodies of the assign* family with no member write.
+    // t_hasVarRatio is an out parameter; a MAC that falls in no bin throws
+    // rather than leaving the caller with the previous marker's ratio
+    // (LEDGER #32).
+    double selectVarianceRatio(double MAC, bool issparseforVR, bool isnoXadj, bool & t_hasVarRatio) const;
+    double selectSingleVarianceRatio(bool issparseforVR, bool isnoXadj) const;
+    // Snapshot of the three per-marker members, for the region path, which still
+    // drives them through the assign*/set_* setters.
+    TestContext currentContext(bool t_noadjCov) const;
 
     bool assignVarianceRatio(double MAC, bool issparseforVR);
 
@@ -251,8 +280,8 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
     void extract_XV_XXVX_inv(arma::mat & t_XV, arma::mat & t_XXVX_inv);
 
     void fast_logistf_fit_simple(arma::mat & x,
-                arma::vec & y,
-                arma::vec & offset,
+                const arma::vec & y,
+                const arma::vec & offset,
                 bool firth,
         arma::vec init,
         int maxit,
@@ -263,13 +292,13 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
         double xconv,
         double & beta_G,
         double & sebeta_G,
-	bool & isfirthconverge);	
+	bool & isfirthconverge) const;	
 
      void set_isnoadjCov_cur(bool t_isnoadjCov_cur);
      bool  assignVarianceRatio(double MAC, bool issparseforVR, bool isnoXadj);
      void assignSingleVarianceRatio(bool issparseforVR, bool isnoXadj);
 
-     arma::vec getPCG1ofSigmaAndGtilde(arma::vec& bVec, int maxiterPCG, double tolPCG);
+     arma::vec getPCG1ofSigmaAndGtilde(arma::vec& bVec, int maxiterPCG, double tolPCG) const;
 
 };
 }

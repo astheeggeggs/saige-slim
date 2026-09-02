@@ -443,6 +443,14 @@ long-running `main*InCPP()` loop that writes output files from C++
   are the live ER machinery (imported from SKAT) — keep.
 - Step 0 cannot be separated from step 1: both drive the same global `geno`,
   and `createSparseKinParallel` is defined in `R/SAIGE_fitGLMM_fast.R`.
+- **The step-2 MARKER path no longer writes to the model.** `SAIGE::TestContext`
+  (`src/SAIGE_test.hpp`) carries the three values that used to be mutable
+  members between the loop and the test -- the variance ratio, the sparse-GRM
+  flag and the noadjCov flag -- and `getMarkerPval`, the score tests,
+  `getadjGFast`, the PCG and the Firth fit are all `const`. The REGION path
+  still drives those members through `assignVarianceRatio`/`set_*_cur` and
+  snapshots them with `currentContext(noadjCov)`, so it is unchanged; if you add
+  a marker-path caller, build a context, do not resurrect the setters.
 - One dataset per R process; no reentrancy. Parallelism is process-level
   (step-2 `--nThreads`: `R/MarkerShard.R` partitions the canonical marker
   order and `mclapply`s — see below) plus RcppParallel/TBB in step-1 GRM

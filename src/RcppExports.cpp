@@ -1614,12 +1614,12 @@ BEGIN_RCPP
 END_RCPP
 }
 // SPA
-void SPA(arma::vec& mu, arma::vec& g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, double& pval, bool& isSPAConverge);
+void SPA(const arma::vec& mu, const arma::vec& g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, double& pval, bool& isSPAConverge);
 RcppExport SEXP _SAIGE_SPA(SEXP muSEXP, SEXP gSEXP, SEXP qSEXP, SEXP qinvSEXP, SEXP pval_noadjSEXP, SEXP tolSEXP, SEXP logpSEXP, SEXP traitTypeSEXP, SEXP pvalSEXP, SEXP isSPAConvergeSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::vec& >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type g(gSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type g(gSEXP);
     Rcpp::traits::input_parameter< double >::type q(qSEXP);
     Rcpp::traits::input_parameter< double >::type qinv(qinvSEXP);
     Rcpp::traits::input_parameter< double >::type pval_noadj(pval_noadjSEXP);
@@ -1633,20 +1633,20 @@ BEGIN_RCPP
 END_RCPP
 }
 // SPA_fast
-void SPA_fast(arma::vec& mu, arma::vec& g, double q, double qinv, double pval_noadj, bool logp, arma::vec& gNA, arma::vec& gNB, arma::vec& muNA, arma::vec& muNB, double NAmu, double NAsigma, double tol, std::string traitType, double& pval, bool& isSPAConverge);
+void SPA_fast(const arma::vec& mu, const arma::vec& g, double q, double qinv, double pval_noadj, bool logp, const arma::vec& gNA, const arma::vec& gNB, const arma::vec& muNA, const arma::vec& muNB, double NAmu, double NAsigma, double tol, std::string traitType, double& pval, bool& isSPAConverge);
 RcppExport SEXP _SAIGE_SPA_fast(SEXP muSEXP, SEXP gSEXP, SEXP qSEXP, SEXP qinvSEXP, SEXP pval_noadjSEXP, SEXP logpSEXP, SEXP gNASEXP, SEXP gNBSEXP, SEXP muNASEXP, SEXP muNBSEXP, SEXP NAmuSEXP, SEXP NAsigmaSEXP, SEXP tolSEXP, SEXP traitTypeSEXP, SEXP pvalSEXP, SEXP isSPAConvergeSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::vec& >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type g(gSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type g(gSEXP);
     Rcpp::traits::input_parameter< double >::type q(qSEXP);
     Rcpp::traits::input_parameter< double >::type qinv(qinvSEXP);
     Rcpp::traits::input_parameter< double >::type pval_noadj(pval_noadjSEXP);
     Rcpp::traits::input_parameter< bool >::type logp(logpSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type gNA(gNASEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type gNB(gNBSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type muNA(muNASEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type muNB(muNBSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type gNA(gNASEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type gNB(gNBSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type muNA(muNASEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type muNB(muNBSEXP);
     Rcpp::traits::input_parameter< double >::type NAmu(NAmuSEXP);
     Rcpp::traits::input_parameter< double >::type NAsigma(NAsigmaSEXP);
     Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
@@ -1658,13 +1658,13 @@ BEGIN_RCPP
 END_RCPP
 }
 // SPA_pval
-double SPA_pval(arma::vec& mu, arma::vec& g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, bool& isSPAConverge);
+double SPA_pval(const arma::vec& mu, const arma::vec& g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, bool& isSPAConverge);
 RcppExport SEXP _SAIGE_SPA_pval(SEXP muSEXP, SEXP gSEXP, SEXP qSEXP, SEXP qinvSEXP, SEXP pval_noadjSEXP, SEXP tolSEXP, SEXP logpSEXP, SEXP traitTypeSEXP, SEXP isSPAConvergeSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::vec& >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type g(gSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type g(gSEXP);
     Rcpp::traits::input_parameter< double >::type q(qSEXP);
     Rcpp::traits::input_parameter< double >::type qinv(qinvSEXP);
     Rcpp::traits::input_parameter< double >::type pval_noadj(pval_noadjSEXP);
@@ -1677,54 +1677,54 @@ BEGIN_RCPP
 END_RCPP
 }
 // Korg_Binom
-double Korg_Binom(double t1, arma::vec& mu, arma::vec& g);
+double Korg_Binom(double t1, const arma::vec& mu, const arma::vec& g);
 RcppExport SEXP _SAIGE_Korg_Binom(SEXP t1SEXP, SEXP muSEXP, SEXP gSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< double >::type t1(t1SEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type g(gSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type g(gSEXP);
     rcpp_result_gen = Rcpp::wrap(Korg_Binom(t1, mu, g));
     return rcpp_result_gen;
 END_RCPP
 }
 // K1_adj_Binom
-double K1_adj_Binom(double t1, arma::vec& mu, arma::vec& g, double q);
+double K1_adj_Binom(double t1, const arma::vec& mu, const arma::vec& g, double q);
 RcppExport SEXP _SAIGE_K1_adj_Binom(SEXP t1SEXP, SEXP muSEXP, SEXP gSEXP, SEXP qSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< double >::type t1(t1SEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type g(gSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type g(gSEXP);
     Rcpp::traits::input_parameter< double >::type q(qSEXP);
     rcpp_result_gen = Rcpp::wrap(K1_adj_Binom(t1, mu, g, q));
     return rcpp_result_gen;
 END_RCPP
 }
 // K2_Binom
-double K2_Binom(double t1, arma::vec& mu, arma::vec& g);
+double K2_Binom(double t1, const arma::vec& mu, const arma::vec& g);
 RcppExport SEXP _SAIGE_K2_Binom(SEXP t1SEXP, SEXP muSEXP, SEXP gSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< double >::type t1(t1SEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type g(gSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type g(gSEXP);
     rcpp_result_gen = Rcpp::wrap(K2_Binom(t1, mu, g));
     return rcpp_result_gen;
 END_RCPP
 }
 // getroot_K1_Binom
-Rcpp::List getroot_K1_Binom(double init, arma::vec& mu, arma::vec& g, double q, double tol, int maxiter);
+Rcpp::List getroot_K1_Binom(double init, const arma::vec& mu, const arma::vec& g, double q, double tol, int maxiter);
 RcppExport SEXP _SAIGE_getroot_K1_Binom(SEXP initSEXP, SEXP muSEXP, SEXP gSEXP, SEXP qSEXP, SEXP tolSEXP, SEXP maxiterSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< double >::type init(initSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type g(gSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type g(gSEXP);
     Rcpp::traits::input_parameter< double >::type q(qSEXP);
     Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
     Rcpp::traits::input_parameter< int >::type maxiter(maxiterSEXP);
@@ -1733,14 +1733,14 @@ BEGIN_RCPP
 END_RCPP
 }
 // Get_Saddle_Prob_Binom
-Rcpp::List Get_Saddle_Prob_Binom(double zeta, arma::vec& mu, arma::vec& g, double q, bool logp);
+Rcpp::List Get_Saddle_Prob_Binom(double zeta, const arma::vec& mu, const arma::vec& g, double q, bool logp);
 RcppExport SEXP _SAIGE_Get_Saddle_Prob_Binom(SEXP zetaSEXP, SEXP muSEXP, SEXP gSEXP, SEXP qSEXP, SEXP logpSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< double >::type zeta(zetaSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type g(gSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type g(gSEXP);
     Rcpp::traits::input_parameter< double >::type q(qSEXP);
     Rcpp::traits::input_parameter< bool >::type logp(logpSEXP);
     rcpp_result_gen = Rcpp::wrap(Get_Saddle_Prob_Binom(zeta, mu, g, q, logp));
@@ -1748,13 +1748,13 @@ BEGIN_RCPP
 END_RCPP
 }
 // SPA_binary
-Rcpp::List SPA_binary(arma::vec& mu, arma::vec& g, double q, double qinv, double pval_noadj, double tol, bool logp);
+Rcpp::List SPA_binary(const arma::vec& mu, const arma::vec& g, double q, double qinv, double pval_noadj, double tol, bool logp);
 RcppExport SEXP _SAIGE_SPA_binary(SEXP muSEXP, SEXP gSEXP, SEXP qSEXP, SEXP qinvSEXP, SEXP pval_noadjSEXP, SEXP tolSEXP, SEXP logpSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::vec& >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type g(gSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type g(gSEXP);
     Rcpp::traits::input_parameter< double >::type q(qSEXP);
     Rcpp::traits::input_parameter< double >::type qinv(qinvSEXP);
     Rcpp::traits::input_parameter< double >::type pval_noadj(pval_noadjSEXP);
@@ -1765,18 +1765,18 @@ BEGIN_RCPP
 END_RCPP
 }
 // Korg_fast_Binom
-double Korg_fast_Binom(double t1, arma::vec& mu, arma::vec& g, arma::vec& gNA, arma::vec& gNB, arma::vec& muNA, arma::vec& muNB, double NAmu, double NAsigma);
+double Korg_fast_Binom(double t1, const arma::vec& mu, const arma::vec& g, const arma::vec& gNA, const arma::vec& gNB, const arma::vec& muNA, const arma::vec& muNB, double NAmu, double NAsigma);
 RcppExport SEXP _SAIGE_Korg_fast_Binom(SEXP t1SEXP, SEXP muSEXP, SEXP gSEXP, SEXP gNASEXP, SEXP gNBSEXP, SEXP muNASEXP, SEXP muNBSEXP, SEXP NAmuSEXP, SEXP NAsigmaSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< double >::type t1(t1SEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type g(gSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type gNA(gNASEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type gNB(gNBSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type muNA(muNASEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type muNB(muNBSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type g(gSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type gNA(gNASEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type gNB(gNBSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type muNA(muNASEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type muNB(muNBSEXP);
     Rcpp::traits::input_parameter< double >::type NAmu(NAmuSEXP);
     Rcpp::traits::input_parameter< double >::type NAsigma(NAsigmaSEXP);
     rcpp_result_gen = Rcpp::wrap(Korg_fast_Binom(t1, mu, g, gNA, gNB, muNA, muNB, NAmu, NAsigma));
@@ -1784,19 +1784,19 @@ BEGIN_RCPP
 END_RCPP
 }
 // K1_adj_fast_Binom
-double K1_adj_fast_Binom(double t1, arma::vec& mu, arma::vec& g, double q, arma::vec& gNA, arma::vec& gNB, arma::vec& muNA, arma::vec& muNB, double NAmu, double NAsigma);
+double K1_adj_fast_Binom(double t1, const arma::vec& mu, const arma::vec& g, double q, const arma::vec& gNA, const arma::vec& gNB, const arma::vec& muNA, const arma::vec& muNB, double NAmu, double NAsigma);
 RcppExport SEXP _SAIGE_K1_adj_fast_Binom(SEXP t1SEXP, SEXP muSEXP, SEXP gSEXP, SEXP qSEXP, SEXP gNASEXP, SEXP gNBSEXP, SEXP muNASEXP, SEXP muNBSEXP, SEXP NAmuSEXP, SEXP NAsigmaSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< double >::type t1(t1SEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type g(gSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type g(gSEXP);
     Rcpp::traits::input_parameter< double >::type q(qSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type gNA(gNASEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type gNB(gNBSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type muNA(muNASEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type muNB(muNBSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type gNA(gNASEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type gNB(gNBSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type muNA(muNASEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type muNB(muNBSEXP);
     Rcpp::traits::input_parameter< double >::type NAmu(NAmuSEXP);
     Rcpp::traits::input_parameter< double >::type NAsigma(NAsigmaSEXP);
     rcpp_result_gen = Rcpp::wrap(K1_adj_fast_Binom(t1, mu, g, q, gNA, gNB, muNA, muNB, NAmu, NAsigma));
@@ -1804,18 +1804,18 @@ BEGIN_RCPP
 END_RCPP
 }
 // K2_fast_Binom
-double K2_fast_Binom(double t1, arma::vec& mu, arma::vec& g, arma::vec& gNA, arma::vec& gNB, arma::vec& muNA, arma::vec& muNB, double NAmu, double NAsigma);
+double K2_fast_Binom(double t1, const arma::vec& mu, const arma::vec& g, const arma::vec& gNA, const arma::vec& gNB, const arma::vec& muNA, const arma::vec& muNB, double NAmu, double NAsigma);
 RcppExport SEXP _SAIGE_K2_fast_Binom(SEXP t1SEXP, SEXP muSEXP, SEXP gSEXP, SEXP gNASEXP, SEXP gNBSEXP, SEXP muNASEXP, SEXP muNBSEXP, SEXP NAmuSEXP, SEXP NAsigmaSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< double >::type t1(t1SEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type g(gSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type gNA(gNASEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type gNB(gNBSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type muNA(muNASEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type muNB(muNBSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type g(gSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type gNA(gNASEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type gNB(gNBSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type muNA(muNASEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type muNB(muNBSEXP);
     Rcpp::traits::input_parameter< double >::type NAmu(NAmuSEXP);
     Rcpp::traits::input_parameter< double >::type NAsigma(NAsigmaSEXP);
     rcpp_result_gen = Rcpp::wrap(K2_fast_Binom(t1, mu, g, gNA, gNB, muNA, muNB, NAmu, NAsigma));
@@ -1823,19 +1823,19 @@ BEGIN_RCPP
 END_RCPP
 }
 // getroot_K1_fast_Binom
-Rcpp::List getroot_K1_fast_Binom(double init, arma::vec& mu, arma::vec& g, double q, arma::vec& gNA, arma::vec& gNB, arma::vec& muNA, arma::vec& muNB, double NAmu, double NAsigma, double tol, int maxiter);
+Rcpp::List getroot_K1_fast_Binom(double init, const arma::vec& mu, const arma::vec& g, double q, const arma::vec& gNA, const arma::vec& gNB, const arma::vec& muNA, const arma::vec& muNB, double NAmu, double NAsigma, double tol, int maxiter);
 RcppExport SEXP _SAIGE_getroot_K1_fast_Binom(SEXP initSEXP, SEXP muSEXP, SEXP gSEXP, SEXP qSEXP, SEXP gNASEXP, SEXP gNBSEXP, SEXP muNASEXP, SEXP muNBSEXP, SEXP NAmuSEXP, SEXP NAsigmaSEXP, SEXP tolSEXP, SEXP maxiterSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< double >::type init(initSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type g(gSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type g(gSEXP);
     Rcpp::traits::input_parameter< double >::type q(qSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type gNA(gNASEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type gNB(gNBSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type muNA(muNASEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type muNB(muNBSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type gNA(gNASEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type gNB(gNBSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type muNA(muNASEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type muNB(muNBSEXP);
     Rcpp::traits::input_parameter< double >::type NAmu(NAmuSEXP);
     Rcpp::traits::input_parameter< double >::type NAsigma(NAsigmaSEXP);
     Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
@@ -1845,19 +1845,19 @@ BEGIN_RCPP
 END_RCPP
 }
 // Get_Saddle_Prob_fast_Binom
-Rcpp::List Get_Saddle_Prob_fast_Binom(double zeta, arma::vec& mu, arma::vec& g, double q, arma::vec& gNA, arma::vec& gNB, arma::vec& muNA, arma::vec& muNB, double NAmu, double NAsigma, bool logp);
+Rcpp::List Get_Saddle_Prob_fast_Binom(double zeta, const arma::vec& mu, const arma::vec& g, double q, const arma::vec& gNA, const arma::vec& gNB, const arma::vec& muNA, const arma::vec& muNB, double NAmu, double NAsigma, bool logp);
 RcppExport SEXP _SAIGE_Get_Saddle_Prob_fast_Binom(SEXP zetaSEXP, SEXP muSEXP, SEXP gSEXP, SEXP qSEXP, SEXP gNASEXP, SEXP gNBSEXP, SEXP muNASEXP, SEXP muNBSEXP, SEXP NAmuSEXP, SEXP NAsigmaSEXP, SEXP logpSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< double >::type zeta(zetaSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type g(gSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type g(gSEXP);
     Rcpp::traits::input_parameter< double >::type q(qSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type gNA(gNASEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type gNB(gNBSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type muNA(muNASEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type muNB(muNBSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type gNA(gNASEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type gNB(gNBSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type muNA(muNASEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type muNB(muNBSEXP);
     Rcpp::traits::input_parameter< double >::type NAmu(NAmuSEXP);
     Rcpp::traits::input_parameter< double >::type NAsigma(NAsigmaSEXP);
     Rcpp::traits::input_parameter< bool >::type logp(logpSEXP);
@@ -1866,21 +1866,21 @@ BEGIN_RCPP
 END_RCPP
 }
 // SPA_binary_fast
-Rcpp::List SPA_binary_fast(arma::vec& mu, arma::vec& g, double q, double qinv, double pval_noadj, bool logp, arma::vec& gNA, arma::vec& gNB, arma::vec& muNA, arma::vec& muNB, double NAmu, double NAsigma, double tol);
+Rcpp::List SPA_binary_fast(const arma::vec& mu, const arma::vec& g, double q, double qinv, double pval_noadj, bool logp, const arma::vec& gNA, const arma::vec& gNB, const arma::vec& muNA, const arma::vec& muNB, double NAmu, double NAsigma, double tol);
 RcppExport SEXP _SAIGE_SPA_binary_fast(SEXP muSEXP, SEXP gSEXP, SEXP qSEXP, SEXP qinvSEXP, SEXP pval_noadjSEXP, SEXP logpSEXP, SEXP gNASEXP, SEXP gNBSEXP, SEXP muNASEXP, SEXP muNBSEXP, SEXP NAmuSEXP, SEXP NAsigmaSEXP, SEXP tolSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::vec& >::type mu(muSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type g(gSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type mu(muSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type g(gSEXP);
     Rcpp::traits::input_parameter< double >::type q(qSEXP);
     Rcpp::traits::input_parameter< double >::type qinv(qinvSEXP);
     Rcpp::traits::input_parameter< double >::type pval_noadj(pval_noadjSEXP);
     Rcpp::traits::input_parameter< bool >::type logp(logpSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type gNA(gNASEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type gNB(gNBSEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type muNA(muNASEXP);
-    Rcpp::traits::input_parameter< arma::vec& >::type muNB(muNBSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type gNA(gNASEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type gNB(gNBSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type muNA(muNASEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type muNB(muNBSEXP);
     Rcpp::traits::input_parameter< double >::type NAmu(NAmuSEXP);
     Rcpp::traits::input_parameter< double >::type NAsigma(NAsigmaSEXP);
     Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
