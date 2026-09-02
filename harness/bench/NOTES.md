@@ -265,3 +265,25 @@ saddlepoint arithmetic.
 change. The list overhead is per SPA marker and flat in N, while the
 saddlepoint arithmetic it sits beside is O(n) per marker. At N = 1000 the
 plumbing dominated the kernel; at N = 500k it will not.
+
+## Before ANY timing run, check the throttle as well as the load (2026-09-02)
+
+`uptime` is not sufficient. Check `pmset -g therm` and require
+`CPU_Speed_Limit = 100`.
+
+Found the hard way during S6: the laptop's battery ran flat under the test
+suite (8 workers on 8 cores, ~600-800% CPU sustained, ~150 step-2 child
+processes per tier), and after it came back on AC the CPU was still clamped to
+**60%**. Any measurement taken in that window is worthless, and — the part
+worth remembering — **a paired A/B does NOT rescue it**. Pairing cancels noise
+that is shared between the arms; a throttle that lifts or drops partway through
+a block is not shared, it lands on whichever arm was running, which is exactly
+the correlated-error case pairing cannot see.
+
+Same reasoning applies to anything else with a duty cycle: video playback in a
+browser measured at ~23% CPU here, which is small against 8 cores but BURSTY
+(ads, resolution changes), so it is worth pausing for the few minutes a timing
+block takes rather than modelling.
+
+Memory was never the constraint: 36 R processes totalled 4.3 GB on a 16 GB
+machine with 71% free. The cost of this suite is cores, not RAM.

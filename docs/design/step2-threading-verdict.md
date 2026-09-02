@@ -115,6 +115,54 @@ its commits have since landed and one of its stated gates was wrong.
   the scratch, the progress line, the `break`, the Firth tally, the writer call)
   and `writeOutfile_single` -- so a name is now a better address than a line
   number was even before the drift.
+- **S6 DONE, default OFF** (this commit). `mainMarkerInCPP` takes
+  `t_nThreadsMarker`; at 1 it runs a LITERALLY serial loop that touches no
+  threading machinery, and above 1 it runs `RcppParallel::parallelFor` with an
+  EXPLICIT `numThreads` (F5 re-verified against the installed headers:
+  `resolveValue` returns the explicit value whenever it is > 0 and non-default,
+  so it overrides `harness/env.sh`'s `RCPP_PARALLEL_NUM_THREADS=1`, which would
+  otherwise have made every threaded test run serial and prove nothing). Worker
+  state is a checkout pool of `MarkerScratch` + reader clone, one per thread,
+  because `parallelFor`'s partitioner does not hand out ranges one-per-thread
+  and a state therefore cannot be indexed by range. Four serial post-passes
+  restore the serial semantics the workers cannot: rethrow the LOWEST-indexed
+  error, truncate at the earliest short read, re-run the deferred markers, and
+  emit the progress lines in order.
+- **F4's inventory was INCOMPLETE, and the missing entry is the binding one.**
+  F4 named `SL_setseed`, reached only on the ER **resampling** arms, and S2
+  closed it. But `Rf_lchoose` is called on **every** ER marker, via
+  `HyperGeo::lCombinations`, and **cannot be called off the main thread at
+  all**. Measured in a 20-line program with no SAIGE in it: `Rf_lchoose` from a
+  `std::thread` aborts the session with "C stack usage ... is too close to the
+  limit" for every argument pair tried -- (1,0), (1,1), (5,2), (999,98) --
+  because R's stack check measures against the MAIN thread's stack base. The
+  same probe shows `Rf_lgammafn`, `Rf_pnorm5`, `Rf_qnorm5` and `Rf_pchisq` are
+  all FINE off-thread, which is exactly why the SPA path threads happily and
+  only ER does not. Found by instrumenting after the first threaded run died:
+  the reported "usage" equalled `main_sp - worker_sp` from the trace, to the
+  digit, which is what turned a guess into a mechanism.
+  **Consequence**: the whole ER branch is main-thread-only, not just its
+  resampling arms. The marker loop defers every binary marker with
+  `MAC <= max_MAC_for_ER` and re-runs it serially; `SKATMainThread::refuse()`
+  guards BOTH R dependencies so the loop's predicate is an optimisation and the
+  throw is the safety property.
+  **This is a real limit, not a corner**: at the default `max_MAC_for_ER = 4`
+  every binary marker with MAC <= 4 runs serially, which on a rare-variant scan
+  is a large share of them. Quantitative traits never take the branch and
+  thread fully. **The fork path has no such limitation** -- each child is its
+  own process with its own R main thread -- so the two mechanisms are not the
+  same capability in different plumbing, and this belongs in the retirement
+  comparison below rather than being discovered during it.
+- **S6's gates.** All seven marker-path goldens and every golden in
+  `test-step2-goldens.R` byte-identical at **1, 2, 4 and 8 threads**. G2's
+  controls both behave: a scratch buffer deliberately SHARED across workers
+  fails the byte comparator (16 failures on the marker goldens at 4 threads, 8
+  on the goldens file), while forcing 1 thread THROUGH TBB rather than down the
+  serial shortcut passes clean (FAIL 0 / PASS 35) -- so the gate separates "TBB
+  is involved" from "markers ran concurrently". `tests/testthat/test-step2-threads-inprocess.R`
+  keeps the threaded comparison as a standing test; without it nThreadsMarker
+  defaults to 1 and every other golden test would stay green while threading
+  corrupted every row.
 - **THE TWO-MECHANISM OBLIGATION (agreed 2026-09-02, before S6 is written).**
   S6 adds in-process threading **alongside** the existing fork/`mclapply` path
   in `R/MarkerShard.R`, default OFF. That is deliberate -- it keeps S6
@@ -150,15 +198,12 @@ its commits have since landed and one of its stated gates was wrong.
   loses everything past the stream's 192 KiB buffer boundary *while still
   returning success*. `closeOutfile_single()` at `R/SAIGE_SPATest_Marker.R:156`
   is byte-neutral serially, so it may stay either way.
-- **Not yet done**: S6 (threading) and S7. The pieces S6 was waiting on are all
-  in place: the marker path writes no model state (S3), its per-marker state is
-  slot-owned (S4), and the reader clones with shared ownership and a const
-  decode (S5). What S6 still has to do itself is the deferral of the resampling
-  ER markers (G1's second half -- S2 closed the unconditional `SL_setseed`, but a
-  marker that genuinely DRAWS still enters the R RNG and must run on the main
-  thread), the `parallelFor` with explicit `numThreads` (F5), the contiguous
-  grain, break-truncation and progress re-emit, and the G2 positive/negative
-  control drills.
+- **Not yet done**: S7 -- route the CLI's `--nThreads` to the in-process path
+  and retire one of the two mechanisms, per the obligation above. Two S6 items
+  are also outstanding and are NOT blockers for the code, only for the decision:
+  the bench + maxRSS at 1 vs 4 threads (deferred: the machine was throttled,
+  `pmset -g therm` reporting `CPU_Speed_Limit = 60`, which no amount of pairing
+  corrects for), and a TSAN build.
 
 
 All verification complete. Delivering the judgment.

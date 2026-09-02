@@ -1,7 +1,7 @@
-# Step-2 threading sequence: S0-S5 landed (handoff, 2026-09-02)
+# Step-2 threading sequence: S0-S6 landed (handoff, 2026-09-02)
 
-Branch `strip`, pushed to `slim/strip`. Everything through `feb19ded` is green
-on CI (runs 33631137151 and 33632167654); **S5 is the only unpushed commit**.
+Branch `strip`, pushed to `slim/strip`. Everything through `bd752aec` (S5) and
+`0c42575b` (docs) is green on CI; **S6 is the only unpushed commit**.
 Commits, in order:
 
 | commit | what |
@@ -17,7 +17,9 @@ Commits, in order:
 | `456f47d6` | docs — S4 anchored on names, current line numbers |
 | `1c15e3b7` | **S4** — `MarkerResult` + `MarkerScratch` + `testOneMarker`; the marker path's `vector<bool>` is gone |
 | `feb19ded` | comparator — the covariate-collinear rows excluded from numeric compare (CI forced it, again) |
-| *this commit* | **S5** — reader clone with shared ownership; `getOneMarker` const; the pread fallback tested for the first time |
+| `bd752aec` | **S5** — reader clone with shared ownership; `getOneMarker` const; the pread fallback tested for the first time |
+| `0c42575b` | docs — the fork-path retirement criterion; a stale #32 comment corrected |
+| *this commit* | **S6** — in-process marker threading, default OFF; F4's inventory corrected |
 
 The authoritative plan is the status block at the top of
 `docs/design/step2-threading-verdict.md`, which is current as of this commit.
@@ -130,22 +132,41 @@ Two things surfaced that nobody had noticed:
 removed the shared-offset hazard, so the fallback is fork-safe in fact and the
 `false` is conservatism about untested scale. Do not read it as a live hazard.
 
+## What S6 did, and the thing it found
+
+In-process threading of the marker loop, **default OFF**: `nThreadsMarker` on
+`SPAGMMATtest` (no CLI flag; S7 routes `--nThreads` here). At 1 the loop is
+literally serial and touches no threading machinery; above 1 it is
+`parallelFor` with an explicit `numThreads`, a checkout pool of one
+`MarkerScratch` + reader clone per thread, and four serial post-passes that
+restore what workers cannot decide locally: rethrow the LOWEST-indexed error,
+truncate at the earliest short read, re-run deferred markers, emit progress
+lines in order.
+
+**F4's inventory was incomplete, and the missing entry is the binding one.**
+F4 named `SL_setseed`, on the ER resampling arms only, which S2 closed.
+`Rf_lchoose` is called on EVERY ER marker via `HyperGeo::lCombinations`, and
+cannot be called off the main thread at all -- measured in a 20-line program
+with no SAIGE in it, aborting for every argument pair tried, while
+`lgammafn`/`pnorm`/`qnorm`/`pchisq` are all fine. So the whole ER branch is
+main-thread-only. **The cost is real**: at the default `max_MAC_for_ER = 4`
+every binary marker with MAC <= 4 runs serially, which on a rare-variant scan
+is most of them; quantitative traits thread fully. **The fork path does not
+have this limit** -- each child is its own process with its own R main thread --
+so the two mechanisms differ in capability, not just plumbing. That belongs in
+the retirement comparison, and it is now written there.
+
 ## Where to start
 
-S6, the threading itself. Everything it was waiting on is in place: the marker
-path writes no model state (S3), per-marker state is slot-owned (S4), the reader
-clones with a const decode (S5). What S6 still owns:
-- **The ER resampling deferral** (G1's second half). S2 removed the
-  unconditional `SL_setseed`, but a marker that genuinely DRAWS still enters R's
-  RNG, so those markers must run on the main thread. The criterion is
-  `binary && MAC <= max_MAC_for_ER && nNonZero >= 21`; golden P33 is the one
-  that reaches it.
-- `parallelFor` with an EXPLICIT `numThreads` (F5: the explicit argument
-  overrides `RCPP_PARALLEL_NUM_THREADS`, so `harness/env.sh`'s pin does not
-  neuter a threaded test run), contiguous grain ~64, break-truncation, progress
-  re-emit.
-- The G2 drills: a deliberately-raced scratch build must FAIL the byte
-  comparator, and 1-thread-through-TBB must pass.
+S7, and the two S6 measurements that were deferred rather than skipped:
+- **bench + maxRSS at 1 vs 4 threads.** Deferred because the machine was
+  throttled: `pmset -g therm` read `CPU_Speed_Limit = 60` after the battery ran
+  flat. **Check that before ANY timing** -- `uptime` alone is not enough, and a
+  paired A/B does NOT correct for a throttle that changes mid-block, because it
+  hits the two arms unequally rather than as shared noise.
+- **A TSAN build**, which S6 has not had.
+- Then S7 proper: route `--nThreads` to the in-process path and retire one
+  mechanism, per the criterion in the verdict doc's status block.
 
 S6 deliberately leaves TWO parallelism mechanisms in the tree at once -- the
 existing fork/`mclapply` path in `R/MarkerShard.R` and the new in-process one,
@@ -172,8 +193,11 @@ comment is corrected; the guard's fate is one of the parity items above.
   (`tests/testthat/test-step2-er-seeding.R` keeps that as a standing test), S3
   used the compiler as an exhaustive audit, S4 used the type system (`grep` for
   `std::vector<bool>`; every `g_model->`/`g_cfg.` inside `testOneMarker` read
-  back and confirmed a read), and **S5 planted defects and watched the new tests
-  catch them** -- a wrong pread offset (equivalence test reports
+  back and confirmed a read), **S6 ran the goldens at 1/2/4/8 threads and drilled
+  BOTH directions -- a deliberately shared scratch buffer must fail the
+  comparator (it does, 16 failures) and 1-thread-through-TBB must pass (it does),
+  which is what separates "TBB is involved" from "markers ran concurrently"** --
+  and **S5 planted defects and watched the new tests catch them** -- a wrong pread offset (equivalence test reports
   `identical: FALSE`, 2 of 5 markers diverge) and the pre-S5 `close()` semantics
   (clone-after-close fails with "called after the .bed file was closed").
   Plan for that; a green golden run is not evidence for this class of change.

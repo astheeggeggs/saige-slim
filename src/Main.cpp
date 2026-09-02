@@ -16,7 +16,10 @@
 // #include <omp.h>
 // // [[Rcpp::plugins(openmp)]]]
 
+#include <RcppParallel.h>   // S6: parallelFor for the marker scan
+#include <mutex>
 #include "Main.hpp"
+#include "Binary_global.hpp"   // S6: SKATMainThread, the ER handback
 #include "GenoReader.hpp"
 #include "SAIGE_test.hpp"
 #include "UTIL.hpp"
@@ -148,6 +151,46 @@ void setRegion_GlobalVarsInCPP(
 
 
 
+static void applyMaleXnonPAR(arma::vec& t_GVec, uint32_t& t_pd, double& t_altCounts, double& t_altFreq);
+
+// S6: the read, addressed to an EXPLICIT reader rather than to the g_reader
+// singleton. Unified_getOneMarker (the Rcpp export, further down) is now a thin
+// wrapper that passes *g_reader; a worker thread passes its own clone. Nothing
+// else changes -- same dispatch, same male-X rewrite, same return.
+static bool getOneMarkerThrough(Geno::GenoReader& t_reader,
+                                const std::string& t_genoType,
+                                uint64_t t_gIndex,
+                                std::string& t_ref, std::string& t_alt,
+                                std::string& t_marker, uint32_t& t_pd,
+                                std::string& t_chr, double& t_altFreq,
+                                double& t_altCounts, double& t_missingRate,
+                                double& t_imputeInfo,
+                                bool t_isOutputIndexForMissing,
+                                std::vector<uint>& t_indexForMissing,
+                                bool t_isOnlyOutputNonZero,
+                                std::vector<uint>& t_indexForNonZero,
+                                arma::vec& t_GVec,
+                                bool t_isImputation)
+{
+  bool isBoolRead = true;
+  if(t_genoType == "plink" || t_genoType == "pgen"){
+   Geno::MarkerMeta meta;
+   isBoolRead = t_reader.getOneMarker(t_gIndex, meta,
+                                      t_isOutputIndexForMissing, t_indexForMissing,
+                                      t_isOnlyOutputNonZero, t_indexForNonZero,
+                                      t_GVec);
+   t_ref = meta.ref; t_alt = meta.alt; t_marker = meta.id;
+   t_pd = meta.pos; t_chr = meta.chr;
+   t_altFreq = meta.altFreq; t_altCounts = meta.altCounts;
+   t_missingRate = meta.missingRate; t_imputeInfo = meta.imputeInfo;
+  }
+
+  applyMaleXnonPAR(t_GVec, t_pd, t_altCounts, t_altFreq);
+
+  return isBoolRead;
+}
+
+
 // S4: one marker's analysis, lifted out of mainMarkerInCPP's loop body. Every
 // value it produces goes into t_res (one slot per marker, never shared); every
 // buffer it reuses comes from t_scratch (shared across markers by design, so
@@ -158,13 +201,15 @@ void setRegion_GlobalVarsInCPP(
 // Returns false only on a short read, which is what the loop's `break` used to
 // respond to -- so the caller stops the scan and the remaining slots keep their
 // untested defaults, exactly as the q-length vectors did.
-static bool testOneMarker(std::string & t_genoType,
+static bool testOneMarker(Geno::GenoReader & t_reader,
+                          const std::string & t_genoType,
                           const std::string & t_traitType,
                           const std::string & t_genoIndexStr,
                           bool t_isMoreOutput,
                           bool t_isImputation,
                           bool t_isCondition,
                           bool t_isSingleVarianceRatio,
+                          bool t_onWorkerThread,
                           Marker::MarkerScratch & t_scratch,
                           Marker::MarkerResult & t_res)
 {
@@ -187,7 +232,8 @@ static bool testOneMarker(std::string & t_genoType,
   t_scratch.indexNonZeroVec.clear();
   t_scratch.indexForMissing.clear();
 
-  bool isReadMarker = Unified_getOneMarker(t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
+  bool isReadMarker = getOneMarkerThrough(t_reader, t_genoType, gIndex, ref, alt, marker, pd, chr,
+                                          altFreq, altCounts, missingRate, imputeInfo,
                                           isOutputIndexForMissing, // bool t_isOutputIndexForMissing,
                                           t_scratch.indexForMissing,
                                           isOnlyOutputNonZero, // bool t_isOnlyOutputNonZero,
@@ -280,6 +326,30 @@ static bool testOneMarker(std::string & t_genoType,
   }
 
   bool is_region = false;
+
+  // S6: the ER branch is MAIN-THREAD ONLY, so hand the marker back before doing
+  // its work rather than after paying for it. Two R dependencies live under it:
+  // SL_setseed on the resampling arms (S2/F4), and Rf_lchoose on EVERY ER
+  // marker via HyperGeo::lCombinations -- the second was not in F4's inventory
+  // and is the binding one, because R's stack check aborts the session for any
+  // Rf_lchoose call off the main thread. See Binary_global.hpp for the measured
+  // control.
+  //
+  // This predicate is an OPTIMISATION, not the safety property: if it is ever
+  // wrong, SKATMainThread's guards throw and the marker is deferred one step
+  // later. Do not let it become the thing correctness rests on.
+  //
+  // The cost is real and is NOT a corner: at the default max_MAC_for_ER = 4
+  // every binary marker with MAC <= 4 runs serially, which on a rare-variant
+  // scan is a large share of them. Quantitative traits never take this branch
+  // and thread fully. The fork path has no such limitation -- each child is its
+  // own process with its own R main thread -- which is a real input to the
+  // retirement comparison in docs/design/step2-threading-verdict.md.
+  if(t_onWorkerThread && t_traitType == "binary"
+     && MAC <= g_cfg.MACCutoffforER){
+    t_res.deferredToMainThread = true;
+    return true;
+  }
 
   if(MAC <= g_cfg.MACCutoffforER && t_traitType == "binary"){
     Unified_getMarkerPval(
@@ -404,6 +474,123 @@ static bool testOneMarker(std::string & t_genoType,
 //////// ---------- Main function for marker-level analysis --------- ////////////
                            //std::vector<uint32_t> & t_genoIndex,
 
+// S6: one worker's private state. The scratch is MarkerScratch's whole reason
+// for existing (S4); the reader is an S5 clone, which is a shared_ptr copy onto
+// the same open .bed rather than a second open, so making one is nearly free.
+namespace {
+
+struct MarkerWorkerState {
+  Marker::MarkerScratch scratch;
+  std::unique_ptr<Geno::GenoReader> reader;
+  MarkerWorkerState(int t_n, int t_numMarkerCond, std::unique_ptr<Geno::GenoReader> t_reader)
+    : scratch(t_n, t_numMarkerCond), reader(std::move(t_reader)) {}
+};
+
+// A checkout pool rather than one state per range. RcppParallel's parallelFor
+// hands out ranges by an auto partitioner, so the number of operator() calls is
+// not the number of threads and a state cannot be indexed by range. Checking
+// out costs one mutex acquisition per RANGE (a few hundred times per chunk),
+// against allocating ~n doubles per range if each made its own.
+class MarkerStatePool {
+public:
+  MarkerStatePool(int t_n, int t_numMarkerCond, int t_nStates)
+    : m_n(t_n), m_numMarkerCond(t_numMarkerCond) {
+    for(int i = 0; i < t_nStates; i++){
+      m_free.push_back(make());
+    }
+  }
+
+  std::unique_ptr<MarkerWorkerState> checkout() {
+    {
+      std::lock_guard<std::mutex> lock(m_mutex);
+      if(!m_free.empty()){
+        std::unique_ptr<MarkerWorkerState> s = std::move(m_free.back());
+        m_free.pop_back();
+        return s;
+      }
+    }
+    // More concurrent ranges than states: should not happen when the pool is
+    // sized to numThreads, but making one is cheap and correct.
+    return make();
+  }
+
+  void checkin(std::unique_ptr<MarkerWorkerState> t_state) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_free.push_back(std::move(t_state));
+  }
+
+private:
+  std::unique_ptr<MarkerWorkerState> make() const {
+    return std::unique_ptr<MarkerWorkerState>(
+        new MarkerWorkerState(m_n, m_numMarkerCond, g_reader->clone()));
+  }
+
+  int m_n, m_numMarkerCond;
+  std::mutex m_mutex;
+  std::vector<std::unique_ptr<MarkerWorkerState>> m_free;
+};
+
+// Sets the thread-local main-thread-only refusal for the duration of a worker
+// range, so it cannot survive an early return or a throw.
+struct RefuseMainThreadGuard {
+  RefuseMainThreadGuard(){ SKATMainThread::setRefuse(true); }
+  ~RefuseMainThreadGuard(){ SKATMainThread::setRefuse(false); }
+};
+
+struct MarkerScanWorker : public RcppParallel::Worker {
+  MarkerScanWorker(MarkerStatePool& t_pool,
+                   const std::string& t_genoType,
+                   const std::string& t_traitType,
+                   const std::vector<std::string>& t_genoIndex,
+                   bool t_isMoreOutput, bool t_isImputation,
+                   bool t_isCondition, bool t_isSingleVarianceRatio,
+                   std::vector<Marker::MarkerResult>& t_resultVec)
+    : m_pool(t_pool), m_genoType(t_genoType), m_traitType(t_traitType),
+      m_genoIndex(t_genoIndex), m_isMoreOutput(t_isMoreOutput),
+      m_isImputation(t_isImputation), m_isCondition(t_isCondition),
+      m_isSingleVarianceRatio(t_isSingleVarianceRatio), m_resultVec(t_resultVec) {}
+
+  void operator()(std::size_t t_begin, std::size_t t_end) override {
+    std::unique_ptr<MarkerWorkerState> state = m_pool.checkout();
+    RefuseMainThreadGuard noRAPI;
+    for(std::size_t i = t_begin; i < t_end; i++){
+      // Each marker's failure is recorded in ITS OWN slot and the scan
+      // continues, so which marker fails is not a function of which thread got
+      // there first. The main thread then acts on the lowest index, which is
+      // what a serial run would have stopped at.
+      try {
+        bool isReadMarker = testOneMarker(*state->reader, m_genoType, m_traitType,
+                                          m_genoIndex.at(i), m_isMoreOutput,
+                                          m_isImputation, m_isCondition,
+                                          m_isSingleVarianceRatio,
+                                          true,  // on a worker thread
+                                          state->scratch, m_resultVec.at(i));
+        if(!isReadMarker){
+          m_resultVec.at(i) = Marker::MarkerResult();
+          m_resultVec.at(i).readFailed = true;
+        }
+      } catch (const SKATMainThread::NeedsMainThread&) {
+        m_resultVec.at(i) = Marker::MarkerResult();
+        m_resultVec.at(i).deferredToMainThread = true;
+      } catch (const std::exception& e) {
+        m_resultVec.at(i) = Marker::MarkerResult();
+        m_resultVec.at(i).hasError = true;
+        m_resultVec.at(i).errMsg = e.what();
+      }
+    }
+    m_pool.checkin(std::move(state));
+  }
+
+  MarkerStatePool& m_pool;
+  const std::string& m_genoType;
+  const std::string& m_traitType;
+  const std::vector<std::string>& m_genoIndex;
+  bool m_isMoreOutput, m_isImputation, m_isCondition, m_isSingleVarianceRatio;
+  std::vector<Marker::MarkerResult>& m_resultVec;
+};
+
+}  // namespace
+
 // [[Rcpp::export]]
 void mainMarkerInCPP(
                            std::string & t_genoType,     // "PLINK"
@@ -411,7 +598,8 @@ void mainMarkerInCPP(
 			   std::vector<std::string> & t_genoIndex,
 			   bool & t_isMoreOutput,
 			   bool & t_isImputation,
-			   bool & t_isFirth)
+			   bool & t_isFirth,
+			   int t_nThreadsMarker)
 {
 
   int q = t_genoIndex.size();  // number of markers
@@ -434,22 +622,139 @@ void mainMarkerInCPP(
 	isSingleVarianceRatio = false;
   }
 
-  for(int i = 0; i < q; i++){
-    if((i+1) % g_cfg.marker_chunksize == 0){
-      std::cout << "Completed " << (i+1) << "/" << q << " markers in the chunk." << std::endl;
+  int nThreads = (t_nThreadsMarker < 1) ? 1 : t_nThreadsMarker;
+  if(nThreads > 1){
+    if(!g_reader){
+      Rcpp::stop("No genotype reader has been set up.");
+    }
+    // A reader that cannot clone cannot be threaded: PGEN never clones, and the
+    // PLINK pread fallback is refused (S5). Degrade to one thread with a notice
+    // rather than failing the run -- the same posture as a group test, and NOT
+    // the silent no-op of LEDGER #30: the reason is printed.
+    try {
+      std::unique_ptr<Geno::GenoReader> probe = g_reader->clone();
+    } catch (const std::exception& e) {
+      std::cout << "WARNING: the genotype reader cannot be cloned ("
+                << e.what() << "); the marker scan will run on one thread."
+                << std::endl;
+      nThreads = 1;
+    }
+  }
+
+  // How far the scan got. Serially this is where the `break` fired; in the
+  // threaded path the main thread derives it after the fact.
+  int nScanned = q;
+
+  if(nThreads == 1){
+    // S6: the serial path is LITERALLY serial -- no worker, no pool, no TBB
+    // touched at all -- so the default configuration cannot be affected by any
+    // of the threading machinery, including its initialisation.
+    for(int i = 0; i < q; i++){
+      if((i+1) % g_cfg.marker_chunksize == 0){
+        std::cout << "Completed " << (i+1) << "/" << q << " markers in the chunk." << std::endl;
+      }
+
+      bool isReadMarker = testOneMarker(*g_reader,
+                                        t_genoType,
+                                        t_traitType,
+                                        t_genoIndex.at(i),
+                                        t_isMoreOutput,
+                                        t_isImputation,
+                                        isCondition,
+                                        isSingleVarianceRatio,
+                                        false,  // main thread: R's RNG is allowed
+                                        scratch,
+                                        resultVec.at(i));
+      if(!isReadMarker){
+        nScanned = i;
+        break;
+      }
+    }
+  }else{
+    // Every marker's arithmetic depends only on its own genotype, the model
+    // (const on this path since S3) and the config; its outputs land in its own
+    // slot (S4); and its reader is its own handle onto one shared mapping (S5).
+    // So the only thing order can change is which THREAD computes a row, not
+    // what the row contains -- which is why byte-identity with the serial run
+    // is the right gate rather than a tolerance.
+    // Say so. Without this the threaded path is invisible from outside, and a
+    // test that meant to exercise it but never got the knob through would pass
+    // while gating nothing -- which is what --nThreads itself did for a year
+    // (LEDGER #30). The standing test asserts this line, so a silent fallback
+    // to serial cannot masquerade as a green threaded run.
+    std::cout << "Marker scan will use " << nThreads
+              << " in-process threads." << std::endl;
+    MarkerStatePool pool(g_model->m_n, g_model->m_numMarker_cond, nThreads);
+    MarkerScanWorker worker(pool, t_genoType, t_traitType, t_genoIndex,
+                            t_isMoreOutput, t_isImputation, isCondition,
+                            isSingleVarianceRatio, resultVec);
+    // Contiguous grain so each worker streams a run of the .bed rather than
+    // stepping through it. numThreads is passed EXPLICITLY: RcppParallel's
+    // resolveValue returns an explicit value whenever it is > 0 and not the
+    // default, so it overrides RCPP_PARALLEL_NUM_THREADS -- which harness/env.sh
+    // pins to 1, and which would otherwise silently make every threaded test
+    // run serial and prove nothing.
+    std::size_t grain = 64;
+    RcppParallel::parallelFor(0, (std::size_t)q, worker, grain, nThreads);
+
+    // --- post-pass 1: report the error a serial run would have reported ---
+    for(int i = 0; i < q; i++){
+      if(resultVec.at(i).hasError){
+        throw std::runtime_error(resultVec.at(i).errMsg);
+      }
     }
 
-    bool isReadMarker = testOneMarker(t_genoType,
-                                      t_traitType,
-                                      t_genoIndex.at(i),
-                                      t_isMoreOutput,
-                                      t_isImputation,
-                                      isCondition,
-                                      isSingleVarianceRatio,
-                                      scratch,
-                                      resultVec.at(i));
-    if(!isReadMarker){
-      break;
+    // --- post-pass 2: truncate at the earliest short read ---
+    // Serially a failed read breaks the loop, so every LATER marker is untested.
+    // Workers cannot know which failure is earliest, so discard from there on.
+    for(int i = 0; i < q; i++){
+      if(resultVec.at(i).readFailed){
+        nScanned = i;
+        for(int j = i; j < q; j++){
+          resultVec.at(j) = Marker::MarkerResult();
+        }
+        break;
+      }
+    }
+
+    // --- post-pass 3: the ER markers, on the main thread ---
+    // Ascending, though it does not matter for values: ComputeExact::Run
+    // re-seeds with set.seed(1) at entry, so each drawing marker's sequence is
+    // independent of how many drew before it (that is what makes the deferral
+    // byte-neutral rather than merely safe).
+    for(int i = 0; i < nScanned; i++){
+      if(!resultVec.at(i).deferredToMainThread){
+        continue;
+      }
+      resultVec.at(i) = Marker::MarkerResult();
+      bool isReadMarker = testOneMarker(*g_reader,
+                                        t_genoType,
+                                        t_traitType,
+                                        t_genoIndex.at(i),
+                                        t_isMoreOutput,
+                                        t_isImputation,
+                                        isCondition,
+                                        isSingleVarianceRatio,
+                                        false,  // main thread: R's RNG is allowed
+                                        scratch,
+                                        resultVec.at(i));
+      if(!isReadMarker){
+        nScanned = i;
+        for(int j = i; j < q; j++){
+          resultVec.at(j) = Marker::MarkerResult();
+        }
+        break;
+      }
+    }
+
+    // --- post-pass 4: the progress lines, in serial order ---
+    // They go to stdout, not to any golden, but a threaded run should still
+    // read like a serial one. Emitted here rather than from a worker, where the
+    // interleaving would be nondeterministic.
+    for(int i = 0; i < nScanned; i++){
+      if((i+1) % g_cfg.marker_chunksize == 0){
+        std::cout << "Completed " << (i+1) << "/" << q << " markers in the chunk." << std::endl;
+      }
     }
   }
 
@@ -511,23 +816,14 @@ bool Unified_getOneMarker(std::string & t_genoType,   // "PLINK"
 			       bool t_isImputation 
 			       )     // the index of non-zero genotype in the all subjects. Only valid if t_isOnlyOutputNonZero == true.
 {
-  //arma::vec GVec(g_model->m_n);
-  bool isBoolRead = true;
-  if(t_genoType == "plink" || t_genoType == "pgen"){
-   Geno::MarkerMeta meta;
-   isBoolRead = g_reader->getOneMarker(t_gIndex, meta,
-                                       t_isOutputIndexForMissing, t_indexForMissing,
-                                       t_isOnlyOutputNonZero, t_indexForNonZero,
-                                       t_GVec);
-   t_ref = meta.ref; t_alt = meta.alt; t_marker = meta.id;
-   t_pd = meta.pos; t_chr = meta.chr;
-   t_altFreq = meta.altFreq; t_altCounts = meta.altCounts;
-   t_missingRate = meta.missingRate; t_imputeInfo = meta.imputeInfo;
+  if(!g_reader){
+    Rcpp::stop("No genotype reader has been set up.");
   }
-
-  applyMaleXnonPAR(t_GVec, t_pd, t_altCounts, t_altFreq);
-
-  return isBoolRead;
+  return getOneMarkerThrough(*g_reader, t_genoType, t_gIndex, t_ref, t_alt, t_marker,
+                             t_pd, t_chr, t_altFreq, t_altCounts, t_missingRate,
+                             t_imputeInfo, t_isOutputIndexForMissing, t_indexForMissing,
+                             t_isOnlyOutputNonZero, t_indexForNonZero, t_GVec,
+                             t_isImputation);
 }
 
 

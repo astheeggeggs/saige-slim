@@ -483,6 +483,48 @@ long-running `main*InCPP()` loop that writes output files from C++
   order and `mclapply`s — see below) plus RcppParallel/TBB in step-1 GRM
   kernels (source of LEDGER.md #7).
 
+### Step-2 marker parallelism: TWO mechanisms, temporarily (S6)
+
+There are currently two, and **exactly one will ship** — the retirement
+criterion and its required evidence are in the status block of
+`docs/design/step2-threading-verdict.md`, and S7 is not done until one is
+deleted. They are never combined: `runMarkerScan` errors if both exceed 1.
+
+| | `--nThreads` (C2) | `nThreadsMarker` (S6) |
+|---|---|---|
+| mechanism | `mclapply` forks N shards | `parallelFor` threads in-process |
+| CLI flag | yes | **no** (R arg; `SAIGE_MARKER_THREADS` is a test stopgap) |
+| default | 1 | 1 |
+| output | per-shard files concatenated | one writer, unchanged |
+| restart | refused | fine |
+| ER markers | full speed | **serialised** (see below) |
+
+**The in-process path's real limit, and it is not a corner.** The ER exact test
+is main-thread-only, so every binary marker with `MAC <= max_MAC_for_ER`
+(default 4) is deferred and re-run serially — on a rare-variant scan that is
+most markers. Quantitative traits never enter the branch and thread fully. Two
+R dependencies cause it: `SL_setseed` on the resampling arms (F4/S2), and —
+the binding one, missing from F4's inventory — **`Rf_lchoose`, called on EVERY
+ER marker** via `HyperGeo::lCombinations`. `Rf_lchoose` cannot be called off
+the main thread at all: measured in a 20-line program with no SAIGE in it, it
+aborts the session with "C stack usage … too close to the limit" for every
+argument pair tried, because R's stack check measures against the main thread's
+stack base. `Rf_lgammafn`, `Rf_pnorm5`, `Rf_qnorm5` and `Rf_pchisq` are all
+fine off-thread, which is why the SPA path threads and only ER does not.
+`SKATMainThread::refuse()` (`src/Binary_global.hpp`) guards both dependencies,
+so the marker loop's cheap predicate is an optimisation and the throw is the
+safety property. **The fork path has no such limit** — each child is its own
+process with its own R main thread — which is a real input to the retirement
+decision, not a detail.
+
+Byte-identity is gated by `tests/testthat/test-step2-threads-inprocess.R` at
+2 and 4 threads, and it asserts the run REPORTED its thread count, so a knob
+that fails to arrive cannot pass as a green threaded run (the LEDGER #30
+shape). Detection power is drill-verified in both directions: sharing one
+`MarkerScratch` across workers fails it (7 failures), and forcing 1 thread
+through TBB rather than the serial shortcut passes clean — which separates
+"TBB is involved" from "markers ran concurrently".
+
 ### Step-2 `--nThreads` (Phase 4 C2)
 
 `R/MarkerShard.R` owns it, not `extdata/step2_SPAtests.R` — the CLI cannot,

@@ -25,8 +25,8 @@ setRegion_GlobalVarsInCPP <- function(t_max_maf_region, t_max_markers_region, t_
     invisible(.Call('_SAIGE_setRegion_GlobalVarsInCPP', PACKAGE = 'SAIGE', t_max_maf_region, t_max_markers_region, t_MACCutoff_to_CollapseUltraRare, t_min_gourpmac_for_burdenonly))
 }
 
-mainMarkerInCPP <- function(t_genoType, t_traitType, t_genoIndex, t_isMoreOutput, t_isImputation, t_isFirth) {
-    invisible(.Call('_SAIGE_mainMarkerInCPP', PACKAGE = 'SAIGE', t_genoType, t_traitType, t_genoIndex, t_isMoreOutput, t_isImputation, t_isFirth))
+mainMarkerInCPP <- function(t_genoType, t_traitType, t_genoIndex, t_isMoreOutput, t_isImputation, t_isFirth, t_nThreadsMarker) {
+    invisible(.Call('_SAIGE_mainMarkerInCPP', PACKAGE = 'SAIGE', t_genoType, t_traitType, t_genoIndex, t_isMoreOutput, t_isImputation, t_isFirth, t_nThreadsMarker))
 }
 
 Unified_getOneMarker <- function(t_genoType, t_gIndex, t_ref, t_alt, t_marker, t_pd, t_chr, t_altFreq, t_altCounts, t_missingRate, t_imputeInfo, t_isOutputIndexForMissing, t_indexForMissing, t_isOnlyOutputNonZero, t_indexForNonZero, t_GVec, t_isImputation) {

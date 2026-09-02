@@ -46,7 +46,8 @@ void mainMarkerInCPP(
                            std::vector<std::string>  & t_genoIndex,
                            bool & t_isMoreOutput,
                            bool & t_isImputation,
-			   bool & t_isFirth);
+			   bool & t_isFirth,
+			   int t_nThreadsMarker);
 
 bool Unified_getOneMarker(std::string & t_genoType,   // "PLINK"
                                uint64_t & t_gIndex,        // different meanings for different genoType

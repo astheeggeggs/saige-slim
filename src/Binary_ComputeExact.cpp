@@ -15,6 +15,16 @@
 #include <Rmath.h>
 #endif
 
+// S6: thread-local, so a worker can refuse the R API while the main thread's
+// deferral pass allows it.
+namespace SKATMainThread {
+namespace {
+thread_local bool tl_refuse = false;
+}
+void setRefuse(bool t_refuse){ tl_refuse = t_refuse; }
+bool refuse(){ return tl_refuse; }
+}  // namespace SKATMainThread
+
 #define MIN_SIM1    0
 //#define EPSILON    (1.0E-7)
 //#define ERR1 0
@@ -382,6 +392,15 @@ int     ComputeExact::Run(int test_type){
         }
     }
     if(needsRNG){
+        // S6: on a worker thread this is the point of no return -- SL_setseed
+        // enters the R API. Throw instead, so the marker loop can defer this
+        // marker to the main thread and re-run it there. See SKATRng in
+        // Binary_global.hpp for why the throw, not the loop's predicate, is
+        // what makes threading safe.
+        if(SKATMainThread::refuse()){
+            throw SKATMainThread::NeedsMainThread(
+                "ER resampling needs R's RNG; this marker must run on the main thread");
+        }
         SL_setseed(1);
     }
   

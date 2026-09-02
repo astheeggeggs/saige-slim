@@ -149,6 +149,13 @@ test_that("the pread fallback reproduces a marker golden end to end (S5)", {
   # in full in both modes.
   Sys.setenv(SAIGE_PLINK_NO_MMAP = "1")
   on.exit(Sys.unsetenv("SAIGE_PLINK_NO_MMAP"), add = TRUE)
+  # This case is about the READ path, so pin it to one thread: the fallback
+  # reader refuses to clone (S5), which under SAIGE_MARKER_THREADS > 1 would be
+  # answered by the S6 degrade-to-one-thread notice and test something else.
+  old_threads <- Sys.getenv("SAIGE_MARKER_THREADS", unset = NA)
+  Sys.setenv(SAIGE_MARKER_THREADS = "1")
+  on.exit(if (is.na(old_threads)) Sys.unsetenv("SAIGE_MARKER_THREADS")
+          else Sys.setenv(SAIGE_MARKER_THREADS = old_threads), add = TRUE)
   mp_case("plink_marker_er.txt",
           c(mp_model("binary_sparseGRM_a"), "--max_MAC_for_ER=200"))
 })

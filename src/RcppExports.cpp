@@ -86,8 +86,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // mainMarkerInCPP
-void mainMarkerInCPP(std::string& t_genoType, std::string& t_traitType, std::vector<std::string>& t_genoIndex, bool& t_isMoreOutput, bool& t_isImputation, bool& t_isFirth);
-RcppExport SEXP _SAIGE_mainMarkerInCPP(SEXP t_genoTypeSEXP, SEXP t_traitTypeSEXP, SEXP t_genoIndexSEXP, SEXP t_isMoreOutputSEXP, SEXP t_isImputationSEXP, SEXP t_isFirthSEXP) {
+void mainMarkerInCPP(std::string& t_genoType, std::string& t_traitType, std::vector<std::string>& t_genoIndex, bool& t_isMoreOutput, bool& t_isImputation, bool& t_isFirth, int t_nThreadsMarker);
+RcppExport SEXP _SAIGE_mainMarkerInCPP(SEXP t_genoTypeSEXP, SEXP t_traitTypeSEXP, SEXP t_genoIndexSEXP, SEXP t_isMoreOutputSEXP, SEXP t_isImputationSEXP, SEXP t_isFirthSEXP, SEXP t_nThreadsMarkerSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< std::string& >::type t_genoType(t_genoTypeSEXP);
@@ -96,7 +96,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< bool& >::type t_isMoreOutput(t_isMoreOutputSEXP);
     Rcpp::traits::input_parameter< bool& >::type t_isImputation(t_isImputationSEXP);
     Rcpp::traits::input_parameter< bool& >::type t_isFirth(t_isFirthSEXP);
-    mainMarkerInCPP(t_genoType, t_traitType, t_genoIndex, t_isMoreOutput, t_isImputation, t_isFirth);
+    Rcpp::traits::input_parameter< int >::type t_nThreadsMarker(t_nThreadsMarkerSEXP);
+    mainMarkerInCPP(t_genoType, t_traitType, t_genoIndex, t_isMoreOutput, t_isImputation, t_isFirth, t_nThreadsMarker);
     return R_NilValue;
 END_RCPP
 }
@@ -1941,7 +1942,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_setAssocTest_GlobalVarsInCPP_X_PARregion_mat", (DL_FUNC) &_SAIGE_setAssocTest_GlobalVarsInCPP_X_PARregion_mat, 1},
     {"_SAIGE_setMarker_GlobalVarsInCPP", (DL_FUNC) &_SAIGE_setMarker_GlobalVarsInCPP, 2},
     {"_SAIGE_setRegion_GlobalVarsInCPP", (DL_FUNC) &_SAIGE_setRegion_GlobalVarsInCPP, 4},
-    {"_SAIGE_mainMarkerInCPP", (DL_FUNC) &_SAIGE_mainMarkerInCPP, 6},
+    {"_SAIGE_mainMarkerInCPP", (DL_FUNC) &_SAIGE_mainMarkerInCPP, 7},
     {"_SAIGE_Unified_getOneMarker", (DL_FUNC) &_SAIGE_Unified_getOneMarker, 17},
     {"_SAIGE_processMale_XnonPAR", (DL_FUNC) &_SAIGE_processMale_XnonPAR, 3},
     {"_SAIGE_Unified_getSampleSizeinGeno", (DL_FUNC) &_SAIGE_Unified_getSampleSizeinGeno, 1},

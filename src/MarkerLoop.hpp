@@ -67,6 +67,23 @@ struct MarkerResult {
   // two Firth counters were the only cross-marker accumulators in the body.
   bool isFirth = false;
   bool isFirthConverge = false;
+
+  // S6 control fields. None of these reach the output file; they carry, back to
+  // the main thread, the three things a worker cannot act on itself.
+  //
+  // readFailed: the reader reported a short read. Serially that is a `break`,
+  //   so every LATER marker is untested -- a worker cannot know it is the
+  //   earliest failure, so the main thread truncates afterwards.
+  // deferredToMainThread: this marker takes the ER branch, which is
+  //   main-thread only (Rf_lchoose and SL_setseed both are), and must be re-run
+  //   there. Its other fields are meaningless.
+  // hasError/errMsg: the marker threw. Serially the run would have stopped
+  //   there, so the main thread rethrows the LOWEST-indexed error, which makes
+  //   a threaded failure report the same error a serial one would.
+  bool readFailed = false;
+  bool deferredToMainThread = false;
+  bool hasError = false;
+  std::string errMsg;
 };
 
 // The reusable buffers. Every one of these is fully overwritten before it is

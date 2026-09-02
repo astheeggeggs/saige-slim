@@ -105,6 +105,7 @@ parse_weights_beta <- function(weights.beta) {
 #' @param X_PARregion character. ranges of (pseudoautosomal) PAR region on chromosome X, which are seperated by comma and in the format start:end. By default: '60001-2699520,154931044-155260560' in the UCSC build hg19. For males, there are two X alleles in the PAR region, so PAR regions are treated the same as autosomes. In the NON-PAR regions (outside the specified PAR regions on chromosome X), for males, there is only one X allele. If is_rewrite_XnonPAR_forMales=TRUE, genotypes/dosages of all variants in the NON-PAR regions on chromosome X will be multiplied by 2 (Not activated).
 #' @param is_rewrite_XnonPAR_forMales logical. Whether to rewrite gentoypes or dosages of variants in the NON-PAR regions on chromosome X for males (multiply by 2). By default, FALSE. Note, only use is_rewrite_XnonPAR_forMales=TRUE when the specified VCF or Bgen file only has variants on chromosome X. When is_rewrite_XnonPAR_forMales=TRUE, the program does not check the chromosome value by assuming all variants are on chromosome X (Not activated)
 #' @param sampleFile_male character. Path to the file containing one column for IDs of MALE samples in the bgen or vcf file with NO header. Order does not matter
+#' @param nThreadsMarker integer. Number of IN-PROCESS threads for the single-variant marker scan (S6). This is the second, temporarily coexisting parallelism mechanism: it threads the C++ marker loop rather than forking shards, so there is no output merge and no restart restriction, but it is default OFF and has no CLI flag yet. Exactly one of nThreads and nThreadsMarker may exceed 1. The default reads SAIGE_MARKER_THREADS so the golden suite can drive it without a CLI change; that env var is a stopgap and goes away when S7 routes --nThreads here. See the retirement criterion in docs/design/step2-threading-verdict.md. By default, 1
 #' @param nThreads integer. Number of forked worker processes for the single-variant marker scan. The markers are split into that many contiguous blocks, tested in parallel after the null model has been loaded (so the model is shared copy-on-write), and the per-block outputs are concatenated, which reproduces the one-thread output byte for byte. Restarting an interrupted run is not supported with nThreads > 1, and group tests always run on one thread. By default, 1
 #' @return SAIGEOutputFile
 #' @export
@@ -165,7 +166,8 @@ SPAGMMATtest <- function(bedFile = "",
                          subSampleFile = "",
                          is_noadjCov = FALSE,
                          is_output_weight_column = FALSE,
-                         nThreads = 1) {
+                         nThreads = 1,
+                         nThreadsMarker = as.integer(Sys.getenv("SAIGE_MARKER_THREADS", "1"))) {
   cat("is_noadjCov ", is_noadjCov, "\n")
   cat("is_fastTest ", is_fastTest, "\n")
 
@@ -179,6 +181,15 @@ SPAGMMATtest <- function(bedFile = "",
   nThreads <- as.integer(nThreads)
   if (is.na(nThreads) || nThreads < 1) {
     stop("nThreads should be a positive integer.")
+  }
+  nThreadsMarker <- as.integer(nThreadsMarker)
+  if (is.na(nThreadsMarker) || nThreadsMarker < 1) {
+    stop("nThreadsMarker should be a positive integer.")
+  }
+  if (nThreadsMarker > 1 && groupFile != "") {
+    cat("WARNING: nThreadsMarker > 1 is only supported for single-variant tests;",
+        "the group test will run on one thread\n")
+    nThreadsMarker <- 1L
   }
   if (nThreads > 1 && groupFile != "") {
     cat("WARNING: nThreads > 1 is only supported for single-variant tests; the group test will run on one thread\n")
@@ -614,7 +625,8 @@ SPAGMMATtest <- function(bedFile = "",
       isCondition,
       is_overwrite_output,
       objGeno$anyInclude,
-      nThreads
+      nThreads,
+      nThreadsMarker
     )
   } else {
     maxMACbinind <- which(maxMAC_in_groupTest > 0)

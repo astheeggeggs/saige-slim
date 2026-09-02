@@ -180,6 +180,14 @@ double HyperGeo::lCombinations(int n, int k)
         r -= log(d);
     }
     #else
+        // S6: Rf_lchoose cannot be called off the main thread -- R's stack check
+        // measures against the main thread's stack base and aborts the session.
+        // This is the guard that makes the marker loop's ER deferral a safety
+        // property rather than a promise; see SKATMainThread in Binary_global.hpp.
+        if(SKATMainThread::refuse()){
+            throw SKATMainThread::NeedsMainThread(
+                "the ER exact test calls Rf_lchoose, which is main-thread only");
+        }
         r = lchoose (n, k);
     #endif
     

@@ -189,21 +189,39 @@ runMarkerScan <- function(traitType,
                           isCondition,
                           isOverWriteOutput,
                           isAnyInclude,
-                          nThreads = 1) {
+                          nThreads = 1,
+                          nThreadsMarker = 1) {
   if (is.null(OutputFileIndex)) {
     OutputFileIndex <- paste0(OutputFile, ".index")
   }
 
-  runSerial <- function() {
+  # "Serial" here means one PROCESS. nThreadsMarker > 1 makes the C++ marker
+  # loop run in-process threads inside it (S6) -- the second, temporarily
+  # coexisting parallelism mechanism. The two are not combined: the fork path
+  # below passes nThreadsMarker = 1 to its shards.
+  runSerial <- function(markerThreads = nThreadsMarker) {
     SAIGE.Marker(
       traitType, genoType, idstoIncludeFile, rangestoIncludeFile,
       genoIndex, CHROM, OutputFile, OutputFileIndex,
       nMarkersEachChunk, isMoreOutput, isImputation, isFirth,
-      LOCO, chrom, isCondition, isOverWriteOutput, isAnyInclude
+      LOCO, chrom, isCondition, isOverWriteOutput, isAnyInclude,
+      nThreadsMarker = markerThreads
     )
   }
 
   nThreads <- as.integer(nThreads)
+  nThreadsMarker <- as.integer(nThreadsMarker)
+  if (is.na(nThreadsMarker) || nThreadsMarker < 1L) {
+    nThreadsMarker <- 1L
+  }
+  # The two parallelism mechanisms are not composed. Forking N shards that each
+  # spawn M threads is N*M workers with none of the byte-identity reasoning done
+  # for it, and it is not what either gate measures. One of these is retiring
+  # anyway -- see the criterion in docs/design/step2-threading-verdict.md.
+  if (nThreads > 1L && nThreadsMarker > 1L) {
+    stop("nThreads (forked shards) and nThreadsMarker (in-process threads) ",
+         "cannot both exceed 1; pick one mechanism.")
+  }
   if (is.na(nThreads) || nThreads < 1L) {
     stop("nThreads must be a positive integer.")
   }
@@ -283,7 +301,8 @@ runMarkerScan <- function(traitType,
       genoIndex[blocks[[b]]], CHROM[blocks[[b]]], shardFiles[b],
       paste0(shardFiles[b], ".index"), nMarkersEachChunk,
       isMoreOutput, isImputation, isFirth, LOCO, chrom,
-      isCondition, TRUE, isAnyInclude
+      isCondition, TRUE, isAnyInclude,
+      nThreadsMarker = 1
     )
   }, mc.cores = nThreads, mc.preschedule = TRUE, mc.set.seed = FALSE)
 

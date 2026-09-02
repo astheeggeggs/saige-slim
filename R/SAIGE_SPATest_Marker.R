@@ -14,7 +14,14 @@ SAIGE.Marker <- function(traitType,
                          chrom,
                          isCondition,
                          isOverWriteOutput,
-                         isAnyInclude) {
+                         isAnyInclude,
+                         # S6: in-process threads for the marker scan. Default 1
+                         # -- the C++ side then runs a literally serial loop that
+                         # touches no threading machinery at all. This is NOT the
+                         # CLI's --nThreads, which forks (see R/MarkerShard.R and
+                         # the retirement criterion in
+                         # docs/design/step2-threading-verdict.md).
+                         nThreadsMarker = 1) {
   if (is.null(OutputFileIndex)) {
     OutputFileIndex <- paste0(OutputFile, ".index")
   }
@@ -107,7 +114,8 @@ SAIGE.Marker <- function(traitType,
     # resMarker = as.data.frame(mainMarkerInCPP(genoType, traitType, genoIndex_prev, genoIndex, isMoreOutput, isImputation))
     # resMarker = resMarker[which(!is.na(resMarker$BETA)), ]
 
-    mainMarkerInCPP(genoType, traitType, genoIndex, isMoreOutput, isImputation, isFirth)
+    mainMarkerInCPP(genoType, traitType, genoIndex, isMoreOutput, isImputation, isFirth,
+                    as.integer(nThreadsMarker))
 
     # timeoutput=system.time({writeOutputFile(Output = list(resMarker),
     # if(nrow(resMarker) > 0){
