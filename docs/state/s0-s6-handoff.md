@@ -1,7 +1,8 @@
 # Step-2 threading sequence: S0-S6 landed (handoff, 2026-09-02)
 
-Branch `strip`, pushed to `slim/strip`. Everything through `bd752aec` (S5) and
-`0c42575b` (docs) is green on CI; **S6 is the only unpushed commit**.
+Branch `strip`, **fully pushed to `slim/strip`**; everything through
+`0c42575b` is green on CI and S6 (`7814e24f`) was pushed at the end of the
+session -- check its run before building on it. Working tree clean.
 Commits, in order:
 
 | commit | what |
@@ -19,7 +20,7 @@ Commits, in order:
 | `feb19ded` | comparator — the covariate-collinear rows excluded from numeric compare (CI forced it, again) |
 | `bd752aec` | **S5** — reader clone with shared ownership; `getOneMarker` const; the pread fallback tested for the first time |
 | `0c42575b` | docs — the fork-path retirement criterion; a stale #32 comment corrected |
-| *this commit* | **S6** — in-process marker threading, default OFF; F4's inventory corrected |
+| `7814e24f` | **S6** — in-process marker threading, default OFF; F4's inventory corrected |
 
 The authoritative plan is the status block at the top of
 `docs/design/step2-threading-verdict.md`, which is current as of this commit.
