@@ -290,17 +290,64 @@ its commits have since landed and one of its stated gates was wrong.
   The ~2x ceiling here is set by the serial writer, not by ER: quant (f = 0)
   implies a non-ER serial fraction of 0.305, which predicts 2.00x for binary
   against 2.07x measured.
-- **Not yet done**: S7's code change -- route the CLI's `--nThreads` to the
-  in-process path and retire one mechanism -- plus criterion item 2 (feature
-  parity item by item, including the recorded decision on
-  `varianceRatioBinsHaveGap`). **Item 3's evidence does not by itself pick a
-  winner**, so the retirement now turns on a judgement the measurements have
-  framed rather than made: in-process is strictly better on memory and equal on
-  speed *at a 4% deferral rate*, while fork is the only one of the two that
-  keeps full throughput when most markers are ER-eligible. Either that judgement
-  is taken explicitly and written down here, or the honest next measurement is a
-  fixture with a high MAC <= 4 fraction, which does not exist in this repo and
-  would have to be built.
+- **THE FIXTURE WAS BUILT, AND IT SETTLES ITEM 3: THE TWO MECHANISMS ARE NOT
+  SUBSTITUTABLE.** `harness/make_rare_fixture.py` produces five marker files --
+  same 1000 samples, same 128,868 markers, same step-1 model -- differing only in
+  the fraction f of ER-eligible markers (binary, MAC <= 4). Nothing is simulated:
+  every marker is a byte-for-byte copy of a real genotype block from the bundled
+  fixture, drawn from a rare pool (5,292 real markers with 1 <= MAC <= 4) and a
+  common pool, **interleaved uniformly** so every `parallelFor` range sees the
+  same f (concatenating them would dump the serial burden on one worker and
+  measure scheduling instead) and **renumbered** so `SPAGMMATtest`'s CHROM/POS
+  sort cannot undo the interleaving. The cheap alternative -- raising
+  `--max_MAC_use_ER` -- was rejected: ER cost climbs steeply with MAC and above
+  ~21 carriers switches to the resampling arm, so it changes the workload rather
+  than only f.
+
+  | f | in-process speedup | fork speedup | maxRSS in-proc / fork |
+  |---|---|---|---|
+  | 0.00 | **1.248** | 1.213 | 268 / 367 MB |
+  | 0.25 | 1.123 | 1.200 | 269 / 354 MB |
+  | 0.50 | 1.076 | 1.220 | 269 / 353 MB |
+  | 0.75 | 1.020 | 1.159 | 268 / 366 MB |
+  | 1.00 | **0.954** | 1.170 | 269 / 350 MB |
+
+  **Fork's speedup is flat in f; in-process's decays to a net slowdown.** On
+  `work_s` a one-parameter model fitted on f = 0 ALONE (s = 0.285, the non-ER
+  serial fraction) predicts the rest -- 1.673/1.367/1.155 against 1.637/1.349/
+  1.114 measured -- and misses only at f = 1, in the direction and by the
+  mechanism named in advance: a deferred marker is decoded on a worker, thrown
+  away, then re-read and re-tested serially, so in-process ends up **13% slower
+  than serial**, not merely no faster. The bundled fixture's f = 0.041 is exactly
+  where the two look identical, which is why the earlier measurement read null.
+- **AND THE REASON FOR THE DEFERRAL LOOKS REMOVABLE, WHICH IS A THIRD OPTION
+  S7 SHOULD WEIGH BEFORE RETIRING EITHER PATH.** `harness/probes/lchoose_offthread.cpp`
+  asks whether `Rf_lchoose` is genuinely unsafe off the main thread or merely
+  trips R's C-stack check. Measured: with the check active a worker call aborts
+  the session (`C stack usage 17556326859020 is too close to the limit`,
+  reproducing S6); with `R_CStackLimit = (uintptr_t)-1` the same call
+  **succeeds and returns bits IDENTICAL to the main thread** for all four
+  argument pairs. So the restriction is R's stack bookkeeping, not `lchoose`'s
+  arithmetic.
+  **What that does NOT establish**, and must be checked before acting on it:
+  (a) it shows `lchoose` computes correctly off-thread, not that the rest of the
+  ER machinery (`SL_calloc`, the `Binary_*` state) is thread-safe -- `harness/tsan.sh`
+  is the instrument for that, and it has never run with the deferral disabled;
+  (b) `SL_setseed` is a real shared-state hazard rather than a stack artefact,
+  though S2 made it conditional on the resampling arms, which MAC <= 4 markers do
+  not take; (c) neutralising `R_CStackLimit` disables genuine stack-overflow
+  protection process-wide, so it would have to be scoped to the parallel region
+  and its risk stated. If it holds up, in-process gets fork's throughput at
+  in-process's memory, and the retirement stops being a trade-off.
+- **Not yet done**: S7's code change -- route `--nThreads` and retire one
+  mechanism -- plus criterion item 2 (feature parity item by item, including the
+  recorded decision on `varianceRatioBinsHaveGap`). Item 3 is now settled AGAINST
+  a straight retirement of fork: on a rare-variant binary scan, which is what
+  SAIGE is mostly used for, in-process as currently built is slower than serial.
+  The live options are (i) retire in-process and route `--nThreads` through fork,
+  (ii) remove the ER deferral per the probe above and then re-run this sweep,
+  which is the only path that makes one mechanism dominate on both axes, or
+  (iii) keep both and drop the obligation. Do not pick on the 4%-fixture numbers.
 
 
 All verification complete. Delivering the judgment.

@@ -191,18 +191,38 @@ ships. The speedup bound is `1/(f + (1-f)/T)` in the deferred fraction f: 3.6x a
 f = 0.041, 1.6x at f = 0.5, 1.08x at f = 0.9. Do not read the null p-values as
 "the mechanisms are equivalent".
 
+## The fixture was built, and it settles it (same session)
+
+`harness/make_rare_fixture.py` varies the one thing the bundled fixture cannot:
+the fraction f of ER-eligible markers (binary, MAC <= 4). Real genotype blocks,
+uniformly interleaved, positions renumbered -- both of those matter, see the
+docstring. Across f = 0 -> 1 at 4 threads, **fork's speedup is FLAT (1.16-1.22)
+while in-process decays 1.248 -> 0.954**: at f = 1 in-process is 13% SLOWER than
+serial, because a deferred marker is decoded on a worker, discarded, then re-read
+and re-run on the main thread. A one-parameter model fitted on f = 0 alone
+predicts the whole in-process curve and misses only there, in the direction
+named in advance. **The two mechanisms are not substitutable**, and f = 0.041 is
+exactly where they look identical.
+
+**And the deferral may not be necessary at all.** `harness/probes/lchoose_offthread.cpp`:
+`Rf_lchoose` off the main thread aborts only because of R's C-stack check, and
+with `R_CStackLimit` neutralised it returns **bit-identical** values. Caveats in
+the verdict doc -- it does not prove the rest of the ER machinery is thread-safe,
+and `harness/tsan.sh` has never run with the deferral disabled.
+
 ## Where to start
 
-S7 proper, which is now a decision plus a code change rather than a measurement:
-- **Take the retirement judgement explicitly and write it down**, or build the
-  fixture that would settle it (a high-MAC<=4 marker set; nothing in the repo
-  has one). The evidence says in-process is strictly better on memory and equal
-  on speed *at a 4% deferral rate*, and that fork is the only one of the two
-  that holds full throughput when most markers are ER-eligible.
+S7 proper, which is now a decision plus a code change rather than a measurement.
+Item 3 is settled AGAINST simply retiring fork. The live options:
+- **(ii) is the only one that makes a mechanism dominate on both axes**: remove
+  the ER deferral per the probe (scoping `R_CStackLimit`, then re-running BOTH
+  `harness/tsan.sh` modes with the deferral off and re-running the f-sweep).
+- (i) retire in-process, route `--nThreads` through fork; (iii) keep both and
+  drop the obligation.
+- Do not pick using the 4%-fixture numbers.
 - **Criterion item 2 is still entirely open**: feature parity with fork item by
   item -- group tests, restart, non-fork-safe readers -- plus the recorded
   decision on `varianceRatioBinsHaveGap`.
-- Then route `--nThreads` and delete one mechanism.
 
 One timing rule, unchanged and re-earned this session: check `pmset -g therm`
 reads `CPU_Speed_Limit = 100` first, and check what is actually running. A

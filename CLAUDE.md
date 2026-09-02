@@ -515,18 +515,29 @@ deleted. They are never combined: `runMarkerScan` errors if both exceed 1.
 | 4-thread elapsed | 6.36 / 7.08 / 5.90 s | 6.12 / 7.18 / 5.79 s |
 | 4-thread maxRSS | **+47 to +90 MB** | **under 1 MB** |
 
-**Both are now measured** (`harness/bench_threads.sh <label> <reps> <threads>
-[inproc|fork]`, 16 pairs per cell, numbers in `harness/bench/NOTES.md`). On wall
-clock they are **indistinguishable** -- p = 0.14 / 0.53 / 0.49 over the binary,
-binary_sparse and quant workloads -- and differ only in memory, where in-process
-wins by two orders of magnitude. That does NOT settle the retirement: only
-**4.1% of the bundled fixture's 128,868 markers have MAC <= 4**, so the ER
-serialisation that in-process pays and fork does not is a 4% tax here, and the
-rare-variant regime where fork should win is unreachable with what this repo
-ships. Do not quote the p-values as "the mechanisms are equivalent". Use
-`elapsed_s`, never `work_s`, when comparing them: `work_s` comes from per-chunk
-cumulative `proc.time()` lines, which under fork are emitted by four separate
-processes.
+**Both are measured, and THE TWO ARE NOT SUBSTITUTABLE**
+(`harness/bench_threads.sh <label> <reps> <threads> [inproc|fork]`; numbers in
+`harness/bench/NOTES.md`). On the bundled fixture they look identical -- p = 0.14
+/ 0.53 / 0.49 -- but that is an artefact of the fixture: only **4.1% of its
+128,868 markers have MAC <= 4**, so the ER serialisation in-process pays and fork
+does not is a 4% tax there. `harness/make_rare_fixture.py` varies exactly that
+fraction f (real genotype blocks, not simulated; uniformly interleaved and
+position-renumbered, both of which matter -- see its docstring). Across
+f = 0 -> 1, **fork's speedup is FLAT (1.16-1.22) while in-process decays 1.25 ->
+0.95**, i.e. at f = 1 in-process is SLOWER than serial, because a deferred marker
+is decoded on a worker, discarded, and re-run on the main thread.
+
+Two standing rules when touching these numbers: never quote the bundled
+fixture's null p-values as "the mechanisms are equivalent", and use `elapsed_s`,
+never `work_s`, to compare them -- `work_s` comes from per-chunk cumulative
+`proc.time()` lines, which under fork are emitted by four separate processes.
+Read the paired speedup RATIOS, not raw elapsed means and not the unpaired
+cross-mechanism p-values.
+
+**The deferral itself may be removable** -- `harness/probes/lchoose_offthread.cpp`
+shows `Rf_lchoose` off-thread fails only R's C-stack check and returns
+bit-identical values once `R_CStackLimit` is neutralised. That is not yet a
+licence to act; see the caveats in the verdict doc.
 
 **The in-process path's real limit, and it is not a corner.** The ER exact test
 is main-thread-only, so every binary marker with `MAC <= max_MAC_for_ER`

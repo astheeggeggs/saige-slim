@@ -80,11 +80,20 @@ run_arm() { # run_arm <workload> <threads> <block> <rep> -> writes a TSV row, ec
   local wl="$1" nt="$2" blk="$3" rep="$4"
   local tag="$wl.$MECH.t$nt.b$blk.r$rep"
   local tf="$SCRATCH/time.$tag" lf="$SCRATCH/log.$tag" of="$SCRATCH/out.$tag"
-  local model args
+  local model args bed="$BED"
   case "$wl" in
     binary)        model="binary_sparseGRM_a";  args="" ;;
     binary_sparse) model="binary_sparseGRM_vr"; args="$SG --is_fastTest=FALSE" ;;
     quant)         model="quant_sparseGRM";     args="" ;;
+    # Controlled ER-eligible fraction (harness/make_rare_fixture.py): same 1000
+    # samples, same 128,868 markers, same model -- only the share of markers with
+    # MAC <= 4 changes, which is the one variable the bundled fixture cannot vary
+    # and the one the retirement decision turns on.
+    rare[0-9][0-9][0-9])
+      model="binary_sparseGRM_a"; args=""
+      local rp="$REPO/harness/work/rarefix/$wl"
+      [ -f "$rp.bed" ] || { echo "missing $rp.bed -- run harness/make_rare_fixture.py first" >&2; exit 1; }
+      bed="--bedFile=$rp.bed --bimFile=$rp.bim --famFile=$rp.fam --AlleleOrder=alt-first" ;;
     *) echo "unknown workload $wl" >&2; exit 1 ;;
   esac
   # The 1-thread arm is identical under both mechanisms (both dispatch to the
@@ -95,7 +104,7 @@ run_arm() { # run_arm <workload> <threads> <block> <rep> -> writes a TSV row, ec
   fi
   SAIGE_MARKER_THREADS="$mt" /usr/bin/time -l \
     pixi run --manifest-path "$REPO/pixi.toml" Rscript step2_SPAtests.R \
-    $BED $COMMON $args --nThreads=$ft \
+    $bed $COMMON $args --nThreads=$ft \
     --GMMATmodelFile="$GOLD/step1/$model.rda" \
     --varianceRatioFile="$GOLD/step1/$model.varianceRatio.txt" \
     --SAIGEOutputFile="$of" > "$lf" 2> "$tf" || {
@@ -132,7 +141,7 @@ echo "=== bench_threads: $LABEL @ $COMMIT, mech=$MECH, $REPS reps x 2 blocks, 1 
 pmset -g therm 2>/dev/null | grep -E 'CPU_Speed_Limit' || true
 uptime
 
-for wl in binary binary_sparse quant; do
+for wl in ${SAIGE_BENCH_WORKLOADS:-binary binary_sparse quant}; do
   echo "--- workload $wl"
   for blk in 1 2; do
     for rep in $(seq 1 "$REPS"); do

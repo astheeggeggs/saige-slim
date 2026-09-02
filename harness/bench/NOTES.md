@@ -357,3 +357,68 @@ implying a non-ER serial fraction s = 0.305 -- the writer and the per-chunk R
 work, neither of which threads. Feeding that s and f = 0.041 back in predicts
 **2.00x** for binary; measured **2.07x**. So the ~2x ceiling at 4 threads is set
 by the serial writer, not by ER, on this fixture.
+
+## The f-sweep: the measurement that actually discriminates (2026-09-02)
+
+The table above ends with "this fixture cannot reach the regime that decides
+it". `harness/make_rare_fixture.py` builds that regime: five marker files, same
+1000 samples, same 128,868 markers, same step-1 model, differing ONLY in the
+fraction f of markers that are ER-eligible (binary, MAC <= 4). Every marker is a
+byte-for-byte copy of a real marker's genotype block from the bundled fixture --
+nothing is simulated -- drawn from a rare pool (5,292 real markers with
+1 <= MAC <= 4) and a common pool (123,576 with MAC > 4), interleaved uniformly
+so every `parallelFor` range sees the same f.
+
+Two things had to be got right or the answer is an artefact. **Interleave, don't
+concatenate**: contiguous ranges mean a file with its rare markers in one block
+dumps the whole serial burden on one worker and measures scheduling.
+**Renumber positions**: `SPAGMMATtest` sorts by CHROM/POS, so duplicated markers
+carrying their original positions get reordered and the interleaving is lost.
+
+The cheap alternative -- raise `--max_MAC_use_ER` on the existing fixture -- was
+tried and rejected on inspection. ER cost climbs steeply with MAC and above ~21
+carriers the exact test switches to the resampling arm, so raising the cutoff
+changes the WORKLOAD rather than only f. Validated: cutoff 4/35/81/264/1000
+gives f = 0.041/0.25/0.50/0.75/1.00, but the deferred markers at the top of that
+range cost nothing like the ones at the bottom.
+
+**In-process, 4 threads, `work_s`.** The model is fitted on the f = 0 point ONLY
+(one parameter, s = the non-ER serial fraction) and then PREDICTS the other four:
+`speedup = 1/(s + (1-s)f + (1-s)(1-f)/T)`, s = 0.285.
+
+| f | work 1 thr | work 4 thr | speedup | predicted | ord. control b1 / b2 |
+|---|---|---|---|---|---|
+| 0.00 | 3.035 | 1.407 | 2.157 | 2.157 (fit) | 1.662 / 1.594 |
+| 0.25 | 3.113 | 1.902 | 1.637 | 1.673 | 1.294 / 1.128 |
+| 0.50 | 2.725 | 2.020 | 1.349 | 1.367 | 0.744 / 0.666 |
+| 0.75 | 2.493 | 2.237 | 1.114 | 1.155 | 0.205 / 0.306 |
+| 1.00 | 2.304 | 2.657 | **0.867** | 1.000 | -0.261 / -0.445 |
+
+The one place the model misses is f = 1, and it misses in the direction and by
+the mechanism predicted in advance: a deferred marker is decoded on a worker,
+thrown away, then re-read and re-tested on the main thread, so at f = 1
+in-process is not merely no faster but **13% SLOWER than serial**. The ordering
+control agrees in both blocks at every f, including the negative differences.
+
+**Head to head, `elapsed_s` (the only metric both mechanisms share).**
+
+| f | in-process | fork | maxRSS in-proc / fork |
+|---|---|---|---|
+| 0.00 | **1.248** | 1.213 | 268 / 367 MB |
+| 0.25 | 1.123 | 1.200 | 269 / 354 MB |
+| 0.50 | 1.076 | 1.220 | 269 / 353 MB |
+| 0.75 | 1.020 | 1.159 | 268 / 366 MB |
+| 1.00 | **0.954** | 1.170 | 269 / 350 MB |
+
+**Fork's speedup is FLAT in f** (1.16-1.22 across the whole range) -- each child
+is its own process with its own R main thread, so the ER deferral costs it
+nothing -- while in-process falls monotonically to a net slowdown. That is the
+discrimination the bundled fixture could not provide, and it says plainly that
+the two mechanisms are **not substitutable**. f = 0.041 is precisely where they
+look identical.
+
+Read the SPEEDUP RATIOS, not the raw elapsed means, and not the head-to-head
+p-values: the ratios are paired with the arms adjacent, whereas a cross-mechanism
+comparison is unpaired across blocks run at different times under different
+ambient load, which is why those p-values scatter (0.06, 0.01, 0.68, 0.04, 2e-6)
+while the ratios are clean and monotone.
