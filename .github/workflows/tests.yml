@@ -37,7 +37,14 @@ jobs:
       - name: Cache plink-ng build
         uses: actions/cache@v4
         with:
-          path: .pixi/envs/default/lib/libplink2_includes.a
+          # BOTH the archive and the headers: src/Makevars compiles every source
+          # file with -I../plink-ng/2.0/include, so restoring the .a alone gives a
+          # build that fails on "pgenlib_read.h: No such file or directory".
+          # harness/build.sh now guards the two independently as well, so a
+          # partial restore self-heals rather than failing.
+          path: |
+            .pixi/envs/default/lib/libplink2_includes.a
+            plink-ng/2.0/include
           key: plink-ng-v2.0.0-a.6.16-${{ runner.os }}
       - name: Build and install SAIGE
         run: bash harness/build.sh

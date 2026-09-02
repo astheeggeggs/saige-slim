@@ -19,12 +19,24 @@ cd "$REPO"
 # is exactly what left `"$CXX"` expanding to an empty string and failing with
 # "command not found" the first time this ran in CI. R's compiler is
 # guaranteed to exist: this package can't build without it either way.
+# TWO separate guards, deliberately. The compiled archive and the header tree are
+# needed by different things and can exist independently: the archive is what the
+# package links against, while the HEADERS are needed by every compile of this
+# package, because src/Makevars carries -I../plink-ng/2.0/include. CI caches only
+# the archive (plink-ng/ is gitignored), so a cache hit used to restore the .a,
+# skip this whole block, and then fail the package build with
+# "pgenlib_read.h: No such file or directory" -- correct on a cold cache, broken
+# on every warm one. Guarding them separately also keeps the cache worth having:
+# a warm run re-fetches the source (seconds) but skips the compile (minutes).
+if [ ! -f plink-ng/2.0/include/pgenlib_read.h ]; then
+  echo "plink-ng headers not found; fetching ..."
+  rm -rf plink-ng plink-ng-2.0.0-a.6.16
+  curl -L https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-a.6.16.tar.gz | tar -zx
+  mv plink-ng-2.0.0-a.6.16 plink-ng
+fi
+
 if [ ! -f .pixi/envs/default/lib/libplink2_includes.a ]; then
-  echo "libplink2_includes.a not found; fetching + building plink-ng ..."
-  if [ ! -d plink-ng ]; then
-    curl -L https://github.com/chrchang/plink-ng/archive/refs/tags/v2.0.0-a.6.16.tar.gz | tar -zx
-    mv plink-ng-2.0.0-a.6.16 plink-ng
-  fi
+  echo "libplink2_includes.a not found; building plink-ng ..."
   # R CMD config CXX returns "<compiler> -std=gnu++NN"; take just the
   # compiler binary so it doesn't collide with our own -std=c++14 below.
   RCXX="$(pixi run R CMD config CXX | awk '{print $1}')"
