@@ -157,17 +157,58 @@ have this limit** -- each child is its own process with its own R main thread --
 so the two mechanisms differ in capability, not just plumbing. That belongs in
 the retirement comparison, and it is now written there.
 
+## The two deferred S6 measurements are DONE (2026-09-02, later the same day)
+
+Neither changed any code; both are recorded where the facts live
+(`harness/bench/NOTES.md` for the numbers, the verdict doc's status block for
+the decision, `CLAUDE.md` for the standing rules). New in the tree:
+`harness/tsan.sh` and `harness/bench_threads.sh`, plus a `SAIGE_TSAN_ANNOTATIONS`
+block in `src/Main.cpp` that is compiled out of every normal build.
+
+**TSAN is clean, and the controls are what make that a statement.** The raw run
+was not clean -- 13-35 reports per run -- but every one was main-thread-vs-worker
+across the `parallelFor` join, none worker-vs-worker, because `libtbb` is
+uninstrumented and TSAN cannot see the join. Declaring that edge takes them all
+to zero across three workloads at 4 and 8 threads, output byte-identical to
+serial; and with the SAME annotation still active, the shared-`MarkerScratch`
+defect fires in every threaded cell (205-1130 races, worker-vs-worker, wrong
+answer in all six) while its own 1-thread arm stays at zero.
+`harness/tsan.sh plant` is that positive control. Four macOS-specific
+requirements are baked into the script because each one fails by reporting *no
+races* rather than by failing loudly -- see the header comment.
+
+**Speed and memory are measured, at `CPU_Speed_Limit = 100`.** In-process at 4
+threads: 2.07x / 2.53x / 2.09x on `work_s` for under 1 MB of maxRSS. Against
+fork through a common serial baseline, the two mechanisms are **indistinguishable
+on wall clock** (p = 0.14 / 0.53 / 0.49) and differ only in memory, where fork
+costs +47 to +90 MB.
+
+**The measurement did not settle the retirement, and that is the result.** Only
+5,292 of 128,868 markers (4.1%) on the bundled fixture have MAC <= 4, so the ER
+serialisation in-process pays and fork does not is a 4% tax here; the
+rare-variant regime the criterion warns about is unreachable with what this repo
+ships. The speedup bound is `1/(f + (1-f)/T)` in the deferred fraction f: 3.6x at
+f = 0.041, 1.6x at f = 0.5, 1.08x at f = 0.9. Do not read the null p-values as
+"the mechanisms are equivalent".
+
 ## Where to start
 
-S7, and the two S6 measurements that were deferred rather than skipped:
-- **bench + maxRSS at 1 vs 4 threads.** Deferred because the machine was
-  throttled: `pmset -g therm` read `CPU_Speed_Limit = 60` after the battery ran
-  flat. **Check that before ANY timing** -- `uptime` alone is not enough, and a
-  paired A/B does NOT correct for a throttle that changes mid-block, because it
-  hits the two arms unequally rather than as shared noise.
-- **A TSAN build**, which S6 has not had.
-- Then S7 proper: route `--nThreads` to the in-process path and retire one
-  mechanism, per the criterion in the verdict doc's status block.
+S7 proper, which is now a decision plus a code change rather than a measurement:
+- **Take the retirement judgement explicitly and write it down**, or build the
+  fixture that would settle it (a high-MAC<=4 marker set; nothing in the repo
+  has one). The evidence says in-process is strictly better on memory and equal
+  on speed *at a 4% deferral rate*, and that fork is the only one of the two
+  that holds full throughput when most markers are ER-eligible.
+- **Criterion item 2 is still entirely open**: feature parity with fork item by
+  item -- group tests, restart, non-fork-safe readers -- plus the recorded
+  decision on `varianceRatioBinsHaveGap`.
+- Then route `--nThreads` and delete one mechanism.
+
+One timing rule, unchanged and re-earned this session: check `pmset -g therm`
+reads `CPU_Speed_Limit = 100` first, and check what is actually running. A
+Spotlight re-index at ~60% CPU and a `ReportCrash` at ~97% (fallout from the
+planted-race abort) each delayed a block here; a paired A/B cancels noise SHARED
+by the arms, not a burst that lands on whichever arm was running.
 
 S6 deliberately leaves TWO parallelism mechanisms in the tree at once -- the
 existing fork/`mclapply` path in `R/MarkerShard.R` and the new in-process one,

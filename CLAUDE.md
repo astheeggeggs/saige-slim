@@ -345,6 +345,20 @@ dead files).
   enters the R API -- on every ER marker; it is now conditional on a resampling
   arm actually running, and P1 (all-exact) plus P33 (one resampling marker) are
   what make that checkable.
+- `bash harness/tsan.sh [clean|plant]` -- ThreadSanitizer over the in-process
+  marker scan, all three workloads at 1/4/8 threads. **Always run both modes**:
+  `clean` must report zero races, and `plant` (one `MarkerScratch` shared by
+  every worker) must report races -- a TSAN build that sees none of this code
+  also reports zero, so the clean run alone gates nothing. Four macOS-specific
+  requirements are baked in and each of them fails by reporting NO RACES rather
+  than by failing loudly (preload rather than link the runtime; `DYLD_*` cannot
+  be set from outside, since SIP strips it through R's `/bin/sh` wrappers;
+  bypassing those wrappers loses `DYLD_FALLBACK_LIBRARY_PATH`; and
+  `R CMD INSTALL` test-loads and then DELETES the install, hence
+  `--no-test-load`). The build goes to a copy of the tree, never `src/`.
+  Expect the raw run to report main-thread-vs-worker races anyway: `libtbb` is
+  not instrumented, so TSAN cannot see `parallelFor`'s join. `Main.cpp` declares
+  that edge under `SAIGE_TSAN_ANNOTATIONS`, which only `tsan.sh` defines.
 - `bash harness/make_controls.sh <dir>` — permuted-phenotype negative control
   through the full pipeline + KS uniformity check (`harness/check_null.R`),
   run through both the PLINK and PGEN readers (Phase 7) over the same
@@ -498,6 +512,21 @@ deleted. They are never combined: `runMarkerScan` errors if both exceed 1.
 | output | per-shard files concatenated | one writer, unchanged |
 | restart | refused | fine |
 | ER markers | full speed | **serialised** (see below) |
+| 4-thread elapsed | 6.36 / 7.08 / 5.90 s | 6.12 / 7.18 / 5.79 s |
+| 4-thread maxRSS | **+47 to +90 MB** | **under 1 MB** |
+
+**Both are now measured** (`harness/bench_threads.sh <label> <reps> <threads>
+[inproc|fork]`, 16 pairs per cell, numbers in `harness/bench/NOTES.md`). On wall
+clock they are **indistinguishable** -- p = 0.14 / 0.53 / 0.49 over the binary,
+binary_sparse and quant workloads -- and differ only in memory, where in-process
+wins by two orders of magnitude. That does NOT settle the retirement: only
+**4.1% of the bundled fixture's 128,868 markers have MAC <= 4**, so the ER
+serialisation that in-process pays and fork does not is a 4% tax here, and the
+rare-variant regime where fork should win is unreachable with what this repo
+ships. Do not quote the p-values as "the mechanisms are equivalent". Use
+`elapsed_s`, never `work_s`, when comparing them: `work_s` comes from per-chunk
+cumulative `proc.time()` lines, which under fork are emitted by four separate
+processes.
 
 **The in-process path's real limit, and it is not a corner.** The ER exact test
 is main-thread-only, so every binary marker with `MAC <= max_MAC_for_ER`

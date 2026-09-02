@@ -479,6 +479,30 @@ static bool testOneMarker(Geno::GenoReader & t_reader,
 // the same open .bed rather than a second open, so making one is nearly free.
 namespace {
 
+// S6/S7: the happens-before edge that parallelFor's join really provides, made
+// visible to ThreadSanitizer. TSAN cannot see it on its own: the joining code
+// lives in libtbb, which is not instrumented, so every main-thread read of data
+// a worker wrote (the writer's pass over MarkerResult, the pool's destructor)
+// is reported as a race against a write that in fact strictly precedes it.
+// Measured on the 128,868-marker fixture: 13-35 such reports per run, EVERY one
+// of them main-thread-vs-worker and none worker-vs-worker, with the worker side
+// holding the pool mutex -- and all of them gone once this edge is declared,
+// while the deliberately-shared-scratch defect still produces 205-1130 races,
+// worker-vs-worker, and a wrong answer, in every threaded cell. That pair is
+// what makes a clean TSAN run mean something; see harness/tsan.sh, which runs
+// both directions.
+// Compiled out of every normal build -- the macro is defined only by
+// harness/tsan.sh -- so this cannot affect a golden.
+#ifdef SAIGE_TSAN_ANNOTATIONS
+extern "C" void AnnotateHappensBefore(const char *f, int l, void *addr);
+extern "C" void AnnotateHappensAfter(const char *f, int l, void *addr);
+#define SAIGE_TSAN_HAPPENS_BEFORE(p) AnnotateHappensBefore(__FILE__, __LINE__, (void*)(p))
+#define SAIGE_TSAN_HAPPENS_AFTER(p)  AnnotateHappensAfter(__FILE__, __LINE__, (void*)(p))
+#else
+#define SAIGE_TSAN_HAPPENS_BEFORE(p) ((void)0)
+#define SAIGE_TSAN_HAPPENS_AFTER(p)  ((void)0)
+#endif
+
 struct MarkerWorkerState {
   Marker::MarkerScratch scratch;
   std::unique_ptr<Geno::GenoReader> reader;
@@ -579,6 +603,7 @@ struct MarkerScanWorker : public RcppParallel::Worker {
       }
     }
     m_pool.checkin(std::move(state));
+    SAIGE_TSAN_HAPPENS_BEFORE(&m_pool);
   }
 
   MarkerStatePool& m_pool;
@@ -696,6 +721,7 @@ void mainMarkerInCPP(
     // run serial and prove nothing.
     std::size_t grain = 64;
     RcppParallel::parallelFor(0, (std::size_t)q, worker, grain, nThreads);
+    SAIGE_TSAN_HAPPENS_AFTER(&pool);
 
     // --- post-pass 1: report the error a serial run would have reported ---
     for(int i = 0; i < q; i++){

@@ -287,3 +287,73 @@ block takes rather than modelling.
 
 Memory was never the constraint: 36 R processes totalled 4.3 GB on a 16 GB
 machine with 71% free. The cost of this suite is cores, not RAM.
+
+## Step-2 marker parallelism: both mechanisms measured (2026-09-02, S6/S7)
+
+`harness/bench_threads.sh <label> <reps> <threads> [inproc|fork]`. Paired A/B in
+the sense this file established: the two arms run adjacent within each rep and
+the arm ORDER is swapped between the two blocks. Unlike the F8/S1 comparisons no
+second installed library is needed -- both arms are the same binary with a knob
+moved -- which removes a confounder rather than adding one. Byte-identity
+between the arms is checked on every pair; a speedup measured on a run that
+stopped producing the right answer is not a speedup.
+
+Three workloads over the same 128,868 markers, because the ER finding means one
+workload cannot represent the change: `binary` (default `max_MAC_for_ER=4`, so
+ER-eligible markers are deferred to the main thread), `binary_sparse` (same,
+but with the PCG and the marker-path `scoreTest` on the clock, so the
+threadable fraction is much larger), and `quant` (never enters the ER branch).
+16 pairs each, `CPU_Speed_Limit = 100` throughout.
+
+**In-process (`nThreadsMarker`), 1 vs 4 threads, on `work_s`:**
+
+| workload | 1 thr | 4 thr | speedup | paired p | maxRSS |
+|---|---|---|---|---|---|
+| binary        | 2.725 | 1.316 | **2.07x** | 4e-15   | 274.6 -> 275.3 MB |
+| binary_sparse | 5.755 | 2.277 | **2.53x** | 4.1e-14 | 276.3 -> 276.8 MB |
+| quant         | 1.973 | 0.942 | **2.09x** | 7.4e-16 | 270.9 -> 271.2 MB |
+
+The ordering control behaves: block 1 (serial arm first) and block 2 (threaded
+arm first) give the same paired difference to within 7%, so the effect is not a
+warm-cache artefact of whichever arm ran second.
+
+**Head to head against the fork path, at 4 threads.** Both mechanisms were run
+against the SAME serial baseline rather than against each other, so each is
+measured through a common reference:
+
+| workload | inproc elapsed | fork elapsed | difference | maxRSS: inproc / fork |
+|---|---|---|---|---|
+| binary        | 6.121 | 6.358 | -0.237s, p = 0.14 | +0.7 / **+89.6 MB** |
+| binary_sparse | 7.177 | 7.076 | +0.101s, p = 0.53 | +0.6 / **+89.6 MB** |
+| quant         | 5.793 | 5.897 | -0.104s, p = 0.49 | +0.3 / **+47.4 MB** |
+
+**On wall clock the two mechanisms are indistinguishable** -- all three p-values
+are null, and the serial baselines of the two blocks agree (7.71/7.86,
+10.74/10.69, 6.69/6.77), which is the internal check that the blocks are
+comparable at all. **They differ only in memory**, and there in-process wins by
+two orders of magnitude: fork's copy-on-write children cost +47 to +90 MB at
+N = 1000 and 4 shards, and that grows with both N and the shard count, while
+in-process costs under 1 MB.
+
+**`work_s` IS NOT VALID FOR THE FORK ARM** and the table above deliberately does
+not use it. `s2_breakdown` recovers startup and work from SAIGE's per-chunk
+cumulative `proc.time()` lines; under fork those lines come from four different
+processes with four independent cumulative clocks, so the decomposition is
+meaningless there. `elapsed_s` is the only metric the two mechanisms share.
+
+**What this fixture CANNOT tell you, which is the important part.** Only
+**5,292 of 128,868 markers (4.1%)** have MAC <= 4 on this fixture, so the ER
+serialisation that in-process pays -- and fork does not -- is a 4% tax here.
+That is why in-process matched fork even on the binary workloads. It is not a
+rare-variant scan, and the regime the retirement criterion warns about is
+exactly the one this fixture cannot reach. With a deferred fraction f, the
+in-process speedup at T threads is bounded by `1/(f + (1-f)/T)`: at f = 0.041,
+T = 4 that bound is 3.6x (not binding); at f = 0.5 it is 1.6x; at f = 0.9 it is
+1.08x, i.e. threading buys nothing.
+
+The two workloads reconcile under one model, which is the check that the above
+is arithmetic rather than storytelling. Quant (f = 0) measured 2.09x on work_s,
+implying a non-ER serial fraction s = 0.305 -- the writer and the per-chunk R
+work, neither of which threads. Feeding that s and f = 0.041 back in predicts
+**2.00x** for binary; measured **2.07x**. So the ~2x ceiling at 4 threads is set
+by the serial writer, not by ER, on this fixture.

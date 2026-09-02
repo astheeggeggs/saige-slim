@@ -219,12 +219,88 @@ its commits have since landed and one of its stated gates was wrong.
   loses everything past the stream's 192 KiB buffer boundary *while still
   returning success*. `closeOutfile_single()` at `R/SAIGE_SPATest_Marker.R:156`
   is byte-neutral serially, so it may stay either way.
-- **Not yet done**: S7 -- route the CLI's `--nThreads` to the in-process path
-  and retire one of the two mechanisms, per the obligation above. Two S6 items
-  are also outstanding and are NOT blockers for the code, only for the decision:
-  the bench + maxRSS at 1 vs 4 threads (deferred: the machine was throttled,
-  `pmset -g therm` reporting `CPU_Speed_Limit = 60`, which no amount of pairing
-  corrects for), and a TSAN build.
+- **THE TWO DEFERRED S6 ITEMS ARE DONE** (this commit). Both were deferred, not
+  skipped, and neither changed any code.
+
+  **TSAN: clean, with both controls.** `harness/tsan.sh` builds an instrumented
+  copy of the tree and runs all three marker workloads over the full 128,868
+  markers at 1, 4 and 8 threads. Getting TSAN to run against R on macOS at all
+  took four things, each of which fails by reporting *no races* rather than by
+  failing loudly, so they are scripted rather than described: the runtime must be
+  **preloaded**, not merely linked (R `dlopen`s the .so, too late for the
+  interceptors); `DYLD_INSERT_LIBRARIES` **cannot be set from outside**, because
+  SIP strips `DYLD_*` through the `/bin/sh` wrappers that both `Rscript` and `R`
+  are, so it is exported inside a running shell that then execs
+  `$R_HOME/bin/exec/R` directly; bypassing that wrapper also loses the
+  `DYLD_FALLBACK_LIBRARY_PATH` `etc/ldpaths` sets, without which the .so's load
+  command for `libplink2_includes.a` resolves against nothing; and
+  `R CMD INSTALL` test-loads the .so as its last act and **deletes the install it
+  just made**, hence `--no-test-load`.
+
+  The raw result was NOT clean: 13-35 reports per run. Every one was
+  **main-thread-versus-worker**, none worker-versus-worker, with the worker side
+  holding the pool mutex and the main side in `writeOutfile_single` or the pool
+  destructor -- i.e. reads that strictly follow the `parallelFor` join. The
+  workers are created inside `libtbb`, which is not instrumented, so TSAN cannot
+  see that join. Declaring the edge (`SAIGE_TSAN_ANNOTATIONS` in `Main.cpp`,
+  compiled out of every normal build) takes all of them to **zero, on all three
+  workloads at both 4 and 8 threads, with output byte-identical to the serial
+  arm**. The annotation does not blind the instrument: with it still in place,
+  the deliberately-shared-`MarkerScratch` defect still fires in every threaded
+  cell: **205-1130 races, genuinely worker-versus-worker (T1/T2/T3 all
+  participating), and a wrong answer in all six**, while its own 1-thread arm
+  stays at zero -- so the defect bites only when markers actually run
+  concurrently. That pair -- silent when correct, loud when broken, with the same
+  annotation active in both -- is what makes the clean run mean something.
+  `harness/tsan.sh plant` reproduces it.
+
+  **Bench + maxRSS: measured, on a machine at `CPU_Speed_Limit = 100`.** Full
+  numbers in `harness/bench/NOTES.md`. In-process at 4 threads is
+  **2.07x / 2.53x / 2.09x** on `work_s` (binary / binary_sparse / quant, 16 pairs
+  each, all p < 1e-13, ordering control clean) for **under 1 MB** of extra
+  maxRSS.
+- **RETIREMENT CRITERION: items 1, 3 and 4 are now satisfied; the decision they
+  were supposed to settle is NOT settled, and that is the finding.** Item 1 is
+  S6's own gate. For items 3 and 4 both mechanisms were run against the SAME
+  serial baseline (`harness/bench_threads.sh ... fork`), so each is measured
+  through a common reference rather than against each other:
+
+  | workload | inproc elapsed | fork elapsed | difference | maxRSS: inproc / fork |
+  |---|---|---|---|---|
+  | binary        | 6.121 | 6.358 | -0.237s, p = 0.14 | +0.7 / **+89.6 MB** |
+  | binary_sparse | 7.177 | 7.076 | +0.101s, p = 0.53 | +0.6 / **+89.6 MB** |
+  | quant         | 5.793 | 5.897 | -0.104s, p = 0.49 | +0.3 / **+47.4 MB** |
+
+  **On speed the two are indistinguishable** -- three null p-values, with the two
+  blocks' serial baselines agreeing as the internal check that they are
+  comparable at all. **On memory in-process wins by two orders of magnitude**,
+  and fork's cost grows with both N and the shard count. Note `work_s` is
+  deliberately absent: it is derived from per-chunk cumulative `proc.time()`
+  lines, which under fork come from four different processes, so only
+  `elapsed_s` is shared between the mechanisms.
+
+  **But the fixture cannot reach the regime the amendment above warns about.**
+  Only **5,292 of 128,868 markers (4.1%)** have MAC <= 4 here, so in-process pays
+  a 4% ER tax and fork's structural advantage never shows. With a deferred
+  fraction f the in-process speedup at T threads is bounded by
+  `1/(f + (1-f)/T)`: 3.6x at f = 0.041 and T = 4 (not binding), 1.6x at f = 0.5,
+  **1.08x at f = 0.9** -- and a real rare-variant binary scan sits nearer the
+  bottom of that range than the top. The measurement says "no difference on this
+  fixture"; it does NOT say "no difference", and the two must not be conflated.
+  The ~2x ceiling here is set by the serial writer, not by ER: quant (f = 0)
+  implies a non-ER serial fraction of 0.305, which predicts 2.00x for binary
+  against 2.07x measured.
+- **Not yet done**: S7's code change -- route the CLI's `--nThreads` to the
+  in-process path and retire one mechanism -- plus criterion item 2 (feature
+  parity item by item, including the recorded decision on
+  `varianceRatioBinsHaveGap`). **Item 3's evidence does not by itself pick a
+  winner**, so the retirement now turns on a judgement the measurements have
+  framed rather than made: in-process is strictly better on memory and equal on
+  speed *at a 4% deferral rate*, while fork is the only one of the two that
+  keeps full throughput when most markers are ER-eligible. Either that judgement
+  is taken explicitly and written down here, or the honest next measurement is a
+  fixture with a high MAC <= 4 fraction, which does not exist in this repo and
+  would have to be built.
 
 
 All verification complete. Delivering the judgment.
