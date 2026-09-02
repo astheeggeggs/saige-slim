@@ -172,7 +172,24 @@ its commits have since landed and one of its stated gates was wrong.
   restart; threads have their own rules), which is how a codebase acquires a
   path nobody tests -- the same shape as the pread fallback S5 found, and as
   F8's marker-path arms before S0. The retirement is part of S7, not a
-  someday-item, and it does not happen on taste. Required evidence, all of it:
+  someday-item, and it does not happen on taste.
+
+  **AMENDED AFTER S6: the two are not the same capability in different
+  plumbing, so "which is faster" is not the whole question.** In-process
+  threading serialises every binary marker with `MAC <= max_MAC_for_ER`
+  (default 4), because the ER exact test calls `Rf_lchoose` and R aborts on any
+  `Rf_lchoose` call off the main thread. On a rare-variant binary scan that is
+  most markers. Quantitative traits are unaffected and thread fully. **Fork has
+  no such limit** -- each child is its own process with its own R main thread --
+  so for binary rare-variant work the two may not be substitutable at all,
+  whatever the timings say. Weigh this BEFORE item 3, not after: a paired A/B
+  that happens to run on a quantitative workload, or on a common-variant scan,
+  will not see it. If the retirement drops fork, say explicitly what happens to
+  binary rare-variant throughput; if that answer is unacceptable, the honest
+  outcome may be to drop the IN-PROCESS path instead and route `--nThreads`
+  through fork, which is the reverse of what S6 assumed.
+
+  Required evidence, all of it:
   1. **Byte-identity** at 1/2/4/8 threads x repeats over every marker golden.
      (This is S6's own gate, so it is free.)
   2. **Feature parity** with what fork does today, item by item: group tests
@@ -181,12 +198,16 @@ its commits have since landed and one of its stated gates was wrong.
      and a decision is recorded for `varianceRatioBinsHaveGap`, which post-S3 is
      only an earlier, friendlier message in front of a C++ throw -- keep it,
      move it, or drop it, but say which.
-  3. **Paired A/B showing in-process is not slower**, by the method in
-     `harness/bench/NOTES.md` (two installed libraries, arms alternated within
-     each rep, order swapped between blocks). Fork is not obviously the loser
-     here: it pays ~1.08 s of SAIGE load per child but has zero shared-memory
-     contention. Measure at both bench sizes; an unpaired 3+3 will not resolve
-     it, as it failed to resolve F8.
+  3. **Paired A/B showing in-process is not slower, on BOTH a binary and a
+     quantitative workload**, by the method in `harness/bench/NOTES.md` (two
+     installed libraries, arms alternated within each rep, order swapped
+     between blocks). The two trait types are the two regimes named above and
+     a single workload cannot represent both. Fork is not obviously the loser:
+     it pays ~1.08 s of SAIGE load per child but has zero shared-memory
+     contention AND no ER serialisation. Measure at both bench sizes; an
+     unpaired 3+3 will not resolve it, as it failed to resolve F8. Check
+     `pmset -g therm` reads `CPU_Speed_Limit = 100` first -- pairing does not
+     rescue a throttled block.
   4. **maxRSS at 4 threads**, in-process vs fork's copy-on-write children.
   What is deleted with the fork path: `splitMarkerShards`, `appendShardBytes`,
   `mergeShardOutputs` and `runMarkerScan`'s fork branch. What must **NOT** be
