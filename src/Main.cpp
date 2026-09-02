@@ -327,13 +327,19 @@ static bool testOneMarker(Geno::GenoReader & t_reader,
 
   bool is_region = false;
 
-  // S6: the ER branch is MAIN-THREAD ONLY, so hand the marker back before doing
-  // its work rather than after paying for it. Two R dependencies live under it:
-  // SL_setseed on the resampling arms (S2/F4), and Rf_lchoose on EVERY ER
-  // marker via HyperGeo::lCombinations -- the second was not in F4's inventory
-  // and is the binding one, because R's stack check aborts the session for any
-  // Rf_lchoose call off the main thread. See Binary_global.hpp for the measured
-  // control.
+  // S6: the ER branch was MAIN-THREAD ONLY, so hand the marker back before doing
+  // its work rather than after paying for it.
+  //
+  // NOTE: the binding half of that is GONE. Rf_lchoose -- called on every ER
+  // marker, and the reason the whole branch was excluded -- only ever tripped
+  // R's C-stack check, and is now computed from Rf_lbeta bit-identically and
+  // safely off-thread (HyperGeo::lchoose_threadsafe). What remains is SL_setseed
+  // on the RESAMPLING arms alone. So this predicate is now STRICTLY MORE
+  // CONSERVATIVE THAN NEEDED: it defers every binary MAC <= max_MAC_for_ER
+  // marker when only the drawing ones require it. Narrowing it is deliberately a
+  // separate change, gated on running harness/tsan.sh with the deferral off --
+  // which has never been done, and is the real safety question for the rest of
+  // the ER machinery (SL_calloc, the Binary_* statics).
   //
   // This predicate is an OPTIMISATION, not the safety property: if it is ever
   // wrong, SKATMainThread's guards throw and the marker is deferred one step

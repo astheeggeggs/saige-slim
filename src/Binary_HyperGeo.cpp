@@ -166,6 +166,45 @@ int     HyperGeo::Print(){
 }
 
 
+#ifndef _STAND_ALONE_
+// Rf_lchoose cannot be called off the main thread, and the reason turned out
+// NOT to be the arithmetic: R's C-stack check measures depth against the MAIN
+// thread's stack base, so a worker's stack pointer reads as impossibly deep and
+// R aborts the session. choose()/lchoose() are the two functions here that
+// recurse and so carry that check; Rf_lgammafn, Rf_pnorm5 and -- the one that
+// matters -- Rf_lbeta are all fine on a worker. The decisive measurement was
+// lchoose(1, 0), which returns 0 through an early return that makes no
+// math-library call at all and STILL aborts.
+//
+// So compute it the way R computes it, without entering that entry point. For
+// the domain lCombinations can reach -- integer n >= 0, integer k, with k > n
+// already short-circuited by the caller -- R's choose.c reduces to the early
+// returns below plus lfastchoose(n,k) = -log(n+1) - lbeta(n-k+1, k+1). Both of
+// R's recursive arms unroll here: n < 0 cannot occur, and the symmetry arm
+// lchoose(n, n-k) lands on n-k in {0,1}, which are the k < 2 early returns.
+//
+// VERIFIED BIT FOR BIT, not by inspection: over n in [0,2000] and k in [-3,n],
+// 2,009,004 argument pairs, ZERO differences from Rf_lchoose under memcmp (so
+// NaN/Inf/-0.0 are held to the same standard) -- and the same 2,009,004 values
+// computed on a worker thread with R's stack check LEFT ON, again with zero
+// differences. harness/probes/lchoose_replacement.cpp reproduces both.
+// Because it is bit-identical, no golden can move.
+static double lchoose_threadsafe(double n, double k)
+{
+    if (k < 2) {
+        if (k < 0) return R_NegInf;
+        if (k == 0) return 0.;
+        return std::log(std::fabs(n));            // k == 1
+    }
+    if (n < k) return R_NegInf;
+    if (n - k < 2) {                              // symmetry arm, n-k is 0 or 1
+        if (n - k == 0) return 0.;
+        return std::log(std::fabs(n));
+    }
+    return -std::log(n + 1.) - Rf_lbeta(n - k + 1., k + 1.);
+}
+#endif
+
 double HyperGeo::lCombinations(int n, int k)
 {
     if (k > n)
@@ -180,15 +219,11 @@ double HyperGeo::lCombinations(int n, int k)
         r -= log(d);
     }
     #else
-        // S6: Rf_lchoose cannot be called off the main thread -- R's stack check
-        // measures against the main thread's stack base and aborts the session.
-        // This is the guard that makes the marker loop's ER deferral a safety
-        // property rather than a promise; see SKATMainThread in Binary_global.hpp.
-        if(SKATMainThread::refuse()){
-            throw SKATMainThread::NeedsMainThread(
-                "the ER exact test calls Rf_lchoose, which is main-thread only");
-        }
-        r = lchoose (n, k);
+        // No main-thread guard here any more: lchoose_threadsafe is bit-identical
+        // to Rf_lchoose and safe on a worker. The ER path's remaining R
+        // dependency is SL_setseed, guarded where it lives, on the resampling
+        // arms only (Binary_ComputeExact.cpp).
+        r = lchoose_threadsafe (n, k);
     #endif
     
     return r;

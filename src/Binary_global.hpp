@@ -11,17 +11,22 @@
 //   1. SL_setseed, on the resampling arms only. It goes through
 //      Rcpp::Environment/Rcpp::Function/GetRNGstate (the LEDGER #2 fix); S2
 //      made it conditional on an arm actually drawing.
-//   2. **Rf_lchoose**, on EVERY ER marker, via HyperGeo::lCombinations. This
-//      one is not conditional on anything and was not in F4's inventory.
-//      MEASURED, in a 20-line program with no SAIGE in it: calling
-//      Rf_lchoose from a std::thread aborts the session with
-//      "C stack usage ... is too close to the limit", for every argument pair
-//      tried -- (1,0), (1,1), (5,2), (999,98) -- because R's stack check
-//      measures against the MAIN thread's stack base. The same probe shows
-//      Rf_lgammafn, Rf_pnorm5, Rf_qnorm5 and Rf_pchisq are all FINE off-thread,
-//      which is why the SPA path threads happily and only ER does not.
+//   2. Rf_lchoose, on EVERY ER marker, via HyperGeo::lCombinations -- **REMOVED**.
+//      It was never the arithmetic: R's stack check measures against the MAIN
+//      thread's stack base, so a worker reads as impossibly deep and R aborts.
+//      choose()/lchoose() recurse and carry that check; Rf_lgammafn, Rf_pnorm5,
+//      Rf_qnorm5, Rf_pchisq and Rf_lbeta are all FINE off-thread, which is why
+//      the SPA path always threaded and only ER did not. lchoose is now computed
+//      from Rf_lbeta the way R computes it (HyperGeo::lchoose_threadsafe),
+//      verified bit-identical over 2,009,004 argument pairs and on a worker
+//      thread with the stack check left ON. So no R_CStackLimit games, and no
+//      golden moves.
 //
-// So the whole ER branch is main-thread-only, and the marker loop defers it.
+// What remains main-thread-only is therefore SL_setseed, on the RESAMPLING arms
+// only, guarded where it lives in Binary_ComputeExact.cpp. The marker loop's
+// predicate still defers every binary MAC <= max_MAC_for_ER marker, which is now
+// more conservative than it needs to be; narrowing it is the next step and is
+// gated on TSAN, not on this comment.
 // This is the mechanism for that handback, and it is deliberately the
 // AUTHORITY rather than a hint: the loop also has a cheap predicate (binary and
 // MAC <= max_MAC_for_ER) for which markers take the branch, but a predicate can
