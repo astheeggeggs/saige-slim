@@ -1,7 +1,8 @@
-# Step-2 threading sequence: S0-S3 landed (handoff, 2026-09-02)
+# Step-2 threading sequence: S0-S4 landed (handoff, 2026-09-02)
 
-Branch `strip`, pushed to `slim/strip`, **CI green** (run 33621566011). Working
-tree clean. Commits, in order:
+Branch `strip`, pushed to `slim/strip`. S0-S3 plus the two CI fixes were green
+on CI (run 33621566011); **S4 has not been pushed yet** -- see "Where to start".
+Commits, in order:
 
 | commit | what |
 |---|---|
@@ -13,6 +14,8 @@ tree clean. Commits, in order:
 | `c10181fb` | this handoff record |
 | `1c7690e1` | CI — plink-ng headers guarded separately from the archive |
 | `f1d03251` | comparator — parse the non-finite spellings, not just their text |
+| `456f47d6` | docs — S4 anchored on names, current line numbers |
+| *this commit* | **S4** — `MarkerResult` + `MarkerScratch` + `testOneMarker`; the marker path's `vector<bool>` is gone |
 
 The authoritative plan is the status block at the top of
 `docs/design/step2-threading-verdict.md`, which is current as of this commit.
@@ -22,11 +25,10 @@ message.
 
 ## State of the gates
 
-- Full `make_goldens.sh` + `compare_goldens.sh` cycle run on each of the four
-  code commits: every step-0 and step-2 golden byte-identical, all five step-1
-  goldens at `max_rel_err 0.000e+00`.
-- Standard tier green in **both** compare modes at HEAD: `FAIL 0 | PASS 1796`.
-  Fast tier green: `FAIL 0 | PASS 1075`.
+- Full `make_goldens.sh` + `compare_goldens.sh` cycle run on each of the five
+  code commits: every step-0 and step-2 golden byte-identical (55 files at S4),
+  all five step-1 goldens at `max_rel_err 0.000e+00`.
+- Standard tier green in **both** compare modes at each of them.
 - The installed package in `.pixi` was built from this exact tree (clean
   objects). No rebuild needed to pick the work up.
 
@@ -59,30 +61,52 @@ passing locally is not the same check CI makes**, because on the golden-
 generating platform the numeric path can be reached with text that happens to
 match. Push early rather than at the end of a stage.
 
+## What S4 did
+
+`src/MarkerLoop.hpp` is new and holds the two types. `testOneMarker` is the loop
+body; `mainMarkerInCPP` is now the slot vector, the scratch, the progress line,
+the `break`, the Firth tally and the writer call; `writeOutfile_single` takes a
+`const std::vector<Marker::MarkerResult> &`. Both of the things S4 was supposed
+to fix are fixed structurally rather than by convention:
+- `std::vector<bool> isSPAConvergeVec` is gone. **No `std::vector<bool>` remains
+  anywhere on the marker path** -- the two left in `Main.cpp` are the region
+  path, which is not threaded -- so two markers can no longer share a word.
+- The loop-hoisted buffers are a named unit a worker owns, instead of six
+  variables in `mainMarkerInCPP`'s frame that happen to be reused.
+
+The Firth counters were the loop's only cross-marker accumulators; they are now
+per-marker flags on the result, summed after the scan. `is_FirthConverge` is
+still only read inside `if(is_Firth)`, which is what keeps it off the
+uninitialised path -- the Firth fit is the only thing that writes it.
+
+One dead store was dropped rather than carried into `MarkerResult`: the loop
+built a `CHR:POS:REF:ALT` string into an `infoVec` that the writer was never
+handed.
+
 ## Where to start
 
-S4 in the verdict doc: `MarkerResult` + `MarkerScratch`. Two concrete things
-it must do, both already located:
-- `std::vector<bool> isSPAConvergeVec` (`src/Main.cpp`, marker loop) is
-  bit-packed, so concurrent writes to distinct indices race on the same word.
-  Moving the per-marker outputs into a `MarkerResult` slot fixes it by
-  construction rather than by locking.
-- The loop-hoisted scratch buffers (`t_GVec`, `gtildeVec`, `t_P2Vec`,
-  `G1tilde_P_G2tilde_Vec`, the two index vectors) are shared across markers by
-  design -- that is the C3 allocation work -- so threading needs one set per
-  worker, not one per process.
+**Push S4 first** -- it is the only unpushed commit, and the standing lesson
+below is that local green is not CI green.
 
-S4 is still serial: the gate is the same golden cycle, and it should stay
-byte-identical.
+Then S5 in the verdict doc: the reader `clone()`, which still throws
+("Deferred to the Phase-4 shared-metadata implementation") in both
+`GenoReader` implementations. `PlinkReader`'s mmap path is member-write-free
+(F6) so clones can share it behind shared ownership; `closegenofile` needs to
+become idempotent so a clone cannot outlive the map. `PgenReader::isForkSafe()`
+is unconditionally false and no pgenlib work has been done, so PGEN is
+out of scope for threading in this pass.
 
 ## Things worth knowing before touching this area
 
-- **The goldens cannot see a thread-safety change.** S2 and S3 are both
+- **The goldens cannot see a thread-safety change.** S2, S3 and S4 are all
   byte-identical by construction, so each carries its own measurement instead:
   S2 counts `set.seed` calls by tracing `base::set.seed` in a child process
   (`tests/testthat/test-step2-er-seeding.R` keeps that as a standing test), S3
-  used the compiler as an exhaustive audit. Plan for that; a green golden run
-  is not evidence for this class of change.
+  used the compiler as an exhaustive audit, S4 used the type system (`grep` for
+  `std::vector<bool>`; every `g_model->`/`g_cfg.` inside `testOneMarker` read
+  back and confirmed a read). Plan for that; a green golden run is not evidence
+  for this class of change. What the golden cycle DID gate on S4 is the thing it
+  is good for: that a 460-line function was transcribed correctly.
 - **Paired A/B with two installed libraries** is the only timing method that
   resolved anything here: `R CMD INSTALL -l <scratch lib>` for the baseline,
   the pixi env for the change, arms alternated within each rep, and the arm

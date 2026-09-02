@@ -148,6 +148,259 @@ void setRegion_GlobalVarsInCPP(
 
 
 
+// S4: one marker's analysis, lifted out of mainMarkerInCPP's loop body. Every
+// value it produces goes into t_res (one slot per marker, never shared); every
+// buffer it reuses comes from t_scratch (shared across markers by design, so
+// one per worker once this is threaded). Nothing that outlives the call is
+// written: the model is const on this path since S3, and the reader is addressed
+// by absolute marker index rather than by a stream position.
+//
+// Returns false only on a short read, which is what the loop's `break` used to
+// respond to -- so the caller stops the scan and the remaining slots keep their
+// untested defaults, exactly as the q-length vectors did.
+static bool testOneMarker(std::string & t_genoType,
+                          const std::string & t_traitType,
+                          const std::string & t_genoIndexStr,
+                          bool t_isMoreOutput,
+                          bool t_isImputation,
+                          bool t_isCondition,
+                          bool t_isSingleVarianceRatio,
+                          Marker::MarkerScratch & t_scratch,
+                          Marker::MarkerResult & t_res)
+{
+  int n = g_model->m_n;
+
+  // information of marker
+  double altFreq, altCounts, missingRate, imputeInfo, AF_case, AF_ctrl, N_case_hom, N_ctrl_het, N_case_het, N_ctrl_hom;
+  std::string chr, ref, alt, marker;
+  uint32_t pd, N_case, N_ctrl;
+
+  bool flip = false;
+  char* end;
+  uint64_t gIndex = std::strtoull( t_genoIndexStr.c_str(), &end,10 );
+
+  bool isOutputIndexForMissing = true;
+  bool isOnlyOutputNonZero = false;
+
+  //clear vectors
+  t_scratch.indexZeroVec.clear();
+  t_scratch.indexNonZeroVec.clear();
+  t_scratch.indexForMissing.clear();
+
+  bool isReadMarker = Unified_getOneMarker(t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
+                                          isOutputIndexForMissing, // bool t_isOutputIndexForMissing,
+                                          t_scratch.indexForMissing,
+                                          isOnlyOutputNonZero, // bool t_isOnlyOutputNonZero,
+                                          t_scratch.indexNonZeroVec, t_scratch.GVec, t_isImputation);
+
+  if(!isReadMarker){
+    return false;
+  }
+
+  std::string pds = std::to_string(pd);
+  // The CHR:POS:REF:ALT `info` string the loop used to build here was written
+  // into an infoVec that the writer was never handed; it is dropped with the
+  // slot vectors rather than carried into MarkerResult.
+
+  // record basic information for the marker
+  t_res.chr = chr;
+  t_res.pos = pds;
+  t_res.ref = ref;
+  t_res.alt = alt;
+  t_res.marker = marker;                    // marker IDs
+  t_res.altFreq = altFreq;                  // allele frequencies of ALT allele, this is not always < 0.5.
+  t_res.missingRate = missingRate;
+  t_res.imputationInfo = imputeInfo;
+
+  // MAF and MAC are for Quality Control (QC)
+  double MAF = std::min(altFreq, 1 - altFreq);
+  // LEDGER #29 (second of two lossy steps): MAC used to be derived from the
+  // FREQUENCY as MAF * n * (1-missingRate) * 2. Both factors are float round
+  // trips -- MAF via 1-f when ALT is major, and n*(1-missingRate) via
+  // missingRate = numMissing/n -- so a marker sitting exactly on an integer
+  // --minMAC cutoff was dropped by the strictly-less-than gate below whenever
+  // the error happened to round low. Gate 2 already recomputes this exactly
+  // from the counts, but only AFTER gate 1 has discarded the marker.
+  // Derive it from counts here too. indexForMissing is populated on this path
+  // (isOutputIndexForMissing is set true above), so the non-missing count is
+  // exact -- unlike n*(1-missingRate).
+  double nNonMissing = (double)(n - (int)t_scratch.indexForMissing.size());
+  double MAC = std::min(altCounts, 2*nNonMissing - altCounts);
+
+  // Quality Control (QC) based on missing rate, MAF, and MAC
+  if((missingRate > g_cfg.missingRate_cutoff) || (MAF < g_cfg.marker_minMAF_cutoff) || (MAC < g_cfg.marker_minMAC_cutoff || imputeInfo < g_cfg.marker_minINFO_cutoff)){
+    return true;
+  }
+
+  t_scratch.indexZeroVec.clear();
+  t_scratch.indexNonZeroVec.clear();
+
+  flip = imputeGenoAndFlip(t_scratch.GVec, altFreq, altCounts, t_scratch.indexForMissing, g_cfg.impute_method, g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC, t_scratch.indexZeroVec, t_scratch.indexNonZeroVec);
+  MAC = std::min(altCounts, 2*n-altCounts);
+  MAF = std::min(altFreq, 1 - altFreq);
+
+  if((MAF < g_cfg.marker_minMAF_cutoff) || (MAC < g_cfg.marker_minMAC_cutoff)){
+    return true;
+  }
+
+  t_res.altFreq = altFreq;                  // allele frequencies of ALT allele, this is not always < 0.5.
+  t_res.altCounts = altCounts;
+
+  // analysis results for single-marker
+  double Beta, seBeta, Tstat, varT, gy;
+  double Beta_c, seBeta_c, Tstat_c, varT_c;
+  std::string pval, pval_noSPA, pval_c, pval_noSPA_c;
+  bool isSPAConverge, is_gtilde, is_Firth, is_FirthConverge;
+
+  t_scratch.indexZeroVec_arma = arma::conv_to<arma::uvec>::from(t_scratch.indexZeroVec);
+  t_scratch.indexNonZeroVec_arma = arma::conv_to<arma::uvec>::from(t_scratch.indexNonZeroVec);
+
+  t_scratch.indexZeroVec.clear();
+  t_scratch.indexNonZeroVec.clear();
+  // P2Vec / G1tilde_P_G2tilde_Vec are NOT cleared here. Both are fully assigned
+  // before any read (SAIGE_test.cpp:166/174/930/934 and :786 respectively), so
+  // clearing them only freed the scratch buffers and made the next marker
+  // re-allocate n doubles. Values are unaffected.
+
+  // S3: the marker path owns its test context instead of parking it on the
+  // model between markers. Same three values, same order of derivation --
+  // fastTest forces the non-sparse first pass, then the variance ratio is
+  // selected for that choice -- but nothing is written to g_model, so no
+  // marker can read what another one left behind (LEDGER #32) and two markers
+  // could be tested at once without racing.
+  bool hasVarRatio = true;
+  SAIGE::TestContext ctx;
+  ctx.useSparseGRM = g_model->m_isFastTest ? false : g_model->m_flagSparseGRM;
+  ctx.noadjCov = g_model->m_isnoadjCov;
+  if(t_isSingleVarianceRatio){
+      ctx.varRatioVal = g_model->selectSingleVarianceRatio(ctx.useSparseGRM, ctx.noadjCov);
+      hasVarRatio = true;
+  }else{
+      ctx.varRatioVal = g_model->selectVarianceRatio(MAC, ctx.useSparseGRM, ctx.noadjCov, hasVarRatio);
+  }
+
+  bool is_region = false;
+
+  if(MAC <= g_cfg.MACCutoffforER && t_traitType == "binary"){
+    Unified_getMarkerPval(
+                  t_scratch.GVec,
+                        false, // bool t_isOnlyOutputNonZero,
+                        t_scratch.indexNonZeroVec_arma, t_scratch.indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT,
+                        altFreq, isSPAConverge, t_scratch.gtildeVec, is_gtilde, is_region, t_scratch.P2Vec, t_isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, t_scratch.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
+  }else{
+    Unified_getMarkerPval(
+                  t_scratch.GVec,
+                        false, // bool t_isOnlyOutputNonZero,
+                        t_scratch.indexNonZeroVec_arma, t_scratch.indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT,
+                        altFreq, isSPAConverge, t_scratch.gtildeVec, is_gtilde, is_region, t_scratch.P2Vec, t_isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, t_scratch.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
+  }
+
+  double pval_num;
+
+  try {
+      pval_num = std::stod(pval);
+  } catch (const std::invalid_argument&) {
+      std::cerr << "Argument is invalid\n";
+      pval_num = 0;
+  } catch (const std::out_of_range&) {
+      std::cerr << "Argument is out of range for a double\n";
+      pval_num = 0;
+  }
+
+  if((t_traitType == "binary" && MAC > g_cfg.MACCutoffforER) || t_traitType != "binary"){
+    if(g_model->m_isFastTest && pval_num < (g_model->m_pval_cutoff_for_fastTest)){
+     // The re-test escalates: a marker whose fast p-value cleared the cutoff is
+     // re-tested with the covariate adjustment on, and on the sparse GRM unless
+     // its MAC is above the last category bound. Same derivation as before, into
+     // a second context rather than back onto the model.
+     SAIGE::TestContext ctxRetest;
+     ctxRetest.useSparseGRM = (MAC > g_model->m_cateVarRatioMinMACVecExclude.back()) ? false : g_model->m_flagSparseGRM;
+     ctxRetest.noadjCov = false;
+     if(!t_isSingleVarianceRatio){
+        ctxRetest.varRatioVal = g_model->selectVarianceRatio(MAC, ctxRetest.useSparseGRM, ctxRetest.noadjCov, hasVarRatio);
+     }else{
+        ctxRetest.varRatioVal = g_model->selectSingleVarianceRatio(ctxRetest.useSparseGRM, ctxRetest.noadjCov);
+        hasVarRatio = true;
+     }
+
+      Unified_getMarkerPval(
+                    t_scratch.GVec,
+                          false, // bool t_isOnlyOutputNonZero,
+                          t_scratch.indexNonZeroVec_arma, t_scratch.indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT,
+                          altFreq, isSPAConverge, t_scratch.gtildeVec, is_gtilde, is_region, t_scratch.P2Vec, t_isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, t_scratch.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctxRetest);
+     }
+  }//if((t_traitType == "binary" && MAC > g_cfg.MACCutoffforER) || t_traitType != "binary"){
+
+  // The two Firth counters were the loop's only cross-marker accumulators;
+  // recorded per marker here and summed by the caller after the scan. Reading
+  // is_FirthConverge stays nested inside is_Firth, which is what keeps it off
+  // the uninitialised path (it is only written by the Firth fit itself).
+  if(t_traitType == "binary"){
+    if(is_Firth){
+      t_res.isFirth = true;
+      if(is_FirthConverge){
+        t_res.isFirthConverge = true;
+      }
+    }
+  }
+
+  t_res.Beta = Beta * (1 - 2*flip);  // Beta if flip = false, -1*Beta is flip = true
+  t_res.seBeta = seBeta;
+  t_res.pval = pval;
+  t_res.pvalNA = pval_noSPA;
+  t_res.Tstat = Tstat * (1 - 2*flip);
+  t_res.varT = varT;
+
+  if(t_isCondition){
+    t_res.Beta_c = Beta_c * (1 - 2*flip);  // Beta if flip = false, -1*Beta is flip = true
+    t_res.seBeta_c = seBeta_c;
+    t_res.pval_c = pval_c;
+    t_res.pvalNA_c = pval_noSPA_c;
+    t_res.Tstat_c = Tstat_c * (1 - 2*flip);
+    t_res.varT_c = varT_c;
+  }
+
+  if(t_traitType == "binary"){
+    arma::vec dosage_case = t_scratch.GVec.elem(g_model->m_case_indices);
+    arma::vec dosage_ctrl = t_scratch.GVec.elem(g_model->m_ctrl_indices);
+    AF_case = arma::mean(dosage_case) /2;
+    AF_ctrl = arma::mean(dosage_ctrl) /2;
+    N_case = dosage_case.n_elem;
+    N_ctrl = dosage_ctrl.n_elem;
+    if(flip){
+       AF_case = 1-AF_case;
+       AF_ctrl = 1-AF_ctrl;
+    }
+    t_res.isSPAConverge = isSPAConverge;
+    t_res.AF_case = AF_case;
+    t_res.AF_ctrl = AF_ctrl;
+
+    t_res.N_case = N_case;
+    t_res.N_ctrl = N_ctrl;
+
+    arma::uvec N_case_ctrl_het_hom0;
+    if(t_isMoreOutput){
+      N_case_ctrl_het_hom0 = arma::find(dosage_case <= 2 && dosage_case >=1.5);
+      t_res.N_case_hom = N_case_ctrl_het_hom0.n_elem;
+      N_case_ctrl_het_hom0 = arma::find(dosage_case < 1.5 && dosage_case >= 0.5);
+      t_res.N_case_het = N_case_ctrl_het_hom0.n_elem;
+      N_case_ctrl_het_hom0 = arma::find(dosage_ctrl <= 2 && dosage_ctrl >=1.5);
+      t_res.N_ctrl_hom = N_case_ctrl_het_hom0.n_elem;
+      N_case_ctrl_het_hom0 = arma::find(dosage_ctrl < 1.5 && dosage_ctrl >= 0.5);
+      t_res.N_ctrl_het = N_case_ctrl_het_hom0.n_elem;
+      if(flip){
+        t_res.N_case_hom = N_case - t_res.N_case_het - t_res.N_case_hom;
+        t_res.N_ctrl_hom = N_ctrl - t_res.N_ctrl_het - t_res.N_ctrl_hom;
+      }
+    }
+  }else if(t_traitType == "quantitative"){
+    t_res.N = n;
+  }
+
+  return true;
+}
+
+
 //////// ---------- Main function for marker-level analysis --------- ////////////
                            //std::vector<uint32_t> & t_genoIndex,
 
@@ -162,416 +415,53 @@ void mainMarkerInCPP(
 {
 
   int q = t_genoIndex.size();  // number of markers
-  // set up output
-  std::vector<std::string> markerVec(q);  // marker IDs
-  std::vector<std::string> chrVec(q);  // marker IDs
-  std::vector<std::string> posVec(q);  // marker IDs
-  std::vector<std::string> refVec(q);  // marker IDs
-  std::vector<std::string> altVec(q);  // marker IDs
 
-  std::vector<std::string> infoVec(q);    // marker information: CHR:POS:REF:ALT
-  std::vector<double> altFreqVec(q);      // allele frequencies of ALT allele, this is not always < 0.5.
-  std::vector<double> altCountsVec(q);    // allele counts of ALT allele.
-  std::vector<double> imputationInfoVec(q);    // imputation info of ALT allele.
-  std::vector<double> missingRateVec(q);  
-  std::vector<double> BetaVec(q, arma::datum::nan);         // beta value for ALT allele
-  std::vector<double> seBetaVec(q, arma::datum::nan);       
-  //std::vector<double> pvalVec(q, arma::datum::nan);
-  std::vector<std::string> pvalVec(q, "NA");
-  std::vector<double> TstatVec(q, arma::datum::nan);
-  std::vector<double> varTVec(q, arma::datum::nan);
-  //std::vector<double> pvalNAVec(q, arma::datum::nan);
-  std::vector<std::string> pvalNAVec(q, "NA");
+  // One output slot per marker (S4). This replaces the ~30 q-length vectors the
+  // loop used to fill in lockstep -- including std::vector<bool>
+  // isSPAConvergeVec, whose bit packing made writes to distinct markers writes
+  // to the same word.
+  std::vector<Marker::MarkerResult> resultVec(q);
 
   bool isCondition = g_model->m_isCondition;
-  //if(isCondition){
-  std::vector<double> Beta_cVec(q, arma::datum::nan);         // beta value for ALT allele
-  std::vector<double> seBeta_cVec(q, arma::datum::nan);
-  //std::vector<double> pval_cVec(q, arma::datum::nan);
-  std::vector<std::string> pval_cVec(q, "NA");
-  std::vector<double> Tstat_cVec(q, arma::datum::nan);
-  std::vector<double> varT_cVec(q, arma::datum::nan);
-  //std::vector<double> pvalNA_cVec(q, arma::datum::nan);
-  std::vector<std::string> pvalNA_cVec(q, "NA");
-  //}
-  arma::rowvec G1tilde_P_G2tilde_Vec(g_model->m_numMarker_cond);
 
-  std::vector<bool>  isSPAConvergeVec(q);
-  std::vector<double>  AF_caseVec(q);
-  std::vector<double>  AF_ctrlVec(q);
-  std::vector<uint32_t>  N_caseVec(q);
-  std::vector<uint32_t>  N_ctrlVec(q);
-    //if(t_isMoreOutput){
-  std::vector<double>  N_case_homVec(q);
-  std::vector<double>  N_ctrl_hetVec(q);
-  std::vector<double>  N_case_hetVec(q);
-  std::vector<double>  N_ctrl_homVec(q);
-  std::vector<uint32_t>  N_Vec(q);
-  std::vector<uint> indexZeroVec;
-  std::vector<uint> indexNonZeroVec;
-  std::vector<uint> indexForMissing;
-  // Hoisted out of the marker loop: conv_to fully overwrites them every marker,
-  // so reusing the buffers is value-neutral and saves an n-element uvec
-  // allocation (plus its widening copy) per marker.
-  arma::uvec indexZeroVec_arma, indexNonZeroVec_arma;
+  // The reusable buffers, one set for the whole (serial) scan.
+  Marker::MarkerScratch scratch(g_model->m_n, g_model->m_numMarker_cond);
 
-  int n = g_model->m_n;
-  arma::vec t_GVec(n);
-  arma::vec gtildeVec(n);
-  arma::vec t_P2Vec;
-  /*
-  if(g_model->m_isFastTest){
-    g_model->set_flagSparseGRM_cur(false);
-    g_model->set_isnoadjCov_cur(g_model->m_isnoadjCov);
-  }else{
-    g_model->set_flagSparseGRM_cur(g_model->m_flagSparseGRM); 
-    g_model->set_isnoadjCov_cur(false);
-  }
-*/
-  bool hasVarRatio = true;;
   bool isSingleVarianceRatio = true;
   if((g_model->m_varRatio_null).n_elem == 1){
         g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM, g_model->m_isnoadjCov);
-        //g_model->assignSingleVarianceRatio(false);
-  }else{		
+  }else{
 	isSingleVarianceRatio = false;
   }
-
-
-  int mFirth = 0;
-  int mFirthConverge = 0;
 
   for(int i = 0; i < q; i++){
     if((i+1) % g_cfg.marker_chunksize == 0){
       std::cout << "Completed " << (i+1) << "/" << q << " markers in the chunk." << std::endl;
     }
-    // information of marker
-    double altFreq, altCounts, missingRate, imputeInfo, AF_case, AF_ctrl, N_case_hom, N_ctrl_het, N_case_het, N_ctrl_hom; 
-    std::string chr, ref, alt, marker;
-    uint32_t pd, N_case, N_ctrl, N;
 
-    //free(end);
-
-    bool flip = false;
-    std::string t_genoIndex_str = t_genoIndex.at(i);
-    char* end;
-    uint64_t gIndex = std::strtoull( t_genoIndex_str.c_str(), &end,10 );
-
-
-
-
-
-    //Main.cpp
-    //PLINK 
-    //uint32_t gIndex_temp = gIndex; 
-    bool isOutputIndexForMissing = true;
-    bool isOnlyOutputNonZero = false; 
-   
-   //clear vectors
-   indexZeroVec.clear();
-   indexNonZeroVec.clear();
-   indexForMissing.clear();
-   //t_GVec0.clear();
-   //t_GVec.clear();
-   //arma::vec timeoutput1 = getTime();
-   bool isReadMarker = Unified_getOneMarker(t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
-                                          isOutputIndexForMissing, // bool t_isOutputIndexForMissing,
-                                          indexForMissing,
-                                          isOnlyOutputNonZero, // bool t_isOnlyOutputNonZero,
-                                          indexNonZeroVec, t_GVec, t_isImputation);
-   //arma::vec timeoutput2 = getTime();   
-   //printTime(timeoutput1, timeoutput2, "Unified_getOneMarker"); 
-//
-   if(!isReadMarker){
-      //std::cout << "isReadMarker " << isReadMarker << std::endl;
+    bool isReadMarker = testOneMarker(t_genoType,
+                                      t_traitType,
+                                      t_genoIndex.at(i),
+                                      t_isMoreOutput,
+                                      t_isImputation,
+                                      isCondition,
+                                      isSingleVarianceRatio,
+                                      scratch,
+                                      resultVec.at(i));
+    if(!isReadMarker){
       break;
     }
+  }
 
-
-   //std::cout << "t_GVec0.size()) " << t_GVec0.size() << std::endl;
-   //arma::vec t_GVec(t_GVec0.size());
-   //arma::vec t_GVec = arma::conv_to< arma::colvec >::from(t_GVec0);
-
-   //arma::vec t_GVec(t_GVec0);
-   //t_GVec0.clear(); 
-
-   //for(uint j = 0; j < n; j++){
-   //	t_GVec(j) = t_GVec0.at(j);	
-   //}
-
-    //for(int indi = 0; indi < indexForNonZero.size(); indi++){
-    //  std::cout << indexForNonZero[indi] << std::endl;
-    //}
-//   std::cout << "marker " << marker << std::endl;
-//   std::cout << "indexForMissing.size() " << indexForMissing.size() << std::endl;
-//   std::cout << "indexNonZeroVec.size() " << indexNonZeroVec.size() << std::endl;
-    //int n = t_GVec.size();
-    //arma::vec gtildeVec(n);
-
-  
-
-
-    std::string pds = std::to_string(pd); 
-    std::string info = chr+":"+pds+":"+ref+":"+alt;
-
-    chrVec.at(i) = chr;
-    posVec.at(i) = pds;
-    refVec.at(i) = ref;
-    altVec.at(i) = alt; 
-    // record basic information for the marker
-    markerVec.at(i) = marker;               // marker IDs
-    infoVec.at(i) = info;    // marker information: CHR:POS:REF:ALT
-    altFreqVec.at(i) = altFreq;         // allele frequencies of ALT allele, this is not always < 0.5.
-    //altCountsVec.at(i) = altCounts;         // allele frequencies of ALT allele, this is not always < 0.5.
-    missingRateVec.at(i) = missingRate;
-    imputationInfoVec.at(i) = imputeInfo;
-
-
-
-    // MAF and MAC are for Quality Control (QC)
-    double MAF = std::min(altFreq, 1 - altFreq);
-    // LEDGER #29 (second of two lossy steps): MAC used to be derived from the
-    // FREQUENCY as MAF * n * (1-missingRate) * 2. Both factors are float round
-    // trips -- MAF via 1-f when ALT is major, and n*(1-missingRate) via
-    // missingRate = numMissing/n -- so a marker sitting exactly on an integer
-    // --minMAC cutoff was dropped by the strictly-less-than gate below whenever
-    // the error happened to round low. Gate 2 already recomputes this exactly
-    // from the counts, but only AFTER gate 1 has discarded the marker.
-    // Derive it from counts here too. indexForMissing is populated on this path
-    // (isOutputIndexForMissing is set true above), so the non-missing count is
-    // exact -- unlike n*(1-missingRate).
-    double nNonMissing = (double)(n - (int)indexForMissing.size());
-    double MAC = std::min(altCounts, 2*nNonMissing - altCounts);
-    
-    
-  /*
-   std::cout << "missingRate " << missingRate << std::endl;
-   std::cout << "MAF " << MAF << std::endl;
-   std::cout << "MAC " << MAC << std::endl;
-   std::cout << "altFreq " << altFreq << std::endl;
-   std::cout << "altCounts " << altCounts << std::endl;
-   std::cout << "n " << n << std::endl;
-   */
-
-
-    // Quality Control (QC) based on missing rate, MAF, and MAC
-    if((missingRate > g_cfg.missingRate_cutoff) || (MAF < g_cfg.marker_minMAF_cutoff) || (MAC < g_cfg.marker_minMAC_cutoff || imputeInfo < g_cfg.marker_minINFO_cutoff)){
-      continue;
-    }else{
-    // Check UTIL.cpp
-    //
-    //
-    //arma::vec timeoutput3 = getTime();
-    indexZeroVec.clear();
-    indexNonZeroVec.clear();
-
-
-    flip = imputeGenoAndFlip(t_GVec, altFreq, altCounts,indexForMissing, g_cfg.impute_method, g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC, indexZeroVec, indexNonZeroVec);
-    MAC = std::min(altCounts, 2*n-altCounts);
-    MAF = std::min(altFreq, 1 - altFreq);
-
-   if((MAF < g_cfg.marker_minMAF_cutoff) || (MAC < g_cfg.marker_minMAC_cutoff)){
-	continue;
-   }else{
-//arma::vec timeoutput4 = getTime();
-//printTime(timeoutput3, timeoutput4, "imputeGenoAndFlip");
-    altFreqVec.at(i) = altFreq;         // allele frequencies of ALT allele, this is not always < 0.5.
-    altCountsVec.at(i) = altCounts;         // allele frequencies of ALT allele, this is not always < 0.5.
-   //std::cout << "MAC " << MAC << std::endl; 
-   //std::cout << "altFreq after flip " << altFreq << std::endl; 
-   //std::cout << "info " << info << std::endl; 
-    // analysis results for single-marker
-    double Beta, seBeta, Tstat, varT, gy;
-    double Beta_c, seBeta_c, Tstat_c, varT_c;
-    std::string pval, pval_noSPA, pval_c, pval_noSPA_c;
-    bool isSPAConverge, is_gtilde, is_Firth, is_FirthConverge;
-    //arma::vec t_P2Vec;
-    //arma::vec t_P2Vec;
-
-    indexZeroVec_arma = arma::conv_to<arma::uvec>::from(indexZeroVec);
-    indexNonZeroVec_arma = arma::conv_to<arma::uvec>::from(indexNonZeroVec);
-
-    indexZeroVec.clear();
-    indexNonZeroVec.clear();
-    // t_P2Vec / G1tilde_P_G2tilde_Vec are NOT cleared here any more. Both are
-    // fully assigned before any read (SAIGE_test.cpp:166/174/930/934 and :786
-    // respectively), so clearing them only freed the hoisted buffers and made
-    // the next marker re-allocate n doubles. Values are unaffected.
-    //arma::vec timeoutput5 = getTime(); 
-
-
-    //set_varianceRatio(MAC, isSingleVarianceRatio);
-
-    // S3: the marker path owns its test context instead of parking it on the
-    // model between markers. Same three values, same order of derivation --
-    // fastTest forces the non-sparse first pass, then the variance ratio is
-    // selected for that choice -- but nothing is written to g_model, so no
-    // marker can read what another one left behind (LEDGER #32) and two markers
-    // could be tested at once without racing.
-    SAIGE::TestContext ctx;
-    ctx.useSparseGRM = g_model->m_isFastTest ? false : g_model->m_flagSparseGRM;
-    ctx.noadjCov = g_model->m_isnoadjCov;
-    if(isSingleVarianceRatio){
-        ctx.varRatioVal = g_model->selectSingleVarianceRatio(ctx.useSparseGRM, ctx.noadjCov);
-        hasVarRatio = true;
-    }else{
-        ctx.varRatioVal = g_model->selectVarianceRatio(MAC, ctx.useSparseGRM, ctx.noadjCov, hasVarRatio);
-    }
-      
-    //}else{
-    //  if(!isSingleVarianceRatio){
-    //    hasVarRatio = g_model->assignVarianceRatio(MAC, g_model->m_flagSparseGRM, g_model->m_isnoadjCov);
-    //  }else{
-    //	g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM, g_model->m_isnoadjCov);	
-    //  }
-   //}
-    //check 'Main.cpp'
-    bool is_region = false;
-
-    if(MAC <= g_cfg.MACCutoffforER && t_traitType == "binary"){
-    //if(MAC > g_cfg.MACCutoffforER){
-      Unified_getMarkerPval( 
-		    t_GVec, 
-                          false, // bool t_isOnlyOutputNonZero, 
-                          indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT,   
-			  altFreq, isSPAConverge, gtildeVec, is_gtilde, is_region, t_P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
-    }else{
-      Unified_getMarkerPval( 
-		    t_GVec, 
-                          false, // bool t_isOnlyOutputNonZero, 
-                          indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT,   
-			  altFreq, isSPAConverge, gtildeVec, is_gtilde, is_region, t_P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
-    }
-    double pval_num;
-  
-    try {
-        pval_num = std::stod(pval);
-    } catch (const std::invalid_argument&) {
-        std::cerr << "Argument is invalid\n";
-	pval_num = 0;
-    } catch (const std::out_of_range&) {
-        std::cerr << "Argument is out of range for a double\n";
-	pval_num = 0;
-    }
-
-  if((t_traitType == "binary" && MAC > g_cfg.MACCutoffforER) || t_traitType != "binary"){
-
-
-
-    if(g_model->m_isFastTest && pval_num < (g_model->m_pval_cutoff_for_fastTest)){
-      //g_model->set_flagSparseGRM_cur(true);
-     // The re-test escalates: a marker whose fast p-value cleared the cutoff is
-     // re-tested with the covariate adjustment on, and on the sparse GRM unless
-     // its MAC is above the last category bound. Same derivation as before, into
-     // a second context rather than back onto the model.
-     SAIGE::TestContext ctxRetest;
-     ctxRetest.useSparseGRM = (MAC > g_model->m_cateVarRatioMinMACVecExclude.back()) ? false : g_model->m_flagSparseGRM;
-     ctxRetest.noadjCov = false;
-     if(!isSingleVarianceRatio){
-        ctxRetest.varRatioVal = g_model->selectVarianceRatio(MAC, ctxRetest.useSparseGRM, ctxRetest.noadjCov, hasVarRatio);
-     }else{
-        ctxRetest.varRatioVal = g_model->selectSingleVarianceRatio(ctxRetest.useSparseGRM, ctxRetest.noadjCov);
-        hasVarRatio = true;
-     }
-
-
-     //if(MAC > g_cfg.MACCutoffforER){
-      Unified_getMarkerPval(
-                    t_GVec,
-                          false, // bool t_isOnlyOutputNonZero,
-                          indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT,
-                          altFreq, isSPAConverge, gtildeVec, is_gtilde, is_region, t_P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctxRetest);
-     //}else{
-      //std::cout << "ER " << std::endl;
-   /*
-   Unified_getMarkerPval(
-                    t_GVec,
-                          false, // bool t_isOnlyOutputNonZero,
-                          indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT,
-                          altFreq, isSPAConverge, gtildeVec, is_gtilde, is_region, t_P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, g_model->m_isnoadjCov_cur, g_model->m_flagSparseGRM_cur);
- */
- 
-      //}     
-     }
-}//if((t_traitType == "binary" && MAC > g_cfg.MACCutoffforER) || t_traitType != "binary"){
-
-
-   if(t_traitType == "binary"){
-     if(is_Firth){
-       mFirth = mFirth + 1;
-       if(is_FirthConverge){
-		mFirthConverge = mFirthConverge + 1;
-       }
-     }
-   }
-//arma::vec timeoutput6 = getTime();
-//printTime(timeoutput5, timeoutput6, "Unified_getMarkerPval");
-
-   // Not cleared: both are fully reassigned by conv_to at the top of the next
-   // marker's analysis block, and freeing them here defeated the hoist above.
-   //std::cout << "isSPAConverge " << isSPAConverge << std::endl;
-    BetaVec.at(i) = Beta * (1 - 2*flip);  // Beta if flip = false, -1*Beta is flip = true       
-    seBetaVec.at(i) = seBeta;       
-    pvalVec.at(i) = pval;
-    pvalNAVec.at(i) = pval_noSPA;
-    TstatVec.at(i) = Tstat * (1 - 2*flip);
-    varTVec.at(i) = varT;
-
-    if(isCondition){
-    	Beta_cVec.at(i) = Beta_c * (1 - 2*flip);  // Beta if flip = false, -1*Beta is flip = true
-    	seBeta_cVec.at(i) = seBeta_c;
-    	pval_cVec.at(i) = pval_c;
-    	pvalNA_cVec.at(i) = pval_noSPA_c;
-    	Tstat_cVec.at(i) = Tstat_c * (1 - 2*flip);
-    	varT_cVec.at(i) = varT_c;
-    }
-	
-    if(t_traitType == "binary"){ 
-	    arma::vec dosage_case = t_GVec.elem(g_model->m_case_indices);
-	    arma::vec dosage_ctrl = t_GVec.elem(g_model->m_ctrl_indices);
-      AF_case = arma::mean(dosage_case) /2;
-      AF_ctrl = arma::mean(dosage_ctrl) /2;
-      N_case = dosage_case.n_elem;
-      N_ctrl = dosage_ctrl.n_elem;
-      if(flip){
-         AF_case = 1-AF_case;
-         AF_ctrl = 1-AF_ctrl;
+  int mFirth = 0;
+  int mFirthConverge = 0;
+  for(int i = 0; i < q; i++){
+    if(resultVec.at(i).isFirth){
+      mFirth = mFirth + 1;
+      if(resultVec.at(i).isFirthConverge){
+        mFirthConverge = mFirthConverge + 1;
       }
-      isSPAConvergeVec.at(i) = isSPAConverge;
-      AF_caseVec.at(i) = AF_case;
-      AF_ctrlVec.at(i) = AF_ctrl;
-
-      N_caseVec.at(i) = N_case;
-      N_ctrlVec.at(i) = N_ctrl;
-
-      arma::uvec N_case_ctrl_het_hom0;
-      if(t_isMoreOutput){	
-   	N_case_ctrl_het_hom0 = arma::find(dosage_case <= 2 && dosage_case >=1.5); 
-    	N_case_homVec.at(i)  = N_case_ctrl_het_hom0.n_elem;
-    	N_case_ctrl_het_hom0 = arma::find(dosage_case < 1.5 && dosage_case >= 0.5);
-    	N_case_hetVec.at(i) = N_case_ctrl_het_hom0.n_elem;
-    	N_case_ctrl_het_hom0 = arma::find(dosage_ctrl <= 2 && dosage_ctrl >=1.5);
-    	N_ctrl_homVec.at(i) = N_case_ctrl_het_hom0.n_elem;
-    	N_case_ctrl_het_hom0 = arma::find(dosage_ctrl < 1.5 && dosage_ctrl >= 0.5);
-    	N_ctrl_hetVec.at(i) = N_case_ctrl_het_hom0.n_elem;
-	if(flip){
-		N_case_homVec.at(i) = N_case - N_case_hetVec.at(i) -  N_case_homVec.at(i);
-		N_ctrl_homVec.at(i) = N_ctrl - N_ctrl_hetVec.at(i) - N_ctrl_homVec.at(i);
-	}		
-      }	
-    }else if(t_traitType == "quantitative"){
-      N_Vec.at(i) = n;
-
     }
-
-   }// if((MAF < g_cfg.marker_minMAF_cutoff) || (MAC < g_cfg.marker_minMAC_cutoff)){
-    
-   } //    if((missingRate > g_cfg.missingRate_cutoff) || (MAF < g_cfg.marker_minMAF_cutoff) || (MAC < g_cfg.marker_minMAC_cutoff || imputeInfo < g_cfg.marker_minINFO_cutoff)){
- 
-    //arma::vec timeoutput3 = getTime();
-    //printTime(timeoutput2, timeoutput3, "after Unified_getOneMarker");
-  
-    //t_GVec.clear();
   }
 
   //output
@@ -579,40 +469,10 @@ void mainMarkerInCPP(
       t_isImputation,
       isCondition,
       t_isFirth,
-  mFirth,
-  mFirthConverge,
-  t_traitType,
-  chrVec,
-  posVec,
-  markerVec,
-  refVec,
-  altVec,
-  altCountsVec,
-  altFreqVec,
-  imputationInfoVec,
-  missingRateVec,
-  BetaVec,
-  seBetaVec,
-  TstatVec,
-  varTVec,
-  pvalVec,
-  pvalNAVec,
-  isSPAConvergeVec,
-  Beta_cVec,
-  seBeta_cVec,
-  Tstat_cVec,
-  varT_cVec,
-  pval_cVec,
-  pvalNA_cVec,
-  AF_caseVec,
-  AF_ctrlVec,
-  N_caseVec,
-  N_ctrlVec,
-  N_case_homVec,
-  N_ctrl_hetVec,
-  N_case_hetVec,
-  N_ctrl_homVec,
-  N_Vec);
+      mFirth,
+      mFirthConverge,
+      t_traitType,
+      resultVec);
 
 }
 
@@ -2697,6 +2557,9 @@ bool isGenoReaderForkSafeInCPP(){
 }
 
 
+// S4: the writer now streams MarkerResult slots instead of ~30 parallel
+// q-length vectors. Same rows, same order, same skip-on-"NA" rule, same
+// numtest; it just reads one object per marker rather than indexing thirty.
 void writeOutfile_single(bool t_isMoreOutput,
 			bool t_isImputation,
 			bool t_isCondition,
@@ -2704,121 +2567,92 @@ void writeOutfile_single(bool t_isMoreOutput,
                          int mFirth,
                          int mFirthConverge,
                         std::string t_traitType,
-                        std::vector<std::string> & chrVec,
-                        std::vector<std::string> & posVec,
-                        std::vector<std::string> & markerVec,
-                        std::vector<std::string> & refVec,
-                        std::vector<std::string> & altVec,
-                        std::vector<double> & altCountsVec,
-                        std::vector<double> & altFreqVec,
-                        std::vector<double> & imputationInfoVec,
-                        std::vector<double> & missingRateVec,
-                        std::vector<double> & BetaVec,
-                        std::vector<double> & seBetaVec,
-                        std::vector<double> & TstatVec,
-                        std::vector<double> & varTVec,
-                        std::vector<std::string> & pvalVec,
-                        std::vector<std::string> & pvalNAVec,
-                        std::vector<bool>  & isSPAConvergeVec,
-                        std::vector<double> & Beta_cVec,
-                        std::vector<double> & seBeta_cVec,
-                        std::vector<double> & Tstat_cVec,
-                        std::vector<double> & varT_cVec,
-                        std::vector<std::string> & pval_cVec,
-                        std::vector<std::string> & pvalNA_cVec,
-                        std::vector<double> & AF_caseVec,
-                        std::vector<double> & AF_ctrlVec,
-                        std::vector<uint32_t> & N_caseVec,
-                        std::vector<uint32_t> & N_ctrlVec,
-                        std::vector<double>  & N_case_homVec,
-                        std::vector<double>  & N_ctrl_hetVec,
-                        std::vector<double>  & N_case_hetVec,
-                        std::vector<double>  & N_ctrl_homVec,
-                        std::vector<uint32_t> & N_Vec
+                        const std::vector<Marker::MarkerResult> & t_resultVec
 
 ){
   int numtest = 0;
-  for(unsigned int k = 0; k < pvalVec.size(); k++){
-        if(pvalVec.at(k) != "NA"){
+  for(unsigned int k = 0; k < t_resultVec.size(); k++){
+        const Marker::MarkerResult & res = t_resultVec.at(k);
+        if(res.pval != "NA"){
                 numtest = numtest + 1;
-                g_out.single << chrVec.at(k);
+                g_out.single << res.chr;
                 g_out.single << "\t";
-                g_out.single << posVec.at(k);
+                g_out.single << res.pos;
                 g_out.single << "\t";
-                g_out.single << markerVec.at(k);
+                g_out.single << res.marker;
                 g_out.single << "\t";
-                g_out.single << refVec.at(k);
+                g_out.single << res.ref;
                 g_out.single << "\t";
-                g_out.single << altVec.at(k);
+                g_out.single << res.alt;
                 g_out.single << "\t";
-                g_out.single << altCountsVec.at(k);
+                g_out.single << res.altCounts;
                 g_out.single << "\t";
-                g_out.single << altFreqVec.at(k);
+                g_out.single << res.altFreq;
                 g_out.single << "\t";
 
                 if(t_isImputation){
-                        g_out.single << imputationInfoVec.at(k);
+                        g_out.single << res.imputationInfo;
                         g_out.single << "\t";
                 }else{
-                        g_out.single << missingRateVec.at(k);
+                        g_out.single << res.missingRate;
                         g_out.single << "\t";
 
                 }
-                g_out.single << BetaVec.at(k);
+                g_out.single << res.Beta;
                 g_out.single << "\t";
-                g_out.single << seBetaVec.at(k);
+                g_out.single << res.seBeta;
                 g_out.single << "\t";
-                g_out.single << TstatVec.at(k);
+                g_out.single << res.Tstat;
                 g_out.single << "\t";
-                g_out.single << varTVec.at(k);
+                g_out.single << res.varT;
                 g_out.single << "\t";
-                g_out.single << pvalVec.at(k);
+                g_out.single << res.pval;
                 g_out.single << "\t";
 
                 if(t_traitType == "binary"){
-                        g_out.single << pvalNAVec.at(k);
+                        g_out.single << res.pvalNA;
                         g_out.single << "\t";
-                        g_out.single << std::boolalpha << isSPAConvergeVec.at(k);
+                        g_out.single << std::boolalpha << res.isSPAConverge;
                         g_out.single << "\t";
                 }
                 if(t_isCondition){
-                        g_out.single << Beta_cVec.at(k);
+                        g_out.single << res.Beta_c;
                         g_out.single << "\t";
-                        g_out.single << seBeta_cVec.at(k);
+                        g_out.single << res.seBeta_c;
                         g_out.single << "\t";
-                        g_out.single << Tstat_cVec.at(k);
+                        g_out.single << res.Tstat_c;
                         g_out.single << "\t";
-                        g_out.single << varT_cVec.at(k);
+                        g_out.single << res.varT_c;
                         g_out.single << "\t";
-                        g_out.single << pval_cVec.at(k);
+                        g_out.single << res.pval_c;
                         g_out.single << "\t";
 			if(t_traitType == "binary"){	
-                        	g_out.single << pvalNA_cVec.at(k);
+                        	g_out.single << res.pvalNA_c;
                         	g_out.single << "\t";
 			}	
                 }
                 if(t_traitType == "binary"){
-                        g_out.single << AF_caseVec.at(k);
+                        g_out.single << res.AF_case;
                         g_out.single << "\t";
-                        g_out.single << AF_ctrlVec.at(k);
+                        g_out.single << res.AF_ctrl;
                         g_out.single << "\t";
-                        g_out.single << N_caseVec.at(k);
+                        g_out.single << res.N_case;
                         g_out.single << "\t";
-                        g_out.single << N_ctrlVec.at(k);
+                        g_out.single << res.N_ctrl;
 
                         if(t_isMoreOutput){
                                 g_out.single << "\t";
-                                g_out.single << N_case_homVec.at(k);
+                                g_out.single << res.N_case_hom;
                                 g_out.single << "\t";
-                                g_out.single << N_case_hetVec.at(k);
+                                g_out.single << res.N_case_het;
                                 g_out.single << "\t";
-                                g_out.single << N_ctrl_homVec.at(k);
+                                g_out.single << res.N_ctrl_hom;
                                 g_out.single << "\t";
-                                g_out.single << N_ctrl_hetVec.at(k);
+                                g_out.single << res.N_ctrl_het;
                         }
                         g_out.single << "\n";
                 }else if(t_traitType == "quantitative"){
-                        g_out.single << N_Vec.at(k);
+                        g_out.single << res.N;
                         g_out.single << "\n";
 
                 }

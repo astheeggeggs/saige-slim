@@ -4,6 +4,7 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 #include "SAIGE_test.hpp"   // SAIGE::TestContext, carried by Unified_getMarkerPval
+#include "MarkerLoop.hpp"   // Marker::MarkerResult, the step-2 single-variant output slot
 
 
 void setAssocTest_GlobalVarsInCPP(std::string t_impute_method,
@@ -211,37 +212,7 @@ void writeOutfile_single(bool t_isMoreOutput,
                          int mFirth,
                          int mFirthConverge,
                         std::string t_traitType,
-                        std::vector<std::string> & chrVec,
-                        std::vector<std::string> & posVec,
-                        std::vector<std::string> & markerVec,
-                        std::vector<std::string> & refVec,
-                        std::vector<std::string> & altVec,
-                        std::vector<double> & altCountsVec,
-                        std::vector<double> & altFreqVec,
-                        std::vector<double> & imputationInfoVec,
-                        std::vector<double> & missingRateVec,
-                        std::vector<double> & BetaVec,
-                        std::vector<double> & seBetaVec,
-                        std::vector<double> & TstatVec,
-                        std::vector<double> & varTVec,
-                        std::vector<std::string> & pvalVec,
-                        std::vector<std::string> & pvalNAVec,
-                        std::vector<bool>  & isSPAConvergeVec,
-                        std::vector<double> & Beta_cVec,
-                        std::vector<double> & seBeta_cVec,
-                        std::vector<double> & Tstat_cVec,
-                        std::vector<double> & varT_cVec,
-                        std::vector<std::string> & pval_cVec,
-                        std::vector<std::string> & pvalNA_cVec,
-                        std::vector<double> & AF_caseVec,
-                        std::vector<double> & AF_ctrlVec,
-                        std::vector<uint32_t> & N_caseVec,
-                        std::vector<uint32_t> & N_ctrlVec,
-                        std::vector<double>  & N_case_homVec,
-                        std::vector<double>  & N_ctrl_hetVec,
-                        std::vector<double>  & N_case_hetVec,
-                        std::vector<double>  & N_ctrl_homVec,
-                        std::vector<uint32_t> & N_Vec);
+                        const std::vector<Marker::MarkerResult> & t_resultVec);
 
 
 

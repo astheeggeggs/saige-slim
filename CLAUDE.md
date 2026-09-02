@@ -451,6 +451,17 @@ long-running `main*InCPP()` loop that writes output files from C++
   still drives those members through `assignVarianceRatio`/`set_*_cur` and
   snapshots them with `currentContext(noadjCov)`, so it is unchanged; if you add
   a marker-path caller, build a context, do not resurrect the setters.
+- **The step-2 MARKER path's per-marker state is split by ownership** (S4,
+  `src/MarkerLoop.hpp`). `testOneMarker` analyses one marker; everything it
+  produces goes into a `Marker::MarkerResult` (one slot per marker, which the
+  writer streams) and everything it reuses comes from a `Marker::MarkerScratch`
+  (the loop-hoisted buffers -- shared across markers on purpose, so one instance
+  per worker when this is threaded). The ~30 parallel q-length vectors are gone,
+  and with them `std::vector<bool> isSPAConvergeVec`, whose bit packing made
+  writes to two different markers writes to the same word. The two `std::vector
+  <bool>`s that remain in `Main.cpp` are the REGION path, which is not threaded.
+  Add a per-marker output by adding a field to `MarkerResult`; add a per-marker
+  buffer by adding one to `MarkerScratch`. Do not add a q-length vector.
 - One dataset per R process; no reentrancy. Parallelism is process-level
   (step-2 `--nThreads`: `R/MarkerShard.R` partitions the canonical marker
   order and `mclapply`s — see below) plus RcppParallel/TBB in step-1 GRM

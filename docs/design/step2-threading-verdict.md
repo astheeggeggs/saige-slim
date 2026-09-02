@@ -62,15 +62,33 @@ its commits have since landed and one of its stated gates was wrong.
   `const arma::vec &`. One dead parameter fell out: `getMarkerPval`'s
   `t_isSparseGRM` was passed by every call site and never read (the body used the
   member), so a caller could disagree with the code and never know.
-- **Line references in the plan below predate S0-S3 and have drifted.** Anchor
-  on names, not numbers. Current as of `90f21c77`: the marker loop is
-  `Main.cpp:244-576` inside `mainMarkerInCPP` (`:155`), the writer call that
-  follows it is `:578`, and the per-marker slot vectors S4 folds into
-  `MarkerResult` (`isSPAConvergeVec` among them) are declared from `:197`.
-- **Not yet done**: S4-S6 (kernel extraction, reader clone, threading), S7. The
-  marker path is now free of member writes; what remains before threading is
-  S4's `MarkerResult`/`MarkerScratch` (the `vector<bool>` race and the
-  loop-hoisted buffers) and S5's reader `clone()`, which still throws.
+- **S4 DONE** (this commit). `src/MarkerLoop.hpp` carries `Marker::MarkerResult`
+  (one output slot per marker) and `Marker::MarkerScratch` (the reusable
+  buffers); `testOneMarker` is the loop body lifted out of `mainMarkerInCPP`,
+  and `writeOutfile_single` takes a `const std::vector<Marker::MarkerResult> &`
+  instead of ~30 parallel q-length vectors. Both of S4's stated targets are hit
+  **by construction, not by discipline**: `std::vector<bool> isSPAConvergeVec`
+  is gone -- no `std::vector<bool>` remains anywhere on the marker path, so two
+  markers can no longer share a word -- and the loop-hoisted buffers are named
+  as a unit that a worker owns. The two Firth counters, the loop's only
+  cross-marker accumulators, became per-marker flags summed after the scan.
+  Audited: inside `testOneMarker` every `g_model->`/`g_cfg.` access is a read
+  (both variance-ratio selectors are `const` since S3), so the only state it
+  writes that outlives the call is its own `MarkerResult`, its `MarkerScratch`,
+  the reader (S5) and the `std::cerr` in the `stod` catch (S6). One dead store
+  fell out: the loop built a `CHR:POS:REF:ALT` string into an `infoVec` the
+  writer was never handed. Gate: full golden cycle, all 55 step-0/step-2
+  goldens byte-identical and all five step-1 goldens at
+  `max_rel_err 0.000e+00`; standard tier green in both compare modes.
+- **Line references in the plan below predate S0-S4 and have drifted.** Anchor
+  on names, not numbers. After S4 the marker path is three named pieces --
+  `testOneMarker` (one marker, all of it), `mainMarkerInCPP` (the slot vector,
+  the scratch, the progress line, the `break`, the Firth tally, the writer call)
+  and `writeOutfile_single` -- so a name is now a better address than a line
+  number was even before the drift.
+- **Not yet done**: S5-S6 (reader clone, threading), S7. The marker path is now
+  free of member writes and its per-marker state is slot-owned; what remains
+  before threading is S5's reader `clone()`, which still throws, and then S6.
 
 
 All verification complete. Delivering the judgment.
