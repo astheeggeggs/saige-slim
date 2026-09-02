@@ -35,9 +35,22 @@ its commits have since landed and one of its stated gates was wrong.
 - **F8's premise is spent**: the two per-marker allocation items C3 excluded for
   want of coverage landed as `8959b5bd` (paired A/B: 1.9%, p = 0.023, on the new
   `s2_marker_all_sparse` bench workload).
-- **Not yet done**: S1 (de-Rcpp the SPA kernels), S3-S6 (TestContext, kernel
-  extraction, reader clone, threading), S7. S1 remains a prerequisite for S6 for
-  the same reason S2 was.
+- **S1 DONE** (this commit). `SPA.cpp`/`SPA_binary.cpp` carry their root and
+  saddle results in POD structs; the exported functions are thin wrappers that
+  still return `Rcpp::List`, and `RcppExports.{cpp,R}` regenerate byte-identical.
+  Measured with `Rprofmem(threshold = 0)` over a whole-genome scan (128,868
+  markers, 5,572 of them SPA-corrected): R-heap page allocations **2,958 ->
+  1,736**, a 41% cut, with every large-allocation bucket identical between the
+  arms -- the change removes small-pool traffic and touches nothing else. It is
+  also, unexpectedly, the largest step-2 speedup measured so far: **11.8% on the
+  whole-genome marker scan** (16 paired reps in two blocks with the arm order
+  swapped between them, t = 7.53 on 15 df, 95% CI 8.4-15.1%), i.e. ~74 us per
+  SPA-corrected marker. Consistent with the profile in `harness/bench/NOTES.md`,
+  which put `SPA_fast` at 15% of the marker loop.
+- **Not yet done**: S3-S6 (TestContext, kernel extraction, reader clone,
+  threading), S7. With S1 and S2 in, the marker loop's remaining R-API entries
+  are the ER resampling seed (by design, on markers that draw) and whatever S3
+  turns up; the SPA kernels themselves are now callable from a worker thread.
 
 
 All verification complete. Delivering the judgment.

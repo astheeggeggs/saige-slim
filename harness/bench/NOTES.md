@@ -208,3 +208,60 @@ labels in `results.tsv` carry commit `b87fcaba`, because the after-arm was
 measured from the working tree before the change was committed. The LABEL is
 the discriminator there, not the commit column, and the authoritative numbers
 for that change are the paired ones in the table above, not the 3-rep rows.
+
+
+## S1: what the Rcpp::List traffic in the SPA kernels was costing (2026-09-02)
+
+Two instruments, because the goldens are byte-identical either way.
+
+**Allocations, exactly.** `Rprofmem(threshold = 0)` around a whole-genome
+`SPAGMMATtest` call (128,868 markers, 5,572 SPA-corrected) records every large
+vector allocation and every new page of the small-vector pool:
+
+| | R-heap page allocations | large-allocation buckets |
+|---|---|---|
+| before | 2,958 | 292x4048, 218x8048, 205x1072, 64x4056, 63x46912, ... |
+| after | 1,736 | identical, bucket for bucket |
+
+41% of the marker loop's R-heap page traffic gone, and the untouched
+large-allocation histogram is the control: the change removed small-pool
+traffic and nothing else. ~1,222 pages over 5,572 SPA markers is on the order
+of 30 R allocations per SPA marker, matching the threading verdict doc's
+estimate of ~20.
+
+**Note the instrument's limits, twice over.** `Rprofmem` does NOT record every
+small allocation -- only the pages the small-vector pool takes to serve them --
+so 1,222 is a page count, not an object count. And the first instrument tried,
+counting GCs with `gcinfo(TRUE)`, returned **zero GCs in both arms**: after
+`ReadModel` has grown the R heap, 20k-odd small lists never reach the trigger.
+That is a real result, not a broken probe -- the same probe reports 6 GCs for
+50,000 list constructions in a bare R process. GC pressure is simply not where
+this cost lives at N = 1000.
+
+**Time: 11.8%, the largest step-2 win measured so far.** `s2_marker_all` with
+`--is_output_moreDetails=TRUE`, two blocks of 8 paired reps with both builds
+installed side by side:
+
+| block | before mean | after mean | paired mean diff |
+|---|---|---|---|
+| before-arm first | 3.433 | 3.042 | 0.391 s |
+| after-arm first (ordering control) | 3.601 | 3.163 | 0.438 s |
+| combined, 16 pairs | 3.517 | 3.102 | **0.414 s = 11.8%** |
+
+t = 7.53 on 15 df, 95% CI 8.4%-15.1%; outputs byte-identical across arms over
+all 128,868 markers in both blocks. **The ordering control was necessary**: in
+the first block the `before` arm always ran first in each pair, so a cache
+effect would have inflated the result; swapping the order made the difference
+slightly LARGER, which rules that out. Per SPA-corrected marker the saving is
+~74 us -- large for ~30 allocations, and it is not really the allocations: an
+`Rcpp::List` named assignment reallocates the list AND its names vector, and a
+named read is a linear string search plus an R conversion, so the ~30
+allocations come with ~30 name lookups. Cross-check: the profile above put
+`SPA_fast` at 15% of the marker loop, and this removed ~12 percentage points of
+the loop, i.e. most of what was in that frame was list plumbing rather than
+saddlepoint arithmetic.
+
+**This fraction will SHRINK at biobank N, not grow** -- the opposite of the F8
+change. The list overhead is per SPA marker and flat in N, while the
+saddlepoint arithmetic it sits beside is O(n) per marker. At N = 1000 the
+plumbing dominated the kernel; at N = 500k it will not.

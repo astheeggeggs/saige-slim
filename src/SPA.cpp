@@ -17,18 +17,25 @@
 
 // [[Rcpp::export]]
 void SPA(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, double & pval, bool & isSPAConverge){
-        using namespace Rcpp;
         double p1, p2;
         bool Isconverge = true;
-	Rcpp::List outuni1;
-	Rcpp::List outuni2;
-        if( traitType == "binary"){
-          // gpos/gneg depend only on g, and both roots use the same g
-          double gpos, gneg;
-          getGPosNeg_Binom(g, gpos, gneg);
-          outuni1 = getroot_K1_Binom_pre(0, mu, g, q, tol, gpos, gneg);
-          outuni2 = getroot_K1_Binom_pre(0, mu, g, qinv, tol, gpos, gneg);
+        if( traitType != "binary"){
+                // Unreachable, and deliberately not an Rcpp::stop. Only the
+                // binary saddlepoint kernels exist, and SAIGE_test.cpp gates the
+                // whole SPA branch on traitType != "quantitative", which since
+                // survival was removed in Phase 3a leaves "binary" as the only
+                // value that can arrive here. Before S1 a non-binary trait fell
+                // through to reading "Isconverge" out of a default-constructed
+                // (empty) Rcpp::List, which throws from Rcpp's name lookup; this
+                // keeps it a throw, but one that enters no R API and is safe to
+                // reach from a worker thread.
+                throw std::logic_error("SPA(): only the binary saddlepoint kernels exist");
         }
+        // gpos/gneg depend only on g, and both roots use the same g
+        double gpos, gneg;
+        getGPosNeg_Binom(g, gpos, gneg);
+        SPARoot outuni1 = getroot_K1_Binom_core(0, mu, g, q, tol, gpos, gneg);
+        SPARoot outuni2 = getroot_K1_Binom_core(0, mu, g, qinv, tol, gpos, gneg);
 
 /*
         double outuni1root = outuni1["root"];
@@ -42,18 +49,14 @@ void SPA(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_noadj
         std::cout << "Isconverge2" << Isconverge2 << std::endl;
 */
 
-        Rcpp::List getSaddle;
-        Rcpp::List getSaddle2;
-        if(outuni1["Isconverge"]  && outuni2["Isconverge"])
+        if(outuni1.Isconverge  && outuni2.Isconverge)
         {
-                if( traitType == "binary"){
-                  getSaddle = Get_Saddle_Prob_Binom(outuni1["root"], mu, g, q, logp);
-                  getSaddle2 = Get_Saddle_Prob_Binom(outuni2["root"], mu, g, qinv, logp);
-                }
+                SPASaddle getSaddle  = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp);
+                SPASaddle getSaddle2 = Get_Saddle_Prob_Binom_core(outuni2.root, mu, g, qinv, logp);
 
 
-                if(getSaddle["isSaddle"]){
-                        p1 = getSaddle["pval"];
+                if(getSaddle.isSaddle){
+                        p1 = getSaddle.pval;
         		//std::cout << "p1 " << p1 << std::endl;
 
                 }else{
@@ -64,8 +67,8 @@ void SPA(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_noadj
                                 p1 = pval_noadj/2;
                         }
                 }
-                if(getSaddle2["isSaddle"]){
-                        p2 = getSaddle2["pval"];
+                if(getSaddle2.isSaddle){
+                        p2 = getSaddle2.pval;
         		//std::cout << "p2 " << p2 << std::endl;
                 }else{
 			Isconverge = false;
@@ -99,11 +102,8 @@ void SPA(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_noadj
 // [[Rcpp::export]]
 void SPA_fast(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_noadj, bool logp, arma::vec & gNA, arma::vec & gNB, arma::vec & muNA, arma::vec & muNB,  double NAmu, double NAsigma, double tol, std::string traitType, double & pval, bool & isSPAConverge){
 
-        using namespace Rcpp;
         double p1, p2;
         bool Isconverge = true;
-	Rcpp::List outuni1;
-        Rcpp::List outuni2;
 /*	std::cout << "mu.n_elem " << mu.n_elem << std::endl;
 	std::cout << "g.n_elem " << g.n_elem << std::endl;
 	std::cout << "gNA.n_elem " << gNA.n_elem << std::endl;
@@ -111,19 +111,24 @@ void SPA_fast(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_
 	std::cout << "muNA.n_elem " << muNA.n_elem << std::endl;
 	std::cout << "muNB.n_elem " << muNB.n_elem << std::endl;
 */
-        if( traitType == "binary"){
-	    //   arma::vec timeoutput1 = getTime();
-          // gpos/gneg depend only on g, and both roots use the same g
-          double gpos, gneg;
-          getGPosNeg_Binom(g, gpos, gneg);
-          outuni1 = getroot_K1_fast_Binom_pre(0, mu, g, q, gNA,gNB,muNA,muNB,NAmu, NAsigma, tol, gpos, gneg);
-	  //   arma::vec timeoutput2 = getTime();
- //printTime(timeoutput1, timeoutput2, "getroot_K1_fast_Binom");
-          //double qinv = -1*q;
-          outuni2 = getroot_K1_fast_Binom_pre(0, mu, g, qinv, gNA,gNB,muNA,muNB,NAmu, NAsigma, tol, gpos, gneg);
-	 // arma::vec timeoutput3 = getTime();
- 	//printTime(timeoutput2, timeoutput3, "getroot_K1_fast_Binom");
+        if( traitType != "binary"){
+                // Unreachable, and deliberately not an Rcpp::stop. Only the
+                // binary saddlepoint kernels exist, and SAIGE_test.cpp gates the
+                // whole SPA branch on traitType != "quantitative", which since
+                // survival was removed in Phase 3a leaves "binary" as the only
+                // value that can arrive here. Before S1 a non-binary trait fell
+                // through to reading "Isconverge" out of a default-constructed
+                // (empty) Rcpp::List, which throws from Rcpp's name lookup; this
+                // keeps it a throw, but one that enters no R API and is safe to
+                // reach from a worker thread.
+                throw std::logic_error("SPA_fast(): only the binary saddlepoint kernels exist");
         }
+        // gpos/gneg depend only on g, and both roots use the same g
+        double gpos, gneg;
+        getGPosNeg_Binom(g, gpos, gneg);
+        SPARoot outuni1 = getroot_K1_fast_Binom_core(0, mu, g, q, gNA,gNB,muNA,muNB,NAmu, NAsigma, tol, gpos, gneg);
+        //double qinv = -1*q;
+        SPARoot outuni2 = getroot_K1_fast_Binom_core(0, mu, g, qinv, gNA,gNB,muNA,muNB,NAmu, NAsigma, tol, gpos, gneg);
 
 /*	double outuni1root = outuni1["root"];
         double outuni2root = outuni2["root"];
@@ -136,21 +141,12 @@ void SPA_fast(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_
         std::cout << "Isconverge2" << Isconverge2 << std::endl;
 */
 
-        Rcpp::List getSaddle;
-        Rcpp::List getSaddle2;
-        if(outuni1["Isconverge"]  && outuni2["Isconverge"])
+        if(outuni1.Isconverge  && outuni2.Isconverge)
         {
-          if( traitType == "binary"){
-		                //  arma::vec timeoutput4 = getTime();
-                getSaddle  = Get_Saddle_Prob_fast_Binom(outuni1["root"], mu, g, q, gNA,gNB,muNA,muNB,NAmu, NAsigma, logp);
-		// arma::vec timeoutput5 = getTime();
-                getSaddle2 = Get_Saddle_Prob_fast_Binom(outuni2["root"], mu, g, qinv, gNA,gNB,muNA,muNB,NAmu, NAsigma, logp);
-	//	arma::vec timeoutput6 = getTime();
-	//printTime(timeoutput4, timeoutput5, "Get_Saddle_Prob_fast_Binom");
- //printTime(timeoutput5, timeoutput6, "Get_Saddle_Prob_fast_Binom");
-          }
-                if(getSaddle["isSaddle"]){
-                        p1 = getSaddle["pval"];
+                SPASaddle getSaddle  = Get_Saddle_Prob_fast_Binom_core(outuni1.root, mu, g, q, gNA,gNB,muNA,muNB,NAmu, NAsigma, logp);
+                SPASaddle getSaddle2 = Get_Saddle_Prob_fast_Binom_core(outuni2.root, mu, g, qinv, gNA,gNB,muNA,muNB,NAmu, NAsigma, logp);
+                if(getSaddle.isSaddle){
+                        p1 = getSaddle.pval;
                 }else{
 			Isconverge = false;
 
@@ -161,8 +157,8 @@ void SPA_fast(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_
                         }
                 }
 
-                if(getSaddle2["isSaddle"]){
-                        p2 = getSaddle2["pval"];
+                if(getSaddle2.isSaddle){
+                        p2 = getSaddle2.pval;
 
                 }else{
 			Isconverge = false;
@@ -196,24 +192,31 @@ void SPA_fast(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_
 // [[Rcpp::export]]
 double SPA_pval(arma::vec & mu, arma::vec & g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, bool & isSPAConverge){
        double pval;
-        using namespace Rcpp;
         double p1, p2;
         bool Isconverge = true;
-        Rcpp::List outuni1;
-        Rcpp::List outuni2;
-        if( traitType == "binary"){
-          // gpos/gneg depend only on g, and both roots use the same g
-          double gpos, gneg;
-          getGPosNeg_Binom(g, gpos, gneg);
-          outuni1 = getroot_K1_Binom_pre(0, mu, g, q, tol, gpos, gneg);
-          outuni2 = getroot_K1_Binom_pre(0, mu, g, qinv, tol, gpos, gneg);
+        if( traitType != "binary"){
+                // Unreachable, and deliberately not an Rcpp::stop. Only the
+                // binary saddlepoint kernels exist, and SAIGE_test.cpp gates the
+                // whole SPA branch on traitType != "quantitative", which since
+                // survival was removed in Phase 3a leaves "binary" as the only
+                // value that can arrive here. Before S1 a non-binary trait fell
+                // through to reading "Isconverge" out of a default-constructed
+                // (empty) Rcpp::List, which throws from Rcpp's name lookup; this
+                // keeps it a throw, but one that enters no R API and is safe to
+                // reach from a worker thread.
+                throw std::logic_error("SPA_pval(): only the binary saddlepoint kernels exist");
         }
+        // gpos/gneg depend only on g, and both roots use the same g
+        double gpos, gneg;
+        getGPosNeg_Binom(g, gpos, gneg);
+        SPARoot outuni1 = getroot_K1_Binom_core(0, mu, g, q, tol, gpos, gneg);
+        SPARoot outuni2 = getroot_K1_Binom_core(0, mu, g, qinv, tol, gpos, gneg);
 
 
-        double outuni1root = outuni1["root"];
-        double outuni2root = outuni2["root"];
-        bool Isconverge1 = outuni1["Isconverge"];
-        bool Isconverge2 = outuni2["Isconverge"];
+        double outuni1root = outuni1.root;
+        double outuni2root = outuni2.root;
+        bool Isconverge1 = outuni1.Isconverge;
+        bool Isconverge2 = outuni2.Isconverge;
 
 /*
         std::cout << "outuni1root" << outuni1root << std::endl;
@@ -222,17 +225,13 @@ double SPA_pval(arma::vec & mu, arma::vec & g, double q, double qinv, double pva
         std::cout << "Isconverge2" << Isconverge2 << std::endl;
 */
 
-        Rcpp::List getSaddle;
-        Rcpp::List getSaddle2;
-        if(outuni1["Isconverge"]  && outuni2["Isconverge"])
+        if(outuni1.Isconverge  && outuni2.Isconverge)
         {
-                if( traitType == "binary"){
-                  getSaddle = Get_Saddle_Prob_Binom(outuni1["root"], mu, g, q, logp);
-                  getSaddle2 = Get_Saddle_Prob_Binom(outuni2["root"], mu, g, qinv, logp);
-                }
+                SPASaddle getSaddle  = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp);
+                SPASaddle getSaddle2 = Get_Saddle_Prob_Binom_core(outuni2.root, mu, g, qinv, logp);
 
-                if(getSaddle["isSaddle"]){
-                        p1 = getSaddle["pval"];
+                if(getSaddle.isSaddle){
+                        p1 = getSaddle.pval;
                 }else{
                         Isconverge = false;
                         if(logp){
@@ -241,8 +240,8 @@ double SPA_pval(arma::vec & mu, arma::vec & g, double q, double qinv, double pva
                                 p1 = pval_noadj/2;
                         }
                 }
-                if(getSaddle2["isSaddle"]){
-                        p2 = getSaddle2["pval"];
+                if(getSaddle2.isSaddle){
+                        p2 = getSaddle2.pval;
                 }else{
                         Isconverge = false;
                         if(logp){

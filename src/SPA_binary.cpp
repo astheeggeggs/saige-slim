@@ -78,11 +78,16 @@ void getGPosNeg_Binom(arma::vec & g, double & gpos, double & gneg){
 Rcpp::List getroot_K1_Binom(double init, arma::vec & mu, arma::vec & g, double q, double tol, int maxiter){
 	double gpos, gneg;
 	getGPosNeg_Binom(g, gpos, gneg);
-	return getroot_K1_Binom_pre(init, mu, g, q, tol, gpos, gneg, maxiter);
+	SPARoot out = getroot_K1_Binom_core(init, mu, g, q, tol, gpos, gneg, maxiter);
+	Rcpp::List result;
+	result["root"]	= out.root;
+	result["niter"] = out.niter;
+	result["Isconverge"] = out.Isconverge;
+	return(result);
 }
 
-Rcpp::List getroot_K1_Binom_pre(double init, arma::vec & mu, arma::vec & g, double q, double tol, double gpos, double gneg, int maxiter){
-	Rcpp::List result;
+SPARoot getroot_K1_Binom_core(double init, arma::vec & mu, arma::vec & g, double q, double tol, double gpos, double gneg, int maxiter){
+	SPARoot result;
 	double root;
 	int niter;
 	bool Isconverge;
@@ -146,9 +151,9 @@ Rcpp::List getroot_K1_Binom_pre(double init, arma::vec & mu, arma::vec & g, doub
 	//std::cout << "here13" << std::endl;
         //std::cout << "root: " << root << std::endl;
         //std::cout << "niter: " << niter << std::endl;
-	result["root"]	= root;
-	result["niter"] = niter;
-	result["Isconverge"] = Isconverge;
+	result.root	= root;
+	result.niter = niter;
+	result.Isconverge = Isconverge;
 	return(result);
 }
 
@@ -157,13 +162,23 @@ Rcpp::List getroot_K1_Binom_pre(double init, arma::vec & mu, arma::vec & g, doub
 // [[Rcpp::export]]
 Rcpp::List Get_Saddle_Prob_Binom(double zeta,  arma::vec & mu, arma::vec & g, double q, bool logp)
 {
+	SPASaddle out = Get_Saddle_Prob_Binom_core(zeta, mu, g, q, logp);
+	Rcpp::List result;
+	result["pval"] = out.pval;
+	result["isSaddle"] = out.isSaddle;
+	return(result);
+}
+
+
+SPASaddle Get_Saddle_Prob_Binom_core(double zeta,  arma::vec & mu, arma::vec & g, double q, bool logp)
+{
 	double k1 = Korg_Binom(zeta, mu, g);
 	double k2 = K2_Binom(zeta, mu, g);
 	double temp1, w, v, Ztest, pval;
 	double negative_infinity = - std::numeric_limits<double>::infinity();
 
 	temp1 = zeta * q - k1;
-	Rcpp::List result;
+	SPASaddle result;
 	bool isSaddle = false;
 	//std::cout << "k1 " << k1 << std::endl;
 	//std::cout << "k2 " << k2 << std::endl;
@@ -220,8 +235,8 @@ Rcpp::List Get_Saddle_Prob_Binom(double zeta,  arma::vec & mu, arma::vec & g, do
 				pval= 0;
 			}
 	}
-	result["pval"] = pval;
-	result["isSaddle"] = isSaddle;	
+	result.pval = pval;
+	result.isSaddle = isSaddle;	
 	return(result);
 }
 
@@ -344,11 +359,16 @@ double K2_fast_Binom(double t1, arma::vec & mu, arma::vec & g, arma::vec & gNA, 
 Rcpp::List getroot_K1_fast_Binom(double init, arma::vec & mu, arma::vec & g, double q, arma::vec & gNA, arma::vec & gNB, arma::vec & muNA, arma::vec & muNB,  double NAmu, double NAsigma, double tol, int maxiter){
 	double gpos, gneg;
 	getGPosNeg_Binom(g, gpos, gneg);
-	return getroot_K1_fast_Binom_pre(init, mu, g, q, gNA, gNB, muNA, muNB, NAmu, NAsigma, tol, gpos, gneg, maxiter);
+	SPARoot out = getroot_K1_fast_Binom_core(init, mu, g, q, gNA, gNB, muNA, muNB, NAmu, NAsigma, tol, gpos, gneg, maxiter);
+	Rcpp::List result;
+	result["root"]	= out.root;
+	result["niter"] = out.niter;
+	result["Isconverge"] = out.Isconverge;
+	return(result);
 }
 
-Rcpp::List getroot_K1_fast_Binom_pre(double init, arma::vec & mu, arma::vec & g, double q, arma::vec & gNA, arma::vec & gNB, arma::vec & muNA, arma::vec & muNB,  double NAmu, double NAsigma, double tol, double gpos, double gneg, int maxiter){
-	Rcpp::List result;
+SPARoot getroot_K1_fast_Binom_core(double init, arma::vec & mu, arma::vec & g, double q, arma::vec & gNA, arma::vec & gNB, arma::vec & muNA, arma::vec & muNB,  double NAmu, double NAsigma, double tol, double gpos, double gneg, int maxiter){
+	SPARoot result;
 	double root;
 	int niter;
 	bool Isconverge;
@@ -406,9 +426,9 @@ Rcpp::List getroot_K1_fast_Binom_pre(double init, arma::vec & mu, arma::vec & g,
 		niter=rep;
 		Isconverge=conv;	
 	}
-	result["root"]	= root;
-	result["niter"] = niter;
-	result["Isconverge"] = Isconverge;
+	result.root	= root;
+	result.niter = niter;
+	result.Isconverge = Isconverge;
 	return(result);
 }
 
@@ -417,12 +437,22 @@ Rcpp::List getroot_K1_fast_Binom_pre(double init, arma::vec & mu, arma::vec & g,
 // [[Rcpp::export]]
 Rcpp::List Get_Saddle_Prob_fast_Binom(double zeta,  arma::vec & mu, arma::vec & g, double q, arma::vec & gNA, arma::vec & gNB, arma::vec & muNA, arma::vec & muNB,  double NAmu, double NAsigma, bool logp)
 {
+	SPASaddle out = Get_Saddle_Prob_fast_Binom_core(zeta, mu, g, q, gNA, gNB, muNA, muNB, NAmu, NAsigma, logp);
+	Rcpp::List result;
+	result["pval"] = out.pval;
+	result["isSaddle"] = out.isSaddle;
+	return(result);
+}
+
+
+SPASaddle Get_Saddle_Prob_fast_Binom_core(double zeta,  arma::vec & mu, arma::vec & g, double q, arma::vec & gNA, arma::vec & gNB, arma::vec & muNA, arma::vec & muNB,  double NAmu, double NAsigma, bool logp)
+{
 	double k1 = Korg_fast_Binom(zeta, mu, g,  gNA,gNB,muNA,muNB,NAmu, NAsigma);
 	double k2 = K2_fast_Binom(zeta, mu, g,  gNA,gNB,muNA,muNB,NAmu, NAsigma);
 	double temp1, w, v, Ztest, pval;
 	double negative_infinity = - std::numeric_limits<double>::infinity();
 	temp1 = zeta * q - k1;
-	Rcpp::List result;
+	SPASaddle result;
 	bool isSaddle = false; 
 
 
@@ -473,8 +503,8 @@ Rcpp::List Get_Saddle_Prob_fast_Binom(double zeta,  arma::vec & mu, arma::vec & 
 			pval=0;
 		}
 	}
-	result["pval"] = pval;
-        result["isSaddle"] = isSaddle;
+	result.pval = pval;
+        result.isSaddle = isSaddle;
         return(result);
 
 
