@@ -224,10 +224,12 @@ Three standing traps when adding tests here:
   `genotype_100markers.bed` are, genotype for level, the categorical covariates
   `a9` and `a10` (R² = 1.000000 against the model matrix; next highest marker
   0.0223). Any path that regresses the covariates out of the genotype therefore
-  tests a vector that is exactly zero: the sparse `scoreTest` now reports `BETA=NA SE=NA var=0` for them
-  (LEDGER #44 fixed the guarded half) while `scoreTestFast` still reports
-  `SE=6.1e6`, because its variance is ~2.7e-14 -- far above the `DBL_MIN` the
-  guard tests, so the guard cannot fire
+  tests a vector that is exactly zero: both covariate-adjusting paths now report `BETA=NA SE=NA` (LEDGER #44 is
+  FIXED, in two parts: an absolute `var1 <= DBL_MIN` guard for the sparse
+  `scoreTest`, whose var is 0 exactly, and a RELATIVE cancellation test for the
+  two `scoreTestFast` paths, whose var is ~2.7e-14 and so ~294 orders above
+  `DBL_MIN`). The non-adjusting default path never degenerates and still reports
+  them as ordinary null markers
   (LEDGER #44 — the `var1 <= min` guard covers the p-value only). The default
   `is_noadjCov=TRUE` path does not adjust, so P1 shows them as ordinary null
   markers and nothing noticed until S0. Expect two degenerate rows in any new

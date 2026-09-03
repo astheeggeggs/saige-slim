@@ -142,6 +142,33 @@ void SAIGEClass::set_seed(unsigned int seed){
   set_seed_r(seed);
 }
 
+// LEDGER #44, second half. `var1 <= DBL_MIN` catches only a variance that has
+// underflowed to (near) zero in absolute terms, which is what scoreTest does
+// when a marker is exactly explained away. The two "fast" paths build var2 as a
+// SUM OF SIGNED TERMS, so the same degeneracy shows up as CANCELLATION instead:
+// on the bundled fixture rs20/rs22 give var2 ~ 2.7e-14 against terms of order
+// 1e2, which is ~294 orders of magnitude ABOVE DBL_MIN. The old guard could
+// never fire there, and BETA = Tstat/var was printed as a ratio of two noise
+// quantities -- O(0.1), arbitrary, and not reproducible across platforms.
+//
+// So ask the question the absolute guard cannot: is var2 at the noise floor OF
+// ITS OWN SUMMATION? The relative error of an n-term floating-point sum is
+// bounded by about n*eps, so compare |var2| against that fraction of the sum of
+// the term magnitudes. This is scale-free -- a rare variant has a small var2 AND
+// small terms, so the ratio stays O(1) and it does not fire.
+//
+// MEASURED on the P30 configuration, all 70 markers: the two covariate-collinear
+// markers give 1.7e-16 and 4.2e-16 (machine epsilon, i.e. total cancellation)
+// and EVERY other marker gives >= 0.237. That is 14.8 orders of separation, and
+// n*eps (2.2e-13 at n = 1000) sits ~500x above the cancellation and ~12 orders
+// below the smallest real marker. The threshold is not tuned to the fixture; it
+// is the arithmetic's own noise floor, and the fixture confirms the margin.
+static inline bool varianceCollapsed(double t_var2, double t_termScale, int t_n)
+{
+  if(!(t_termScale > 0)) return false;
+  return std::fabs(t_var2) <= double(t_n) * std::numeric_limits<double>::epsilon() * t_termScale;
+}
+
 void SAIGEClass::scoreTest(arma::vec & t_GVec,
                      double& t_Beta,
                      double& t_seBeta,
@@ -287,6 +314,13 @@ void SAIGEClass::scoreTestFast(arma::vec & t_GVec,
       var2 = ZtXVXZ(0,0)*m_tauvec[0] +  dot(g1,g1) - 2*Bmu2;
     }
 
+    // Term magnitudes for the cancellation test above. Free: all three are
+    // already computed. g1tildemu2 is only assigned on the binary branch, so it
+    // is folded in only there.
+    double termScale = std::fabs(ZtXVXZ(0,0)) + std::fabs(Bmu2)
+                     + (m_traitType == "binary" ? std::fabs(g1tildemu2) : std::fabs(dot(g1, g1)));
+    bool collapsed = varianceCollapsed(var2, termScale, m_n);
+
     var1 = var2 * t_ctx.varRatioVal;
     S1 = dot(res1, g1_tilde);
     arma::mat res1X1_temp = (res1.t()) * X1;
@@ -341,7 +375,7 @@ void SAIGEClass::scoreTestFast(arma::vec & t_GVec,
     // NaN as "-nan" where macOS writes "nan"), which is what made these rows
     // non-byte-portable and cost two red CI runs. A row that says NA says the
     // same thing everywhere.
-    if(var1 <= std::numeric_limits<double>::min()){
+    if(var1 <= std::numeric_limits<double>::min() || collapsed){
       t_Beta = NA_REAL;
       t_seBeta = NA_REAL;
     }else{
@@ -392,6 +426,8 @@ void SAIGEClass::scoreTestFast_noadjCov(arma::vec & t_GVec,
     double var2_b = dot(m_mu21, 2*2*centreFreq*g1);
     double var2_c = m_accu_mu2*pow(2*centreFreq, 2);
     var2 = var2_a - var2_b + var2_c;
+    bool collapsed = varianceCollapsed(var2, std::fabs(var2_a) + std::fabs(var2_b)
+                                             + std::fabs(var2_c), m_n);
     var2 = var2 *(m_tauvec[0]);
     //std::cout << "var2 " << var2 << std::endl;
 
@@ -454,7 +490,7 @@ void SAIGEClass::scoreTestFast_noadjCov(arma::vec & t_GVec,
     // NaN as "-nan" where macOS writes "nan"), which is what made these rows
     // non-byte-portable and cost two red CI runs. A row that says NA says the
     // same thing everywhere.
-    if(var1 <= std::numeric_limits<double>::min()){
+    if(var1 <= std::numeric_limits<double>::min() || collapsed){
       t_Beta = NA_REAL;
       t_seBeta = NA_REAL;
     }else{

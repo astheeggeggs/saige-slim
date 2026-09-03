@@ -141,3 +141,43 @@ test_that("the expect_* wrappers surface pure-layer failures", {
   expect_failure(expect_tables_equivalent(a, b, tol = 1e-5))
   expect_success(expect_tables_equivalent(a, make_tsv(base_df)))
 })
+
+# ---- rel_err's absolute floor (LEDGER #44, second half) ---------------------
+#
+# The floor exists so that a column containing genuinely-near-zero values can be
+# compared at all: `Tstat` on a covariate-collinear marker is ~3e-15 beside
+# values running to 14.5, and two platforms' summation orders disagree on it
+# completely. Without a floor that pair has rel_err ~ 1 and no tolerance helps.
+#
+# The danger of any such floor is that it quietly stops detecting real
+# differences, so these are the controls for exactly that.
+
+test_that("rel_err's floor forgives noise beside a large value", {
+  a <- c(14.5, 0.02, 3e-15)
+  b <- c(14.5, 0.02, -1.2e-15)   # last pair: pure cancellation noise, opposite sign
+  expect_equal(rel_err(a, b), 0)
+})
+
+test_that("rel_err's floor does NOT forgive a difference above it", {
+  # 1e-3 against a column max of 14.5 is far above tol * scale (1.45e-4), so a
+  # 30% disagreement there must still be caught.
+  a <- c(14.5, 1.0e-3)
+  b <- c(14.5, 1.3e-3)
+  expect_gt(rel_err(a, b), 1e-5)
+  # and a difference in the LARGE value is obviously still caught
+  expect_gt(rel_err(c(14.5, 1e-15), c(14.6, 1e-15)), 1e-5)
+})
+
+test_that("rel_err's floor is scale-free, not an absolute constant", {
+  # A column of genuinely tiny numbers gets a correspondingly tiny floor, so a
+  # real relative difference among small values is still a failure. Without
+  # scale-freeness this pair would be forgiven.
+  a <- c(3e-15, 1e-15)
+  b <- c(3e-15, 2e-15)
+  expect_gt(rel_err(a, b), 1e-5)
+})
+
+test_that("rel_err's floor does not rescue a finite-vs-nonfinite mismatch", {
+  expect_false(is.finite(rel_err(c(1, 1e-20), c(1, Inf))))
+  expect_false(is.finite(rel_err(c(1, 1e-20), c(1, NA))))
+})

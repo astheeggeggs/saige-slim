@@ -53,21 +53,20 @@ mp_model <- function(prefix) c(
 # rel_err 1.2e-01 [BETA] / 1.6e-01 [Tstat] on Linux against macOS-generated
 # goldens.
 #
-# LEDGER #44 is the underlying bug, and it is now FIXED -- but fixing it did NOT
-# retire this exclusion, which is worth knowing before anyone tries again. The
-# guard is `var1 <= DBL_MIN`, and only P27 is under it (var == 0 exactly); P30's
-# var is ~2.7e-14, some 294 orders of magnitude above DBL_MIN, so its p = 1
-# comes from the chi-square and its BETA/SE remain finite junk. And even on P27
-# the Tstat column stays ~3e-15 -- a legitimately-near-zero value that no
-# RELATIVE tolerance can compare across platforms.
+# LEDGER #44 IS NOW FULLY FIXED and this exclusion is RETIRED. Both halves:
 #
-# So retiring this needs two more things, not one: a criterion for "the effect
-# size is meaningless" that is relative rather than an absolute DBL_MIN, and an
-# absolute floor in rel_err() for columns that are genuinely ~0. Until then
-# these rows are excluded from the NUMERIC comparison only; byte mode still
-# compares them, and the characterization test at the bottom of this file pins
-# both halves.
-MP_COVARIATE_MARKERS <- c("rs20", "rs22")
+#   P27 (sparse scoreTest): var is 0 exactly, so `var1 <= DBL_MIN` fires.
+#   P30 (scoreTestFast):    var is ~2.7e-14, ~294 orders of magnitude ABOVE
+#       DBL_MIN, so that guard never could. The two "fast" paths build var2 as a
+#       sum of signed terms, so the same degeneracy appears as CANCELLATION, and
+#       they now ask whether |var2| is at the noise floor of its own summation
+#       (n*eps times the sum of the term magnitudes).
+#
+# Both now print BETA/SE as the literal "NA". What is left on those rows is
+# Tstat ~3e-15 and var ~2.7e-14 -- genuinely-near-zero values, handled in the
+# comparator by rel_err()'s column-scaled absolute floor rather than by excluding
+# the rows. So nothing is skipped any more: all 70 markers are compared in both
+# modes, and the characterization test at the bottom of this file pins the NAs.
 
 mp_case <- function(golden_base, extra_args, drop_markers = character()) {
   skip_unless_level("standard")
@@ -90,8 +89,7 @@ test_that("marker-path sparse scoreTest + PCG matches golden (P27)", {
   # the binary_sparseGRM_vr model: sparse VR rows AND null_noXadj rows in one
   # file, which no other committed variance-ratio file has.
   mp_case("plink_marker_sparse.txt",
-          c(mp_model("binary_sparseGRM_vr"), MP_SG, "--is_fastTest=FALSE"),
-          drop_markers = MP_COVARIATE_MARKERS)
+          c(mp_model("binary_sparseGRM_vr"), MP_SG, "--is_fastTest=FALSE"))
 })
 
 test_that("marker fastTest re-test matches golden (P28)", {
@@ -112,8 +110,7 @@ test_that("marker fastTest re-test, sparse arm, matches golden (P29)", {
 test_that("marker scoreTestFast (is_noadjCov=FALSE) matches golden (P30)", {
   # The third arm of SAIGE_test.cpp:514-528, on all 70 markers.
   mp_case("plink_marker_noadjCov.txt",
-          c(mp_model("binary_sparseGRM_a"), "--is_noadjCov=FALSE"),
-          drop_markers = MP_COVARIATE_MARKERS)
+          c(mp_model("binary_sparseGRM_a"), "--is_noadjCov=FALSE"))
 })
 
 test_that("marker Firth path matches golden (P31)", {
@@ -197,23 +194,25 @@ test_that("every new marker golden differs from P1 in the intended direction", {
   expect_length(changed, 5L)
 })
 
-test_that("LEDGER #44: the guarded degeneracy now prints NA, the unguarded one does not", {
+test_that("LEDGER #44: both degeneracies now print NA", {
   # rs20 and rs22 ARE the categorical covariates a9 and a10 (verified: R^2 = 1
   # against the model matrix, next highest marker 0.022), so every
   # covariate-adjusting path tests a genotype that is exactly explained away.
   #
-  # #44 IS NOW FIXED -- but only where its guard reaches, and the two goldens
-  # below are the two halves of that. They look like one bug in the ledger and
-  # are not:
+  # #44 is FIXED on BOTH paths, by two different predicates, because the
+  # degeneracy has two different shapes:
   #
-  #   P27 (sparse scoreTest): var is 0 EXACTLY, so `var1 <= DBL_MIN` fires, and
-  #       BETA/SE are now the literal "NA" instead of -inf/nan.
-  #   P30 (scoreTestFast):    var is ~2.7e-14, which is ~294 orders of magnitude
-  #       ABOVE DBL_MIN (2.2e-308). The guard cannot fire; p = 1 arrives from the
-  #       chi-square instead, and BETA/SE are still finite junk (-0.11, 6.1e6).
+  #   P27 (sparse scoreTest): var is 0 EXACTLY -> `var1 <= DBL_MIN` fires.
+  #   P30 (scoreTestFast):    var is ~2.7e-14, ~294 orders ABOVE DBL_MIN, so the
+  #       absolute guard cannot fire. var2 there is a sum of signed terms, so the
+  #       degeneracy is CANCELLATION, caught by comparing |var2| to the noise
+  #       floor of its own summation. Measured across all 70 markers on that
+  #       configuration: these two give 1.7e-16 and 4.2e-16, every other marker
+  #       >= 0.237 -- 14.8 orders of separation.
   #
-  # So the exclusion in MP_COVARIATE_MARKERS is NOT retired, and the ledger note
-  # that predicted it would be has been corrected. See LEDGER #44.
+  # Tstat and var stay as they are, deliberately: the score really is ~0 here and
+  # that is information. They are portable because rel_err() has a column-scaled
+  # absolute floor, not because these rows are skipped -- nothing is skipped now.
   skip_if_no_goldens()
   g <- function(f) read_saige_table(file.path(saige_goldens, "step2", f))
   sp <- g("plink_marker_sparse.txt")
@@ -225,16 +224,18 @@ test_that("LEDGER #44: the guarded degeneracy now prints NA, the unguarded one d
   expect_identical(sp$BETA[i], c("NA", "NA"))
   expect_identical(sp$SE[i], c("NA", "NA"))
   expect_identical(sp$p.value[i], c("1.000000E+00", "1.000000E+00"))
-  # Tstat and var are NOT NA and deliberately so: the score really is ~0 here,
-  # which is information. It is also why these rows stay excluded from the
-  # numeric comparison -- a relative tolerance cannot compare 3e-15 against the
-  # different 3e-15 another platform's summation order produces.
   expect_true(all(abs(suppressWarnings(as.numeric(sp$Tstat[i]))) < 1e-12))
-  # UNGUARDED half, pinned as it stands (bug-for-bug, per branch policy):
+  # The other adjusting path, now caught by the cancellation test rather than
+  # left printing BETA=-0.11 SE=6.1e6:
   na <- g("plink_marker_noadjCov.txt")
+  expect_identical(na$BETA[i], c("NA", "NA"))
+  expect_identical(na$SE[i], c("NA", "NA"))
   expect_true(all(suppressWarnings(as.numeric(na$var[i])) < 1e-13))
-  expect_true(all(suppressWarnings(as.numeric(na$SE[i])) > 1e6))
-  expect_true(all(is.finite(suppressWarnings(as.numeric(na$BETA[i])))))
+  # and the NON-adjusting default path is untouched -- it never degenerates,
+  # which is why P1 reports these two as ordinary null markers
+  p1 <- g("plink_marker_binary.txt")
+  k <- match(c("rs20", "rs22"), p1$MarkerID)
+  expect_true(all(is.finite(suppressWarnings(as.numeric(p1$BETA[k])))))
   # and nothing else on either path is degenerate
   expect_true(all(is.finite(suppressWarnings(as.numeric(sp$BETA[-i])))))
   expect_true(all(is.finite(suppressWarnings(as.numeric(na$SE[-i])))))

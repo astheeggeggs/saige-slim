@@ -46,7 +46,7 @@ saige_compare_mode <- function() Sys.getenv("SAIGE_COMPARE_MODE", unset = "byte"
 # markers that are collinear with the covariates (LEDGER #44) -- so this is a
 # live path, not a hypothetical. A non-finite value facing a finite one, or an
 # infinity of the opposite sign, is a maximal error rather than a match.
-rel_err <- function(a, b) {
+rel_err <- function(a, b, tol = 1e-5) {
   a <- as.numeric(a); b <- as.numeric(b)
   if (length(a) != length(b)) return(Inf)
   d <- abs(a - b) / (abs(a) + abs(b) + .Machine$double.eps)
@@ -55,6 +55,24 @@ rel_err <- function(a, b) {
   d[same_inf] <- 0
   if (any(is.finite(a) != is.finite(b))) return(Inf)  # finite vs not
   if (anyNA(d)) return(Inf)  # NA in one but not the other
+
+  # ABSOLUTE FLOOR, RELATIVE TO THE COLUMN'S OWN SCALE (LEDGER #44, second half).
+  # A relative test cannot compare two values that are both essentially zero:
+  # `Tstat` on a covariate-collinear marker is ~3e-15 where the same column runs
+  # to 14.5, and the two platforms' summation orders give different noise, so
+  # d ~ 1 for a pair that carries no information whatsoever. Treat a pair as
+  # matching when BOTH sides are below tol * max|column|, i.e. when the values
+  # are more than five orders of magnitude below the largest value they sit
+  # beside. This cannot hide a real difference: anything large enough to affect
+  # a conclusion is, by construction, above the floor and still compared
+  # relatively. It is scale-free -- a column of genuinely tiny numbers has a
+  # correspondingly tiny floor -- and it is NOT a per-row exemption list.
+  scale <- suppressWarnings(max(abs(c(a, b))[is.finite(c(a, b))], na.rm = TRUE))
+  if (is.finite(scale) && scale > 0) {
+    negligible <- is.finite(a) & is.finite(b) &
+      pmax(abs(a), abs(b)) <= tol * scale
+    d[negligible] <- 0
+  }
   max(d, 0)
 }
 
@@ -172,7 +190,7 @@ tables_equivalence <- function(golden, candidate, tol = 1e-5,
     if (.is_numeric_col(g[[col]]) && .is_numeric_col(c_[[col]])) {
       if (!identical(g[[col]] %in% c("NA", ""), c_[[col]] %in% c("NA", "")))
         problems <- c(problems, paste0("NA pattern differs [", col, "]"))
-      err <- rel_err(.num(g[[col]]), .num(c_[[col]]))
+      err <- rel_err(.num(g[[col]]), .num(c_[[col]]), tol = tol)
       if (!is.finite(err) || err > tol)
         problems <- c(problems, sprintf("numeric [%s] rel_err=%.3e > tol=%.0e", col, err, tol))
     } else if (!identical(g[[col]], c_[[col]])) {
