@@ -511,21 +511,24 @@ deleted. They are never combined: `runMarkerScan` errors if both exceed 1.
 | default | 1 | 1 |
 | output | per-shard files concatenated | one writer, unchanged |
 | restart | refused | fine |
-| ER markers | full speed | **serialised** (see below) |
-| 4-thread elapsed | 6.36 / 7.08 / 5.90 s | 6.12 / 7.18 / 5.79 s |
-| 4-thread maxRSS | **+47 to +90 MB** | **under 1 MB** |
+| ER markers | full speed | full speed (Step B; was serialised) |
+| restart | refused | fine |
+| 4-thread maxRSS | **+80 to +98 MB** | **under 1 MB** |
 
-**Both are measured, and THE TWO ARE NOT SUBSTITUTABLE**
+**Both are measured, and after Step B IN-PROCESS DOMINATES**
 (`harness/bench_threads.sh <label> <reps> <threads> [inproc|fork]`; numbers in
-`harness/bench/NOTES.md`). On the bundled fixture they look identical -- p = 0.14
-/ 0.53 / 0.49 -- but that is an artefact of the fixture: only **4.1% of its
-128,868 markers have MAC <= 4**, so the ER serialisation in-process pays and fork
-does not is a 4% tax there. `harness/make_rare_fixture.py` varies exactly that
-fraction f (real genotype blocks, not simulated; uniformly interleaved and
-position-renumbered, both of which matter -- see its docstring). Across
-f = 0 -> 1, **fork's speedup is FLAT (1.16-1.22) while in-process decays 1.25 ->
-0.95**, i.e. at f = 1 in-process is SLOWER than serial, because a deferred marker
-is decoded on a worker, discarded, and re-run on the main thread.
+`harness/bench/NOTES.md`). It matches or beats fork at every ER-eligible fraction
+f while using 80-98 MB less, and it supports restart where fork refuses.
+
+The history matters, because it is the trap this fixture sets. The bundled data
+has only **4.1% of its 128,868 markers at MAC <= 4**, and there the two looked
+identical (p = 0.14 / 0.53 / 0.49). `harness/make_rare_fixture.py` varies exactly
+that fraction f (real genotype blocks, not simulated; uniformly interleaved and
+position-renumbered, both of which matter -- see its docstring), and it showed
+in-process decaying 1.25 -> 0.95 while fork stayed flat: at f = 1 in-process was
+SLOWER than serial. Step B removed the cause (see below) and the spread across f
+fell from 1.290 to 0.170. **Never benchmark this path on the bundled fixture
+alone** -- it cannot see the axis that matters.
 
 Two standing rules when touching these numbers: never quote the bundled
 fixture's null p-values as "the mechanisms are equivalent", and use `elapsed_s`,
@@ -534,10 +537,18 @@ never `work_s`, to compare them -- `work_s` comes from per-chunk cumulative
 Read the paired speedup RATIOS, not raw elapsed means and not the unpaired
 cross-mechanism p-values.
 
-**The deferral itself may be removable** -- `harness/probes/lchoose_offthread.cpp`
-shows `Rf_lchoose` off-thread fails only R's C-stack check and returns
-bit-identical values once `R_CStackLimit` is neutralised. That is not yet a
-licence to act; see the caveats in the verdict doc.
+**Why the ER branch is no longer main-thread-only.** `Rf_lchoose` never failed on
+arithmetic -- R's C-stack check measures against the MAIN thread's stack base, and
+`choose`/`lchoose` are the two functions here that recurse and carry it
+(`Rf_lgammafn`, `Rf_pnorm5`, `Rf_lbeta` are all fine off-thread). It is now
+computed from `Rf_lbeta` as `HyperGeo::lchoose_threadsafe`, bit-identical over
+2,009,004 pairs and pinned by `tests/testthat/test-unit-lchoose.R` -- which exists
+because the goldens CANNOT pin it: they execute the branch (a hard error there
+fails the tier) but a `+1e-9` perturbation leaves the whole tier green.
+`SL_setseed` remains guarded on the resampling arms only, in
+`Binary_ComputeExact.cpp`. **The throw is the safety property; the loop has no
+predicate any more.** When TSAN-testing this path use `SAIGE_TSAN_WORKLOADS=rare100`:
+on the bundled binary fixture only 4.1% of markers reach ER at all.
 
 **The in-process path's real limit, and it is not a corner.** The ER exact test
 is main-thread-only, so every binary marker with `MAC <= max_MAC_for_ER`

@@ -211,7 +211,6 @@ static bool testOneMarker(Geno::GenoReader & t_reader,
                           bool t_isImputation,
                           bool t_isCondition,
                           bool t_isSingleVarianceRatio,
-                          bool t_onWorkerThread,
                           Marker::MarkerScratch & t_scratch,
                           Marker::MarkerResult & t_res)
 {
@@ -329,35 +328,29 @@ static bool testOneMarker(Geno::GenoReader & t_reader,
 
   bool is_region = false;
 
-  // S6: the ER branch was MAIN-THREAD ONLY, so hand the marker back before doing
-  // its work rather than after paying for it.
+  // Step B: the blanket ER deferral is GONE, and with it the last reason the
+  // in-process path was slower than serial on a rare-variant binary scan.
   //
-  // NOTE: the binding half of that is GONE. Rf_lchoose -- called on every ER
-  // marker, and the reason the whole branch was excluded -- only ever tripped
-  // R's C-stack check, and is now computed from Rf_lbeta bit-identically and
-  // safely off-thread (HyperGeo::lchoose_threadsafe). What remains is SL_setseed
-  // on the RESAMPLING arms alone. So this predicate is now STRICTLY MORE
-  // CONSERVATIVE THAN NEEDED: it defers every binary MAC <= max_MAC_for_ER
-  // marker when only the drawing ones require it. Narrowing it is deliberately a
-  // separate change, gated on running harness/tsan.sh with the deferral off --
-  // which has never been done, and is the real safety question for the rest of
-  // the ER machinery (SL_calloc, the Binary_* statics).
+  // S6 excluded the whole ER branch because Rf_lchoose is called on EVERY ER
+  // marker and aborts off the main thread. That was never about the arithmetic:
+  // R's C-stack check measures depth against the MAIN thread's stack base, so a
+  // worker reads as impossibly deep. lchoose is now computed from Rf_lbeta
+  // bit-identically (HyperGeo::lchoose_threadsafe, pinned over 2,009,004
+  // argument pairs by tests/testthat/test-unit-lchoose.R), so the
+  // exact-enumeration arm runs on a worker like any other marker.
   //
-  // This predicate is an OPTIMISATION, not the safety property: if it is ever
-  // wrong, SKATMainThread's guards throw and the marker is deferred one step
-  // later. Do not let it become the thing correctness rests on.
+  // What remains is SL_setseed, on the RESAMPLING arms alone, and it is guarded
+  // where it lives (Binary_ComputeExact.cpp) rather than predicted from here.
+  // That is the point S6 already made and this change finally leans on: the
+  // THROW is the safety property; a predicate is only ever an optimisation. A
+  // drawing marker now does its enumeration work, throws NeedsMainThread, and is
+  // re-run whole on the main thread by post-pass 3. That wastes the work on a
+  // marker rare enough to be 1 of 128,868 even at max_MAC_for_ER = 200, which is
+  // a far better trade than serialising every ER marker to avoid it.
   //
-  // The cost is real and is NOT a corner: at the default max_MAC_for_ER = 4
-  // every binary marker with MAC <= 4 runs serially, which on a rare-variant
-  // scan is a large share of them. Quantitative traits never take this branch
-  // and thread fully. The fork path has no such limitation -- each child is its
-  // own process with its own R main thread -- which is a real input to the
-  // retirement comparison in docs/design/step2-threading-verdict.md.
-  if(t_onWorkerThread && t_traitType == "binary"
-     && MAC <= g_cfg.MACCutoffforER){
-    t_res.deferredToMainThread = true;
-    return true;
-  }
+  // Gated on harness/tsan.sh, both modes, WITH THIS DEFERRAL REMOVED -- which is
+  // the first time a worker has ever run the ER machinery, and so the first time
+  // SL_calloc and the Binary_* internals have been under a race detector.
 
   if(MAC <= g_cfg.MACCutoffforER && t_traitType == "binary"){
     Unified_getMarkerPval(
@@ -595,7 +588,6 @@ struct MarkerScanWorker : public RcppParallel::Worker {
                                           m_genoIndex.at(i), m_isMoreOutput,
                                           m_isImputation, m_isCondition,
                                           m_isSingleVarianceRatio,
-                                          true,  // on a worker thread
                                           state->scratch, m_resultVec.at(i));
         if(!isReadMarker){
           m_resultVec.at(i) = Marker::MarkerResult();
@@ -695,7 +687,6 @@ void mainMarkerInCPP(
                                         t_isImputation,
                                         isCondition,
                                         isSingleVarianceRatio,
-                                        false,  // main thread: R's RNG is allowed
                                         scratch,
                                         resultVec.at(i));
       if(!isReadMarker){
@@ -769,7 +760,6 @@ void mainMarkerInCPP(
                                         t_isImputation,
                                         isCondition,
                                         isSingleVarianceRatio,
-                                        false,  // main thread: R's RNG is allowed
                                         scratch,
                                         resultVec.at(i));
       if(!isReadMarker){

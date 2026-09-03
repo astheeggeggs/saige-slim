@@ -339,15 +339,52 @@ its commits have since landed and one of its stated gates was wrong.
   protection process-wide, so it would have to be scoped to the parallel region
   and its risk stated. If it holds up, in-process gets fork's throughput at
   in-process's memory, and the retirement stops being a trade-off.
-- **Not yet done**: S7's code change -- route `--nThreads` and retire one
-  mechanism -- plus criterion item 2 (feature parity item by item, including the
-  recorded decision on `varianceRatioBinsHaveGap`). Item 3 is now settled AGAINST
-  a straight retirement of fork: on a rare-variant binary scan, which is what
-  SAIGE is mostly used for, in-process as currently built is slower than serial.
-  The live options are (i) retire in-process and route `--nThreads` through fork,
-  (ii) remove the ER deferral per the probe above and then re-run this sweep,
-  which is the only path that makes one mechanism dominate on both axes, or
-  (iii) keep both and drop the obligation. Do not pick on the 4%-fixture numbers.
+- **STEP A AND STEP B ARE DONE, AND OPTION (ii) WORKED: IN-PROCESS NOW DOMINATES.**
+  Step A (`415a3db3`) replaced `Rf_lchoose` with `HyperGeo::lchoose_threadsafe`,
+  computed from `Rf_lbeta` the way R computes it, verified bit-identical over
+  2,009,004 argument pairs and on a worker with R's stack check LEFT ON -- so no
+  `R_CStackLimit` games and no surrendered overflow protection. It changed no
+  behaviour on its own and is pinned by `tests/testthat/test-unit-lchoose.R`
+  (`7f897285`), which exists because the goldens provably cannot do that job:
+  they execute the branch (a hard `Rf_error` there fails the tier twice) but a
+  `+1e-9` perturbation leaves the whole tier green.
+  Step B then deleted the blanket deferral in `Main.cpp`, leaving the
+  `SL_setseed` throw in `Binary_ComputeExact.cpp` as the sole, correctly-scoped
+  guard -- the principle S6 stated and this finally relies on: **the throw is the
+  safety property, a predicate is only ever an optimisation**. The now-dead
+  `t_onWorkerThread` parameter went with it, on S3's precedent.
+
+  | f | in-process before | in-process after | fork |
+  |---|---|---|---|
+  | 0.00 | 2.157 | 2.063 | flat |
+  | 0.25 | 1.637 | **2.080** | flat |
+  | 0.50 | 1.349 | **2.171** | flat |
+  | 0.75 | 1.114 | **2.233** | flat |
+  | 1.00 | **0.867** | **2.077** | flat |
+
+  Spread across f collapses from **1.290 to 0.170**. At f = 1 in-process goes
+  from 13% slower than serial to 2.08x faster. Head to head on `elapsed_s` it now
+  matches or beats fork at every f (1.243/1.222/1.222/1.231/1.173 against
+  1.224/1.214/1.215/1.178/1.166) while using **80-98 MB less**.
+
+  **Safety gate, and it is the first time any of this was possible.** With the
+  deferral gone a worker runs the ER machinery, so `harness/tsan.sh` finally
+  covers `SL_calloc` and the `Binary_*` internals under a race detector. Clean at
+  4 and 8 threads, byte-identical to serial, on `binary`/`binary_sparse`/`quant`
+  AND on **`rare100`, where EVERY marker takes the exact test on a worker** -- the
+  bundled binary fixture puts only 4.1% of markers there, so a clean run on it
+  alone would have been a statement about 4% of the change. The plant control
+  still fires on `rare100` (157 races at 4 threads, 200 at 8, output DIFFERS,
+  1-thread clean), so the gate has power in exactly this configuration.
+  Goldens: 54/54 byte-identical, standard tier FAIL 0 | PASS 1860 in both modes.
+- **Not yet done**: the retirement itself. Item 3 is now settled IN FAVOUR of
+  in-process -- equal or better throughput at every f, 80-98 MB lighter, and it
+  supports restart where fork refuses. What stands between that and deleting
+  `splitMarkerShards`/`appendShardBytes`/`mergeShardOutputs`/`runMarkerScan`'s
+  fork branch is **criterion item 2 alone**: feature parity item by item (group
+  tests, restart, non-fork-safe readers) plus the recorded decision on
+  `varianceRatioBinsHaveGap`. That is engineering, not measurement. Keep E0 and
+  E1 (see below) when the fork path goes.
 
 
 All verification complete. Delivering the judgment.

@@ -210,16 +210,47 @@ with `R_CStackLimit` neutralised it returns **bit-identical** values. Caveats in
 the verdict doc -- it does not prove the rest of the ER machinery is thread-safe,
 and `harness/tsan.sh` has never run with the deferral disabled.
 
+## Steps A and B landed: the ER branch threads, and in-process now dominates
+
+Option (ii) was taken and it worked, without the risky part. **Step A**
+(`415a3db3`) computes `lchoose` from `Rf_lbeta` the way R does
+(`HyperGeo::lchoose_threadsafe`), bit-identical over 2,009,004 pairs and on a
+worker with R's stack check LEFT ON -- so `R_CStackLimit` is never touched and
+genuine overflow protection is never surrendered. It changed no behaviour alone.
+`7f897285` pins it, because the goldens provably cannot: they execute the branch
+(a hard `Rf_error` there fails the tier twice) but a `+1e-9` perturbation leaves
+the entire tier green.
+
+**Step B** deleted the blanket deferral, leaving the `SL_setseed` throw as the
+sole guard -- the principle S6 stated and this finally leans on: the throw is the
+safety property, a predicate is only ever an optimisation.
+
+Result: in-process speedup goes flat in f (spread 1.290 -> 0.170), at f = 1 from
+0.867x -- slower than serial -- to **2.077x**, and head to head it matches or
+beats fork at every f while using 80-98 MB less.
+
+The safety gate was possible for the first time here, since a worker now runs
+the ER machinery: `harness/tsan.sh` clean at 4 and 8 threads on
+binary/binary_sparse/quant **and on `rare100`, where every marker takes the exact
+test on a worker**, with the plant control still firing there (157/200 races,
+output DIFFERS, 1-thread clean). Use `SAIGE_TSAN_WORKLOADS=rare100`: the bundled
+binary fixture sends only 4.1% of markers to ER.
+
 ## Where to start
 
-S7 proper, which is now a decision plus a code change rather than a measurement.
-Item 3 is settled AGAINST simply retiring fork. The live options:
-- **(ii) is the only one that makes a mechanism dominate on both axes**: remove
-  the ER deferral per the probe (scoping `R_CStackLimit`, then re-running BOTH
-  `harness/tsan.sh` modes with the deferral off and re-running the f-sweep).
-- (i) retire in-process, route `--nThreads` through fork; (iii) keep both and
-  drop the obligation.
-- Do not pick using the 4%-fixture numbers.
+**The retirement, and it is now engineering rather than measurement.** Item 3 is
+settled in favour of in-process: equal-or-better throughput at every f, 80-98 MB
+lighter, and it supports restart where fork refuses.
+
+What remains is **criterion item 2 alone** -- feature parity item by item (group
+tests, restart, non-fork-safe readers) plus the recorded decision on
+`varianceRatioBinsHaveGap` -- then route `--nThreads` to `nThreadsMarker`, retire
+`SAIGE_MARKER_THREADS`, and delete `splitMarkerShards`, `appendShardBytes`,
+`mergeShardOutputs` and `runMarkerScan`'s fork branch. **Keep E0 and E1** (both
+recorded in `CLAUDE.md`); they are findings about this codebase, not about fork.
+
+Worth doing with it: have the marker loop report how many markers took ER, the
+way it reports its thread count. Nothing else makes that visible.
 - **Criterion item 2 is still entirely open**: feature parity with fork item by
   item -- group tests, restart, non-fork-safe readers -- plus the recorded
   decision on `varianceRatioBinsHaveGap`.

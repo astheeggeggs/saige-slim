@@ -111,19 +111,28 @@ SG="--sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersU
 # is main-thread-only), so a binary run threads LESS of itself than a
 # quantitative one, and quant is where the widest concurrency actually happens.
 tsan_run() { # tsan_run <workload> <threads>
-  local wl="$1" nt="$2" model args
+  local wl="$1" nt="$2" model args bed="--bedFile=$P.bed --bimFile=$P.bim --famFile=$P.fam --AlleleOrder=alt-first"
   case "$wl" in
     binary)        model=binary_sparseGRM_a;  args="" ;;
     binary_sparse) model=binary_sparseGRM_vr; args="$SG --is_fastTest=FALSE" ;;
     quant)         model=quant_sparseGRM;     args="" ;;
+    # Controlled ER-eligible fraction (harness/make_rare_fixture.py). rare100 is
+    # the workload that matters once the ER deferral is gone: EVERY marker takes
+    # the exact test on a worker, where the bundled binary fixture puts only 4.1%
+    # of markers there. A clean TSAN run on `binary` alone would be a statement
+    # about 4% of the change.
+    rare[0-9][0-9][0-9])
+      model=binary_sparseGRM_a; args=""
+      local rp="$REPO/harness/work/rarefix/$wl"
+      [ -f "$rp.bed" ] || { echo "missing $rp.bed -- run harness/make_rare_fixture.py" >&2; exit 1; }
+      bed="--bedFile=$rp.bed --bimFile=$rp.bim --famFile=$rp.fam --AlleleOrder=alt-first" ;;
   esac
   local base="$RUNS/$wl.t$nt"
   SAIGE_MARKER_THREADS="$nt" \
   TSAN_OPTIONS="halt_on_error=0 history_size=7 exitcode=0 log_path=$base.tsan" \
   RCPP_PARALLEL_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
     pixi run --manifest-path "$REPO/pixi.toml" bash "$WORK/run_r.sh" -f step2_SPAtests.R --args \
-    --bedFile=$P.bed --bimFile=$P.bim --famFile=$P.fam --AlleleOrder=alt-first \
-    --minMAF=0 --minMAC=1 --LOCO=FALSE --markers_per_chunk=10000 $args \
+    $bed --minMAF=0 --minMAC=1 --LOCO=FALSE --markers_per_chunk=10000 $args \
     --GMMATmodelFile="$GOLD/step1/$model.rda" \
     --varianceRatioFile="$GOLD/step1/$model.varianceRatio.txt" \
     --SAIGEOutputFile="$base.txt" > "$base.log" 2>&1 || true
@@ -144,7 +153,7 @@ tsan_run() { # tsan_run <workload> <threads>
 }
 
 echo "=== TSAN runs ($MODE); 128,868 markers each"
-for wl in binary binary_sparse quant; do
+for wl in ${SAIGE_TSAN_WORKLOADS:-binary binary_sparse quant}; do
   for nt in 1 4 8; do tsan_run "$wl" "$nt"; done
 done
 echo

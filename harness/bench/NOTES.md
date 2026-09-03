@@ -422,3 +422,39 @@ p-values: the ratios are paired with the arms adjacent, whereas a cross-mechanis
 comparison is unpaired across blocks run at different times under different
 ambient load, which is why those p-values scatter (0.06, 0.01, 0.68, 0.04, 2e-6)
 while the ratios are clean and monotone.
+
+## Step B: the ER deferral removed, and the cliff with it (2026-09-03)
+
+The sweep above was re-run unchanged after `Main.cpp` stopped deferring binary
+`MAC <= max_MAC_for_ER` markers to the main thread. Same fixtures, same machine,
+12 pairs per cell, `work_s` speedup at 4 threads:
+
+| f | before Step B | after Step B |
+|---|---|---|
+| 0.00 | 2.157 | 2.063 |
+| 0.25 | 1.637 | **2.080** |
+| 0.50 | 1.349 | **2.171** |
+| 0.75 | 1.114 | **2.233** |
+| 1.00 | **0.867** | **2.077** |
+
+Spread across f collapses from **1.290 to 0.170**: in-process is now flat in f,
+which is the property that made fork the only viable mechanism for rare-variant
+binary work. At f = 1 -- every marker taking the exact test -- it goes from 13%
+SLOWER than serial to **2.08x faster**, a 2.4x swing on the workload SAIGE is
+mostly used for. The f = 0 cell moved -0.094, which is within the run-to-run
+variation of this bench and is not read as a regression.
+
+**Head to head, elapsed_s at 4 threads:**
+
+| f | in-process | fork | maxRSS in-proc / fork |
+|---|---|---|---|
+| 0.00 | 1.243x | 1.224x | 270 / 368 MB (+98) |
+| 0.25 | 1.222x | 1.214x | 270 / 355 MB (+84) |
+| 0.50 | 1.222x | 1.215x | 270 / 353 MB (+84) |
+| 0.75 | 1.231x | 1.178x | 270 / 367 MB (+97) |
+| 1.00 | 1.173x | 1.166x | 269 / 350 MB (+81) |
+
+In-process now matches or slightly beats fork at every f while using 80-98 MB
+less. The trade-off that made the retirement hard is gone; what remains before
+fork can actually be deleted is criterion item 2 (feature parity), not a
+measurement.
