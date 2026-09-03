@@ -272,3 +272,17 @@ Still open: #6 (deferred by choice), #14 (unverified), #18-#26, #35-#39, #45,
 #46, and **#49** (a restart re-runs the last completed chunk -- wasted work,
 right answer, found by S9's own regression test). The live-defect queue that
 S8-S11 worked from is empty.
+
+**The next substantive item is group-test threading**, and it is bigger than it
+looks. The marker path was made threadable in three steps that the REGION path
+has had none of: S3 (`TestContext`, so a test writes no model member), S4
+(`MarkerResult`/`MarkerScratch`, so per-marker state is owned rather than
+loop-hoisted) and S5/S8 (readers that clone). The region path still drives
+`m_varRatioVal` / `m_flagSparseGRM_cur` / `m_isnoadjCov_cur` through
+`assignVarianceRatio` and the `set_*_cur` setters and snapshots them with
+`currentContext()`, and it still holds the two remaining `std::vector<bool>`s in
+`Main.cpp`. So the order is: give the region path a context first, then look at
+threading it -- not the other way round.
+
+Two smaller ones, both already scoped in this document: the PGEN per-handle
+arena trim (needs a large-N fixture to measure), and #49 itself.
