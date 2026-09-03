@@ -1,4 +1,4 @@
-# Step-2 threading sequence: S0-S6 landed (handoff, 2026-09-02)
+# Step-2 threading sequence: S0-S7 landed, plus LEDGER #44 (handoff, 2026-09-03)
 
 Branch `strip`, **fully pushed to `slim/strip`**; everything through
 `0c42575b` is green on CI and S6 (`7814e24f`) was pushed at the end of the
@@ -261,71 +261,58 @@ would have been code in search of a purpose.
 
 ## Where to start
 
-Phase 4's step-2 thread of work is finished. The open queue, in the order I would
-take it:
-- **LEDGER #44** -- emit `NA` where the predicate already forces `p = 1`. It
-  retires the `rs20`/`rs22` exclusion from the numeric comparison of P27/P30,
-  which is currently masking an INTERMITTENT CI failure, so this is live
-  fragility rather than tidiness.
-- **`PgenReader::clone()`** -- PGEN gets no parallelism at all today, from any
-  mechanism. This is now the only route to it.
-- Step-1 blocked `GetTrace` (2.37x on the null fit, on branch `gettrace-blocked`),
-  and the remaining ledger entries (#6, #14, #17-#26, #35-#39, #42, #45, #46,
-  #47).
-- **Criterion item 2 is still entirely open**: feature parity with fork item by
-  item -- group tests, restart, non-fork-safe readers -- plus the recorded
-  decision on `varianceRatioBinsHaveGap`.
+Phase 4's step-2 thread of work is FINISHED: one parallelism mechanism, and
+`--nThreads` drives it. LEDGER #44 is fixed and its comparator exclusion retired.
+Working tree clean, everything pushed to `slim/strip`, CI green through
+`60e65e3b`.
 
-One timing rule, unchanged and re-earned this session: check `pmset -g therm`
-reads `CPU_Speed_Limit = 100` first, and check what is actually running. A
-Spotlight re-index at ~60% CPU and a `ReportCrash` at ~97% (fallout from the
-planted-race abort) each delayed a block here; a paired A/B cancels noise SHARED
-by the arms, not a burst that lands on whichever arm was running.
+### Next: `PgenReader::clone()`
 
-S6 deliberately leaves TWO parallelism mechanisms in the tree at once -- the
-existing fork/`mclapply` path in `R/MarkerShard.R` and the new in-process one,
-default OFF. **That is a temporary state with a written expiry**: the retirement
-criterion for the fork path is in the status block of
-`docs/design/step2-threading-verdict.md` and lists the evidence required before
-either one is deleted (byte-identity, feature parity item by item, a paired A/B
-showing in-process is not slower, and maxRSS). Do not let S7 close without
-resolving it -- two mechanisms with different semantics is exactly how this
-codebase grows a path nothing tests, which is what S5 found in the pread
-fallback and what S0 found in the marker-path arms.
+**PGEN gets no marker parallelism at all today, from anything.** `--nThreads > 1`
+on a pgen input degrades to one thread with a warning, because
+`PgenReader::clone()` throws (the v1 decision from Phase 7, never revisited).
+Since S7 retired the forked path, this is now the ONLY route to threaded PGEN.
 
-While reading that area: `varianceRatioBinsHaveGap` in `R/MarkerShard.R` had a
-comment claiming LEDGER #32 was "preserved (branch policy)". S3 FIXED #32 --
-`selectVarianceRatio` throws now, both arms stop, and the guard survives only
-because its message arrives earlier and reads better than the C++ throw. The
-comment is corrected; the guard's fate is one of the parity items above.
+What it involves, and the shape to copy: `PlinkReader` was made cloneable in S5
+by holding a `std::shared_ptr<PLINK::PlinkClass>` so clones SHARE one open file
+and one mapping, `close()` releasing only that handle, with the map dying with
+the LAST owner. The property that made it sound is that
+`PlinkClass::getOneMarker` is `const` -- and NOT by marking state `mutable`,
+which would have made const meaningless; the shared scratch buffer was removed
+and `fseek`+`fread` became one `pread`, which takes its offset as an argument.
+Do the same audit for `PGEN::PgenClass`: pgenlib keeps decode state per reader
+handle, so the question is whether one `PgenFileInfo` can back several readers,
+or whether each clone needs its own handle onto the same file.
 
-## Things worth knowing before touching this area
+Gates that already exist and will do the work:
+- `tests/testthat/test-step2-pgen.R` has the degrade-to-one-thread test that must
+  be INVERTED once clone() works (it currently asserts the warning path).
+- `harness/tsan.sh` runs the race detector; use `SAIGE_TSAN_WORKLOADS=rare100`,
+  and ALWAYS run `plant` too -- a clean TSAN run means nothing on its own.
+- `harness/bench_threads.sh` measures it; PGEN mirrors of the marker goldens
+  (P13-P24) are the byte-identity gate.
 
-- **The goldens cannot see a thread-safety change.** S2, S3 and S4 are all
-  byte-identical by construction, so each carries its own measurement instead:
-  S2 counts `set.seed` calls by tracing `base::set.seed` in a child process
-  (`tests/testthat/test-step2-er-seeding.R` keeps that as a standing test), S3
-  used the compiler as an exhaustive audit, S4 used the type system (`grep` for
-  `std::vector<bool>`; every `g_model->`/`g_cfg.` inside `testOneMarker` read
-  back and confirmed a read), **S6 ran the goldens at 1/2/4/8 threads and drilled
-  BOTH directions -- a deliberately shared scratch buffer must fail the
-  comparator (it does, 16 failures) and 1-thread-through-TBB must pass (it does),
-  which is what separates "TBB is involved" from "markers ran concurrently"** --
-  and **S5 planted defects and watched the new tests catch them** -- a wrong pread offset (equivalence test reports
-  `identical: FALSE`, 2 of 5 markers diverge) and the pre-S5 `close()` semantics
-  (clone-after-close fails with "called after the .bed file was closed").
-  Plan for that; a green golden run is not evidence for this class of change.
-  What the golden cycle DID gate on S4 is the thing it is good for: that a
-  460-line function was transcribed correctly.
-- **Paired A/B with two installed libraries** is the only timing method that
-  resolved anything here: `R CMD INSTALL -l <scratch lib>` for the baseline,
-  the pixi env for the change, arms alternated within each rep, and the arm
-  order swapped between blocks as an ordering control. Unpaired 3+3 reps called
-  F8 a non-result and would have called S1 one too. See `harness/bench/NOTES.md`.
-- **`s2_marker_all_sparse`** is the bench workload that puts the marker-path
-  `scoreTest` and the PCG on the clock; `s2_marker_all` cannot see them at all.
-- Three ledger entries were opened by reading code in these commits and are
-  untouched: **#44** (BETA/SE unguarded when the covariate-adjusted variance
-  underflows -- two bundled markers ARE covariates), **#45** (a dead
-  `== NA_REAL` NaN guard in both root finders), **#46** (the two root finders
-  disagree on the sign-change test when an operand is exactly zero).
+### After that
+- Step-1 blocked `GetTrace`: 2.37x on the null fit, 1.55x on the whole step-1
+  run, sitting on branch `gettrace-blocked` and never merged.
+- Remaining ledger entries: #6, #14, #17-#26, #35-#39, #42, #45, #46, **#47**
+  (restart after a hard kill duplicates rows -- found by S7's parity audit).
+
+## Standing traps, all of them earned in this sequence
+
+- **A green golden run is not evidence for a thread-safety change**; those are
+  byte-identical by construction. Drill both directions.
+- **A clean TSAN run is not evidence either** unless the planted defect fires
+  with the SAME annotation active. And run it on `rare100`: the bundled binary
+  fixture sends only 4.1% of markers to ER.
+- **Never benchmark the marker path on the bundled fixture alone.** It cannot see
+  the ER-eligible fraction, which is the axis that decided S7.
+  `harness/make_rare_fixture.py` varies it.
+- **A byte-identical golden can mean "not covered".** Proven twice here: a +1e-9
+  perturbation of `lchoose_threadsafe` left the whole tier green while a hard
+  error in the same branch failed it. Perturb hard enough to be sure.
+- **Check `pmset -g therm` reads `CPU_Speed_Limit = 100` before ANY timing**, and
+  check what is running. Pairing cancels shared noise, not a burst landing on one
+  arm.
+- **Account for assertion-count moves.** Every one in this sequence was traced to
+  a specific added or deleted test.
