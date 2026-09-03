@@ -42,6 +42,36 @@ run control_step1.log R2 step1_fitNULLGLMM.R \
   --isCateVarianceRatio=TRUE \
   --outputPrefix="$GOLD/control/null_binary"
 
+# 2b. the SAME step-1 fit through the PGEN reader. Two things this buys that
+# the goldens do not: the model is fitted on a PERMUTED phenotype, so it is a
+# configuration no step-1 golden covers, and the comparison is byte-exact
+# rather than toleranced. If the pgen front-end ever stopped re-encoding
+# variants identically, this is a second place it would show.
+run control_step1_pgen.log R2 step1_fitNULLGLMM.R \
+  --plink2File=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr \
+  --sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx \
+  --sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt \
+  --useSparseGRMtoFitNULL=TRUE \
+  --phenoFile="$GOLD/control/pheno_permuted.txt" \
+  --phenoCol=y_binary \
+  --covarColList=x1,x2,a9,a10 \
+  --qCovarColList=a9,a10 \
+  --sampleIDColinphenoFile=IID \
+  --traitType=binary \
+  --IsOverwriteVarianceRatioFile=TRUE \
+  --isCateVarianceRatio=TRUE \
+  --outputPrefix="$GOLD/control/null_binary_pgen"
+
+echo "=== byte identity: step-1 PGEN vs PLINK on the permuted phenotype"
+for ext in .rda .varianceRatio.txt; do
+  if cmp -s "$GOLD/control/null_binary$ext" "$GOLD/control/null_binary_pgen$ext"; then
+    echo "  ok   null_binary_pgen$ext"
+  else
+    echo "  FAIL null_binary_pgen$ext differs from null_binary$ext"
+    exit 1
+  fi
+done
+
 # 3. step 2, PLINK single-variant, on the permuted-phenotype model
 run control_step2.log R2 step2_SPAtests.R \
   --bedFile=./input/genotype_100markers.bed \

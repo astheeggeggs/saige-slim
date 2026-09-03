@@ -38,6 +38,29 @@ run step0_sparseGRM.log R2 createSparseGRM.R \
   --numRandomMarkerforSparseKin=5000 \
   --relatednessCutoff=0.05
 
+# Same run through the PGEN reader. extdata/input/plinkforGRM_1000samples_10kMarkers.
+# {pgen,pvar,psam} were generated once from the bed/bim/fam with
+# `plink2 --bfile <prefix> --make-pgen --out <prefix>` and committed; verified at
+# generation time that pvar ALT == bim column 5 and pvar REF == bim column 6 for
+# all 10,000 markers, and that psam IID order matches the fam, which is what makes
+# the two readers comparable at all.
+#
+# The output is BYTE-IDENTICAL to the PLINK run above. That is a real gate here
+# rather than a claim about two code paths agreeing: the pgen front-end re-encodes
+# each variant as a PLINK-1 .bed record and hands it to the SAME
+# Get_OneSNP_Geno_atBeginning, so the QC/impute/repack pipeline and every float
+# downstream of it is one code path with two front-ends.
+# NOTE the seed: extdata/createSparseGRM.R does set.seed(1) before sampling the
+# 5,000 markers out of the 9,588 that pass MAF. WITHOUT that seed neither run
+# reproduces itself, so a comparison of two unseeded runs measures the RNG, not
+# the reader.
+run step0_sparseGRM_pgen.log R2 createSparseGRM.R \
+  --plink2File=input/plinkforGRM_1000samples_10kMarkers \
+  --nThreads=1 \
+  --outputPrefix="$GOLD/step0/test_sparseGRM_pgen" \
+  --numRandomMarkerforSparseKin=5000 \
+  --relatednessCutoff=0.05
+
 ######################## step 1: null model fitting #########################
 # cmd.sh lines 3-16: binary, sparse GRM to fit null, categorical VR.
 run step1_binary_sparseGRM_a.log R2 step1_fitNULLGLMM.R \
@@ -139,6 +162,102 @@ run step1_binary_sparseGRM_vr.log R2 step1_fitNULLGLMM.R \
   --IsOverwriteVarianceRatioFile=TRUE \
   --isCateVarianceRatio=TRUE \
   --outputPrefix="$GOLD/step1/binary_sparseGRM_vr"
+
+
+################## step 1 mirrors through the PGEN reader ##################
+# The same five configurations, reading
+# extdata/input/nfam_100_..._22chr.{pgen,pvar,psam} (already committed for the
+# step-2 PGEN goldens) instead of the bed/bim/fam.
+#
+# Each is BYTE-IDENTICAL to its PLINK counterpart above -- both the .rda and the
+# .varianceRatio.txt -- and tests/testthat/test-step1-pgen.R asserts exactly
+# that with cmp. This is not the forbidden "two code paths agree" comparison:
+# the pgen front-end re-encodes each variant as a PLINK-1 .bed record and hands
+# it to the SAME Get_OneSNP_Geno_atBeginning, so QC, mean imputation, the 2-bit
+# repack and every float after them are literally one code path. If this ever
+# needs a tolerance, the design has broken -- do not relax the assertion.
+#
+# binary_denseGRM_pgen is kept for the same reason its PLINK twin is: it is the
+# only one of the five on the DENSE GRM path, so without it the TBB kernel is
+# reached by no pgen golden at all.
+
+run step1_binary_sparseGRM_a_pgen.log R2 step1_fitNULLGLMM.R \
+  --plink2File=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr \
+  --sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx \
+  --sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt \
+  --useSparseGRMtoFitNULL=TRUE \
+  --phenoFile=./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt \
+  --phenoCol=y_binary \
+  --covarColList=x1,x2,a9,a10 \
+  --qCovarColList=a9,a10 \
+  --sampleIDColinphenoFile=IID \
+  --traitType=binary \
+  --IsOverwriteVarianceRatioFile=TRUE \
+  --isCateVarianceRatio=TRUE \
+  --outputPrefix="$GOLD/step1/binary_sparseGRM_a_pgen"
+
+run step1_binary_sparseGRM_b_pgen.log R2 step1_fitNULLGLMM.R \
+  --sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx \
+  --sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt \
+  --plink2File=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr \
+  --useSparseGRMtoFitNULL=TRUE \
+  --phenoFile=./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt \
+  --phenoCol=y_binary \
+  --covarColList=x1,x2 \
+  --qCovarColList=x2 \
+  --sampleIDColinphenoFile=IID \
+  --cateVarRatioMinMACVecExclude="0.5,1.5,2.5,3.5,4.5,5.5,10.5,20.5" \
+  --cateVarRatioMaxMACVecInclude="1.5,2.5,3.5,4.5,5.5,10.5,20.5" \
+  --traitType=binary \
+  --isCateVarianceRatio=TRUE \
+  --IsOverwriteVarianceRatioFile=TRUE \
+  --outputPrefix="$GOLD/step1/binary_sparseGRM_b_pgen"
+
+run step1_quant_sparseGRM_pgen.log R2 step1_fitNULLGLMM.R \
+  --plink2File=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr \
+  --sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx \
+  --sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt \
+  --useSparseGRMtoFitNULL=TRUE \
+  --phenoFile=./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt \
+  --phenoCol=y_quantitative \
+  --covarColList=x1,x2,a9,a10 \
+  --qCovarColList=a9,a10 \
+  --sampleIDColinphenoFile=IID \
+  --traitType=quantitative \
+  --invNormalize=TRUE \
+  --IsOverwriteVarianceRatioFile=TRUE \
+  --isCateVarianceRatio=TRUE \
+  --outputPrefix="$GOLD/step1/quant_sparseGRM_pgen"
+
+run step1_binary_denseGRM_pgen.log R2 step1_fitNULLGLMM.R \
+  --plink2File=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr \
+  --phenoFile=./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt \
+  --phenoCol=y_binary \
+  --covarColList=x1,x2,a9,a10 \
+  --qCovarColList=a9,a10 \
+  --sampleIDColinphenoFile=IID \
+  --traitType=binary \
+  --nThreads=1 \
+  --LOCO=FALSE \
+  --minMAFforGRM=0.01 \
+  --IsOverwriteVarianceRatioFile=TRUE \
+  --outputPrefix="$GOLD/step1/binary_denseGRM_pgen"
+
+run step1_binary_sparseGRM_vr_pgen.log R2 step1_fitNULLGLMM.R \
+  --plink2File=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr \
+  --sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx \
+  --sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt \
+  --useSparseGRMtoFitNULL=TRUE \
+  --useSparseGRMforVarRatio=TRUE \
+  --phenoFile=./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt \
+  --phenoCol=y_binary \
+  --covarColList=x1,x2,a9,a10 \
+  --qCovarColList=a9,a10 \
+  --sampleIDColinphenoFile=IID \
+  --traitType=binary \
+  --IsOverwriteVarianceRatioFile=TRUE \
+  --isCateVarianceRatio=TRUE \
+  --outputPrefix="$GOLD/step1/binary_sparseGRM_vr_pgen"
 
 ##################### step 2: association tests (frozen inputs) #####################
 SG="--sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx --sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt"
@@ -667,6 +786,40 @@ run step2_plink_marker_er.log R2 step2_SPAtests.R \
 # PLINK counterparts P1-P4 continue; before retirement, the bgen group
 # fastTest run had byte-stable goldens and the vcf conditional output was
 # verified identical to P4's.
+
+############ PGEN-vs-PLINK byte identity, checked in the candidate dir #########
+# The step-0 and step-1 PGEN runs above are NOT committed as separate goldens:
+# each is byte-identical to its PLINK twin, so committing them would double the
+# size of harness/goldens/step1 for no extra signal. The identity is asserted
+# HERE instead, between the two runs of THIS candidate directory, which is both
+# stronger than compare_goldens.sh's step-1 tolerance and free in git.
+#
+# (compare_goldens.sh globs $GOLD/step1/*.rda over the COMMITTED goldens, so the
+# extra *_pgen files here are simply not looked at by it. This block is what
+# stops that being a silent gap. tests/testthat/test-step1-pgen.R makes the same
+# assertion from the test suite, against the committed PLINK goldens.)
+echo "### byte identity: PGEN reader vs PLINK reader (step0/step1)"
+PGEN_IDENTITY_FAILS=0
+check_identical() { # check_identical <plink-file> <pgen-file>
+  if cmp -s "$1" "$2"; then
+    echo "  ok   $(basename "$2")"
+  else
+    echo "  FAIL $(basename "$2") differs from $(basename "$1")"
+    PGEN_IDENTITY_FAILS=$((PGEN_IDENTITY_FAILS+1))
+  fi
+}
+S0SUF="_relatednessCutoff_0.05_5000_randomMarkersUsed.sparseGRM.mtx"
+check_identical "$GOLD/step0/test_sparseGRM$S0SUF" "$GOLD/step0/test_sparseGRM_pgen$S0SUF"
+check_identical "$GOLD/step0/test_sparseGRM$S0SUF.sampleIDs.txt" \
+                "$GOLD/step0/test_sparseGRM_pgen$S0SUF.sampleIDs.txt"
+for n in binary_sparseGRM_a binary_sparseGRM_b quant_sparseGRM binary_denseGRM binary_sparseGRM_vr; do
+  check_identical "$GOLD/step1/$n.rda"                "$GOLD/step1/${n}_pgen.rda"
+  check_identical "$GOLD/step1/$n.varianceRatio.txt"  "$GOLD/step1/${n}_pgen.varianceRatio.txt"
+done
+if [ "$PGEN_IDENTITY_FAILS" -gt 0 ]; then
+  echo "=== PGEN/PLINK byte identity FAILED ($PGEN_IDENTITY_FAILS file(s))"
+  FAILED_RUNS+=("pgen_plink_byte_identity")
+fi
 
 if [ "${#FAILED_RUNS[@]}" -gt 0 ]; then
   echo "=== COMPLETE WITH FAILURES ($GOLD):"

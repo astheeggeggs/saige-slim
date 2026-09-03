@@ -83,6 +83,29 @@ which is why LEDGER #50 survived and why its regression test has to call
 Exposing it is additive and would let that path become a golden. Note the
 CLI-option rules in `CLAUDE.md` (lint-clean, `option_list` metadata verified).
 
+**The psam sample map keys on FID, not IID.** [Grounded, LEDGER #52; found
+2026-09-03] `PgenShared::readPsamFile` (`src/PGEN.cpp:158`) does
+`sampleInPgen[line_elements[0]] = idx;  // IID`, but column 0 of a
+`#FID IID SEX` psam is FID. Step 2 would fail outright on any psam with
+FID != IID, and silently undercount samples on one with repeated FIDs. Both
+committed PGEN fixtures have FID == IID, which is the only reason all 13 PGEN
+step-2 goldens pass. The steps-0/1 path added on 2026-09-03 does not go through
+this map (it uses the identity-mapping `PgenShared` overload and counts psam
+rows directly), so the bug is contained but still live for step 2. The fix is a
+header-driven `IID` column lookup plus the `\r` stripping the pvar parser has
+and this one lacks. **The gate is the missing fixture, not the fix**: every
+existing golden will stay byte-identical, so a psam with FID != IID has to be
+added or the fix proves nothing.
+
+**Dosage pgens are hard-called for the GRM, and that is a real limitation, not
+just a warning.** [Grounded, 2026-09-03] `genoClass`'s store is 2 bits per
+sample, so `PgenByteSource` rounds any dosage to the nearest of {0,1,2} and
+warns once with the count. For imputed data that discards information the GRM
+and the variance ratios could have used. Carrying dosages properly means a
+second storage path through `genoClass` and touches the GRM kernels, LOCO and
+every step-1 golden -- deliberately out of scope, and worth measuring (does the
+GRM actually move?) before being attempted.
+
 ## Deliberately not listed
 
 The consolidation work (README is still the upstream stub, `pixi.lock` is

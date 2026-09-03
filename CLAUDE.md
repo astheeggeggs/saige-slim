@@ -11,9 +11,12 @@ genotype input**. The BGEN/VCF/SAV readers, step 3 (LD matrices), and
 RareEffect were stripped in commits "Strip 1"–"Strip 7", each verified
 byte-exact against `main`-HEAD goldens; the PGEN reader (also stripped there,
 in Strip 4) was added back in Phase 7 as fresh code implementing the
-`GenoReader` interface (step 2 only; single-threaded until S8, which made
+`GenoReader` interface (single-threaded until S8, which made
 `PgenReader::clone()` real so `--nThreads` threads a pgen scan too), not a
-restore of `main`'s pre-refactor `PgenClass`. `main` holds the full upstream fork (docs:
+restore of `main`'s pre-refactor `PgenClass`. **PGEN is no longer step-2 only:
+step 0, step 1 and `extractNglmm` take `--plink2File` / `--pgenFile` /
+`--pvarFile` / `--psamFile` too, and every output is BYTE-IDENTICAL to the
+PLINK run on the mirrored fixture — see `docs/state/pgen-step01.md`.** `main` holds the full upstream fork (docs:
 https://saigegit.github.io/SAIGE-doc/). Binary and quantitative traits are
 supported; survival-trait support was removed in Phase 3a of the refactor.
 
@@ -40,8 +43,11 @@ path is retired. Step-1 blocked `GetTrace` also landed (`bda95327`) -- do not
 believe an older doc that says it is parked on a branch.
 **LEDGER.md still-OPEN**: #6 (PCG tolerance, deliberately deferred), #14
 (unverified suspicion), #18-#26, #35-#39 from the type-polymorphic-builtin audit
-(`sample`, `1:n`, `rbind` recycling) -- all latent behind a guard -- #45, #46
-and #49 (a restart re-runs the last completed chunk: wasted work, right answer).
+(`sample`, `1:n`, `rbind` recycling) -- all latent behind a guard -- #45, #46,
+#49 (a restart re-runs the last completed chunk: wasted work, right answer),
+and #52-#54 from the PGEN-for-steps-0/1 work (#52 the psam FID/IID column-0
+keying, #53 an uninitialised `geno2` in the re-packer, #54 the unvalidated
+`.bed` header -- all three recorded, none reached by the new path).
 Recently FIXED: #47 (S9, restart duplicated rows), #17 (S10, the uninitialised
 `w0` on the custom-weighted conditional path), #42 (S11, three `log.p=TRUE`
 arms halved a log, i.e. took a square root, inflating SE ~sqrt(2) wherever the
@@ -151,7 +157,12 @@ at runtime by the installed R package.
   (score-test algebra, allele accounting, ACAT recomputation of the Cauchy
   rows), and comparator self-tests (the suite's own null + positive controls
   in `test-meta-comparators.R`).
-- **standard** (~2.5 min, default): fast + the four PLINK step-2 CLI runs
+- **standard** (~2.5 min, default): fast + the PGEN-for-steps-0/1 checks in
+  `test-step1-pgen.R` (the loaded GRM genotype store compared
+  `expect_identical` between the two readers — `M`, `N`, `alleleFreqVec`,
+  `MACVec`, `getQCdMarkerIndex`, 50 decoded markers — plus the step-0 golden
+  and the dosage hard-call warning; its five-configuration step-1 byte
+  comparison is **full** tier) + the four PLINK step-2 CLI runs
   compared against `harness/goldens/step2/`, the multi-weight runs, the
   marker-path goldens P27-P33 (`test-step2-marker-paths.R`, kept as its own
   file so its seven CLI runs go in parallel with `test-step2-goldens.R`'s),
@@ -302,6 +313,7 @@ dead files).
   fits are byte-stable either way.
 - `bash harness/make_goldens.sh <dir>` — regenerates step0 (sparse GRM), step1
   (binary ×2 sparse / quantitative sparse / **binary dense** / **binary sparse-VR**),
+  **the step-0 and step-1 PGEN mirrors of all six of those** (see below),
   and step2: 22
   PLINK runs (P1-P12 + P25 + P27-P34, with P8b as a
   separate composed-set golden — single-variant marker/marker-conditional
@@ -317,6 +329,16 @@ dead files).
   binary-conditional path, BURDEN, non-fastTest SKAT-O, chunking, and the full
   multi-weight schema including composed sets and conditional multi-weight),
   plus P26 mirroring P25.
+  Two PGEN fixtures were added with the steps-0/1 work:
+  `extdata/input/plinkforGRM_1000samples_10kMarkers.{pgen,pvar,psam}` (the
+  step-0 fixture's mirror, `--make-pgen` from its bed/bim/fam; verified at
+  generation time that pvar ALT == bim col 5 and pvar REF == bim col 6 for all
+  10,000 markers and that psam IID order == fam order — that correspondence is
+  what makes the readers comparable, and is worth re-checking for any new
+  fixture), and `extdata/input/dosage_20markers_100samples.{pgen,pvar,psam}`,
+  20 markers × 100 samples whose ALT dosage cycles 0.1 … 1.0 so that 1,800
+  genotypes are fractional and 200 exactly integral — it pins the dosage
+  hard-call warning AND that an integral dosage is not miscounted as rounded.
   P11 has no PGEN mirror: `--AlleleOrder=ref-first` is a PLINK bim-specific
   toggle, and pvar's fixed REF/ALT columns give it no ref-first/alt-first
   ambiguity to mirror. Step-2 runs consume frozen model inputs: our committed
@@ -342,6 +364,24 @@ dead files).
   AI-REML `tol=0.02` makes tighter meaningless; vectors 1e-3). It globs
   `step1/*.rda`, so a new step-1 golden is picked up with no change; no test
   enumerates that directory, so adding one is purely additive.
+- **The step-0/step-1 PGEN runs ARE committed as goldens**, even though each is
+  byte-identical to its PLINK twin. Leaving them out was tried first and is
+  wrong: `compare_goldens.sh`'s step0 loop has an **"EXTRA in candidate"** arm
+  that flags any candidate file the goldens do not know about, so two
+  uncommitted step-0 pgen outputs failed the full tier. (Step1 has no such arm —
+  it globs `$GOLD/step1/*.rda` — so its five would have passed silently, which
+  is the worse outcome of the two.) Suppressing the EXTRA check would have been
+  disabling a safety net to hide a real asymmetry. `make_goldens.sh`
+  additionally `cmp`s each pgen output against its PLINK twin **inside the
+  candidate directory**: that is byte-exact, where `compare_goldens.sh`'s step-1
+  arm is only toleranced, and `tests/testthat/test-step1-pgen.R` asserts the
+  same thing from the suite.
+  **`createSparseGRM` is not self-reproducing without a seed**: it draws 5,000
+  of 9,588 MAF-passing markers with `sample()` and the `set.seed(1)` lives in
+  `extdata/createSparseGRM.R:99`, NOT in the function — so a step-0 comparison
+  that bypasses the CLI measures the RNG, not the reader (this actually
+  happened; the control that caught it was that the PLINK arm did not reproduce
+  itself either).
 - **`binary_denseGRM` is the only step-1 golden on the DENSE GRM path.** The
   other three pass `--useSparseGRMtoFitNULL=TRUE`, so `getCrossprodMatAndKin`
   never leaves its sparse branch and the dense TBB kernel (`parallelCrossProd`,
@@ -541,8 +581,19 @@ long-running `main*InCPP()` loop that writes output files from C++
   and the class is non-copyable so the destructor cannot double-close.
 - `src/SAIGE_fitGLMM_fast.cpp` (~7400 lines) — step-1 engine, separate from
   Main.cpp. Single **global** `genoClass geno` holds the bit-packed GRM
-  genotypes; step 1 never took PGEN even on `main`'s pre-refactor
-  architecture, and Phase 7 does not change that — PGEN is step-2 only.
+  genotypes. **It now takes PGEN as well as PLINK, by RE-ENCODING rather than
+  by a second pipeline.** `MarkerByteSource` has two implementations —
+  `BedByteSource` (the original `seekg(3 + nbyte*i)` + `read`) and
+  `PgenByteSource` (pgenlib decode via `PGEN::PgenClass::Read`, then re-encode
+  as a PLINK-1 `.bed` record) — and `setGenoObjFromSource` is the single body
+  both drive, so `Get_OneSNP_Geno_atBeginning`'s unpack, MAF/missingness QC,
+  `round(2*altFreq)` imputation and 2-bit repack are ONE code path with two
+  front-ends. That is why byte-identity between the readers is structural
+  rather than a coincidence to be re-checked, and why the pack/unpack round
+  trip is worth its cost. `setgeno_pgen` is the Rcpp entry beside `setgeno`.
+  Steps 0/1 use the `PgenShared(pgen, psam, pvar)` overload (all file samples,
+  identity mapping) and never touch `posSampleInPgen` — deliberately, see
+  LEDGER #52.
   Algorithms exist as near-duplicate families — base, `_LOCO`, `_q`
   (quantitative) — after the `_Surv` variants were removed with survival
   support in Phase 3a.
