@@ -44,6 +44,51 @@ option_list <- list(
     )
   ),
   make_option(
+    "--bedFile",
+    type = "character",
+    default = "",
+    help = "Path to bed file. If plinkFile is specified, 'plinkFile'.bed will be used"
+  ),
+  make_option(
+    "--bimFile",
+    type = "character",
+    default = "",
+    help = "Path to bim file. If plinkFile is specified, 'plinkFile'.bim will be used"
+  ),
+  make_option(
+    "--famFile",
+    type = "character",
+    default = "",
+    help = "Path to fam file. If plinkFile is specified, 'plinkFile'.fam will be used"
+  ),
+  make_option(
+    "--plink2File",
+    type = "character",
+    default = "",
+    help = paste0(
+      "Prefix for plink2 pgen/pvar/psam files, used in place of plinkFile. ",
+      "Mutually exclusive with the PLINK input"
+    )
+  ),
+  make_option(
+    "--pgenFile",
+    type = "character",
+    default = "",
+    help = "Path to pgen file. If plink2File is specified, 'plink2File'.pgen will be used"
+  ),
+  make_option(
+    "--pvarFile",
+    type = "character",
+    default = "",
+    help = "Path to pvar file. If plink2File is specified, 'plink2File'.pvar will be used"
+  ),
+  make_option(
+    "--psamFile",
+    type = "character",
+    default = "",
+    help = "Path to psam file. If plink2File is specified, 'plink2File'.psam will be used"
+  ),
+  make_option(
     "--phenoFile",
     type = "character",
     default = "",
@@ -307,6 +352,13 @@ set.seed(1)
 
 getNeff(
   plinkFile = opt$plinkFile,
+  bedFile = opt$bedFile,
+  bimFile = opt$bimFile,
+  famFile = opt$famFile,
+  plink2File = opt$plink2File,
+  pgenFile = opt$pgenFile,
+  pvarFile = opt$pvarFile,
+  psamFile = opt$psamFile,
   phenoFile = opt$phenoFile,
   phenoCol = opt$phenoCol,
   traitType = opt$traitType,

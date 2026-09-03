@@ -35,6 +35,33 @@ option_list <- list(
     help = "Path to fam file. If plinkFile is specified, 'plinkFile'.fam will be used"
   ),
   make_option(
+    "--plink2File",
+    type = "character",
+    default = "",
+    help = paste0(
+      "Prefix for plink2 pgen/pvar/psam files, used in place of plinkFile. ",
+      "Mutually exclusive with the PLINK input"
+    )
+  ),
+  make_option(
+    "--pgenFile",
+    type = "character",
+    default = "",
+    help = "Path to pgen file. If plink2File is specified, 'plink2File'.pgen will be used"
+  ),
+  make_option(
+    "--pvarFile",
+    type = "character",
+    default = "",
+    help = "Path to pvar file. If plink2File is specified, 'plink2File'.pvar will be used"
+  ),
+  make_option(
+    "--psamFile",
+    type = "character",
+    default = "",
+    help = "Path to psam file. If plink2File is specified, 'plink2File'.psam will be used"
+  ),
+  make_option(
     "--nThreads",
     type = "integer",
     default = 16L,
@@ -98,20 +125,15 @@ print(opt)
 
 set.seed(1)
 
-if (opt$plinkFile != "") {
-  bimFile <- paste0(opt$plinkFile, ".bim")
-  bedFile <- paste0(opt$plinkFile, ".bed")
-  famFile <- paste0(opt$plinkFile, ".fam")
-} else {
-  bimFile <- opt$bimFile
-  bedFile <- opt$bedFile
-  famFile <- opt$famFile
-}
-
 createSparseGRM(
-  bedFile = bedFile,
-  bimFile = bimFile,
-  famFile = famFile,
+  plinkFile = opt$plinkFile,
+  bedFile = opt$bedFile,
+  bimFile = opt$bimFile,
+  famFile = opt$famFile,
+  plink2File = opt$plink2File,
+  pgenFile = opt$pgenFile,
+  pvarFile = opt$pvarFile,
+  psamFile = opt$psamFile,
   outputPrefix = opt$outputPrefix,
   numRandomMarkerforSparseKin = opt$numRandomMarkerforSparseKin,
   relatednessCutoff = opt$relatednessCutoff,

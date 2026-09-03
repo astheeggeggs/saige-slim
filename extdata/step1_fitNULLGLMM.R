@@ -50,6 +50,33 @@ option_list <- list(
     help = "Path to fam file. If plinkFile is specified, 'plinkFile'.fam will be used"
   ),
   make_option(
+    "--plink2File",
+    type = "character",
+    default = "",
+    help = paste0(
+      "Prefix for plink2 pgen/pvar/psam files, used in place of plinkFile. ",
+      "Mutually exclusive with the PLINK input"
+    )
+  ),
+  make_option(
+    "--pgenFile",
+    type = "character",
+    default = "",
+    help = "Path to pgen file. If plink2File is specified, 'plink2File'.pgen will be used"
+  ),
+  make_option(
+    "--pvarFile",
+    type = "character",
+    default = "",
+    help = "Path to pvar file. If plink2File is specified, 'plink2File'.pvar will be used"
+  ),
+  make_option(
+    "--psamFile",
+    type = "character",
+    default = "",
+    help = "Path to psam file. If plink2File is specified, 'plink2File'.psam will be used"
+  ),
+  make_option(
     "--phenoFile",
     type = "character",
     default = "",
@@ -490,6 +517,10 @@ fitNULLGLMM(
   bedFile = opt$bedFile,
   bimFile = opt$bimFile,
   famFile = opt$famFile,
+  plink2File = opt$plink2File,
+  pgenFile = opt$pgenFile,
+  pvarFile = opt$pvarFile,
+  psamFile = opt$psamFile,
   useSparseGRMtoFitNULL = opt$useSparseGRMtoFitNULL,
   usePCGwithSparseGRM = opt$usePCGwithSparseGRM,
   sparseGRMFile = opt$sparseGRMFile,

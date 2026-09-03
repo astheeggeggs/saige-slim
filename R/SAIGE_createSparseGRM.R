@@ -3,6 +3,16 @@
 #' @param bedFile character. Path to plink file (bed) to be used for calculating the sparse GRM
 #' @param bimFile character. Path to plink file (bim) to be used for calculating the sparse GRM
 #' @param famFile character. Path to plink file (fam) to be used for calculating the sparse GRM
+#' @param plinkFile character. Prefix for the plink bed/bim/fam files. Mutually
+#'   exclusive with the PGEN input
+#' @param plink2File character. Prefix for the plink2 pgen/pvar/psam files.
+#'   Mutually exclusive with the PLINK input
+#' @param pgenFile character. Path to plink2 file (pgen) to be used for
+#'   calculating the sparse GRM
+#' @param pvarFile character. Path to plink2 file (pvar) to be used for
+#'   calculating the sparse GRM
+#' @param psamFile character. Path to plink2 file (psam) to be used for
+#'   calculating the sparse GRM
 #' @param outputPrefix character. Path to the output files with prefix
 #' @param numRandomMarkerforSparseKin integer. number of randomly selected markers (MAF >= 0.01) to be used to identify related samples for sparse GRM. By default, 1000
 #' @param relatednessCutoff float. The threshold to treat two samples as unrelated if IsSparseKin is TRUE. By default, 0.125
@@ -15,6 +25,11 @@
 createSparseGRM <- function(bedFile = "",
                             bimFile = "",
                             famFile = "",
+                            plinkFile = "",
+                            plink2File = "",
+                            pgenFile = "",
+                            pvarFile = "",
+                            psamFile = "",
                             outputPrefix = "",
                             numRandomMarkerforSparseKin = 1000,
                             relatednessCutoff = 0.125,
@@ -44,12 +59,22 @@ createSparseGRM <- function(bedFile = "",
     cat("Markers in the Plink file with missing rate > ", maxMissingRateforGRM, " will be removed before constructing GRM\n")
   }
 
-  #
-  # famFile = paste0(plinkFile, ".fam")
+  genoIn <- checkGenoInputStep1(
+    plinkFile = plinkFile, bedFile = bedFile, bimFile = bimFile, famFile = famFile,
+    plink2File = plink2File, pgenFile = pgenFile, pvarFile = pvarFile, psamFile = psamFile
+  )
+  genoType <- genoIn$genoType
+  bedFile <- genoIn$bedFile
+  bimFile <- genoIn$bimFile
+  famFile <- genoIn$famFile
+  pgenFile <- genoIn$pgenFile
+  pvarFile <- genoIn$pvarFile
+  psamFile <- genoIn$psamFile
 
-  fam <- data.frame(data.table:::fread(famFile, header = FALSE, stringsAsFactors = FALSE, colClasses = c(rep("character", 4), rep("numeric", 2))))
-
-  sparseGRMSampleID <- fam[, 2]
+  # Sample IDs in genotype-file row order -- fam column 2, or the psam IID
+  # column. That order is the index space setgeno's subSampleInGeno lives in.
+  sparseGRMSampleID <- readGenoSampleIDs(genoType, famFile = famFile, psamFile = psamFile)
+  nSample <- length(sparseGRMSampleID)
   sparseGRMSampleIDFile <- paste0(outputPrefix, "_relatednessCutoff_", relatednessCutoff, "_", numRandomMarkerforSparseKin, "_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt")
 
   if (isWritetoFiles) {
@@ -57,14 +82,17 @@ createSparseGRM <- function(bedFile = "",
     write.table(sparseGRMSampleID, sparseGRMSampleIDFile, quote = FALSE, col.names = FALSE, row.names = FALSE)
   }
 
-  genoSampleIndex <- seq(1, nrow(fam))
+  genoSampleIndex <- seq(1, nSample)
 
   cat("isDiagofKinSetAsOne ", isDiagofKinSetAsOne, "\n")
 
-  indicatorGenoSamplesWithPheno <- rep(TRUE, nrow(fam))
+  indicatorGenoSamplesWithPheno <- rep(TRUE, nSample)
 
   if (isSetGeno) {
-    setgeno(bedFile, bimFile, famFile, genoSampleIndex, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne)
+    setgenoFromInput(
+      genoIn, genoSampleIndex, indicatorGenoSamplesWithPheno, memoryChunk,
+      isDiagofKinSetAsOne
+    )
   }
   freqVec <- getAlleleFreqVec()
   if (minMAFforGRM > 0) {

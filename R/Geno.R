@@ -322,3 +322,183 @@ extract_genoIndex_condition <- function(condition, markerInfo, genoType) {
   }
   list(cond_genoIndex = cond_genoIndex)
 }
+
+
+# ---------------------------------------------------------------------------
+# Genotype input for steps 0/1 and extractNglmm.
+#
+# These three entry points differ from step 2 in two ways, which is why they do
+# not simply call checkGenoInput()/setGenoInput():
+#   - they accept a PREFIX (plinkFile / plink2File) as well as explicit paths;
+#   - step 1 permits NO genotype file at all, when a sparse GRM is used to fit
+#     the null model and variance-ratio estimation is skipped.
+# ---------------------------------------------------------------------------
+
+#' Resolve and validate the genotype input for steps 0/1.
+#'
+#' @return A list with `genoType` ("plink", "pgen" or ""), and the resolved
+#'   `bedFile`/`bimFile`/`famFile`/`pgenFile`/`pvarFile`/`psamFile`.
+#' @noRd
+checkGenoInputStep1 <- function(plinkFile = "",
+                                bedFile = "",
+                                bimFile = "",
+                                famFile = "",
+                                plink2File = "",
+                                pgenFile = "",
+                                pvarFile = "",
+                                psamFile = "",
+                                allowNone = FALSE) {
+  # A prefix fills in only what was not given explicitly.
+  if (plinkFile != "") {
+    if (bedFile == "") bedFile <- paste0(plinkFile, ".bed")
+    if (bimFile == "") bimFile <- paste0(plinkFile, ".bim")
+    if (famFile == "") famFile <- paste0(plinkFile, ".fam")
+  }
+  if (plink2File != "") {
+    if (pgenFile == "") pgenFile <- paste0(plink2File, ".pgen")
+    if (pvarFile == "") pvarFile <- paste0(plink2File, ".pvar")
+    if (psamFile == "") psamFile <- paste0(plink2File, ".psam")
+  }
+
+  anyPlink <- bedFile != "" || bimFile != "" || famFile != ""
+  anyPgen <- pgenFile != "" || pvarFile != "" || psamFile != ""
+
+  if (anyPlink && anyPgen) {
+    stop(
+      "PLINK and PGEN genotype input are mutually exclusive: specify ",
+      "plinkFile/bedFile/bimFile/famFile OR plink2File/pgenFile/pvarFile/",
+      "psamFile, not both\n"
+    )
+  }
+
+  if (anyPlink) {
+    if (bedFile == "") bedFile <- gsub("bim$", "bed", bimFile)
+    if (bimFile == "") bimFile <- gsub("bed$", "bim", bedFile)
+    if (famFile == "") famFile <- gsub("bed$", "fam", bedFile)
+    Check_File_Exist(bedFile, "bedFile")
+    Check_File_Exist(bimFile, "bimFile")
+    Check_File_Exist(famFile, "famFile")
+    genoType <- "plink"
+  } else if (anyPgen) {
+    if (pgenFile == "") pgenFile <- gsub("pvar$", "pgen", pvarFile)
+    if (pvarFile == "") pvarFile <- gsub("pgen$", "pvar", pgenFile)
+    if (psamFile == "") psamFile <- gsub("pgen$", "psam", pgenFile)
+    Check_File_Exist(pgenFile, "pgenFile")
+    Check_File_Exist(pvarFile, "pvarFile")
+    Check_File_Exist(psamFile, "psamFile")
+    genoType <- "pgen"
+  } else {
+    if (!allowNone) {
+      stop(
+        "Either PLINK (plinkFile/bedFile) or PGEN (plink2File/pgenFile) ",
+        "genotype input is required\n"
+      )
+    }
+    genoType <- ""
+  }
+
+  list(
+    genoType = genoType,
+    bedFile = bedFile, bimFile = bimFile, famFile = famFile,
+    pgenFile = pgenFile, pvarFile = pvarFile, psamFile = psamFile
+  )
+}
+
+#' Sample IDs (IIDs) in genotype-file row order.
+#'
+#' The row order is load-bearing: it is the index space `ptrsubSampleInGeno`
+#' and `indicatorGenoSamplesWithPheno` live in on the C++ side.
+#' @noRd
+readGenoSampleIDs <- function(genoType, famFile = "", psamFile = "") {
+  if (genoType == "plink") {
+    fam <- data.table::fread(
+      famFile,
+      header = FALSE, colClasses = list(character = 1:4), data.table = FALSE
+    )
+    return(as.character(fam[, 2]))
+  }
+  if (genoType == "pgen") {
+    # psam carries a '#'-prefixed column header. Take IID BY NAME: column 1 is
+    # FID whenever the header reads "#FID IID ...", and steps 0/1 match
+    # phenotypes on IID. '##' lines, if any, are metadata and are not it.
+    head <- readLines(psamFile, n = 1000L)
+    hdrPos <- grep("^#[^#]", head)
+    if (length(hdrPos) == 0) {
+      stop("psam file ", psamFile, " has no '#'-prefixed column header\n")
+    }
+    hdrPos <- hdrPos[1]
+    hdr <- sub("^#", "", head[hdrPos])
+    hdr <- strsplit(trimws(hdr), "[ \t]+")[[1]]
+    iidCol <- which(hdr == "IID")
+    if (length(iidCol) != 1) {
+      stop("psam file ", psamFile, " has no IID column\n")
+    }
+    psam <- data.table::fread(
+      psamFile,
+      header = FALSE, skip = hdrPos, select = iidCol,
+      colClasses = "character", data.table = FALSE
+    )
+    return(as.character(psam[, 1]))
+  }
+  stop("readGenoSampleIDs: unsupported genoType '", genoType, "'\n")
+}
+
+#' Per-variant chromosome codes in genotype-file row order.
+#'
+#' Positionally aligned with the variant file, which is what makes it safe to
+#' index with `getQCdMarkerIndex()` and with the C++ variance-ratio marker
+#' indices.
+#' @noRd
+readVariantChrom <- function(genoType, bimFile = "", pvarFile = "") {
+  if (genoType == "plink") {
+    bim <- data.table::fread(bimFile, header = FALSE, select = 1, data.table = FALSE)
+    return(bim[, 1])
+  }
+  if (genoType == "pgen") {
+    pvar <- data.table::fread(pvarFile, header = TRUE, skip = "#CHROM", data.table = FALSE)
+    return(pvar[, 1])
+  }
+  stop("readVariantChrom: unsupported genoType '", genoType, "'\n")
+}
+
+#' Default genotype-input list for the PLINK path.
+#'
+#' Lets functions that still take bedFile/bimFile/famFile positionally keep
+#' working unchanged when no resolved `genoIn` is threaded down to them.
+#' @noRd
+genoInputPlink <- function(bedFile = "", bimFile = "", famFile = "") {
+  list(
+    genoType = "plink",
+    bedFile = bedFile, bimFile = bimFile, famFile = famFile,
+    pgenFile = "", pvarFile = "", psamFile = ""
+  )
+}
+
+#' Load the GRM genotypes, dispatching on format.
+#' @noRd
+setgenoFromInput <- function(genoIn, subSampleInGeno, indicatorGenoSamplesWithPheno,
+                             memoryChunk, isDiagofKinSetAsOne) {
+  if (genoIn$genoType == "pgen") {
+    setgeno_pgen(
+      genoIn$pgenFile, genoIn$pvarFile, genoIn$psamFile,
+      subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne
+    )
+  } else {
+    setgeno(
+      genoIn$bedFile, genoIn$bimFile, genoIn$famFile,
+      subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne
+    )
+  }
+}
+
+#' Per-variant chromosome codes for a resolved genotype input.
+#' @noRd
+readVariantChromFromInput <- function(genoIn) {
+  readVariantChrom(genoIn$genoType, bimFile = genoIn$bimFile, pvarFile = genoIn$pvarFile)
+}
+
+#' Sample IDs for a resolved genotype input.
+#' @noRd
+readGenoSampleIDsFromInput <- function(genoIn) {
+  readGenoSampleIDs(genoIn$genoType, famFile = genoIn$famFile, psamFile = genoIn$psamFile)
+}

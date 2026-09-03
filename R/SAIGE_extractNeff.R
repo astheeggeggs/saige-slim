@@ -1,6 +1,20 @@
 #' Estimate the effectize sample size
 #'
 #' @param plinkFile character. Path to plink file to be used for calculating elements of the genetic relationship matrix (GRM). minMAFforGRM can be used to specify the minimum MAF of markers in he plink file to be used for constructing GRM. Genetic markers are also randomly selected from the plink file to estimate the variance ratios
+#' @param bedFile character. Path to plink file (bed). If plinkFile is
+#'   specified, 'plinkFile'.bed will be used
+#' @param bimFile character. Path to plink file (bim). If plinkFile is
+#'   specified, 'plinkFile'.bim will be used
+#' @param famFile character. Path to plink file (fam). If plinkFile is
+#'   specified, 'plinkFile'.fam will be used
+#' @param plink2File character. Prefix for plink2 pgen/pvar/psam files, used in
+#'   place of plinkFile. Mutually exclusive with the PLINK input
+#' @param pgenFile character. Path to plink2 file (pgen). If plink2File is
+#'   specified, 'plink2File'.pgen will be used
+#' @param pvarFile character. Path to plink2 file (pvar). If plink2File is
+#'   specified, 'plink2File'.pvar will be used
+#' @param psamFile character. Path to plink2 file (psam). If plink2File is
+#'   specified, 'plink2File'.psam will be used
 #' @param phenoFile character. Path to the phenotype file. The phenotype file has a header and contains at least two columns. One column is for phentoype and the other column is for sample IDs. Additional columns can be included in the phenotype file for covariates in the null GLMM. Please note that covariates to be used in the NULL GLMM need to specified using the argument covarColList.
 #' @param phenoCol character. Column name for the phenotype in phenoFile e.g. "CAD"
 #' @param traitType character. e.g. "binary" or "quantitative". By default, "binary"
@@ -49,6 +63,13 @@
 #' @return a file ended with .rda that contains the glmm model information, a file ended with .varianceRatio.txt that contains the variance ratio values, and a file ended with #markers.SPAOut.txt that contains the SPAGMMAT tests results for the markers used for estimating the variance ratio.
 #' @export
 getNeff <- function(plinkFile = "",
+                    bedFile = "",
+                    bimFile = "",
+                    famFile = "",
+                    plink2File = "",
+                    pgenFile = "",
+                    pvarFile = "",
+                    psamFile = "",
                     phenoFile = "",
                     phenoCol = "",
                     traitType = "binary",
@@ -96,11 +117,22 @@ getNeff <- function(plinkFile = "",
                     MaleOnly = FALSE,
                     noEstFixedEff = FALSE,
                     skipVarianceRatioEstimation = TRUE) {
-  if (plinkFile != "") {
-    bimFile <- paste0(plinkFile, ".bim")
-    bedFile <- paste0(plinkFile, ".bed")
-    famFile <- paste0(plinkFile, ".fam")
-  }
+  # Genotype input: PLINK bed/bim/fam or PGEN pgen/pvar/psam, never both.
+  # allowNone = TRUE because the sparse-GRM branch below needs no genotype
+  # file. NOTE: setgeno is called unconditionally further down even on that
+  # branch, so in practice a genotype file is still required -- preserved as
+  # is, this is upstream behaviour.
+  genoIn <- checkGenoInputStep1(
+    plinkFile = plinkFile, bedFile = bedFile, bimFile = bimFile, famFile = famFile,
+    plink2File = plink2File, pgenFile = pgenFile, pvarFile = pvarFile, psamFile = psamFile,
+    allowNone = TRUE
+  )
+  bimFile <- genoIn$bimFile
+  bedFile <- genoIn$bedFile
+  famFile <- genoIn$famFile
+  pgenFile <- genoIn$pgenFile
+  pvarFile <- genoIn$pvarFile
+  psamFile <- genoIn$psamFile
 
 
   setminMAFforGRM(minMAFforGRM)
@@ -216,101 +248,81 @@ getNeff <- function(plinkFile = "",
     )
     cat(nrow(sampleListwithGeno), " samples are in the sparse GRM\n")
   } else {
-    if (!file.exists(paste0(plinkFile, ".bed"))) {
-      stop("ERROR! ", plinkFile, ".bed does not exsit\n")
+    if (genoIn$genoType == "") {
+      stop("ERROR! no genotype file was specified\n")
     }
-    if (!file.exists(paste0(plinkFile, ".bim"))) {
-      stop("ERROR! ", plinkFile, ".bim does not exsit\n")
-    } else {
-      chromosomeStartIndexVec <- NULL
-      chromosomeEndIndexVec <- NULL
-      if (LOCO) {
-        cat("WARNING: leave-one-chromosome-out is activated! Note this option will only be applied to autosomal variants\n")
-        cat("WARNING: Genetic variants needs to be ordered by chromosome and position in the Plink file\n")
-        bimData <- data.table:::fread(paste0(
-          plinkFile,
-          ".bim"
-        ), header = FALSE)
-        for (i in 1:22) {
-          if (length(which(bimData[, 1] == i)) > 0) {
-            chromosomeStartIndexVec <- c(
-              chromosomeStartIndexVec,
-              min(which(bimData[, 1] == i)) - 1
-            )
-            chromosomeEndIndexVec <- c(
-              chromosomeEndIndexVec,
-              max(which(bimData[, 1] == i)) - 1
-            )
-            if (i > 1) {
-              if (!is.na(chromosomeStartIndexVec[i -
-                1])) {
-                if (chromosomeStartIndexVec[i] <= chromosomeStartIndexVec[i -
-                  1] | chromosomeEndIndexVec[i] <= chromosomeEndIndexVec[i -
-                  1]) {
-                  stop(paste0(
-                    "ERROR! chromosomes need to be ordered from 1 to 22 in ",
-                    plinkFile, ".bim\n"
-                  ))
-                }
+    chromosomeStartIndexVec <- NULL
+    chromosomeEndIndexVec <- NULL
+    if (LOCO) {
+      cat("WARNING: leave-one-chromosome-out is activated! Note this option will only be applied to autosomal variants\n")
+      cat("WARNING: Genetic variants needs to be ordered by chromosome and position in the Plink file\n")
+      bimData <- data.frame(V1 = readVariantChromFromInput(genoIn))
+      for (i in 1:22) {
+        if (length(which(bimData[, 1] == i)) > 0) {
+          chromosomeStartIndexVec <- c(
+            chromosomeStartIndexVec,
+            min(which(bimData[, 1] == i)) - 1
+          )
+          chromosomeEndIndexVec <- c(
+            chromosomeEndIndexVec,
+            max(which(bimData[, 1] == i)) - 1
+          )
+          if (i > 1) {
+            if (!is.na(chromosomeStartIndexVec[i -
+              1])) {
+              if (chromosomeStartIndexVec[i] <= chromosomeStartIndexVec[i -
+                1] | chromosomeEndIndexVec[i] <= chromosomeEndIndexVec[i -
+                1]) {
+                stop(paste0(
+                  "ERROR! chromosomes need to be ordered from 1 to 22 in ",
+                  plinkFile, ".bim\n"
+                ))
               }
             }
-          } else {
-            chromosomeStartIndexVec <- c(
-              chromosomeStartIndexVec,
-              NA
-            )
-            chromosomeEndIndexVec <- c(
-              chromosomeEndIndexVec,
-              NA
-            )
           }
+        } else {
+          chromosomeStartIndexVec <- c(
+            chromosomeStartIndexVec,
+            NA
+          )
+          chromosomeEndIndexVec <- c(
+            chromosomeEndIndexVec,
+            NA
+          )
         }
-        cat(
-          "chromosomeStartIndexVec: ", chromosomeStartIndexVec,
-          "\n"
-        )
-        cat(
-          "chromosomeEndIndexVec: ", chromosomeEndIndexVec,
-          "\n"
-        )
-        if (sum(!is.na(chromosomeStartIndexVec)) <= 1 |
-          sum(!is.na(chromosomeEndIndexVec)) <= 1) {
-          cat("WARNING: The number of autosomal chromosomes is less than 2 and leave-one-chromosome-out can't be conducted! \n")
-          LOCO <- FALSE
-        }
-        chromosomeStartIndexVec_forcpp <- chromosomeStartIndexVec
-        chromosomeStartIndexVec_forcpp[is.na(chromosomeStartIndexVec_forcpp)] <- -1
-        chromosomeEndIndexVec_forcpp <- chromosomeEndIndexVec
-        chromosomeEndIndexVec_forcpp[is.na(chromosomeEndIndexVec_forcpp)] <- -1
-        setStartEndIndexVec(
-          chromosomeStartIndexVec_forcpp,
-          chromosomeEndIndexVec_forcpp
-        )
-      } else {
-        chromosomeStartIndexVec <- rep(NA, 22)
-        chromosomeEndIndexVec <- rep(NA, 22)
       }
-    }
-    if (!file.exists(paste0(plinkFile, ".fam"))) {
-      stop("ERROR! ", plinkFile, ".fam does not exsit\n")
+      cat(
+        "chromosomeStartIndexVec: ", chromosomeStartIndexVec,
+        "\n"
+      )
+      cat(
+        "chromosomeEndIndexVec: ", chromosomeEndIndexVec,
+        "\n"
+      )
+      if (sum(!is.na(chromosomeStartIndexVec)) <= 1 |
+        sum(!is.na(chromosomeEndIndexVec)) <= 1) {
+        cat("WARNING: The number of autosomal chromosomes is less than 2 and leave-one-chromosome-out can't be conducted! \n")
+        LOCO <- FALSE
+      }
+      chromosomeStartIndexVec_forcpp <- chromosomeStartIndexVec
+      chromosomeStartIndexVec_forcpp[is.na(chromosomeStartIndexVec_forcpp)] <- -1
+      chromosomeEndIndexVec_forcpp <- chromosomeEndIndexVec
+      chromosomeEndIndexVec_forcpp[is.na(chromosomeEndIndexVec_forcpp)] <- -1
+      setStartEndIndexVec(
+        chromosomeStartIndexVec_forcpp,
+        chromosomeEndIndexVec_forcpp
+      )
     } else {
-      sampleListwithGenov0 <- data.table:::fread(paste0(
-        plinkFile,
-        ".fam"
-      ), header = FALSE, , colClasses = list(character = 1:4))
-      sampleListwithGenov0 <- data.frame(sampleListwithGenov0)
-      colnames(sampleListwithGenov0) <- c(
-        "FIDgeno", "IIDgeno",
-        "father", "mother", "sex", "phe"
-      )
-      sampleListwithGeno <- NULL
-      sampleListwithGeno$IIDgeno <- sampleListwithGenov0$IIDgeno
-      sampleListwithGeno <- data.frame(sampleListwithGeno)
-      sampleListwithGeno$IndexGeno <- seq(1, nrow(sampleListwithGeno),
-        by = 1
-      )
-      cat(nrow(sampleListwithGeno), " samples have genotypes\n")
+      chromosomeStartIndexVec <- rep(NA, 22)
+      chromosomeEndIndexVec <- rep(NA, 22)
     }
+    sampleListwithGeno <- NULL
+    sampleListwithGeno$IIDgeno <- readGenoSampleIDsFromInput(genoIn)
+    sampleListwithGeno <- data.frame(sampleListwithGeno)
+    sampleListwithGeno$IndexGeno <- seq(1, nrow(sampleListwithGeno),
+      by = 1
+    )
+    cat(nrow(sampleListwithGeno), " samples have genotypes\n")
   }
   if (!file.exists(phenoFile)) {
     stop("ERROR! phenoFile ", phenoFile, " does not exsit\n")
@@ -498,7 +510,7 @@ getNeff <- function(plinkFile = "",
 
     indicatorGenoSamplesWithPheno <- (sampleListwithGeno$IndexGeno %in% dataMerge_sort$IndexGeno)
 
-    setgeno(bedFile, bimFile, famFile, dataMerge_sort$IndexGeno, indicatorGenoSamplesWithPheno, memoryChunk, FALSE)
+    setgenoFromInput(genoIn, dataMerge_sort$IndexGeno, indicatorGenoSamplesWithPheno, memoryChunk, FALSE)
     setisUseSparseSigmaforNullModelFitting(useSparseGRMtoFitNULL)
     cat("glm:\n")
     print(summary(fit0))
@@ -530,7 +542,7 @@ getNeff <- function(plinkFile = "",
     }
     indicatorGenoSamplesWithPheno <- (sampleListwithGeno$IndexGeno %in% dataMerge_sort$IndexGeno)
 
-    setgeno(bedFile, bimFile, famFile, dataMerge_sort$IndexGeno, indicatorGenoSamplesWithPheno, memoryChunk, FALSE)
+    setgenoFromInput(genoIn, dataMerge_sort$IndexGeno, indicatorGenoSamplesWithPheno, memoryChunk, FALSE)
     setisUseSparseSigmaforNullModelFitting(useSparseGRMtoFitNULL)
     cat("glm:\n")
     print(summary(fit0))

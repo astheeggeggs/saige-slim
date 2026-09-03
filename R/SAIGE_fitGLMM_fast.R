@@ -76,7 +76,7 @@ Get_Coef_LOCO <- function(y, X, tau, family, alpha0, eta0, offset, maxiterPCG, t
 
 
 # Fits the null glmm for binary traits
-glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovariateOffset, fit0, tau = c(0, 0), fixtau = c(0, 0), maxiter = 20, tol = 0.02, verbose = TRUE, nrun = 30, tolPCG = 1e-5, maxiterPCG = 500, subPheno, indicatorGenoSamplesWithPheno, obj.noK, out.transform, tauInit, memoryChunk, LOCO, chromosomeStartIndexVec, chromosomeEndIndexVec, traceCVcutoff, isCovariateTransform, isDiagofKinSetAsOne, isLowMemLOCO) {
+glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovariateOffset, fit0, tau = c(0, 0), fixtau = c(0, 0), maxiter = 20, tol = 0.02, verbose = TRUE, nrun = 30, tolPCG = 1e-5, maxiterPCG = 500, subPheno, indicatorGenoSamplesWithPheno, obj.noK, out.transform, tauInit, memoryChunk, LOCO, chromosomeStartIndexVec, chromosomeEndIndexVec, traceCVcutoff, isCovariateTransform, isDiagofKinSetAsOne, isLowMemLOCO, genoIn = NULL) {
   # Fits the null generalized linear mixed model for a binary trait
   # Args:
   #  genofile: string. Plink file for the M1 markers to be used to construct the genetic relationship matrix
@@ -109,8 +109,9 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
   }
 
 
+  if (is.null(genoIn)) genoIn <- genoInputPlink(bedFile, bimFile, famFile)
   re1 <- system.time({
-    setgeno(bedFile, bimFile, famFile, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne)
+    setgenoFromInput(genoIn, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne)
   })
   if (verbose) {
     print("Genotype reading is done")
@@ -118,7 +119,7 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
 
   if (LOCO) {
     MsubIndVec <- getQCdMarkerIndex()
-    chrVec <- data.table:::fread(bimFile, header = FALSE)[, 1]
+    chrVec <- readVariantChromFromInput(genoIn)
     chrVec <- chrVec[which(MsubIndVec == TRUE)]
     updatechrList <- updateChrStartEndIndexVec(chrVec)
     LOCO <- updatechrList$LOCO
@@ -305,7 +306,7 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
 
 
 # Fits the null glmm for a quantitative trait
-glmmkin.ai_PCG_Rcpp_Quantitative <- function(bedFile, bimFile, famFile, Xorig, isCovariateOffset, fit0, tau = c(0, 0), fixtau = c(0, 0), maxiter = 20, tol = 0.02, verbose = TRUE, nrun = 30, tolPCG = 1e-5, maxiterPCG = 500, subPheno, indicatorGenoSamplesWithPheno, obj.noK, out.transform, tauInit, memoryChunk, LOCO, chromosomeStartIndexVec, chromosomeEndIndexVec, traceCVcutoff, isCovariateTransform, isDiagofKinSetAsOne, isLowMemLOCO) {
+glmmkin.ai_PCG_Rcpp_Quantitative <- function(bedFile, bimFile, famFile, Xorig, isCovariateOffset, fit0, tau = c(0, 0), fixtau = c(0, 0), maxiter = 20, tol = 0.02, verbose = TRUE, nrun = 30, tolPCG = 1e-5, maxiterPCG = 500, subPheno, indicatorGenoSamplesWithPheno, obj.noK, out.transform, tauInit, memoryChunk, LOCO, chromosomeStartIndexVec, chromosomeEndIndexVec, traceCVcutoff, isCovariateTransform, isDiagofKinSetAsOne, isLowMemLOCO, genoIn = NULL) {
   # Fits the null linear mixed model for a quantitative trait
   # Args:
   #  genofile: string. Plink file for the M1 markers to be used to construct the genetic relationship matrix
@@ -337,8 +338,9 @@ glmmkin.ai_PCG_Rcpp_Quantitative <- function(bedFile, bimFile, famFile, Xorig, i
     print("Start reading genotype plink file here")
   }
 
+  if (is.null(genoIn)) genoIn <- genoInputPlink(bedFile, bimFile, famFile)
   re1 <- system.time({
-    setgeno(bedFile, bimFile, famFile, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne)
+    setgenoFromInput(genoIn, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne)
   })
   if (verbose) {
     print("Genotype reading is done")
@@ -346,7 +348,7 @@ glmmkin.ai_PCG_Rcpp_Quantitative <- function(bedFile, bimFile, famFile, Xorig, i
 
   if (LOCO) {
     MsubIndVec <- getQCdMarkerIndex()
-    chrVec <- data.table:::fread(bimFile, header = FALSE)[, 1]
+    chrVec <- readVariantChromFromInput(genoIn)
     chrVec <- chrVec[which(MsubIndVec == TRUE)]
     updatechrList <- updateChrStartEndIndexVec(chrVec)
     LOCO <- updatechrList$LOCO
@@ -602,6 +604,14 @@ solveSpMatrixUsingArma <- function(sparseGRMtest) {
 #' Fit the null logistic/linear mixed model and estimate the variance ratios by randomly selected variants
 #'
 #' @param plinkFile character. Path to plink file to be used for calculating elements of the genetic relationship matrix (GRM). minMAFforGRM can be used to specify the minimum MAF of markers in the plink file to be used for constructing GRM. Genetic markers are also randomly selected from the plink file to estimate the variance ratios
+#' @param plink2File character. Prefix for plink2 pgen/pvar/psam files, used in
+#'   place of plinkFile. Mutually exclusive with the PLINK input
+#' @param pgenFile character. Path to plink2 file (pgen). If plink2File is
+#'   specified, 'plink2File'.pgen will be used
+#' @param pvarFile character. Path to plink2 file (pvar). If plink2File is
+#'   specified, 'plink2File'.pvar will be used
+#' @param psamFile character. Path to plink2 file (psam). If plink2File is
+#'   specified, 'plink2File'.psam will be used
 #' @param phenoFile character. Path to the phenotype file. The file can be either tab or space delimited. The phenotype file has a header and contains at least two columns. One column is for phentoype and the other column is for sample IDs. Additional columns can be included in the phenotype file for covariates in the null model. Please specify the names of the covariates using the argument covarColList and specify categorical covariates using the argument qCovarCol. All categorical covariates must also be included in covarColList.
 #' @param phenoCol character. Column name for the phenotype in phenoFile e.g. "CAD"
 #' @param traitType character. e.g. "binary" or "quantitative". By default, "binary"
@@ -649,6 +659,10 @@ solveSpMatrixUsingArma <- function(sparseGRMtest) {
 #' @return a file ended with .rda that contains the glmm model information, a file ended with .varianceRatio.txt that contains the variance ratio values, and a file ended with #markers.SPAOut.txt that contains the SPAGMMAT tests results for the markers used for estimating the variance ratio.
 #' @export
 fitNULLGLMM <- function(plinkFile = "",
+                        plink2File = "",
+                        pgenFile = "",
+                        pvarFile = "",
+                        psamFile = "",
                         seed = 1,
                         bedFile = "",
                         bimFile = "",
@@ -717,14 +731,23 @@ fitNULLGLMM <- function(plinkFile = "",
     file.create(modelOut, showWarnings = TRUE)
   }
 
-  if (plinkFile != "") {
-    bimFile <- paste0(plinkFile, ".bim")
-    bedFile <- paste0(plinkFile, ".bed")
-    famFile <- paste0(plinkFile, ".fam")
-  }
+  # Genotype input: PLINK bed/bim/fam or PGEN pgen/pvar/psam, never both.
+  # allowNone = TRUE because a sparse-GRM fit that skips variance-ratio
+  # estimation needs no genotype file at all.
+  genoIn <- checkGenoInputStep1(
+    plinkFile = plinkFile, bedFile = bedFile, bimFile = bimFile, famFile = famFile,
+    plink2File = plink2File, pgenFile = pgenFile, pvarFile = pvarFile, psamFile = psamFile,
+    allowNone = TRUE
+  )
+  bimFile <- genoIn$bimFile
+  bedFile <- genoIn$bedFile
+  famFile <- genoIn$famFile
+  pgenFile <- genoIn$pgenFile
+  pvarFile <- genoIn$pvarFile
+  psamFile <- genoIn$psamFile
 
 
-  if (useSparseGRMtoFitNULL & bedFile == "") {
+  if (useSparseGRMtoFitNULL & genoIn$genoType == "") {
     cat("Sparse GRM is used to fit the null model and plink file is not specified, so variance ratios won't be estimated\n")
     skipVarianceRatioEstimation <- TRUE
   }
@@ -805,43 +828,28 @@ fitNULLGLMM <- function(plinkFile = "",
   }
 
   if (!useSparseGRMtoFitNULL | !skipVarianceRatioEstimation) {
-    if (!file.exists(bedFile)) {
-      stop("ERROR! bed file does not exsit\n")
+    if (genoIn$genoType == "") {
+      stop("ERROR! no genotype file was specified\n")
     }
-    if (!file.exists(bimFile)) {
-      stop("ERROR! bim file does not exsit\n")
-    } else {
-      if (LOCO) {
-        chrVec <- data.table:::fread(bimFile, header = FALSE, data.table = FALSE, select = 1)
-        updatechrList <- updateChrStartEndIndexVec(chrVec)
-        LOCO <- updatechrList$LOCO
-        chromosomeStartIndexVec <- updatechrList$chromosomeStartIndexVec
-        chromosomeEndIndexVec <- updatechrList$chromosomeEndIndexVec
-      }
-      if (!LOCO) {
-        chromosomeStartIndexVec <- rep(NA, 22)
-        chromosomeEndIndexVec <- rep(NA, 22)
-      }
+    if (LOCO) {
+      chrVec <- readVariantChromFromInput(genoIn)
+      updatechrList <- updateChrStartEndIndexVec(chrVec)
+      LOCO <- updatechrList$LOCO
+      chromosomeStartIndexVec <- updatechrList$chromosomeStartIndexVec
+      chromosomeEndIndexVec <- updatechrList$chromosomeEndIndexVec
+    }
+    if (!LOCO) {
+      chromosomeStartIndexVec <- rep(NA, 22)
+      chromosomeEndIndexVec <- rep(NA, 22)
     }
 
-
-    if (!file.exists(famFile)) {
-      stop("ERROR! fam file does not exsit\n")
-    } else {
-      sampleListwithGenov0 <- data.table:::fread(famFile, header = FALSE, , colClasses = list(character = 1:4))
-      sampleListwithGenov0 <- data.frame(sampleListwithGenov0)
-      colnames(sampleListwithGenov0) <- c(
-        "FIDgeno", "IIDgeno",
-        "father", "mother", "sex", "phe"
-      )
-      sampleListwithGeno <- NULL
-      sampleListwithGeno$IIDgeno <- sampleListwithGenov0$IIDgeno
-      sampleListwithGeno <- data.frame(sampleListwithGeno)
-      sampleListwithGeno$IndexGeno <- seq(1, nrow(sampleListwithGeno),
-        by = 1
-      )
-      cat(nrow(sampleListwithGeno), " samples have genotypes\n")
-    }
+    sampleListwithGeno <- NULL
+    sampleListwithGeno$IIDgeno <- readGenoSampleIDsFromInput(genoIn)
+    sampleListwithGeno <- data.frame(sampleListwithGeno)
+    sampleListwithGeno$IndexGeno <- seq(1, nrow(sampleListwithGeno),
+      by = 1
+    )
+    cat(nrow(sampleListwithGeno), " samples have genotypes\n")
   } else {
     sampleListwithGenov0 <- data.table:::fread(sparseGRMSampleIDFile,
       header = FALSE, , colClasses = c("character"), data.table = FALSE
@@ -1193,7 +1201,7 @@ fitNULLGLMM <- function(plinkFile = "",
         tauInit = tauInit, memoryChunk = memoryChunk,
         LOCO = LOCO, chromosomeStartIndexVec = chromosomeStartIndexVec,
         chromosomeEndIndexVec = chromosomeEndIndexVec,
-        traceCVcutoff = traceCVcutoff, isCovariateTransform = isCovariateTransform,
+        traceCVcutoff = traceCVcutoff, isCovariateTransform = isCovariateTransform, genoIn = genoIn,
         isDiagofKinSetAsOne = isDiagofKinSetAsOne,
         isLowMemLOCO = isLowMemLOCO
       ))
@@ -1351,8 +1359,8 @@ fitNULLGLMM <- function(plinkFile = "",
       if (is.null(modglmm$LOCO)) {
         modglmm$LOCO <- FALSE
       }
-      setgeno(
-        bedFile, bimFile, famFile, dataMerge_sort$IndexGeno, indicatorGenoSamplesWithPheno, memoryChunk,
+      setgenoFromInput(
+        genoIn, dataMerge_sort$IndexGeno, indicatorGenoSamplesWithPheno, memoryChunk,
         isDiagofKinSetAsOne
       )
       setisUseSparseSigmaforNullModelFitting(useSparseGRMtoFitNULL)
@@ -1366,7 +1374,7 @@ fitNULLGLMM <- function(plinkFile = "",
         MsubIndVec <- getQCdMarkerIndex()
         # cat("MsubIndVec", MsubIndVec, "\n")
         print(length(MsubIndVec))
-        chrVec <- data.table:::fread(bimFile, header = FALSE)[, 1]
+        chrVec <- readVariantChromFromInput(genoIn)
         print(length(chrVec))
         chrVec <- chrVec[which(MsubIndVec == TRUE)]
         updatechrList <- updateChrStartEndIndexVec(chrVec)
@@ -1383,7 +1391,7 @@ fitNULLGLMM <- function(plinkFile = "",
         obj.glm.null = fit0, maxiterPCG = maxiterPCG,
         tolPCG = tolPCG, numMarkers = numMarkersForVarRatio, varRatioOutFile = varRatioFile,
         ratioCVcutoff = ratioCVcutoff, testOut = SPAGMMATOut,
-        bedFile = bedFile, bimFile = bimFile, famFile = famFile, chromosomeStartIndexVec = chromosomeStartIndexVec,
+        bedFile = bedFile, bimFile = bimFile, famFile = famFile, genoIn = genoIn, chromosomeStartIndexVec = chromosomeStartIndexVec,
         chromosomeEndIndexVec = chromosomeEndIndexVec,
         isCateVarianceRatio = isCateVarianceRatio, cateVarRatioIndexVec = cateVarRatioIndexVec,
         useSparseGRMforVarRatio = useSparseGRMforVarRatio, sparseGRMFile = sparseGRMFile,
@@ -1440,7 +1448,7 @@ fitNULLGLMM <- function(plinkFile = "",
         tauInit = tauInit, memoryChunk = memoryChunk,
         LOCO = LOCO, chromosomeStartIndexVec = chromosomeStartIndexVec,
         chromosomeEndIndexVec = chromosomeEndIndexVec,
-        traceCVcutoff = traceCVcutoff, isCovariateTransform = isCovariateTransform,
+        traceCVcutoff = traceCVcutoff, isCovariateTransform = isCovariateTransform, genoIn = genoIn,
         isDiagofKinSetAsOne = isDiagofKinSetAsOne,
         isLowMemLOCO = isLowMemLOCO
       ))
@@ -1590,8 +1598,8 @@ fitNULLGLMM <- function(plinkFile = "",
       if (is.null(modglmm$LOCO)) {
         modglmm$LOCO <- FALSE
       }
-      setgeno(
-        bedFile, bimFile, famFile, dataMerge_sort$IndexGeno, indicatorGenoSamplesWithPheno, memoryChunk,
+      setgenoFromInput(
+        genoIn, dataMerge_sort$IndexGeno, indicatorGenoSamplesWithPheno, memoryChunk,
         isDiagofKinSetAsOne
       )
       setisUseSparseSigmaforNullModelFitting(useSparseGRMtoFitNULL)
@@ -1604,7 +1612,7 @@ fitNULLGLMM <- function(plinkFile = "",
         MsubIndVec <- getQCdMarkerIndex()
         # cat("MsubIndVec", MsubIndVec, "\n")
         print(length(MsubIndVec))
-        chrVec <- data.table:::fread(bimFile, header = FALSE)[, 1]
+        chrVec <- readVariantChromFromInput(genoIn)
         print(length(chrVec))
         chrVec <- chrVec[which(MsubIndVec == TRUE)]
         updatechrList <- updateChrStartEndIndexVec(chrVec)
@@ -1621,7 +1629,7 @@ fitNULLGLMM <- function(plinkFile = "",
         obj.glm.null = fit0, maxiterPCG = maxiterPCG,
         tolPCG = tolPCG, numMarkers = numMarkersForVarRatio, varRatioOutFile = varRatioFile,
         ratioCVcutoff = ratioCVcutoff, testOut = SPAGMMATOut,
-        bedFile = bedFile, bimFile = bimFile, famFile = famFile, chromosomeStartIndexVec = chromosomeStartIndexVec,
+        bedFile = bedFile, bimFile = bimFile, famFile = famFile, genoIn = genoIn, chromosomeStartIndexVec = chromosomeStartIndexVec,
         chromosomeEndIndexVec = chromosomeEndIndexVec,
         isCateVarianceRatio = isCateVarianceRatio, cateVarRatioIndexVec = cateVarRatioIndexVec,
         useSparseGRMforVarRatio = useSparseGRMforVarRatio, sparseGRMFile = sparseGRMFile,
@@ -2015,7 +2023,9 @@ getSparseSigma <- function(bedFile,
                            isDiagofKinSetAsOne = FALSE,
                            obj.glmm.null,
                            W,
-                           tauVecNew) {
+                           tauVecNew,
+                           genoIn = NULL) {
+  if (is.null(genoIn)) genoIn <- genoInputPlink(bedFile, bimFile, famFile)
   cat("sparse GRM will be used\n")
   # cat("sparseGRMFile is ", sparseGRMFile, "\n")
   # sparseGRMFile = paste0(outputPrefix, ".sparseGRM.mtx")
@@ -2023,7 +2033,8 @@ getSparseSigma <- function(bedFile,
     cat("sparseGRMFile is not specified and the sparse GRM will be constructed\n")
     outputPrefix1 <- paste0(outputPrefix, "_allPlinksamples")
     sparseGRMList <- createSparseGRM(
-      bedFile = bedFile, bimFile = bimFile, famFile = famFile,
+      bedFile = genoIn$bedFile, bimFile = genoIn$bimFile, famFile = genoIn$famFile,
+      pgenFile = genoIn$pgenFile, pvarFile = genoIn$pvarFile, psamFile = genoIn$psamFile,
       outputPrefix = outputPrefix1,
       numRandomMarkerforSparseKin = numRandomMarkerforSparseKin,
       relatednessCutoff = relatednessCutoff,
@@ -2220,12 +2231,16 @@ extractVarianceRatio <- function(obj.glmm.null,
                                  cateVarRatioMaxMACVecInclude,
                                  minMAFforGRM,
                                  isDiagofKinSetAsOne,
-                                 includeNonautoMarkersforVarRatio) {
+                                 includeNonautoMarkersforVarRatio,
+                                 genoIn = NULL) {
   obj.noK <- obj.glmm.null$obj.noK
+  if (is.null(genoIn)) genoIn <- genoInputPlink(bedFile, bimFile, famFile)
   if (file.exists(testOut)) {
     file.remove(testOut)
   }
-  bimPlink <- data.frame(data.table:::fread(bimFile, header = FALSE))
+  # Only column 1 (chromosome) of this table is ever used, at the CHR lookup
+  # below; it is positionally aligned with the variant file.
+  chrVecAll <- readVariantChromFromInput(genoIn)
   # if(sum(sapply(bimPlink[,1], is.numeric)) != nrow(bimPlink)){
   #  stop("ERROR: chromosome column in plink bim file is not numeric!\n")
   # }
@@ -2250,7 +2265,7 @@ extractVarianceRatio <- function(obj.glmm.null,
   # if(useSparseGRMtoFitNULL | useSparseGRMforVarRatio){
   if (useSparseGRMforVarRatio) {
     sparseSigma <- getSparseSigma(
-      bedFile = bedFile, bimFile = bimFile, famFile = famFile,
+      bedFile = bedFile, bimFile = bimFile, famFile = famFile, genoIn = genoIn,
       outputPrefix = varRatioOutFile,
       sparseGRMFile = sparseGRMFile,
       sparseGRMSampleIDFile = sparseGRMSampleIDFile,
@@ -2363,7 +2378,7 @@ extractVarianceRatio <- function(obj.glmm.null,
           }
 
           cat("G0", G0[1:10], "\n")
-          CHR <- bimPlink[Indexvector_forVarRatio[i] + 1, 1]
+          CHR <- chrVecAll[Indexvector_forVarRatio[i] + 1]
           CHR <- gsub("(?i)^chr", "", CHR, perl = TRUE)
           CHR <- as.numeric(CHR)
           cat("CHR ", CHR, "\n")
