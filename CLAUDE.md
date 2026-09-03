@@ -24,9 +24,10 @@ removed in 3a, GenoReader interface + de-globalized Step2Config/Step2Output/
 owned model in 3b-d, ten ledger fixes in 3e); Phase 5 (multi-weights) done
 through C11; **Phase 6 done — LEDGER #28 and #29 FIXED** (326abe8f, 86a08f47:
 the AF>0.5 marker path is now exactly flip-invariant, full tier 1225/1225).
-**Phase 4 (speedup) is done, and so is the step-2 threading sequence S0-S11**
-(see `docs/state/s8-pgen-clone.md`, which carries S8-S11, and the status block
-at the top of `docs/design/step2-threading-verdict.md`): step 2 is measurable,
+**Phase 4 (speedup) is done, and so is the step-2 threading sequence S0-S12**
+(see `docs/state/s8-pgen-clone.md`, which carries S8-S11, `docs/state/
+s12-region-testcontext.md`, and the status block at the top of
+`docs/design/step2-threading-verdict.md`): step 2 is measurable,
 `--nThreads` threads the marker loop IN PROCESS for both readers, and the forked
 path is retired. Step-1 blocked `GetTrace` also landed (`bda95327`) -- do not
 believe an older doc that says it is parked on a branch.
@@ -35,9 +36,21 @@ believe an older doc that says it is parked on a branch.
 (`sample`, `1:n`, `rbind` recycling) -- all latent behind a guard -- #45, #46
 and #49 (a restart re-runs the last completed chunk: wasted work, right answer).
 Recently FIXED: #47 (S9, restart duplicated rows), #17 (S10, the uninitialised
-`w0` on the custom-weighted conditional path) and #42 (S11, three `log.p=TRUE`
+`w0` on the custom-weighted conditional path), #42 (S11, three `log.p=TRUE`
 arms halved a log, i.e. took a square root, inflating SE ~sqrt(2) wherever the
-score p had underflowed).
+score p had underflowed) and **#50 (S12a)**.
+**#50 is the twin of #27, in the branch #27 did not touch**: the non-BURDEN
+write decision still read the mutated `m_flagSparseGRM_cur`, so an ESCALATED
+region test parked its single-variant-in-group rows in the `.singleAssoc.txt_temp`
+bin that the next region truncates -- **all 19 rows lost on the bundled fixture,
+exit 0, no warning**. No golden could see it: `pval_cutoff_for_fastTest` is not a
+CLI option here or upstream, and at its default neither bundled region escalates,
+so P2 covered only the `copy_singleInGroup` route and P6 only the unconditional
+write -- **P2 and P6 are byte-identical to each other in both files**, a pair that
+looks like coverage and is not. Gated by
+`tests/testthat/test-step2-region-escalation.R`, which forces escalation through
+a direct `SPAGMMATtest` call and asserts the escalation HAPPENED before checking
+the rows.
 **#41 is FIXED**: the conditional SPA p-value was PRINTED halved
 (`src/SAIGE_test.cpp:950` printed `SPApval_c/2` while `:929` built the SE from
 the un-halved value), making every `p.value_c` from the SPA path -- and, via
@@ -136,7 +149,10 @@ at runtime by the installed R package.
   marker-path goldens P27-P33 (`test-step2-marker-paths.R`, kept as its own
   file so its seven CLI runs go in parallel with `test-step2-goldens.R`'s),
   and the live Firth path (`test-step2-firth.R`, mirrored through the pgen
-  reader in `test-step2-pgen.R`).
+  reader in `test-step2-pgen.R`). `test-step2-region-escalation.R` (S12a) is the
+  only test that reaches the fastTest ESCALATION pass of a region run: it calls
+  `SPAGMMATtest` directly in a child process because `pval_cutoff_for_fastTest`
+  is not a CLI option, and at its default neither bundled region escalates.
 - **full** (~20+ min, same-platform only): standard + full golden regeneration,
   step-1 determinism double-run, permuted-phenotype negative control.
 
@@ -529,14 +545,24 @@ long-running `main*InCPP()` loop that writes output files from C++
   are the live ER machinery (imported from SKAT) — keep.
 - Step 0 cannot be separated from step 1: both drive the same global `geno`,
   and `createSparseKinParallel` is defined in `R/SAIGE_fitGLMM_fast.R`.
-- **The step-2 MARKER path no longer writes to the model.** `SAIGE::TestContext`
-  (`src/SAIGE_test.hpp`) carries the three values that used to be mutable
-  members between the loop and the test -- the variance ratio, the sparse-GRM
-  flag and the noadjCov flag -- and `getMarkerPval`, the score tests,
-  `getadjGFast`, the PCG and the Firth fit are all `const`. The REGION path
-  still drives those members through `assignVarianceRatio`/`set_*_cur` and
-  snapshots them with `currentContext(noadjCov)`, so it is unchanged; if you add
-  a marker-path caller, build a context, do not resurrect the setters.
+- **NEITHER step-2 path writes to the model** (S3 for markers, **S12** for
+  regions). `SAIGE::TestContext` (`src/SAIGE_test.hpp`) carries the three values
+  that used to be mutable members between a loop and the test -- the variance
+  ratio, the sparse-GRM flag and the noadjCov flag -- and `getMarkerPval`, the
+  score tests, `getadjGFast`, the PCG and the Firth fit are all `const`. S12
+  gave the region path the same treatment at its three selection sites (the
+  rare-marker loop, the ultra-rare loop, the BURDEN collapse) and in
+  `assign_conditionMarkers_factors`, then **DELETED** `m_varRatioVal`,
+  `m_flagSparseGRM_cur`, `m_isnoadjCov_cur`, `currentContext()` and the whole
+  `assign*`/`set_*_cur` family. Build a context where the choice is made; the
+  setters no longer exist to resurrect.
+  **The fastTest ESCALATION signal is deliberately NOT a TestContext field.** R
+  raises it between region calls to mean "this is the accurate re-run, DO write";
+  sharing it with the per-marker sparse-GRM choice is exactly what LEDGER #27
+  and **#50** were. It lives in `Main.cpp` as `g_regionEscalatedPass`, written
+  only by `set_flagSparseGRM_cur_SAIGE`/`_org` and read once at the top of
+  `mainRegionInCPP`. If you find yourself wanting it in the struct, that is the
+  collision coming back.
 - **The step-2 MARKER path's per-marker state is split by ownership** (S4,
   `src/MarkerLoop.hpp`). `testOneMarker` analyses one marker; everything it
   produces goes into a `Marker::MarkerResult` (one slot per marker, which the
