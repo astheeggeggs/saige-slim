@@ -251,7 +251,6 @@ void writeOutfile_BURDEN(std::string regionName,
 
 void copy_singleInGroup();
 
-void set_varianceRatio(double MAC, bool isSingleVarianceRatio);
 
 int writeOutfile_singleInGroup(bool t_isMoreOutput,
                         bool t_isImputation,

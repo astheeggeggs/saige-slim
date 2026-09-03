@@ -1210,51 +1210,11 @@ double SAIGEClass::selectSingleVarianceRatio(bool issparseforVR, bool isnoXadj) 
 }
 
 
-// Snapshot of the three per-marker members for the region path, which still
-// drives them through the setters below.
-TestContext SAIGEClass::currentContext(bool t_noadjCov) const {
-    TestContext ctx;
-    ctx.varRatioVal = m_varRatioVal;
-    ctx.useSparseGRM = m_flagSparseGRM_cur;
-    ctx.noadjCov = t_noadjCov;
-    return ctx;
-}
-
-
-bool SAIGEClass::assignVarianceRatio(double MAC, bool issparseforVR){
-    bool hasVarRatio = false;
-    m_varRatioVal = selectVarianceRatio(MAC, issparseforVR, false, hasVarRatio);
-    return(hasVarRatio);
-}
-
-
-bool SAIGEClass::assignVarianceRatio(double MAC, bool issparseforVR, bool isnoXadj){
-    bool hasVarRatio = false;
-    m_varRatioVal = selectVarianceRatio(MAC, issparseforVR, isnoXadj, hasVarRatio);
-    return(hasVarRatio);
-}
-
-
-void SAIGEClass::assignSingleVarianceRatio(bool issparseforVR){ 
-    arma::vec m_varRatio;
-    if(issparseforVR){
-        m_varRatio = m_varRatio_sparse;
-    }else{
-        m_varRatio = m_varRatio_null;
-    }	
-    m_varRatioVal = m_varRatio(0);
-}
-
-
-void SAIGEClass::assignSingleVarianceRatio(bool issparseforVR, bool isnoXadj){
-    m_varRatioVal = selectSingleVarianceRatio(issparseforVR, isnoXadj);
-}
-
-
-void SAIGEClass::assignSingleVarianceRatio_withinput(double t_varRatioVal){
-        m_varRatioVal = t_varRatioVal;
-}
-
+// S12: currentContext() and the whole assign*/set_* family are gone with the
+// three members they staged -- m_varRatioVal, m_flagSparseGRM_cur and
+// m_isnoadjCov_cur. Both step-2 paths now build a TestContext where the choice
+// is made and hand it to the test, so the model is read-only for the duration
+// of a scan. The pure selectors above are what is left.
 
 
 
@@ -1396,15 +1356,6 @@ void SAIGEClass::fast_logistf_fit_simple(arma::mat & x,
 	//std::cout << "beta_G " << beta_G << std::endl;
 	//std::cout << "sebeta_G " << sebeta_G << std::endl;
         //return beta;
-}
-
-void SAIGEClass::set_flagSparseGRM_cur(bool t_flagSparseGRM_cur){
-	m_flagSparseGRM_cur = t_flagSparseGRM_cur;
-}
-
-
-void SAIGEClass::set_isnoadjCov_cur(bool t_isnoadjCov_cur){
-        m_isnoadjCov_cur = t_isnoadjCov_cur;
 }
 
 arma::vec SAIGEClass::getPCG1ofSigmaAndGtilde(arma::vec& bVec, int maxiterPCG, double tolPCG) const {

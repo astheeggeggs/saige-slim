@@ -37,6 +37,19 @@
 static std::unique_ptr<Geno::GenoReader> g_reader;
 // global objects for different analysis methods
 static std::unique_ptr<SAIGE::SAIGEClass> g_model;
+
+// The fastTest ESCALATION signal for region tests, set from R between calls to
+// mainRegionInCPP (set_flagSparseGRM_cur_SAIGE / _org): false on the cheap
+// first pass, true on the accurate re-run whose answer is kept.
+//
+// S12: this used to be SAIGEClass::m_flagSparseGRM_cur, where it sat next to the
+// per-marker variance-ratio choice and shared a name with it -- so the region
+// loops, which select a variance ratio per marker from MAC, overwrote the
+// caller's intent before the write decisions could read it. That collision is
+// LEDGER #27 and its twin #50. It is step-2 loop state rather than model state,
+// it is written only between region calls, and mainRegionInCPP reads it exactly
+// once, at entry.
+static bool g_regionEscalatedPass = false;
 //single, SAIGE
 //Region, SAIGE-GENE+
 
@@ -640,12 +653,11 @@ void mainMarkerInCPP(
   // The reusable buffers, one set for the whole (serial) scan.
   Marker::MarkerScratch scratch(g_model->m_n, g_model->m_numMarker_cond);
 
-  bool isSingleVarianceRatio = true;
-  if((g_model->m_varRatio_null).n_elem == 1){
-        g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM, g_model->m_isnoadjCov);
-  }else{
-	isSingleVarianceRatio = false;
-  }
+  // S3 moved the marker path's variance ratio into the per-marker TestContext;
+  // the assignSingleVarianceRatio call that used to stand here wrote a model
+  // member nothing on this path reads any more, and it is gone with the member
+  // (S12). All that survives is the single-vs-categorical decision itself.
+  bool isSingleVarianceRatio = ((g_model->m_varRatio_null).n_elem == 1);
 
   int nThreads = (t_nThreadsMarker < 1) ? 1 : t_nThreadsMarker;
   if(nThreads > 1){
@@ -1107,16 +1119,17 @@ Rcpp::List mainRegionInCPP(
   //arma::vec timeoutput1 = getTime();
   unsigned int q0 = t_genoIndex.size();                 // number of markers (before QC) in one region
 
-  // LEDGER #27 fix: snapshot the caller's flagSparseGRM_cur BEFORE the marker
-  // loops touch it. R uses this flag to signal the fastTest escalation pass
-  // ("pass 1 declined to write, re-run me accurately and DO write"), but the
-  // per-marker variance-ratio selection below (:1919-1921, :1585-1587) also
-  // assigns it, from MAC. By the time the BURDEN write decision reads it, it
-  // reflects the MAC of the last marker processed rather than the caller's
-  // intent, so an escalated region silently produced no output at all. One
-  // variable was doing two unrelated jobs; the write decision now reads this
-  // snapshot and the VR selection keeps the mutable flag.
-  bool isEscalatedPass = g_model->m_flagSparseGRM_cur;
+  // The caller's intent for this pass: false on the cheap fastTest pass, true on
+  // the accurate re-run. Both write decisions below read THIS and nothing else.
+  //
+  // It used to be a snapshot of g_model->m_flagSparseGRM_cur, taken here because
+  // the per-marker variance-ratio selection in the loops below overwrote that
+  // member from MAC and destroyed the signal (LEDGER #27, and #50 in the
+  // non-BURDEN branch, which was still reading the mutated member). Since S12
+  // the two jobs are separate variables: this one is written only by R between
+  // region calls, and each marker's variance-ratio choice lives in a local
+  // TestContext that outlives nothing.
+  bool isEscalatedPass = g_regionEscalatedPass;
 
   // ---- weight-set layout (jmr extension) ----------------------------------
   // Weight sets are ordered: custom (group-file) sets first, then beta(a,b)
@@ -1312,15 +1325,13 @@ Rcpp::List mainRegionInCPP(
   // overwrites them at each use, so reuse is value-neutral.
   arma::uvec indexZeroVec_arma, indexNonZeroVec_arma;
 
-  //variance ratio
-  bool hasVarRatio = true;;
-  bool isSingleVarianceRatio = true;
-
-  if((g_model->m_varRatio_null).n_elem > 1){
-    isSingleVarianceRatio = false;
-  }else{
-    g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM_cur);
-  }  
+  // variance ratio. Every site below selects its own into a local TestContext,
+  // so all that is decided here is single vs categorical; the
+  // assignSingleVarianceRatio call that used to sit in the else branch wrote a
+  // model member that no read in this function could reach -- each of the three
+  // sites reassigns before its own read -- and it went with the member (S12).
+  bool hasVarRatio = true;
+  bool isSingleVarianceRatio = ((g_model->m_varRatio_null).n_elem <= 1);
   // initiate chunk information
   unsigned int nchunks = 0; //number of chunks
   unsigned int ichunk = 0; //ith chunk
@@ -1415,16 +1426,19 @@ Rcpp::List mainRegionInCPP(
         std::cout << "Start analyzing chunk " << ichunk << "....." << std::endl;
       }
 
-      if(MAC > g_model->m_cateVarRatioMinMACVecExclude.back()){
-        g_model->set_flagSparseGRM_cur(false);
-      }else{
-        g_model->set_flagSparseGRM_cur(g_model->m_flagSparseGRM);
-      } 
-
+      // S12: this marker's test context, derived and consumed here. Same two
+      // steps as before -- a common marker uses the non-sparse variance ratio,
+      // a rare one follows the model -- but nothing is parked on g_model, so no
+      // later read can pick up a marker's choice by accident (LEDGER #27/#50)
+      // and two markers could be tested at once without racing.
+      SAIGE::TestContext ctx;
+      ctx.useSparseGRM = (MAC > g_model->m_cateVarRatioMinMACVecExclude.back())
+                           ? false : g_model->m_flagSparseGRM;
+      ctx.noadjCov = false;
       if(!isSingleVarianceRatio){
-        hasVarRatio = g_model->assignVarianceRatio(MAC, g_model->m_flagSparseGRM_cur, false);
+        ctx.varRatioVal = g_model->selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
       }else{
-        g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM_cur, false);
+        ctx.varRatioVal = g_model->selectSingleVarianceRatio(ctx.useSparseGRM, false);
       }
 
 
@@ -1435,13 +1449,13 @@ Rcpp::List mainRegionInCPP(
           Unified_getMarkerPval(
                     GVec,
                     false, // bool t_isOnlyOutputNonZero,
-          indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, g_model->currentContext(false));
+          indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
 
 	}else{	
           Unified_getMarkerPval(
                     GVec,
                     false, // bool t_isOnlyOutputNonZero,
-          indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, g_model->currentContext(false));
+          indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
 	}
 
 
@@ -1479,8 +1493,8 @@ Rcpp::List mainRegionInCPP(
 
 
         if(t_regionTestType != "BURDEN"){
-          P1Mat.row(i1InChunk) = sqrt(g_model->m_varRatioVal)*gtildeVec.t();
-          P2Mat.col(i1InChunk) = sqrt(g_model->m_varRatioVal)*P2Vec;
+          P1Mat.row(i1InChunk) = sqrt(ctx.varRatioVal)*gtildeVec.t();
+          P2Mat.col(i1InChunk) = sqrt(ctx.varRatioVal)*P2Vec;
 	}
      }//if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){ 
 
@@ -1803,16 +1817,19 @@ if(i2 > 0){
 	  MAC = MAF * 2 * t_n * (1 - missingRate);   // checked on 08-10-2021
 if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
 
-      if(MAC > g_model->m_cateVarRatioMinMACVecExclude.back()){
-        g_model->set_flagSparseGRM_cur(false);
-      }else{
-        g_model->set_flagSparseGRM_cur(g_model->m_flagSparseGRM);
-      }
-
+      // S12: this marker's test context, derived and consumed here. Same two
+      // steps as before -- a common marker uses the non-sparse variance ratio,
+      // a rare one follows the model -- but nothing is parked on g_model, so no
+      // later read can pick up a marker's choice by accident (LEDGER #27/#50)
+      // and two markers could be tested at once without racing.
+      SAIGE::TestContext ctx;
+      ctx.useSparseGRM = (MAC > g_model->m_cateVarRatioMinMACVecExclude.back())
+                           ? false : g_model->m_flagSparseGRM;
+      ctx.noadjCov = false;
       if(!isSingleVarianceRatio){
-        hasVarRatio = g_model->assignVarianceRatio(MAC, g_model->m_flagSparseGRM_cur, false);
+        ctx.varRatioVal = g_model->selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
       }else{
-        g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM_cur, false);
+        ctx.varRatioVal = g_model->selectSingleVarianceRatio(ctx.useSparseGRM, false);
       }
 
 
@@ -1833,9 +1850,9 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
 
 
 	    if(MAC <= g_cfg.MACCutoffforER && t_traitType == "binary" && erAllowedVec[r]){
-              g_model->getMarkerPval(genoURVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, g_model->currentContext(false));
+              g_model->getMarkerPval(genoURVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
 	    }else{
-              g_model->getMarkerPval(genoURVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, g_model->currentContext(false));
+              g_model->getMarkerPval(genoURVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
 	    }
 
             BetaVec.at(i) = Beta* (1 - 2*flip);
@@ -1929,9 +1946,9 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
           N_Vec.at(i) = n;
         }
       if(t_regionTestType != "BURDEN"){	
-        P1Mat.row(i1InChunk) = sqrt(g_model->m_varRatioVal)*gtildeVec.t();
+        P1Mat.row(i1InChunk) = sqrt(ctx.varRatioVal)*gtildeVec.t();
 	//gtildeVec.print("gtildeVec");
-        P2Mat.col(i1InChunk) = sqrt(g_model->m_varRatioVal)*P2Vec;
+        P2Mat.col(i1InChunk) = sqrt(ctx.varRatioVal)*P2Vec;
 	//P2Vec.print("P2Vec");
 
       } //if(t_regionTestType != "BURDEN"){
@@ -2138,27 +2155,30 @@ if(t_regionTestType == "BURDEN"){
           isPolyMarkerVec[r] = true;
 	  std::vector<uint32_t> indexForMissing;
 
-      if(MAC > g_model->m_cateVarRatioMinMACVecExclude.back()){
-        g_model->set_flagSparseGRM_cur(false);
-      }else{
-        g_model->set_flagSparseGRM_cur(g_model->m_flagSparseGRM);
-      }
-
+      // S12: this marker's test context, derived and consumed here. Same two
+      // steps as before -- a common marker uses the non-sparse variance ratio,
+      // a rare one follows the model -- but nothing is parked on g_model, so no
+      // later read can pick up a marker's choice by accident (LEDGER #27/#50)
+      // and two markers could be tested at once without racing.
+      SAIGE::TestContext ctx;
+      ctx.useSparseGRM = (MAC > g_model->m_cateVarRatioMinMACVecExclude.back())
+                           ? false : g_model->m_flagSparseGRM;
+      ctx.noadjCov = false;
       if(!isSingleVarianceRatio){
-        hasVarRatio = g_model->assignVarianceRatio(MAC, g_model->m_flagSparseGRM_cur, false);
+        ctx.varRatioVal = g_model->selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
       }else{
-        g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM_cur, false);
+        ctx.varRatioVal = g_model->selectSingleVarianceRatio(ctx.useSparseGRM, false);
       }
           //if(!isSingleVarianceRatio){
-           // hasVarRatio = g_model->assignVarianceRatio(MAC, g_model->m_flagSparseGRM_cur, false);
+           // (the duplicate variance-ratio selection this used to repeat is above)
           //}
 
 
 	  //arma::vec timeoutput_getp = getTime();
 	  if(MAC <= g_cfg.MACCutoffforER && t_traitType == "binary" && erAllowedVec[r] ){
-          g_model->getMarkerPval(genoSumVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, isregion, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, g_model->currentContext(false));
+          g_model->getMarkerPval(genoSumVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, isregion, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
 	  }else{
-          g_model->getMarkerPval(genoSumVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, isregion, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, g_model->currentContext(false));
+          g_model->getMarkerPval(genoSumVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, isregion, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
 	  }	  
 	  //arma::vec timeoutput_getp2 = getTime();
 	  //printTime(timeoutput_getp, timeoutput_getp2, "get p  done");
@@ -2474,7 +2494,6 @@ void assign_conditionMarkers_factors(
 			   arma::vec & t_weight_cond
 			   )           // sample size
 {
-  g_model->set_flagSparseGRM_cur(g_model->m_flagSparseGRM);
   bool isImpute = false;	
   unsigned int q = t_genoIndex.size();
   arma::mat P1Mat(q, t_n);
@@ -2544,15 +2563,18 @@ void assign_conditionMarkers_factors(
   double MAF = std::min(altFreq, 1 - altFreq);
   double MAC = MAF * 2 * t_n * (1 - missingRate);
 
+  // S12: the conditioning markers get their own context too. This function used
+  // to set m_flagSparseGRM_cur at entry and leave it set for whatever ran next;
+  // now the model's own m_flagSparseGRM is read directly and the choice does not
+  // outlive the marker.
   bool hasVarRatio;
+  SAIGE::TestContext ctx;
+  ctx.useSparseGRM = g_model->m_flagSparseGRM;
+  ctx.noadjCov = false;
   if((g_model->m_varRatio_null).n_elem == 1){
-	g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM,false);	
+	ctx.varRatioVal = g_model->selectSingleVarianceRatio(ctx.useSparseGRM, false);
   }else{
-	hasVarRatio = g_model->assignVarianceRatio(MAC, g_model->m_flagSparseGRM, false);
-	//if(!hasVarRatio){
-	//	std::cout << "Error! Conditioning marker " << info << " has MAC " << MAC << " and does not have variance ratio estimated." << std::endl;
-	//	exit(EXIT_FAILURE);
-	//}	
+	ctx.varRatioVal = g_model->selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
   }	  
  
   flip = imputeGenoAndFlip(GVec, altFreq, altCounts, indexForMissing, g_cfg.impute_method, g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC, indexZeroVec, indexNonZeroVec);
@@ -2572,16 +2594,16 @@ void assign_conditionMarkers_factors(
      Unified_getMarkerPval(
                     GVec,
                     false, // bool t_isOnlyOutputNonZero,
-                    indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, g_model->currentContext(false));
+                    indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
   }else{
      Unified_getMarkerPval(
                     GVec,
                     false, // bool t_isOnlyOutputNonZero,
-                    indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, g_model->currentContext(false));
+                    indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
 
   }
-      P1Mat.row(i) = sqrt(g_model->m_varRatioVal)*gtildeVec.t();
-      P2Mat.col(i) = sqrt(g_model->m_varRatioVal)*P2Vec;
+      P1Mat.row(i) = sqrt(ctx.varRatioVal)*gtildeVec.t();
+      P2Mat.col(i) = sqrt(ctx.varRatioVal)*P2Vec;
       //P1Mat.row(i) = gtildeVec.t();
       //P2Mat.col(i) = P2Vec;
       MAFVec(i) = MAF;
@@ -3154,37 +3176,18 @@ void writeOutfile_single(bool t_isMoreOutput,
 }
 
 
+// The two R entry points that raise and lower the escalation signal. The names
+// are R's ABI and are kept; what they write is g_regionEscalatedPass, not a
+// model member (S12).
 // [[Rcpp::export]]
 void set_flagSparseGRM_cur_SAIGE(bool t_flagSparseGRM_cur){
-	g_model->set_flagSparseGRM_cur(t_flagSparseGRM_cur);
+	g_regionEscalatedPass = t_flagSparseGRM_cur;
 }
 
 // [[Rcpp::export]]
 void set_flagSparseGRM_cur_SAIGE_org(){
-	g_model->set_flagSparseGRM_cur(g_model->m_flagSparseGRM);
+	g_regionEscalatedPass = g_model->m_flagSparseGRM;
 }
-
-
-
-void set_varianceRatio(double MAC, bool isSingleVarianceRatio){
-    bool hasVarRatio;
-    if(!g_model->m_isFastTest){
-       g_model->set_flagSparseGRM_cur(g_model->m_flagSparseGRM);
-       if(!isSingleVarianceRatio){
-         hasVarRatio = g_model->assignVarianceRatio(MAC, g_model->m_flagSparseGRM);
-       }else{
-         g_model->assignSingleVarianceRatio(g_model->m_flagSparseGRM);
-       }
-     }else{
-       g_model->set_flagSparseGRM_cur(false);
-       if(!isSingleVarianceRatio){
-         hasVarRatio = g_model->assignVarianceRatio(MAC, false);
-       }else{
-         g_model->assignSingleVarianceRatio(false);
-       }
-     }
-}
-
 
 
 

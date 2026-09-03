@@ -9,15 +9,21 @@
 namespace SAIGE{
 
 // Everything the per-marker test needs that used to live in mutable members of
-// SAIGEClass (S3 in docs/design/step2-threading-verdict.md). The marker loop
-// wrote three members before every call -- m_varRatioVal, m_flagSparseGRM_cur,
+// SAIGEClass (S3 in docs/design/step2-threading-verdict.md). Both loops wrote
+// three members before every call -- m_varRatioVal, m_flagSparseGRM_cur,
 // m_isnoadjCov_cur -- and getMarkerPval read them back, which is a data race the
 // moment two markers are tested at once, and (via m_varRatioVal) a genuine
 // cross-marker read even when they are not: see LEDGER #32.
 //
-// The marker path now builds one of these per marker and passes it down; the
-// region path still writes the members and snapshots them with
-// currentContext(), so its behaviour is unchanged by construction.
+// S3 gave the marker path a context; S12 gave the region path one and DELETED
+// the three members, so this struct is now the only place a per-marker choice
+// is recorded. A test writes nothing to the model, on either path.
+//
+// One thing did not move here: the fastTest ESCALATION signal that R raises
+// between region calls. It shared m_flagSparseGRM_cur with the per-marker
+// sparse-GRM choice, which is what LEDGER #27 and #50 were, and it is now a
+// separate step-2 variable in Main.cpp (g_regionEscalatedPass). If you find
+// yourself wanting to put it in this struct, that is the collision coming back.
 struct TestContext {
         double varRatioVal = 0.0;   // the variance ratio selected for this marker
         bool useSparseGRM = false;  // was m_flagSparseGRM_cur
@@ -53,7 +59,6 @@ class SAIGEClass
       arma::mat m_XXVX_inv;
       arma::mat m_XV;
       int m_n, m_p; //MAIN Dimensions: sample size, number of covariates
-      double m_varRatioVal;
       arma::vec m_varRatio_sparse;
       arma::vec m_varRatio_null;
       arma::vec m_varRatio_null_noXadj;
@@ -72,10 +77,8 @@ class SAIGEClass
       int m_n_ctrl;
       arma::sp_mat m_SigmaMat_sp;
       bool m_flagSparseGRM;
-      bool m_flagSparseGRM_cur;
       bool m_isFastTest;
       bool m_isnoadjCov;
-      bool m_isnoadjCov_cur;
       double m_pval_cutoff_for_fastTest; 
       double m_SPA_Cutoff;
       //arma::umat m_locationMat;
@@ -199,7 +202,6 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
 
 
 
-     void set_flagSparseGRM_cur(bool t_flagSparseGRM_cur);
 
      void get_mu(arma::vec & t_mu);
 
@@ -250,17 +252,6 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
     // (LEDGER #32).
     double selectVarianceRatio(double MAC, bool issparseforVR, bool isnoXadj, bool & t_hasVarRatio) const;
     double selectSingleVarianceRatio(bool issparseforVR, bool isnoXadj) const;
-    // Snapshot of the three per-marker members, for the region path, which still
-    // drives them through the assign*/set_* setters.
-    TestContext currentContext(bool t_noadjCov) const;
-
-    bool assignVarianceRatio(double MAC, bool issparseforVR);
-
-    void assignSingleVarianceRatio(bool issparseforVR);
-
-
-    void assignSingleVarianceRatio_withinput(double t_varRatioVal);
-
 
     void assignConditionFactors(
       arma::mat & t_P2Mat_cond,
@@ -294,9 +285,6 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
         double & sebeta_G,
 	bool & isfirthconverge) const;	
 
-     void set_isnoadjCov_cur(bool t_isnoadjCov_cur);
-     bool  assignVarianceRatio(double MAC, bool issparseforVR, bool isnoXadj);
-     void assignSingleVarianceRatio(bool issparseforVR, bool isnoXadj);
 
      arma::vec getPCG1ofSigmaAndGtilde(arma::vec& bVec, int maxiterPCG, double tolPCG) const;
 
