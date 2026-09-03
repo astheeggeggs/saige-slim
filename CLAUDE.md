@@ -275,14 +275,15 @@ dead files).
   fits are byte-stable either way.
 - `bash harness/make_goldens.sh <dir>` — regenerates step0 (sparse GRM), step1
   (binary ×2 sparse / quantitative sparse / **binary dense** / **binary sparse-VR**),
-  and step2: 21
-  PLINK runs (P1-P12 + P25 + P27-P33, with P8b as a
+  and step2: 22
+  PLINK runs (P1-P12 + P25 + P27-P34, with P8b as a
   separate composed-set golden — single-variant marker/marker-conditional
   ×2 (quantitative P4, binary P12), group fastTest/conditional/BURDEN/SKAT-O
   ×2 (K=1 P2/P3/P5/P6, multi-weight P8/P9/P8b/P10), chunked marker P7, and the
   ref-first characterization golden P11, the BURDEN-conditional golden P25
-  added with the LEDGER #41 fix, and the seven marker-path goldens P27-P33
-  added by S0 — see the marker-path bullet below) plus 13 PGEN mirrors added across
+  added with the LEDGER #41 fix, the seven marker-path goldens P27-P33
+  added by S0 — see the marker-path bullet below — and P34, the K=1
+  CUSTOM-weighted conditional run added with the LEDGER #17 fix) plus 13 PGEN mirrors added across
   Phase 7 and its coverage-extension follow-up: P13-P15 (marker/region/
   conditional parity, mirroring P1/P2/P3) and P16-P24 (mirroring, in order,
   P4/P12/P5/P6/P7/P8/P9/P8b/P10 — quantitative conditional, the LEDGER #40
@@ -425,11 +426,20 @@ stays a SINGLE vector across sets; at K > 1 C++ exports the G1-raw
 and skips its baked `TstatAdjCond`/`VarMatAdjCond`, with R applying set r's
 G1-side weight per cell; at q_weight == 1 the baked C++ path runs verbatim
 (P3 byte-identical). Golden P10 `plink_group_cond_multiweight.txt` pins the
-K=2 conditional run. Reconciliation tests validate the R-side adjustment
-against the K=1 baked path through the BETA route only — a K=1
-custom-weighted conditional run reads uninitialized `w0` on ultra-rare rows
-(LEDGER #17, K=1-only after C11) and cannot serve as the comparison
-baseline.
+K=2 conditional run, and P34 `plink_group_cond_customweight.txt` the K=1
+custom-weighted one. Reconciliation tests validate the R-side adjustment
+against the K=1 baked path through TWO routes: the beta route, and — since
+**LEDGER #17 is FIXED** — the custom route, which is sharper because
+`group_new_snpid_withWeights.txt`'s weight line is byte-identical to the CADD
+line of `group_new_snpid_multiWeights.txt`, so it is one statistic computed two
+ways with no beta algebra in between. (Before the fix a K=1 custom-weighted
+conditional run read an uninitialised `w0` on every collapsed ultra-rare row and
+could not be a baseline for anything: measured, its conditional columns
+disagreed with the K=2 CADD set on all 12 cells by up to 2.1e-01 relative, with
+the adjustment vanishing outright on the 6 all-ultra-rare ones, while the
+UNCONDITIONAL columns agreed exactly — which is what localised it. The fix is
+`w0 = 1.0`, because a custom set's UR collapse is WEIGHTED, so the weight is
+already inside the pseudo-marker; afterwards all 12 cells agree to 0.000e+00.)
 
 ## Architecture
 

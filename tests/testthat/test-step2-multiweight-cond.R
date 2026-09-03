@@ -6,9 +6,10 @@
 # at q_weight == 1 the baked C++ path runs verbatim. These reconcile the two
 # and pin the schema the conditional run emits.
 #
-# The reconciliation goes through the BETA route, not a custom-weighted K = 1
-# run: the latter reads an uninitialised w0 on ultra-rare rows (LEDGER #17)
-# and cannot serve as a baseline.
+# The reconciliation goes through TWO routes since the LEDGER #17 fix: the beta
+# route (which was the only one possible while a custom-weighted K = 1 run read
+# an uninitialised w0 on ultra-rare rows) and the custom route, which is the
+# sharper of the two -- same weights on both sides, no beta algebra in between.
 #
 # Split out of test-step2-multiweight.R; shared scaffolding is in
 # helper-multiweight.R. Tier: standard.
@@ -88,12 +89,52 @@ test_that("a forced Weight column composes with conditioning at K=1", {
   expect_stats_close(a1, bb)
 })
 
+test_that("the K>1 conditional adjustment reconciles with the K=1 CUSTOM baked path (LEDGER #17)", {
+  # THIS COMPARISON WAS IMPOSSIBLE BEFORE THE #17 FIX, which is why the bug
+  # survived every gate: the K = 1 custom path read an uninitialised w0 and, on
+  # this platform, the garbage zeroed the conditional adjustment. Measured on
+  # these exact runs before the fix: the conditional columns disagreed with the
+  # K = 2 CADD set on all 12 cells, by up to 2.1e-01 relative on
+  # BETA_Burden_cond, while the UNCONDITIONAL columns agreed to 0.000e+00 --
+  # which is what localised the defect to the conditional export rather than to
+  # the collapse. After the fix every conditional column agrees to 0.000e+00.
+  #
+  # The two group files carry the SAME weights (withWeights.txt's line is
+  # byte-identical to multiWeights.txt's CADD line), so this is one statistic
+  # computed two ways: C++-baked at q_weight == 1, R-applied at K > 1.
+  skip_unless_level("standard")
+  a <- cond_multi_run()$region
+  b <- cond_single_run()$region
+  aC <- a[a$Group != "Cauchy" & a$Weight == "CADD", ]
+  bb <- b[b$Group != "Cauchy", ]
+  expect_identical(aC$Region, bb$Region)
+  expect_identical(aC$Group, bb$Group)
+  expect_identical(aC$max_MAF, bb$max_MAF)
+  expect_gt(nrow(bb), 6)
+  for (cc in COND_STATS) {
+    expect_equal(pnum(aC[[cc]]), pnum(bb[[cc]]), tolerance = 1e-12, label = cc)
+  }
+  # The bug's own signature, pinned directly rather than only through the
+  # reconciliation: with w0 garbage-zeroed the adjustment vanished, so
+  # Pvalue_cond came back EQUAL to Pvalue on the 6 all-ultra-rare cells (half
+  # of them). Zero of 12 now. This is a characterisation of these fixtures --
+  # conditioning could in principle leave a p unchanged at six significant
+  # digits -- but on this one it does not, and that is the point.
+  expect_false(any(bb$Pvalue_cond == bb$Pvalue))
+  expect_gt(sum(bb$Number_rare == "0"), 0)   # the all-UR cells really are here
+  # ... and the run is pinned to its own golden (P34), added with the fix
+  # because nothing covered this combination before it.
+  expect_output_matches_golden(
+    file.path(saige_goldens, "step2", "plink_group_cond_customweight.txt"),
+    cond_single_run()$path)
+})
+
 test_that("BURDEN conditional at K>1 reconciles with a K=1 single-set run", {
   # The BURDEN conditional path is pure C++ (per-jmr genoSumVec through
   # getMarkerPval's internal conditional machinery; no G1tilde matrix, no w0,
-  # so LEDGER #17 does not pollute this comparison and the CUSTOM fixture can
-  # be reconciled directly): the K=2 run's CADD rows against a CADD-only K=1
-  # file derived from the same fixture.
+  # so it never depended on w0 and this comparison was clean even while LEDGER
+  # #17 was open): the K=2 run's CADD rows against a CADD-only K=1 file derived
+  # from the same fixture.
   skip_unless_level("standard")
   src <- file.path(saige_extdata, "input", "group_new_snpid_multiWeights.txt")
   caddfile <- tempfile(fileext = ".txt")

@@ -59,7 +59,9 @@ mw_run <- function(groupFile, extra = character(0)) {
   # BURDEN-only runs do not emit the single-variant file
   single_path <- paste0(out, ".singleAssoc.txt")
   res <- list(region = read_saige_table(out),
-              single = if (file.exists(single_path)) read_saige_table(single_path) else NULL)
+              single = if (file.exists(single_path)) read_saige_table(single_path) else NULL,
+              # the file itself, for the runs that also have a committed golden
+              path = out)
   mw_cache[[key]] <- res
   res
 }
@@ -105,17 +107,25 @@ BETA_SETS <- c("Beta_1_25", "Beta_1_1")
 # raw exported G1tilde_P_G2tilde matrix (C++ bakes it only at q_weight == 1).
 #
 # Reconciliation strategy (anything computable two ways must reconcile): the
-# per-set R adjustment at K = 2 against the K = 1 C++-baked path. The CUSTOM
-# fixture cannot serve as the K = 1 side of that comparison: a custom-weighted
-# group file with --condition reads an UNINITIALIZED w0 on every collapsed
-# ultra-rare row (LEDGER #17, preserved bug-for-bug; every cell of the bundled
-# fixtures collapses ultra-rare markers, and on this platform the garbage w0
-# zeroes the adjustment). The BETA route has no such defect -- the K = 1 beta
-# path assigns w0 = pdf(beta, MAF) -- so the clean two-ways check is
-# Beta_1_25-of-a-composed-run vs the plain (implicit beta 1,25) conditional
-# run. Both runs are live on the same machine; statistics are compared at
-# 1e-12 relative (algebraically identical, different float grouping -- never
-# byte, per the cross-path rule in CLAUDE.md).
+# per-set R adjustment at K = 2 against the K = 1 C++-baked path. There are now
+# TWO routes for that comparison, and the history matters.
+#
+# The BETA route (Beta_1_25 of a composed run vs the plain implicit-beta run)
+# was the only one available until the LEDGER #17 fix: a custom-weighted group
+# file with --condition read an UNINITIALIZED w0 on every collapsed ultra-rare
+# row, and on this platform the garbage zeroed the adjustment outright, so the
+# custom fixture could not be a baseline for anything.
+#
+# **#17 is fixed** (w0 = 1.0 for a custom set -- its UR collapse is weighted, so
+# the weight is already in the pseudo-marker), and the CUSTOM route is now the
+# sharper of the two: group_new_snpid_withWeights.txt's weight line is
+# byte-identical to the CADD line of group_new_snpid_multiWeights.txt, so the
+# K = 1 run and the K = 2 run's CADD rows are the same statistic computed by two
+# different paths, with no beta-distribution algebra in between.
+#
+# Both routes are kept. Statistics are compared at 1e-12 relative (algebraically
+# identical, different float grouping -- never byte, per the cross-path rule in
+# CLAUDE.md).
 
 cond_multi_run <- function() mw_run("group_new_snpid_multiWeights.txt",
                                     "--condition=rs30,rs79")
@@ -124,6 +134,9 @@ cond_plain_run <- function() mw_run("group_new_snpid.txt",
 cond_beta2_run <- function() mw_run("group_new_snpid.txt",
                                     c(paste0("--weights.beta=", shQuote("1,25;1,1")),
                                       "--condition=rs30,rs79"))
+# K = 1, CUSTOM weights (CADD only) + --condition: the path LEDGER #17 was in.
+cond_single_run <- function() mw_run("group_new_snpid_withWeights.txt",
+                                     "--condition=rs30,rs79")
 cond_forced_run <- function() mw_run("group_new_snpid.txt",
                                      c("--is_output_weight_column=TRUE",
                                        "--condition=rs30,rs79"))

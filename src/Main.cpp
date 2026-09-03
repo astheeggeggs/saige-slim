@@ -1733,6 +1733,20 @@ if(i2 > 0){
 	  // count was already accumulated once per (j,m) before the r loop, so
 	  // the emission loops touch genoSumMat only.
 	  if(setKindVec[r] == SET_CUSTOM){
+	    // LEDGER #17 FIXED. w0 used to be left UNASSIGNED here, and the
+	    // conditional export below multiplies by it -- so a K=1 custom-weighted
+	    // group file plus --condition read an uninitialised double.
+	    //
+	    // 1.0 is the value, and it is not a placeholder: a custom set's UR
+	    // collapse is WEIGHTED (`max(w_r * G)` at the genoURMat line above), so
+	    // the weight is already inside genoURVec and hence inside
+	    // G1tilde_P_G2tilde_Vec. Multiplying by w_r again would double-count it.
+	    // That is exactly what the K>1 path does -- it exports the G1-raw row
+	    // and region_postprocess applies 1 for custom sets (design D7) -- so
+	    // this makes the two agree instead of merely making the read defined.
+	    // The emission loops below deliberately do NOT scale by w0, for the
+	    // same reason.
+	    w0 = 1.0;
 	    //genoSumMat.col(jm) = genoSumMat.col(jm) + genoURVec % (weightURMat.col(jm));
 	    //genoSumMat.col(jm) = genoSumMat.col(jm) + genoURVec;
 	    if(q_weight == 1){
@@ -1842,10 +1856,11 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
               Tstat_cVec.at(i) = Tstat_c * (1 - 2*flip);
               varT_cVec.at(i) = varT_c;
               if(q_weight == 1){
-                // NOTE (LEDGER.md #17): for a custom weight set w0 is not
-                // assigned on this path -- legacy behavior, preserved
-                // bug-for-bug. Reachable only at q_weight == 1 (a K>1 run
-                // takes the raw-export branch below, which reads no w0).
+                // w0 is assigned on every branch above (LEDGER #17 was that the
+                // custom branch did not assign it and this line read garbage;
+                // fixed, with 1.0 -- see the comment there for why 1 and not
+                // w_r). Reachable only at q_weight == 1: a K>1 run takes the
+                // raw-export branch below, which reads no w0.
                 G1tilde_P_G2tilde_Weighted_Mat.row(i) = G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t() * w0;
               }else{
                 // design D7 (C11): G1-raw row at K>1, per-set weight applied

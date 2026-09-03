@@ -500,6 +500,31 @@ run step2_pgen_group_cond_multiweight.log R2 step2_SPAtests.R \
   --maxMAF_in_groupTest=0.0001,0.001,0.01 \
   --condition=rs30,rs79 --is_fastTest=TRUE
 
+# P34 (added with the LEDGER #17 fix): K=1 CUSTOM-weighted group file WITH
+# --condition -- the one combination that read an uninitialised `w0`. Nothing
+# covered it: P3 conditions on an UNWEIGHTED file (no custom set at all), P10
+# conditions on the K=2 file (which takes the raw-export path and reads no w0),
+# and the C11 reconciliation test deliberately used the BETA route for exactly
+# this reason. That is why the UB survived every gate, and it is why this golden
+# exists rather than a test alone.
+#
+# Its weight line is byte-identical to the CADD line of
+# group_new_snpid_multiWeights.txt, so P10's CADD rows are the independent
+# comparison: the two paths now agree on every conditional column (measured
+# 0.000e+00 relative on all 12 cells; before the fix, up to 2.1e-01 on
+# BETA_Burden_cond, with the adjustment vanishing entirely on the 6 all-ultra-
+# rare cells). No PGEN mirror: the defect is in the region path's weight
+# bookkeeping, which no reader can reach differently.
+run step2_plink_group_cond_customweight.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_cond_customweight.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid_withWeights.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --condition=rs30,rs79 --is_fastTest=TRUE
+
 # P25/P26 (added with the LEDGER #41 fix): BURDEN-only (--r.corr=1) group test
 # WITH --condition. This is the combination through which the halved conditional
 # p-value reached a GENE-level statistic: mainRegionInCPP parses the printed
