@@ -301,5 +301,20 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
      arma::vec getPCG1ofSigmaAndGtilde(arma::vec& bVec, int maxiterPCG, double tolPCG) const;
 
 };
+
+// Upper-tail two-sided normal quantile for a p-value given on the LOG scale --
+// i.e. the |z| whose two-sided p is exp(t_logp).
+//
+// It exists as a named function because the same expression is needed at three
+// places in getMarkerPval and all three had the SAME defect (LEDGER #42): they
+// wrote qnorm(logp / 2, log.p = TRUE), and HALVING A LOG IS A SQUARE ROOT, so
+// the quantile was evaluated at sqrt(p) rather than p/2 -- inflating SE by
+// ~sqrt(2) wherever the score p had underflowed and the code switched to the
+// log format. One function is one place to get it wrong.
+//
+// Exported for test through testQnormTwoSidedLogPInCPP (src/Main.cpp): the
+// regime that reaches it needs |z| ~ 40, which no bundled fixture produces, so
+// no golden can gate this and the change carries its own measurement.
+double qnormTwoSidedLogP(double t_logp);
 }
 #endif

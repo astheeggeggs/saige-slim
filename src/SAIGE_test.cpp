@@ -23,6 +23,12 @@
 
 namespace SAIGE {
 
+// See the declaration in SAIGE_test.hpp for why this is a named function.
+double qnormTwoSidedLogP(double t_logp){
+  return R::qnorm(t_logp - std::log(2.0), 0, 1, false, true);
+}
+
+
 SAIGEClass::SAIGEClass(
 	arma::mat & t_XVX,
 	arma::mat  t_XXVX_inv,
@@ -807,7 +813,18 @@ if(!t_isER){
 
     if(t_isSPAConverge){
         try {
-          t_qval = R::qnorm(t_SPApval/2, 0, 1, false, ispvallog);		
+          // LEDGER #42 FIXED. The two-sided quantile wants p/2, and on the log
+          // scale that is log(p) - log(2). Dividing the LOG by 2 is a square
+          // root: it evaluated the quantile at sqrt(p) instead of p/2, which in
+          // this regime inflates SE by ~sqrt(2) (measured 1.4188x at the very
+          // edge, log p = -710, tending to 1.41421x deeper in). The !ispvallog
+          // arm is spelled out rather than left polymorphic so the two cannot
+          // drift again; it is the same call it always was.
+          if(!ispvallog){
+            t_qval = R::qnorm(t_SPApval/2, 0, 1, false, false);
+          }else{
+            t_qval = qnormTwoSidedLogP(t_SPApval);
+          }
           t_qval = fabs(t_qval);
           t_seBeta = fabs(t_Beta)/t_qval;
         }catch (const std::overflow_error&) {
@@ -857,7 +874,10 @@ if(!t_isER){
 	}else{
 		if(m_is_Firth_beta && pval <= std::log(m_pCutoffforFirth)){
 			t_isFirth = true;
-			t_qval_Firth = R::qnorm(pval/2, 0, 1, false, true);
+			// LEDGER #42: log(p) - log(2), not log(p)/2 -- see the SE
+			// back-calculation above. Same defect, same regime; this one
+			// feeds the Firth SE instead of the score one.
+			t_qval_Firth = qnormTwoSidedLogP(pval);
 		}
 	}
      }	
@@ -1028,7 +1048,11 @@ if(!t_isER){
           if(!ispvallog){
            t_qval_c = boost::math::quantile(ns, SPApval_c/2);
           }else{
-	   t_qval_c = R::qnorm(SPApval_c/2, 0, 1, false, true);
+           // LEDGER #42: log(p) - log(2). The !ispvallog sibling one line up
+           // takes the two-sided quantile at p/2 correctly, so before this fix
+           // the same statistic was computed two different ways depending only
+           // on whether the score p had underflowed.
+	   t_qval_c = qnormTwoSidedLogP(SPApval_c);
           }
            t_qval_c = fabs(t_qval_c);
            t_seBeta_c = fabs(t_Beta_c)/t_qval_c;

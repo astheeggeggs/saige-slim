@@ -445,6 +445,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// testQnormTwoSidedLogPInCPP
+double testQnormTwoSidedLogPInCPP(double t_logp);
+RcppExport SEXP _SAIGE_testQnormTwoSidedLogPInCPP(SEXP t_logpSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< double >::type t_logp(t_logpSEXP);
+    rcpp_result_gen = Rcpp::wrap(testQnormTwoSidedLogPInCPP(t_logp));
+    return rcpp_result_gen;
+END_RCPP
+}
 // set_flagSparseGRM_cur_SAIGE
 void set_flagSparseGRM_cur_SAIGE(bool t_flagSparseGRM_cur);
 RcppExport SEXP _SAIGE_set_flagSparseGRM_cur_SAIGE(SEXP t_flagSparseGRM_curSEXP) {
@@ -1997,6 +2008,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_isGenoReaderCloneableInCPP", (DL_FUNC) &_SAIGE_isGenoReaderCloneableInCPP, 0},
     {"_SAIGE_testReadMarkersInCPP", (DL_FUNC) &_SAIGE_testReadMarkersInCPP, 1},
     {"_SAIGE_testGenoReaderCloneInCPP", (DL_FUNC) &_SAIGE_testGenoReaderCloneInCPP, 1},
+    {"_SAIGE_testQnormTwoSidedLogPInCPP", (DL_FUNC) &_SAIGE_testQnormTwoSidedLogPInCPP, 1},
     {"_SAIGE_set_flagSparseGRM_cur_SAIGE", (DL_FUNC) &_SAIGE_set_flagSparseGRM_cur_SAIGE, 1},
     {"_SAIGE_set_flagSparseGRM_cur_SAIGE_org", (DL_FUNC) &_SAIGE_set_flagSparseGRM_cur_SAIGE_org, 0},
     {"_SAIGE_copy_singleInGroup", (DL_FUNC) &_SAIGE_copy_singleInGroup, 0},

@@ -121,6 +121,10 @@ testGenoReaderCloneInCPP <- function(t_gIndexVec) {
     .Call('_SAIGE_testGenoReaderCloneInCPP', PACKAGE = 'SAIGE', t_gIndexVec)
 }
 
+testQnormTwoSidedLogPInCPP <- function(t_logp) {
+    .Call('_SAIGE_testQnormTwoSidedLogPInCPP', PACKAGE = 'SAIGE', t_logp)
+}
+
 set_flagSparseGRM_cur_SAIGE <- function(t_flagSparseGRM_cur) {
     invisible(.Call('_SAIGE_set_flagSparseGRM_cur_SAIGE', PACKAGE = 'SAIGE', t_flagSparseGRM_cur))
 }

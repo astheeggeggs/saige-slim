@@ -24,16 +24,20 @@ removed in 3a, GenoReader interface + de-globalized Step2Config/Step2Output/
 owned model in 3b-d, ten ledger fixes in 3e); Phase 5 (multi-weights) done
 through C11; **Phase 6 done — LEDGER #28 and #29 FIXED** (326abe8f, 86a08f47:
 the AF>0.5 marker path is now exactly flip-invariant, full tier 1225/1225).
-Next: Phase 4 (speedup), re-scoped to step 2 — make step 2 measurable (both s2
-bench workloads are ~90% process startup and can measure nothing), make
-`--nThreads` actually work (it is a silent no-op without `--idstoIncludeFile`),
-then per-marker allocation hygiene. Step-1 blocked-GetTrace is parked behind
-that measurement. LEDGER.md still-OPEN: #6 (PCG tolerance, deliberately
-deferred), #14 (unverified suspicion), #17-#26, #32 (marker-shard
-variance-ratio carry), and #35-#39 from the type-polymorphic-builtin audit
-(`sample`, `1:n`, `rbind` recycling) -- all latent behind a guard, plus #42
-(the `log.p=TRUE` arms of the conditional/marginal SE back-calculation halve a
-log, i.e. take a square root), latent behind a p-value underflow.
+**Phase 4 (speedup) is done, and so is the step-2 threading sequence S0-S11**
+(see `docs/state/s8-pgen-clone.md`, which carries S8-S11, and the status block
+at the top of `docs/design/step2-threading-verdict.md`): step 2 is measurable,
+`--nThreads` threads the marker loop IN PROCESS for both readers, and the forked
+path is retired. Step-1 blocked `GetTrace` also landed (`bda95327`) -- do not
+believe an older doc that says it is parked on a branch.
+**LEDGER.md still-OPEN**: #6 (PCG tolerance, deliberately deferred), #14
+(unverified suspicion), #18-#26, #35-#39 from the type-polymorphic-builtin audit
+(`sample`, `1:n`, `rbind` recycling) -- all latent behind a guard -- #45, #46
+and #49 (a restart re-runs the last completed chunk: wasted work, right answer).
+Recently FIXED: #47 (S9, restart duplicated rows), #17 (S10, the uninitialised
+`w0` on the custom-weighted conditional path) and #42 (S11, three `log.p=TRUE`
+arms halved a log, i.e. took a square root, inflating SE ~sqrt(2) wherever the
+score p had underflowed).
 **#41 is FIXED**: the conditional SPA p-value was PRINTED halved
 (`src/SAIGE_test.cpp:950` printed `SPApval_c/2` while `:929` built the SE from
 the un-halved value), making every `p.value_c` from the SPA path -- and, via

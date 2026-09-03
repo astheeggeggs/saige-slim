@@ -3010,6 +3010,17 @@ Rcpp::List testGenoReaderCloneInCPP(std::vector<int> t_gIndexVec){
 }
 
 
+// ---- LEDGER #42 test hook --------------------------------------------------
+// The two-sided quantile the SE back-calculation uses for a log-scale p. No
+// golden can reach it: the log format is only chosen when the score p-value
+// UNDERFLOWS to exactly 0 in double, which needs |z| ~ 40, and the bundled
+// 1,000-sample fixtures top out around |z| = 2.6. So, as with the S2 seed
+// counter and the S5 reader hooks, the change carries its own measurement.
+// [[Rcpp::export]]
+double testQnormTwoSidedLogPInCPP(double t_logp){
+  return SAIGE::qnormTwoSidedLogP(t_logp);
+}
+
 // LEDGER #44: an effect size the score test declined to compute is printed as
 // the literal "NA", not as a NaN. NaN spelling is platform-dependent -- glibc
 // writes a sign-bit-set NaN as "-nan" where macOS writes "nan" -- which made

@@ -202,3 +202,73 @@ output is correct, and it costs one chunk of recomputation.
   current chunk's work, which is the intended granularity.
 - Nothing here defends against a machine crash -- `flush()` reaches the OS, not
   the platter.
+
+---
+
+# S10 and S11: the two remaining live defects
+
+Both were reachable-in-principle bugs that no golden could see, and they were
+done in this order for one reason: **#17 fires with fixtures already in the
+repo, #42 does not fire at all below n ~ 20,000**. Doing #42 first would have
+meant landing it on a byte-identical tier, which says nothing.
+
+## S10 -- LEDGER #17, the uninitialised `w0`
+
+A K=1 CUSTOM-weighted group file plus `--condition` read an uninitialised double
+and multiplied the conditional export by it. `w0 = 1.0` is the fix, and 1.0 is
+the VALUE rather than a placeholder: a custom set's UR collapse is WEIGHTED
+(`max(w_r * G)`), so the weight is already inside the pseudo-marker; multiplying
+by `w_r` again would double-count. The K>1 path already does exactly this
+(exports the G1-raw row, `region_postprocess` applies 1 for custom sets), so the
+fix makes the two paths agree rather than merely making the read defined.
+
+**The measurement, on the same two runs before and after** (K=1 custom vs the
+K=2 run's CADD set -- the two group files carry byte-identical weights):
+
+| | before | after |
+|---|---|---|
+| conditional columns vs K=2 CADD | disagree on 12/12 cells, up to **2.1e-01** rel (BETA_Burden_cond) | **0.000e+00** on all |
+| cells with `Pvalue_cond == Pvalue` exactly | 6 (all the all-ultra-rare ones) | 0 |
+| UNCONDITIONAL columns | 0.000e+00 | 0.000e+00 |
+
+That last row is what localised the defect to the conditional export rather than
+to the collapse. New golden **P34** `plink_group_cond_customweight.txt` (proven
+byte-reproducible over two runs before being accepted); the custom-route
+reconciliation in `test-step2-multiweight-cond.R` is a comparison the fix made
+possible for the first time.
+
+## S11 -- LEDGER #42, halving a log
+
+`qnorm(log(p)/2, log.p = TRUE)` evaluates the quantile at **sqrt(p)**, not p/2.
+Three sites, not the two the ledger named -- the marginal SPA SE, the
+conditional SPA SE, and the marginal FIRTH qval in the same block. They now share
+one named function, `SAIGE::qnormTwoSidedLogP`, so they cannot drift apart again;
+the linear-scale arms are untouched and spelled out rather than left polymorphic,
+which is why all 56 goldens stay byte-identical.
+
+**The [ASSUMPTION] on reachability is discharged.** The defective line sits
+inside `if(t_isSPAConverge)`, so it mattered whether the saddlepoint converges
+once the score p has underflowed. It does: at n = 20,000 with |z| = 40 the score
+log p is -804 (past `log(DBL_MIN)`) and SPA returns log p = -827 with
+`Isconverge` true. Error against the correct quantile: **SE inflated 1.4188x at
+the edge (log p = -710), tending to sqrt(2) deeper in** -- conservative-looking,
+so a meta-analysis weighting by 1/SE^2 silently down-weights the strongest hits.
+
+**A dead end worth recording.** Shrinking the variance ratio in the model's
+`.varianceRatio.txt` DOES drive the printed p into the log format (23 of 70
+markers on the bundled fixture), but it cannot reach the defect: `q` is scaled by
+`1/sqrt(varRatio)`, which pushes it outside the CGF's range, so the root finder
+declines and every one of those 23 came back `Is.SPA = false` -- the line never
+runs. Self-consistent data is what reaches it, and that needs a sample size the
+bundled fixtures do not have. Hence a kernel-level gate
+(`tests/testthat/test-unit-logp-quantile.R` via the `testQnormTwoSidedLogPInCPP`
+hook, drill-verified by restoring the halved log) rather than a golden. **Here a
+byte-identical tier is the correct outcome, not a coverage failure** -- the
+distinction the standing rule exists to make.
+
+## Where this leaves the ledger
+
+Still open: #6 (deferred by choice), #14 (unverified), #18-#26, #35-#39, #45,
+#46, and **#49** (a restart re-runs the last completed chunk -- wasted work,
+right answer, found by S9's own regression test). The live-defect queue that
+S8-S11 worked from is empty.
