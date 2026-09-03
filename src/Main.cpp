@@ -2969,6 +2969,21 @@ Rcpp::List testGenoReaderCloneInCPP(std::vector<int> t_gIndexVec){
 }
 
 
+// LEDGER #44: an effect size the score test declined to compute is printed as
+// the literal "NA", not as a NaN. NaN spelling is platform-dependent -- glibc
+// writes a sign-bit-set NaN as "-nan" where macOS writes "nan" -- which made
+// exactly these rows non-byte-portable and cost two red CI runs before the
+// underlying bug was fixed. R_IsNA distinguishes the deliberate NA_REAL the
+// score tests now emit from an ordinary NaN arriving from anywhere else, so
+// this changes those rows and nothing else.
+static inline void writeNumOrNA(std::ofstream & t_os, double t_x){
+  if(R_IsNA(t_x)){
+    t_os << "NA";
+  }else{
+    t_os << t_x;
+  }
+}
+
 // S4: the writer now streams MarkerResult slots instead of ~30 parallel
 // q-length vectors. Same rows, same order, same skip-on-"NA" rule, same
 // numtest; it just reads one object per marker rather than indexing thirty.
@@ -3010,9 +3025,9 @@ void writeOutfile_single(bool t_isMoreOutput,
                         g_out.single << "\t";
 
                 }
-                g_out.single << res.Beta;
+                writeNumOrNA(g_out.single, res.Beta);
                 g_out.single << "\t";
-                g_out.single << res.seBeta;
+                writeNumOrNA(g_out.single, res.seBeta);
                 g_out.single << "\t";
                 g_out.single << res.Tstat;
                 g_out.single << "\t";
@@ -3028,9 +3043,9 @@ void writeOutfile_single(bool t_isMoreOutput,
                         g_out.single << "\t";
                 }
                 if(t_isCondition){
-                        g_out.single << res.Beta_c;
+                        writeNumOrNA(g_out.single, res.Beta_c);
                         g_out.single << "\t";
-                        g_out.single << res.seBeta_c;
+                        writeNumOrNA(g_out.single, res.seBeta_c);
                         g_out.single << "\t";
                         g_out.single << res.Tstat_c;
                         g_out.single << "\t";

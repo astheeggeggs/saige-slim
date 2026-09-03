@@ -226,8 +226,26 @@ void SAIGEClass::scoreTest(arma::vec & t_GVec,
     }
     std::string buffAsStdStr = pValueBuf;
     t_pval_str = buffAsStdStr;
-    t_Beta = S/var1;
-    t_seBeta = fabs(t_Beta) / sqrt(fabs(stat));
+    // LEDGER #44 FIXED. These two used to be computed unconditionally, even
+    // under the guard above that already forces t_pval = 1 because the
+    // covariate-adjusted variance has collapsed. At var1 == 0 exactly that gave
+    // BETA = -inf, stat = inf and SE = inf/inf = nan; at var1 ~ 1e-14 a finite
+    // but meaningless BETA with an SE of order 1e6. The p-value was right in
+    // both cases -- only the effect sizes were junk -- so the fix is to say so
+    // rather than to print a number nobody should read.
+    //
+    // NA_REAL, not a bare NaN, and the writer prints it as the literal "NA":
+    // the spelling of a NaN is PLATFORM-DEPENDENT (glibc writes a sign-bit-set
+    // NaN as "-nan" where macOS writes "nan"), which is what made these rows
+    // non-byte-portable and cost two red CI runs. A row that says NA says the
+    // same thing everywhere.
+    if(var1 <= std::numeric_limits<double>::min()){
+      t_Beta = NA_REAL;
+      t_seBeta = NA_REAL;
+    }else{
+      t_Beta = S/var1;
+      t_seBeta = fabs(t_Beta) / sqrt(fabs(stat));
+    }
     t_Tstat = S;
     t_var1 = var1;
     t_var2 = var2;
@@ -310,8 +328,26 @@ void SAIGEClass::scoreTestFast(arma::vec & t_GVec,
     }
     std::string buffAsStdStr = pValueBuf;
     t_pval_str = buffAsStdStr;
-    t_Beta = S/var1;
-    t_seBeta = fabs(t_Beta) / sqrt(fabs(stat));	
+    // LEDGER #44 FIXED. These two used to be computed unconditionally, even
+    // under the guard above that already forces t_pval = 1 because the
+    // covariate-adjusted variance has collapsed. At var1 == 0 exactly that gave
+    // BETA = -inf, stat = inf and SE = inf/inf = nan; at var1 ~ 1e-14 a finite
+    // but meaningless BETA with an SE of order 1e6. The p-value was right in
+    // both cases -- only the effect sizes were junk -- so the fix is to say so
+    // rather than to print a number nobody should read.
+    //
+    // NA_REAL, not a bare NaN, and the writer prints it as the literal "NA":
+    // the spelling of a NaN is PLATFORM-DEPENDENT (glibc writes a sign-bit-set
+    // NaN as "-nan" where macOS writes "nan"), which is what made these rows
+    // non-byte-portable and cost two red CI runs. A row that says NA says the
+    // same thing everywhere.
+    if(var1 <= std::numeric_limits<double>::min()){
+      t_Beta = NA_REAL;
+      t_seBeta = NA_REAL;
+    }else{
+      t_Beta = S/var1;
+      t_seBeta = fabs(t_Beta) / sqrt(fabs(stat));
+    }
     t_Tstat = S;
     t_var1 = var1;
     t_var2 = var2;
@@ -405,8 +441,26 @@ void SAIGEClass::scoreTestFast_noadjCov(arma::vec & t_GVec,
     }
     std::string buffAsStdStr = pValueBuf;
     t_pval_str = buffAsStdStr;
-    t_Beta = S/var1;
-    t_seBeta = fabs(t_Beta) / sqrt(fabs(stat));
+    // LEDGER #44 FIXED. These two used to be computed unconditionally, even
+    // under the guard above that already forces t_pval = 1 because the
+    // covariate-adjusted variance has collapsed. At var1 == 0 exactly that gave
+    // BETA = -inf, stat = inf and SE = inf/inf = nan; at var1 ~ 1e-14 a finite
+    // but meaningless BETA with an SE of order 1e6. The p-value was right in
+    // both cases -- only the effect sizes were junk -- so the fix is to say so
+    // rather than to print a number nobody should read.
+    //
+    // NA_REAL, not a bare NaN, and the writer prints it as the literal "NA":
+    // the spelling of a NaN is PLATFORM-DEPENDENT (glibc writes a sign-bit-set
+    // NaN as "-nan" where macOS writes "nan"), which is what made these rows
+    // non-byte-portable and cost two red CI runs. A row that says NA says the
+    // same thing everywhere.
+    if(var1 <= std::numeric_limits<double>::min()){
+      t_Beta = NA_REAL;
+      t_seBeta = NA_REAL;
+    }else{
+      t_Beta = S/var1;
+      t_seBeta = fabs(t_Beta) / sqrt(fabs(stat));
+    }
     t_Tstat = S;
     t_var1 = var1;
     t_var2 = var2;

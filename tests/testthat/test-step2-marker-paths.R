@@ -53,13 +53,20 @@ mp_model <- function(prefix) c(
 # rel_err 1.2e-01 [BETA] / 1.6e-01 [Tstat] on Linux against macOS-generated
 # goldens.
 #
-# LEDGER #44 is the underlying bug: the `var1 <= min` guard covers the p-value
-# (1.0, portable and correct) but leaves BETA/SE/Tstat printed from the
-# underflowed variance. Fixing #44 -- emitting NA for a marker whose adjusted
-# variance has underflowed -- would make these rows portable and retire this
-# exclusion. Until then they are excluded from the NUMERIC comparison only; byte
-# mode still compares them, and the characterization test at the bottom of this
-# file still pins their degenerate values.
+# LEDGER #44 is the underlying bug, and it is now FIXED -- but fixing it did NOT
+# retire this exclusion, which is worth knowing before anyone tries again. The
+# guard is `var1 <= DBL_MIN`, and only P27 is under it (var == 0 exactly); P30's
+# var is ~2.7e-14, some 294 orders of magnitude above DBL_MIN, so its p = 1
+# comes from the chi-square and its BETA/SE remain finite junk. And even on P27
+# the Tstat column stays ~3e-15 -- a legitimately-near-zero value that no
+# RELATIVE tolerance can compare across platforms.
+#
+# So retiring this needs two more things, not one: a criterion for "the effect
+# size is meaningless" that is relative rather than an absolute DBL_MIN, and an
+# absolute floor in rel_err() for columns that are genuinely ~0. Until then
+# these rows are excluded from the NUMERIC comparison only; byte mode still
+# compares them, and the characterization test at the bottom of this file pins
+# both halves.
 MP_COVARIATE_MARKERS <- c("rs20", "rs22")
 
 mp_case <- function(golden_base, extra_args, drop_markers = character()) {
@@ -190,29 +197,44 @@ test_that("every new marker golden differs from P1 in the intended direction", {
   expect_length(changed, 5L)
 })
 
-test_that("the covariate-collinear fixture markers degenerate as LEDGER #44 records", {
+test_that("LEDGER #44: the guarded degeneracy now prints NA, the unguarded one does not", {
   # rs20 and rs22 ARE the categorical covariates a9 and a10 (verified: R^2 = 1
-  # against the model matrix, next highest marker 0.022). Every covariate-
-  # adjusting path therefore tests a genotype that is exactly explained away,
-  # and the variance underflows. The p-value guard holds (p = 1) but BETA/SE
-  # are unguarded, so the sparse path prints -inf/nan. This is pinned, not
-  # fixed, per the branch policy -- if it changes, update LEDGER #44 with it.
+  # against the model matrix, next highest marker 0.022), so every
+  # covariate-adjusting path tests a genotype that is exactly explained away.
+  #
+  # #44 IS NOW FIXED -- but only where its guard reaches, and the two goldens
+  # below are the two halves of that. They look like one bug in the ledger and
+  # are not:
+  #
+  #   P27 (sparse scoreTest): var is 0 EXACTLY, so `var1 <= DBL_MIN` fires, and
+  #       BETA/SE are now the literal "NA" instead of -inf/nan.
+  #   P30 (scoreTestFast):    var is ~2.7e-14, which is ~294 orders of magnitude
+  #       ABOVE DBL_MIN (2.2e-308). The guard cannot fire; p = 1 arrives from the
+  #       chi-square instead, and BETA/SE are still finite junk (-0.11, 6.1e6).
+  #
+  # So the exclusion in MP_COVARIATE_MARKERS is NOT retired, and the ledger note
+  # that predicted it would be has been corrected. See LEDGER #44.
   skip_if_no_goldens()
   g <- function(f) read_saige_table(file.path(saige_goldens, "step2", f))
   sp <- g("plink_marker_sparse.txt")
   i <- match(c("rs20", "rs22"), sp$MarkerID)
   expect_false(anyNA(i))
-  expect_identical(sp$BETA[i], c("-inf", "-inf"))
-  # NaN's printed spelling is the C library's: glibc writes "-nan" where macOS
-  # writes "nan" for the same sign-bit-set NaN. The committed golden carries
-  # whichever platform generated it, so accept either.
-  expect_true(all(grepl("^-?nan$", sp$SE[i])))
+  # FIXED half: literal "NA", which is also the point -- a NaN's printed
+  # spelling is the C library's (glibc "-nan" vs macOS "nan"), so the old value
+  # was not byte-portable. "NA" says the same thing on every platform.
+  expect_identical(sp$BETA[i], c("NA", "NA"))
+  expect_identical(sp$SE[i], c("NA", "NA"))
   expect_identical(sp$p.value[i], c("1.000000E+00", "1.000000E+00"))
-  # the same two markers on the other covariate-adjusting path: finite, but the
-  # variance has underflowed to ~1e-14 and the SE is ~1e6
+  # Tstat and var are NOT NA and deliberately so: the score really is ~0 here,
+  # which is information. It is also why these rows stay excluded from the
+  # numeric comparison -- a relative tolerance cannot compare 3e-15 against the
+  # different 3e-15 another platform's summation order produces.
+  expect_true(all(abs(suppressWarnings(as.numeric(sp$Tstat[i]))) < 1e-12))
+  # UNGUARDED half, pinned as it stands (bug-for-bug, per branch policy):
   na <- g("plink_marker_noadjCov.txt")
   expect_true(all(suppressWarnings(as.numeric(na$var[i])) < 1e-13))
   expect_true(all(suppressWarnings(as.numeric(na$SE[i])) > 1e6))
+  expect_true(all(is.finite(suppressWarnings(as.numeric(na$BETA[i])))))
   # and nothing else on either path is degenerate
   expect_true(all(is.finite(suppressWarnings(as.numeric(sp$BETA[-i])))))
   expect_true(all(is.finite(suppressWarnings(as.numeric(na$SE[-i])))))
