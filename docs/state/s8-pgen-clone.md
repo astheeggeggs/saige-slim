@@ -121,8 +121,23 @@ print a path under `harness/work/tsan`, not a bare filename.
 
 ## Where to start next
 
-- Step-1 blocked `GetTrace`: 2.37x on the null fit, 1.55x on the whole step-1
-  run, sitting on branch `gettrace-blocked` and never merged.
-- Remaining ledger entries: #6, #14, #17-#26, #35-#39, #42, #45, #46, **#47**
-  (restart after a hard kill duplicates rows).
+**Correction to the S0-S7 handoff, which this doc first copied:** step-1's
+blocked `GetTrace` is NOT "sitting on branch `gettrace-blocked` and never
+merged". `gettrace-blocked` is an ANCESTOR of `strip` (`git merge-base
+--is-ancestor` confirms), `bda95327` is in this history, and
+`getPCG1ofSigmaAndVectorMat` is live at two call sites in
+`src/SAIGE_fitGLMM_fast.cpp`, unchanged since. That item is done and shipping;
+do not re-do it.
+
+So what is actually left:
+
+- **LEDGER #47** -- restart after a hard kill DUPLICATES rows (3,826 of them on
+  the bundled fixture), because the `.index` and the output stream flush at
+  independent points. User-visible, pre-existing, orthogonal to threading, and
+  with a measured reproduction already written down. The obvious next fix.
+- The other open ledger entries: #6 (deliberately deferred), #14 (unverified),
+  #17 (uninitialised `w0`, real UB on a reachable path), #18-#26, #35-#39, #42
+  (a halved log in the `log.p=TRUE` SE back-calculation), #45, #46.
+- **Group tests still run on one thread, for every format.** The marker path is
+  done; the region path has had none of this work.
 - The PGEN arena trim above, if a large-N fixture appears.
