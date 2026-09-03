@@ -2867,13 +2867,34 @@ void setSingleOutputPrefixInCPP(std::string t_outputFilePrefix){
   g_out.prefixSingle = t_outputFilePrefix;
 }
 
-// Whether the active genotype reader may be used from forked children.
+// Whether the active genotype reader may be used from forked children. Nothing
+// in R calls this any more -- S7 retired the forked path -- but it remains the
+// reader's answer to a real question and is exercised by
+// tests/testthat/test-unit-genoreader.R.
 // [[Rcpp::export]]
 bool isGenoReaderForkSafeInCPP(){
   if(!g_reader){
     Rcpp::stop("No genotype reader has been set up.");
   }
   return g_reader->isForkSafe();
+}
+
+// Whether the active reader can hand out per-worker clones, i.e. whether the
+// marker scan can actually thread. PGEN never clones, and the PLINK pread
+// fallback refuses (S5). The C++ marker loop degrades to one thread on its own
+// if this is false; R asks FIRST only so the user gets a real R warning()
+// rather than a line of stdout that scrolls past in a cluster log.
+// [[Rcpp::export]]
+bool isGenoReaderCloneableInCPP(){
+  if(!g_reader){
+    Rcpp::stop("No genotype reader has been set up.");
+  }
+  try {
+    std::unique_ptr<Geno::GenoReader> probe = g_reader->clone();
+  } catch (const std::exception&) {
+    return false;
+  }
+  return true;
 }
 
 

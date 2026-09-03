@@ -377,14 +377,42 @@ its commits have since landed and one of its stated gates was wrong.
   still fires on `rare100` (157 races at 4 threads, 200 at 8, output DIFFERS,
   1-thread clean), so the gate has power in exactly this configuration.
   Goldens: 54/54 byte-identical, standard tier FAIL 0 | PASS 1860 in both modes.
-- **Not yet done**: the retirement itself. Item 3 is now settled IN FAVOUR of
-  in-process -- equal or better throughput at every f, 80-98 MB lighter, and it
-  supports restart where fork refuses. What stands between that and deleting
-  `splitMarkerShards`/`appendShardBytes`/`mergeShardOutputs`/`runMarkerScan`'s
-  fork branch is **criterion item 2 alone**: feature parity item by item (group
-  tests, restart, non-fork-safe readers) plus the recorded decision on
-  `varianceRatioBinsHaveGap`. That is engineering, not measurement. Keep E0 and
-  E1 (see below) when the fork path goes.
+- **S7 IS DONE. THE OBLIGATION IS DISCHARGED: ONE MECHANISM SHIPS.** `--nThreads`
+  now drives the in-process marker threads; `splitMarkerShards`,
+  `appendShardBytes`, `mergeShardOutputs` and `runMarkerScan`'s fork branch are
+  deleted, `R/MarkerShard.R` is renamed `R/MarkerScan.R`, and the
+  `SAIGE_MARKER_THREADS` stopgap and the `nThreadsMarker` argument on
+  `SPAGMMATtest` are gone.
+
+  **Criterion item 2, audited item by item** rather than asserted:
+  | item | fork (retired) | in-process (ships) |
+  |---|---|---|
+  | group tests | warns, drops to 1 thread | same |
+  | restart | REFUSED | works, and byte-identical to a serial restart |
+  | reader that cannot clone | hard error | drops to 1 thread + R `warning()` |
+  | `varianceRatioBinsHaveGap` | fork-only guard | kept, gated on `nThreads > 1` |
+
+  Two decisions were taken explicitly rather than by default. **Degrade, do not
+  error, on a non-cloneable reader** (PGEN; PLINK without mmap): erroring would
+  break anyone scripting one `--nThreads` across mixed inputs, and it is the
+  posture group tests already take. It is not LEDGER #30's silent no-op because
+  the reason is printed AND raised as an R warning, which is what
+  `test-step2-pgen.R` now asserts (that test was INVERTED -- it previously
+  required a hard error). **Keep `varianceRatioBinsHaveGap`**, but its message no
+  longer claims a threaded run is unreproducible: S3's fix to LEDGER #32 retired
+  that rationale, and it survives only because it fires before any marker is read
+  and names the offending flags.
+
+  **The audit found a real pre-existing bug, LEDGER #47.** Testing restart
+  end-to-end (rather than reasoning about it) showed a restart after a hard kill
+  yields 132,695 rows against a complete run's 128,869 -- **3,826 duplicated
+  markers** -- because the `.index` and the output stream have independent flush
+  points. Serial and in-process restarts produce BYTE-IDENTICAL files, which is
+  both the parity evidence and the proof it is not a threading defect.
+
+  Gate: 54/54 goldens byte-identical, standard tier FAIL 0 in both compare modes
+  (PASS 1860 -> 1739; -129 from the deleted shard unit tests, +8 from the new
+  ones), fast tier FAIL 0 | PASS 991.
 
 
 All verification complete. Delivering the judgment.

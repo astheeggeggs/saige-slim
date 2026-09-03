@@ -492,127 +492,66 @@ long-running `main*InCPP()` loop that writes output files from C++
   <bool>`s that remain in `Main.cpp` are the REGION path, which is not threaded.
   Add a per-marker output by adding a field to `MarkerResult`; add a per-marker
   buffer by adding one to `MarkerScratch`. Do not add a q-length vector.
-- One dataset per R process; no reentrancy. Parallelism is process-level
-  (step-2 `--nThreads`: `R/MarkerShard.R` partitions the canonical marker
-  order and `mclapply`s — see below) plus RcppParallel/TBB in step-1 GRM
-  kernels (source of LEDGER.md #7).
+- One dataset per R process; no reentrancy — which is why step-2 `--nThreads`
+  threads the marker loop IN PROCESS rather than forking (`R/MarkerScan.R`
+  dispatches; see below). RcppParallel/TBB also drives the step-1 GRM kernels
+  (source of LEDGER.md #7).
 
-### Step-2 marker parallelism: TWO mechanisms, temporarily (S6)
+### Step-2 marker parallelism: `--nThreads`, one mechanism (S7)
 
-There are currently two, and **exactly one will ship** — the retirement
-criterion and its required evidence are in the status block of
-`docs/design/step2-threading-verdict.md`, and S7 is not done until one is
-deleted. They are never combined: `runMarkerScan` errors if both exceed 1.
+**There is exactly one now.** `--nThreads` threads the C++ marker loop IN PLACE:
+one process, one copy of the null model, one output file, and a result
+byte-identical to a one-thread run. At `--nThreads=1` the loop is literally
+serial and touches no threading machinery at all, so the default configuration
+cannot be affected by any of it. `R/MarkerScan.R` validates and dispatches;
+`mainMarkerInCPP` runs `RcppParallel::parallelFor` with an EXPLICIT `numThreads`
+(which overrides `harness/env.sh`'s `RCPP_PARALLEL_NUM_THREADS=1` — without that
+every threaded test would silently run serial and prove nothing).
 
-| | `--nThreads` (C2) | `nThreadsMarker` (S6) |
-|---|---|---|
-| mechanism | `mclapply` forks N shards | `parallelFor` threads in-process |
-| CLI flag | yes | **no** (R arg; `SAIGE_MARKER_THREADS` is a test stopgap) |
-| default | 1 | 1 |
-| output | per-shard files concatenated | one writer, unchanged |
-| restart | refused | fine |
-| ER markers | full speed | full speed (Step B; was serialised) |
-| restart | refused | fine |
-| 4-thread maxRSS | **+80 to +98 MB** | **under 1 MB** |
+The forked `mclapply` path that `--nThreads` used to drive (C2) was **retired in
+S7** after both were measured: equal throughput at every ER-eligible fraction,
+80–98 MB less resident memory at 4 threads, and restart works where fork refused
+it. `splitMarkerShards`, `appendShardBytes` and `mergeShardOutputs` are gone. The
+full evidence is in `docs/design/step2-threading-verdict.md` and
+`harness/bench/NOTES.md`.
 
-**Both are measured, and after Step B IN-PROCESS DOMINATES**
-(`harness/bench_threads.sh <label> <reps> <threads> [inproc|fork]`; numbers in
-`harness/bench/NOTES.md`). It matches or beats fork at every ER-eligible fraction
-f while using 80-98 MB less, and it supports restart where fork refuses.
-
-The history matters, because it is the trap this fixture sets. The bundled data
-has only **4.1% of its 128,868 markers at MAC <= 4**, and there the two looked
-identical (p = 0.14 / 0.53 / 0.49). `harness/make_rare_fixture.py` varies exactly
-that fraction f (real genotype blocks, not simulated; uniformly interleaved and
-position-renumbered, both of which matter -- see its docstring), and it showed
-in-process decaying 1.25 -> 0.95 while fork stayed flat: at f = 1 in-process was
-SLOWER than serial. Step B removed the cause (see below) and the spread across f
-fell from 1.290 to 0.170. **Never benchmark this path on the bundled fixture
-alone** -- it cannot see the axis that matters.
-
-Two standing rules when touching these numbers: never quote the bundled
-fixture's null p-values as "the mechanisms are equivalent", and use `elapsed_s`,
-never `work_s`, to compare them -- `work_s` comes from per-chunk cumulative
-`proc.time()` lines, which under fork are emitted by four separate processes.
-Read the paired speedup RATIOS, not raw elapsed means and not the unpaired
-cross-mechanism p-values.
-
-**Why the ER branch is no longer main-thread-only.** `Rf_lchoose` never failed on
-arithmetic -- R's C-stack check measures against the MAIN thread's stack base, and
-`choose`/`lchoose` are the two functions here that recurse and carry it
-(`Rf_lgammafn`, `Rf_pnorm5`, `Rf_lbeta` are all fine off-thread). It is now
-computed from `Rf_lbeta` as `HyperGeo::lchoose_threadsafe`, bit-identical over
-2,009,004 pairs and pinned by `tests/testthat/test-unit-lchoose.R` -- which exists
-because the goldens CANNOT pin it: they execute the branch (a hard error there
-fails the tier) but a `+1e-9` perturbation leaves the whole tier green.
-`SL_setseed` remains guarded on the resampling arms only, in
-`Binary_ComputeExact.cpp`. **The throw is the safety property; the loop has no
-predicate any more.** When TSAN-testing this path use `SAIGE_TSAN_WORKLOADS=rare100`:
-on the bundled binary fixture only 4.1% of markers reach ER at all.
-
-**The in-process path's real limit, and it is not a corner.** The ER exact test
-is main-thread-only, so every binary marker with `MAC <= max_MAC_for_ER`
-(default 4) is deferred and re-run serially — on a rare-variant scan that is
-most markers. Quantitative traits never enter the branch and thread fully. Two
-R dependencies cause it: `SL_setseed` on the resampling arms (F4/S2), and —
-the binding one, missing from F4's inventory — **`Rf_lchoose`, called on EVERY
-ER marker** via `HyperGeo::lCombinations`. `Rf_lchoose` cannot be called off
-the main thread at all: measured in a 20-line program with no SAIGE in it, it
-aborts the session with "C stack usage … too close to the limit" for every
-argument pair tried, because R's stack check measures against the main thread's
-stack base. `Rf_lgammafn`, `Rf_pnorm5`, `Rf_qnorm5` and `Rf_pchisq` are all
-fine off-thread, which is why the SPA path threads and only ER does not.
-`SKATMainThread::refuse()` (`src/Binary_global.hpp`) guards both dependencies,
-so the marker loop's cheap predicate is an optimisation and the throw is the
-safety property. **The fork path has no such limit** — each child is its own
-process with its own R main thread — which is a real input to the retirement
-decision, not a detail.
-
-Byte-identity is gated by `tests/testthat/test-step2-threads-inprocess.R` at
-2 and 4 threads, and it asserts the run REPORTED its thread count, so a knob
-that fails to arrive cannot pass as a green threaded run (the LEDGER #30
-shape). Detection power is drill-verified in both directions: sharing one
-`MarkerScratch` across workers fails it (7 failures), and forcing 1 thread
-through TBB rather than the serial shortcut passes clean — which separates
+**Byte-identity is the right gate here**, despite the standing rule against
+comparing two code paths: this is ONE path re-run over a disjoint partition, no
+marker's arithmetic depends on another's, and the only cross-marker aggregates go
+to stdout. `tests/testthat/test-step2-threads-inprocess.R` and
+`test-step2-threads.R` hold it, and the former **asserts the run REPORTED its
+thread count** — without that, a knob that failed to arrive would pass as a green
+threaded run, which is the LEDGER #30 shape. Detection power is drill-verified in
+both directions: sharing one `MarkerScratch` across workers fails it, and forcing
+1 thread THROUGH TBB rather than down the serial shortcut passes, which separates
 "TBB is involved" from "markers ran concurrently".
 
-### Step-2 `--nThreads` (Phase 4 C2)
+**Two behaviours are deliberate degradations, not oversights.** Group tests warn
+and drop to one thread. A reader that cannot be CLONED — PGEN always, PLINK when
+the `.bed` could not be mmapped and the pread fallback is in use (S5) — also
+drops to one thread, with the reason both printed and raised as an R `warning()`.
+Degrading rather than erroring is the agreed S7 decision: erroring would break
+anyone scripting one `--nThreads` across mixed inputs. PGEN gains real
+parallelism only when `PgenReader::clone()` is implemented.
 
-`R/MarkerShard.R` owns it, not `extdata/step2_SPAtests.R` — the CLI cannot,
-because the order that must be reproduced is the CHROM/POS-sorted `genoIndex`
-built inside `SPAGMMATtest`, and because the fork has to happen **after**
-`ReadModel` and after the model reaches the C++ singletons (children then share
-one copy-on-write model instead of each re-loading it). `runMarkerScan`
-dispatches: `nThreads == 1` is the old `SAIGE.Marker` call verbatim; above
-that, `splitMarkerShards` cuts `min(nThreads, M)` contiguous near-equal blocks
-of the **input** index, each shard runs the same serial code, and
-`mergeShardOutputs` concatenates raw bytes. Single-variant only — group tests
-warn and drop to one thread; restart (`--is_overwrite_output=FALSE` with a
-partial index) is refused.
+**Three findings that must outlive the retired fork path**, all about THIS
+codebase rather than about fork:
+- **E0** — chunk boundaries cannot reach the output bytes. `markers_per_chunk`
+  only drives a stdout progress counter; golden P7 is byte-identical at 1000,
+  1500, 2000, 3000 and 10000.
+- **E1** — a forked child had to close `g_out.single` explicitly, because
+  `mcexit` calls `_exit()`, no static destructor runs, and the child silently
+  lost everything past the stream's 192 KiB buffer boundary *while still
+  returning success*. `closeOutfile_single()` is byte-neutral without the fork
+  and is kept, because that same buffer is the mechanism behind **LEDGER #47**:
+  the `.index` and the output stream flush independently, so restarting after a
+  hard kill DUPLICATES rows (measured: 3,826 duplicates, identical serially and
+  threaded — it is pre-existing and not a threading defect).
+- **`varianceRatioBinsHaveGap`** survives in `R/MarkerScan.R`, gated on
+  `nThreads > 1`, purely because its message is better than the C++ throw's. Its
+  original rationale — that gapped bins made a threaded run unreproducible — was
+  **retired by S3's fix to LEDGER #32**, and the message no longer claims it.
 
-Three things this rests on, each verified rather than assumed:
-- **Chunk boundaries cannot reach the output bytes** (experiment E0): golden P7
-  is byte-identical at `--markers_per_chunk` ∈ {1000, 1500, 2000, 3000, 10000}.
-  `markers_per_chunk` reaches C++ only as a stdout progress counter.
-- **A forked child MUST close `g_out.single` explicitly** (experiment E1):
-  `parallel:::mcexit` ends a child with `_exit()`, no static destructor runs,
-  and the child silently loses everything past the stream's 192 KiB buffer
-  boundary *while still returning success*. Hence `closeOutfile_single()` at
-  the end of `SAIGE.Marker` — byte-neutral serially, mandatory in a shard.
-- **The reader must be fork-safe.** For PLINK, the mmap path is (pointer
-  arithmetic into a `MAP_PRIVATE` mapping); the `fread` fallback is not
-  (children would share one file offset). PGEN (Phase 7) is unconditionally
-  not fork-safe in v1 — no pgenlib fork-safety work has been done, so
-  `PgenReader::isForkSafe()` always returns `false`. Either way,
-  `isGenoReaderForkSafeInCPP()` errors at `nThreads > 1` rather than silently
-  decoding each other's records; region/group tests already warn and drop to
-  one thread regardless of format.
-
-Byte-exactness IS the right claim here, despite the cross-path trap below:
-each shard is ONE code path re-run over a disjoint subset, no marker's
-arithmetic depends on another's, and the only cross-marker aggregates go to
-stdout. `make_goldens.sh` is deliberately NOT modified — the gate's whole
-claim is that a threaded run reproduces the existing *serial* goldens.
 
 ### The step1 → step2 contract (implicit, name-based)
 

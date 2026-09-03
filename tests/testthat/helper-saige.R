@@ -62,10 +62,18 @@ rel_err <- function(a, b) {
 # createSparseGRM.R) with cwd = extdata/ using the same R as this session
 # (which run_tests.sh launched under pixi with the determinism env pinned).
 # Returns the exit status; stdout/stderr go to `log`.
-run_saige_cli <- function(script, args, log = tempfile(fileext = ".log")) {
+# `env` sets variables for the CHILD only, as name = value pairs. Needed because
+# a few behaviours are only reachable through the environment -- notably
+# SAIGE_PLINK_NO_MMAP, which forces the .bed pread fallback (S5). Set via
+# system2()'s own `env`, so nothing leaks into this process or into other
+# parallel test workers.
+run_saige_cli <- function(script, args, log = tempfile(fileext = ".log"),
+                          env = character()) {
   rscript <- file.path(R.home("bin"), "Rscript")
   owd <- setwd(saige_extdata); on.exit(setwd(owd), add = TRUE)
-  status <- suppressWarnings(system2(rscript, c(script, args), stdout = log, stderr = log))
+  envv <- if (length(env)) paste0(names(env), "=", unname(env)) else character()
+  status <- suppressWarnings(system2(rscript, c(script, args), stdout = log,
+                                     stderr = log, env = envv))
   attr(status, "log") <- log
   status
 }

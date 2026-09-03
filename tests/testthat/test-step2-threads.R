@@ -1,88 +1,16 @@
-# --nThreads for the single-variant marker scan (Phase 4, C2; LEDGER #30/#31).
+# --nThreads for the single-variant marker scan.
 #
-# The claim under test is byte-exactness of a threaded run against the EXISTING
-# serial goldens. That is a legitimate byte claim, and not an instance of the
-# CLAUDE.md "never assert bit-identity between two different code paths" trap:
-# each shard runs the same serial code over a disjoint block of the same
-# canonical marker order, no marker's arithmetic depends on another's, and the
-# only cross-marker aggregates (chunk progress, numtest, mFirth) go to stdout
-# and never reach the file. One code path, re-run over a partition.
+# S7 retired the forked mechanism, so --nThreads now drives the IN-PROCESS
+# marker threads and this file tests that one path through the real CLI flag.
+# The partition/merge unit tests that used to live here went with
+# splitMarkerShards/appendShardBytes/mergeShardOutputs.
 #
-# make_goldens.sh is deliberately NOT modified: an nThreads > 1 golden would
-# defeat the whole gate.
+# Two assertions here were INVERTED by S7 and the reasons are in each block:
+# restarting is now supported (the fork path refused it), and a reader that
+# cannot be cloned degrades with a warning rather than erroring.
 #
-# Tier: standard for the CLI runs; the partition/merge unit tests below are
-# pure R and run in the fast tier.
-
-# ---- unit: splitMarkerShards ------------------------------------------------
-
-test_that("splitMarkerShards partitions contiguously with no empty block", {
-  for (M in c(1L, 2L, 7L, 70L, 128868L)) {
-    for (k in c(1L, 2L, 3L, 4L, 7L, 64L)) {
-      blocks <- SAIGE:::splitMarkerShards(M, k)
-      expect_equal(length(blocks), min(k, M))
-      # every index exactly once, in order
-      expect_identical(unlist(blocks), seq_len(M))
-      # contiguous, non-empty, near-equal
-      sizes <- vapply(blocks, length, integer(1))
-      expect_true(all(sizes >= 1L))
-      expect_lte(max(sizes) - min(sizes), 1L)
-    }
-  }
-})
-
-test_that("splitMarkerShards clamps to M rather than emitting empty blocks", {
-  # parallel::splitIndices(3, 64) would give 61 empty blocks; the old CLI's
-  # `total %/% nThreads` split gave nThreads + 1 files. Neither happens here.
-  expect_equal(length(SAIGE:::splitMarkerShards(3L, 64L)), 3L)
-  expect_equal(length(SAIGE:::splitMarkerShards(0L, 4L)), 0L)
-  expect_identical(SAIGE:::splitMarkerShards(10L, 4L),
-                   list(1:3, 4:6, 7:8, 9:10))
-})
-
-# ---- unit: mergeShardOutputs ------------------------------------------------
-
-shard_write <- function(dir, name, lines) {
-  p <- file.path(dir, name)
-  con <- file(p, open = "wb")
-  writeBin(charToRaw(paste0(paste(lines, collapse = "\n"), "\n")), con)
-  close(con)
-  p
-}
-
-test_that("mergeShardOutputs concatenates bodies under one header", {
-  d <- tempfile("shardmerge_"); dir.create(d)
-  s1 <- shard_write(d, "s1.txt", c("CHR\tPOS", "1\t10", "1\t11"))
-  s2 <- shard_write(d, "s2.txt", c("CHR\tPOS", "1\t12"))
-  s3 <- shard_write(d, "s3.txt", "CHR\tPOS")            # header-only: legal
-  out <- file.path(d, "merged.txt")
-  SAIGE:::mergeShardOutputs(c(s1, s2, s3), out)
-  expect_identical(readLines(out), c("CHR\tPOS", "1\t10", "1\t11", "1\t12"))
-  expect_false(file.exists(paste0(out, ".merging")))
-})
-
-test_that("mergeShardOutputs merges identically in one block or many", {
-  d <- tempfile("shardmerge2_"); dir.create(d)
-  body <- sprintf("1\t%d\trs%d", 1:500, 1:500)
-  s1 <- shard_write(d, "s1.txt", c("CHR\tPOS\tID", body[1:250]))
-  s2 <- shard_write(d, "s2.txt", c("CHR\tPOS\tID", body[251:500]))
-  big <- file.path(d, "big.txt"); small <- file.path(d, "small.txt")
-  SAIGE:::mergeShardOutputs(c(s1, s2), big)
-  SAIGE:::mergeShardOutputs(c(s1, s2), small, blockSize = 7L)  # forces re-reads
-  expect_true(files_byte_identical(big, small))
-})
-
-test_that("mergeShardOutputs refuses empty shards and header mismatches", {
-  d <- tempfile("shardmerge3_"); dir.create(d)
-  s1 <- shard_write(d, "s1.txt", c("CHR\tPOS", "1\t10"))
-  empty <- file.path(d, "empty.txt"); file.create(empty)
-  other <- shard_write(d, "other.txt", c("CHR\tPOS\tEXTRA", "1\t10\tx"))
-  out <- file.path(d, "merged.txt")
-  expect_error(SAIGE:::mergeShardOutputs(c(s1, empty), out), "empty")
-  expect_error(SAIGE:::mergeShardOutputs(c(s1, other), out), "different header")
-  # a failed merge leaves no plausible-looking partial result behind
-  expect_false(file.exists(out))
-})
+# P7/P11 and the repeat-identity check are in test-step2-threads-goldens.R;
+# scaffolding in helper-threads.R.
 
 # ---- end-to-end: P1 (ER path) and P4 (conditional, quantitative).
 # P7/P11 and the repeat-identity check are in
@@ -103,18 +31,20 @@ for (key in c("P1", "P4")) {
   })
 }
 
-test_that("the merged index file marks one completed run", {
+test_that("a threaded run writes the same index a serial run does", {
   skip_unless_level("standard")
   skip_if_no_goldens()
-  out <- th_run("P1", 4, tag = "_idx")
-  idx <- readLines(paste0(out, ".index"))
-  # Not byte-identical to a serial run's index (there are no chunks to restart
-  # from), and deliberately so: compare_goldens.sh excludes *.index.
-  expect_true(any(grepl("^This is a Marker level analysis", idx)))
-  expect_true(any(grepl("^Have completed the analyses of all chunks", idx)))
-  # no shard scratch left behind
-  expect_length(list.files(dirname(out), pattern = "^\\.SAIGE_marker_shards_"), 0)
-  expect_false(file.exists(paste0(out, ".merging")))
+  # S7: with the forked path gone there are no shards and no merge, so the
+  # index is the ordinary per-chunk one -- not the single "all chunks" record
+  # the fork path used to leave. Compared to the SERIAL index rather than to a
+  # fixed string, because the point is that threading changed nothing here.
+  out4 <- th_run("P7", 4, tag = "_idx4")
+  out1 <- th_run("P7", 1, tag = "_idx1")
+  expect_identical(readLines(paste0(out4, ".index")),
+                   readLines(paste0(out1, ".index")))
+  # and no scratch left behind from the retired mechanism
+  expect_length(list.files(dirname(out4), pattern = "^\\.SAIGE_marker_shards_"), 0)
+  expect_false(file.exists(paste0(out4, ".merging")))
 })
 
 test_that("group tests fall back to one thread with a warning", {
@@ -176,7 +106,8 @@ test_that("gapped variance-ratio bins are refused, serially and threaded", {
   # The two arms stop for different reasons and that is deliberate: the threaded
   # arm is refused up front in R by varianceRatioBinsHaveGap (a clearer message,
   # before a single marker is read), the serial arm at the first marker that
-  # lands in the gap.
+  # lands in the gap. Post-S7 the R guard's message no longer claims the run is
+  # unreproducible -- S3 fixed that -- only that the bins leave MAC uncovered.
   gapArgs <- c(
     TH_PLINK_G, "--chrom=1", "--minMAF=0", "--minMAC=1", "--LOCO=FALSE",
     paste0("--GMMATmodelFile=",
@@ -207,29 +138,72 @@ test_that("gapped variance-ratio bins are refused, serially and threaded", {
   expect_true(any(grepl("gap in MAC", readLines(log, warn = FALSE))))
 })
 
-test_that("restarting is refused at nThreads > 1", {
+test_that("restarting an interrupted run works, and matches a serial restart", {
   skip_unless_level("standard")
   skip_if_no_goldens()
-  # A serial run interrupted after chunk 1 leaves an index file whose last
-  # record is not "all chunks"; re-running it threaded must stop rather than
-  # silently produce a partial or duplicated result.
-  out <- file.path(tempfile("step2_th_restart_"), "marker.txt")
+  # INVERTED BY S7. The forked path refused restart outright -- its shards were
+  # a partition of the marker list, not of the chunk sequence, so a partially
+  # written serial output meant nothing to them. The in-process path is one
+  # process running the ordinary chunk loop, so restart is simply the serial
+  # behaviour, and that is what is asserted: threaded and serial restarts from
+  # the SAME interrupted state must agree byte for byte.
+  #
+  # Note this deliberately does NOT assert the restarted file equals a complete
+  # run: it does not, and that is LEDGER #47 (the .index and the output stream
+  # have independent flush points, so a restart can duplicate rows). That is a
+  # pre-existing property of restart, identical in both arms, and pinning the
+  # agreement is the parity claim; pinning the row count would pin the bug.
+  seed_state <- function(out) {
+    dir.create(dirname(out), recursive = TRUE, showWarnings = FALSE)
+    file.create(out)
+    writeLines(c(paste0("This is the output index file for SAIGE package to record the ",
+                        "end point in case users want to restart the analysis. Please ",
+                        "do not modify this file."),
+                 "This is a Marker level analysis.",
+                 "nEachChunk = 1000",
+                 "Have completed the analysis of chunk 2"),
+               paste0(out, ".index"))
+  }
+  run_restart <- function(nt, tag) {
+    out <- file.path(tempfile(paste0("step2_th_restart_", tag, "_")), "marker.txt")
+    seed_state(out)
+    status <- run_saige_cli("step2_SPAtests.R",
+                            c(th_workloads[["P7"]]$args(),
+                              paste0("--SAIGEOutputFile=", out),
+                              "--is_overwrite_output=FALSE",
+                              paste0("--nThreads=", nt)))
+    expect_cli_ok(status)
+    out
+  }
+  serial <- run_restart(1, "serial")
+  threaded <- run_restart(4, "threaded")
+  expect_identical(readLines(threaded), readLines(serial))
+})
+
+test_that("a reader that cannot be cloned falls back to one thread with a warning", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  # S7 decision: DEGRADE, do not error. Erroring would break anyone scripting
+  # one --nThreads across a mix of PLINK and PGEN inputs, and it is the same
+  # posture group tests already take. It is not the silent no-op of LEDGER #30
+  # because the reason is printed AND raised as an R warning -- which is why
+  # this asserts the message, not just that the run succeeded.
+  #
+  # SAIGE_PLINK_NO_MMAP forces the pread fallback, which refuses to clone (S5).
+  out <- file.path(tempfile("step2_th_noclone_"), "marker.txt")
   dir.create(dirname(out), recursive = TRUE)
-  file.create(out)
-  writeLines(c(paste0("This is the output index file for SAIGE package to record the end ",
-                      "point in case users want to restart the analysis. Please do not ",
-                      "modify this file."),
-               "This is a Marker level analysis.",
-               "nEachChunk = 1000",
-               "Have completed the analysis of chunk 2"),
-             paste0(out, ".index"))
   log <- tempfile(fileext = ".log")
   status <- run_saige_cli("step2_SPAtests.R",
-                          c(th_workloads[["P7"]]$args(),
+                          c(th_workloads[["P1"]]$args(),
                             paste0("--SAIGEOutputFile=", out),
-                            "--is_overwrite_output=FALSE",
-                            "--nThreads=4"), log = log)
-  expect_false(identical(as.integer(status), 0L))
-  expect_true(any(grepl("Restarting an interrupted analysis is not supported",
-                        readLines(log, warn = FALSE))))
+                            "--nThreads=4"),
+                          log = log,
+                          env = c(SAIGE_PLINK_NO_MMAP = "1"))
+  expect_cli_ok(status)
+  txt <- readLines(log, warn = FALSE)
+  expect_true(any(grepl("cannot be cloned", txt)))
+  expect_true(any(grepl("run on ONE thread|run on one thread", txt)))
+  # and the fallback still produces the right answer
+  expect_output_matches_golden(
+    file.path(saige_goldens, "step2", th_workloads[["P1"]]$golden), out)
 })

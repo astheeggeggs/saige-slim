@@ -545,10 +545,12 @@ option_list <- list(
     type = "integer",
     default = 1L,
     help = paste0(
-      "Optional. Number of forked worker processes for single-variant tests. ",
-      "The markers are split into that many contiguous blocks and the results ",
-      "concatenated, reproducing the one-thread output exactly. Ignored for ",
-      "group tests, and incompatible with restarting an interrupted run. ",
+      "Optional. Number of threads for single-variant tests. The marker loop ",
+      "is threaded in place -- one process, one copy of the null model, one ",
+      "output file -- and the result is byte-identical to a one-thread run. ",
+      "Restarting an interrupted run works as it does serially. Ignored for ",
+      "group tests, and falls back to one thread with a warning if the ",
+      "genotype reader cannot be cloned (PGEN, or PLINK without mmap). ",
       "[default=1]"
     )
   ),

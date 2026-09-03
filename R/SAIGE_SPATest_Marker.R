@@ -15,12 +15,11 @@ SAIGE.Marker <- function(traitType,
                          isCondition,
                          isOverWriteOutput,
                          isAnyInclude,
-                         # S6: in-process threads for the marker scan. Default 1
-                         # -- the C++ side then runs a literally serial loop that
-                         # touches no threading machinery at all. This is NOT the
-                         # CLI's --nThreads, which forks (see R/MarkerShard.R and
-                         # the retirement criterion in
-                         # docs/design/step2-threading-verdict.md).
+                         # In-process threads for the marker scan; this is what
+                         # the CLI's --nThreads becomes (S7 retired the forked
+                         # path). At 1 the C++ side runs a literally serial loop
+                         # that touches no threading machinery at all, so the
+                         # default configuration cannot be affected by any of it.
                          nThreadsMarker = 1) {
   if (is.null(OutputFileIndex)) {
     OutputFileIndex <- paste0(OutputFile, ".index")
@@ -157,10 +156,13 @@ SAIGE.Marker <- function(traitType,
     }
   } # while(is_marker_test){
 
-  # Flush and close g_out.single explicitly. Serially this is byte-neutral (it
-  # only moves the flush that static destruction would have done at exit); in a
-  # forked shard it is mandatory, because parallel:::mcexit ends the child with
-  # _exit() and no static destructor ever runs. See R/MarkerShard.R.
+  # Flush and close g_out.single explicitly. This is byte-neutral -- it only
+  # moves the flush that static destruction would have done at exit -- and is
+  # kept now that the forked path is gone, because it makes the stream's
+  # lifetime explicit. It was MANDATORY under fork (experiment E1: mcexit ends a
+  # child with _exit(), no static destructor runs, and the child silently lost
+  # everything past the 192 KiB buffer boundary while still returning success).
+  # That same buffer is the mechanism behind LEDGER #47. See R/MarkerScan.R.
   closeOutfile_single()
 
   # information to users

@@ -403,6 +403,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// isGenoReaderCloneableInCPP
+bool isGenoReaderCloneableInCPP();
+RcppExport SEXP _SAIGE_isGenoReaderCloneableInCPP() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(isGenoReaderCloneableInCPP());
+    return rcpp_result_gen;
+END_RCPP
+}
 // testReadMarkersInCPP
 Rcpp::List testReadMarkersInCPP(std::vector<int> t_gIndexVec);
 RcppExport SEXP _SAIGE_testReadMarkersInCPP(SEXP t_gIndexVecSEXP) {
@@ -1973,6 +1983,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_closeOutfile_single", (DL_FUNC) &_SAIGE_closeOutfile_single, 0},
     {"_SAIGE_setSingleOutputPrefixInCPP", (DL_FUNC) &_SAIGE_setSingleOutputPrefixInCPP, 1},
     {"_SAIGE_isGenoReaderForkSafeInCPP", (DL_FUNC) &_SAIGE_isGenoReaderForkSafeInCPP, 0},
+    {"_SAIGE_isGenoReaderCloneableInCPP", (DL_FUNC) &_SAIGE_isGenoReaderCloneableInCPP, 0},
     {"_SAIGE_testReadMarkersInCPP", (DL_FUNC) &_SAIGE_testReadMarkersInCPP, 1},
     {"_SAIGE_testGenoReaderCloneInCPP", (DL_FUNC) &_SAIGE_testGenoReaderCloneInCPP, 1},
     {"_SAIGE_set_flagSparseGRM_cur_SAIGE", (DL_FUNC) &_SAIGE_set_flagSparseGRM_cur_SAIGE, 1},

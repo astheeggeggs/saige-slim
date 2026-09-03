@@ -448,10 +448,20 @@ test_that("golden P26: pgen group test, BURDEN conditional (r.corr=1, rs30,rs79)
     cols = c(BURDEN_COLS, "Pvalue_Burden_c", "Beta_Burden_c", "seBeta_Burden_c"))
 })
 
-test_that("--nThreads > 1 refuses cleanly on a pgen input", {
-  # v1 decision (Phase 7 plan): PgenReader::isForkSafe() is always false, same
-  # conservative default as PLINK's fread fallback. One assertion against the
-  # EXISTING guard (isGenoReaderForkSafeInCPP), not a new mechanism.
+test_that("--nThreads > 1 on a pgen input degrades to one thread, loudly", {
+  # INVERTED BY S7, deliberately. This used to assert a hard ERROR, because
+  # --nThreads forked and PgenReader::isForkSafe() is always false. S7 routed
+  # --nThreads to the in-process path, where the question is whether the reader
+  # can CLONE -- PgenReader::clone() still throws (v1 decision unchanged) -- and
+  # the agreed behaviour became: degrade to one thread rather than fail.
+  #
+  # The reasoning, so this is not re-inverted on taste: erroring would break
+  # anyone scripting a single --nThreads across a mix of PLINK and PGEN inputs,
+  # and degrading is the posture group tests already take. It is NOT the silent
+  # no-op of LEDGER #30 -- the reason is both printed and raised as an R
+  # warning -- which is why the message is asserted here and not merely the
+  # exit status. PGEN gains real parallelism only when PgenReader::clone() is
+  # implemented; until then this is the honest answer.
   skip_unless_level("standard")
   skip_if_no_goldens()
   log <- tempfile(fileext = ".log")
@@ -459,10 +469,17 @@ test_that("--nThreads > 1 refuses cleanly on a pgen input", {
   dir.create(dirname(out), recursive = TRUE)
   status <- run_saige_cli("step2_SPAtests.R",
                           c(PGEN_G, "--chrom=1", "--minMAF=0", "--minMAC=1",
-                            "--LOCO=FALSE", BIN_MODEL(), "--nThreads=4",
+                            "--LOCO=FALSE", BIN_MODEL(),
+                            "--is_output_moreDetails=TRUE", "--nThreads=4",
                             paste0("--SAIGEOutputFile=", out)),
                           log = log)
-  expect_false(identical(as.integer(status), 0L))
-  expect_true(any(grepl("fork-safe genotype reader",
-                        readLines(log, warn = FALSE))))
+  expect_cli_ok(status)
+  txt <- readLines(log, warn = FALSE)
+  expect_true(any(grepl("cannot be cloned", txt)))
+  expect_true(any(grepl("ONE thread", txt)))
+  # It really did fall back -- no threaded-scan line was printed ...
+  expect_false(any(grepl("in-process threads", txt)))
+  # ... and the degraded run still produced the right answer.
+  expect_output_matches_golden(
+    file.path(saige_goldens, "step2", "pgen_marker_binary.txt"), out)
 })

@@ -105,6 +105,10 @@ isGenoReaderForkSafeInCPP <- function() {
     .Call('_SAIGE_isGenoReaderForkSafeInCPP', PACKAGE = 'SAIGE')
 }
 
+isGenoReaderCloneableInCPP <- function() {
+    .Call('_SAIGE_isGenoReaderCloneableInCPP', PACKAGE = 'SAIGE')
+}
+
 testReadMarkersInCPP <- function(t_gIndexVec) {
     .Call('_SAIGE_testReadMarkersInCPP', PACKAGE = 'SAIGE', t_gIndexVec)
 }

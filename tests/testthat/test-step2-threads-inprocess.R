@@ -35,34 +35,30 @@ th_model <- function(prefix) c(
          file.path(saige_goldens, "step1", paste0(prefix, ".varianceRatio.txt")))
 )
 
-# nThreadsMarker has no CLI flag by design (S6 changes no CLI contract), so the
-# knob is reached through SAIGE_MARKER_THREADS, which SPAGMMATtest reads as the
-# argument's default. That env var is a stopgap; when S7 routes --nThreads to
-# the in-process path this should switch to the flag.
+# S7: the knob is --nThreads, the real CLI flag. This used to go through
+# SAIGE_MARKER_THREADS because S6 deliberately changed no CLI contract while two
+# mechanisms coexisted; that env var is gone with the forked path. `env` is now
+# only for variables that have no flag at all, such as SAIGE_PLINK_NO_MMAP, and
+# it is passed to the CHILD rather than set in this process -- these test files
+# run in parallel workers, so mutating the parent's environment would leak.
 th_run <- function(golden_base, extra_args, threads, env = character(),
                    expect_threaded = TRUE) {
   skip_unless_level("standard")
   skip_if_no_goldens()
   out <- file.path(tempfile("step2_th_"), golden_base)
   dir.create(dirname(out), recursive = TRUE)
-  old <- Sys.getenv("SAIGE_MARKER_THREADS", unset = NA)
-  Sys.setenv(SAIGE_MARKER_THREADS = as.character(threads))
-  on.exit(if (is.na(old)) Sys.unsetenv("SAIGE_MARKER_THREADS")
-          else Sys.setenv(SAIGE_MARKER_THREADS = old), add = TRUE)
-  if (length(env)) {
-    for (nm in names(env)) do.call(Sys.setenv, as.list(stats::setNames(env[nm], nm)))
-    on.exit(Sys.unsetenv(names(env)), add = TRUE)
-  }
   status <- run_saige_cli(
     "step2_SPAtests.R",
-    c(TH_PLINK, TH_COMMON, extra_args, paste0("--SAIGEOutputFile=", out))
+    c(TH_PLINK, TH_COMMON, extra_args, paste0("--SAIGEOutputFile=", out),
+      paste0("--nThreads=", threads)),
+    env = env
   )
   expect_cli_ok(status)
   expect_output_matches_golden(
     file.path(saige_goldens, "step2", golden_base), out
   )
   # PROVE THE RUN WAS ACTUALLY THREADED. Without this the whole file is a
-  # potential silent no-op: if SAIGE_MARKER_THREADS failed to reach the child,
+  # potential silent no-op: if --nThreads failed to reach the marker loop,
   # every comparison above would pass by running serially and gate nothing --
   # which is exactly what --nThreads did before LEDGER #30 caught it. The
   # expected thread count is asserted, not just "some threading happened", so a
@@ -119,10 +115,10 @@ test_that("a reader that cannot clone degrades to one thread instead of failing"
                label = "the degraded run did not also claim to be threaded")
 })
 
-test_that("the two parallelism mechanisms are refused together", {
-  # Forking N shards that each spawn M threads is N*M workers with none of the
-  # byte-identity reasoning done for it. One of the two is retiring anyway --
-  # see the criterion in docs/design/step2-threading-verdict.md.
+test_that("runMarkerScan validates nThreads rather than trusting it", {
+  # The old test here asserted that the two parallelism mechanisms could not be
+  # combined. S7 deleted the forked one, so there is nothing left to combine and
+  # that assertion has been replaced rather than kept passing vacuously.
   expect_error(
     SAIGE:::runMarkerScan(
       traitType = "binary", genoType = "plink", idstoIncludeFile = "",
@@ -131,8 +127,8 @@ test_that("the two parallelism mechanisms are refused together", {
       isMoreOutput = FALSE, isImputation = FALSE, isFirth = FALSE,
       LOCO = FALSE, chrom = "1", isCondition = FALSE,
       isOverWriteOutput = TRUE, isAnyInclude = FALSE,
-      nThreads = 2, nThreadsMarker = 2
+      nThreads = 0
     ),
-    "cannot both exceed 1"
+    "positive integer"
   )
 })

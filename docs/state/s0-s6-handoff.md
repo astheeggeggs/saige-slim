@@ -236,21 +236,42 @@ test on a worker**, with the plant control still firing there (157/200 races,
 output DIFFERS, 1-thread clean). Use `SAIGE_TSAN_WORKLOADS=rare100`: the bundled
 binary fixture sends only 4.1% of markers to ER.
 
+## S7 IS DONE: the two-mechanism obligation is discharged
+
+`--nThreads` drives the in-process marker threads. The forked path is deleted --
+`splitMarkerShards`, `appendShardBytes`, `mergeShardOutputs`,
+`runMarkerScan`'s fork branch -- `R/MarkerShard.R` is now `R/MarkerScan.R`, and
+both the `SAIGE_MARKER_THREADS` stopgap and `SPAGMMATtest`'s `nThreadsMarker`
+argument are gone. Item 2 was audited item by item (table in the verdict doc's
+status block), with two decisions taken explicitly: **degrade rather than error**
+on a reader that cannot clone, and **keep `varianceRatioBinsHaveGap`** with its
+message corrected, since S3's #32 fix retired its original rationale.
+
+The audit earned its keep: testing restart end-to-end instead of reasoning about
+it surfaced **LEDGER #47**, a pre-existing bug in which a restart after a hard
+kill duplicates rows (3,826 of them here) because the `.index` and the output
+stream flush independently. Serial and in-process restarts are byte-identical,
+which is simultaneously the parity evidence and the proof it is not a threading
+defect.
+
+One idea was dropped rather than implemented, and the reason matters: reporting
+the ER-deferred marker count. Its whole rationale was that a rare-variant user
+suffered a silent slowdown -- **Step B removed the slowdown**, so the reporting
+would have been code in search of a purpose.
+
 ## Where to start
 
-**The retirement, and it is now engineering rather than measurement.** Item 3 is
-settled in favour of in-process: equal-or-better throughput at every f, 80-98 MB
-lighter, and it supports restart where fork refuses.
-
-What remains is **criterion item 2 alone** -- feature parity item by item (group
-tests, restart, non-fork-safe readers) plus the recorded decision on
-`varianceRatioBinsHaveGap` -- then route `--nThreads` to `nThreadsMarker`, retire
-`SAIGE_MARKER_THREADS`, and delete `splitMarkerShards`, `appendShardBytes`,
-`mergeShardOutputs` and `runMarkerScan`'s fork branch. **Keep E0 and E1** (both
-recorded in `CLAUDE.md`); they are findings about this codebase, not about fork.
-
-Worth doing with it: have the marker loop report how many markers took ER, the
-way it reports its thread count. Nothing else makes that visible.
+Phase 4's step-2 thread of work is finished. The open queue, in the order I would
+take it:
+- **LEDGER #44** -- emit `NA` where the predicate already forces `p = 1`. It
+  retires the `rs20`/`rs22` exclusion from the numeric comparison of P27/P30,
+  which is currently masking an INTERMITTENT CI failure, so this is live
+  fragility rather than tidiness.
+- **`PgenReader::clone()`** -- PGEN gets no parallelism at all today, from any
+  mechanism. This is now the only route to it.
+- Step-1 blocked `GetTrace` (2.37x on the null fit, on branch `gettrace-blocked`),
+  and the remaining ledger entries (#6, #14, #17-#26, #35-#39, #42, #45, #46,
+  #47).
 - **Criterion item 2 is still entirely open**: feature parity with fork item by
   item -- group tests, restart, non-fork-safe readers -- plus the recorded
   decision on `varianceRatioBinsHaveGap`.
