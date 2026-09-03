@@ -494,3 +494,78 @@ had the same defect. Both now pass `--nThreads`, and both keep their
 DID-NOT-THREAD check, which is what makes the failure visible rather than silent.
 The `fork` mechanism dimension of `bench_threads.sh` refuses with a pointer to
 S7 rather than pretending.
+
+---
+
+## Group tests at N = 50,000: the first region-path measurement (2026-09-03)
+
+Every number above is N = 1,000 and single-variant. This is the group path at
+`sim50k` (N = 50,000, 210 genes, 5 annotations x 3 max_MAF, y_binary,
+single-threaded under `harness/env.sh`), and it settles what `--is_fastTest`
+does for a group run. Written up as **LEDGER #51**.
+
+**Environment caveat, stated first.** Load average was 5-6.5 on 8 cores
+throughout (Chrome + WindowServer, fluctuating), which is exactly the scale
+CLAUDE.md warns has moved measurements by more than the effect being measured.
+Mitigations: **user CPU seconds, not wall clock**; two reps per arm; arms
+interleaved with the order swapped between blocks (A,B,C then C,B,A) so drift is
+shared rather than assigned. Replicate spread came out 4-6%, which is the
+resolution -- do not read differences smaller than that.
+
+| arm | config | escalated | region passes | user_s (mean of 2) |
+|---|---|---|---|---|
+| A | `--is_fastTest=TRUE`, cutoff 0.05 (default) | 22 | 232 | 187.4 |
+| B | `--is_fastTest=TRUE`, cutoff 1 | 156 | 366 | 286.8 |
+| C | `--is_fastTest=FALSE` | 0 | 210 | 161.1 |
+| D | no sparse GRM (`scoreTestFast` throughout), 1 rep | n/a | 210 | 147.7 |
+
+**A, B and C are byte-identical** -- region file and all 9,050 `singleAssoc`
+rows. That is the finding: arm A does 22 extra full region passes and arm B does
+156, and neither changes a digit, because the region path picks its variance
+ratio per marker from MAC and never reads the fastTest flag (LEDGER #51).
+
+**The reconciliation, which is why this is arithmetic and not a story.** On an
+equal-cost-per-pass model, per-pass cost derived independently from each arm is
+0.767 (C), 0.808 (A) and 0.784 (B) seconds; predicted-vs-measured ratios are
+A/C 1.105 vs 1.163, B/C 1.743 vs 1.781, B/A 1.578 vs 1.530. All within the
+replicate spread. Three arms, one parameter, no leftovers.
+
+**Two numbers to quote:**
+- `--is_fastTest=TRUE` costs **+16.3%** on a group run and returns identical
+  output.
+- Swapping the PCG score test for `scoreTestFast` across a whole pass (arm D)
+  saves only **8.3%**. That is the CEILING on any repair to fastTest here, and
+  it is the more important number: **~90% of gene-test time is not the
+  per-marker score test.**
+
+**So the next group-path profile should not go looking at the score test.** The
+unaccounted ~90% is some mix of the ultra-rare collapse, the P1Mat/P2Mat gene
+covariance assembly, and the R-side SKAT-O post-processing
+(`R/SAIGE_SPATest_Region_Func.R`). Which of those it is decides whether
+threading the C++ region loop is worth anything at all -- if the time is in R,
+it is not.
+
+**Per-gene cost, for extrapolation:** ~0.77 s CPU per region pass at N = 50,000
+with this annotation/max_MAF grid. A 20,000-gene exome is then ~4.3 CPU-hours
+per phenotype. `[EXTRAPOLATION: linear in gene count from 210 genes, and it
+assumes this fixture's gene-size distribution. Not measured at exome scale.]`
+
+**Escalation rates** (free, from the pipeline's existing logs -- `grep -c
+"Non-fast test is performed"`), the same 210 genes:
+
+| trait | escalated | rate |
+|---|---|---|
+| `y_null` | 6/210 | 2.9% |
+| `y_quant` | 10/210 | 4.8% |
+| `y_binary` | 22/210 | 10.5% |
+| `y_binary_pc` | 27/210 | 12.9% |
+| `y_quant_pc` | 31/210 | 14.8% |
+
+`y_null` is a clean negative control: escalation fires on Cauchy p < 0.05, so
+under the null it should fire at ~5% (10.5 of 210 expected, 6 observed, -1.4 sd
+on Binomial(210, 0.05)) -- conservative, and nowhere near fabricating
+escalations. The signal arms span 4.8-14.8%, so the rate IS signal-dependent
+across ~5x, which is worth knowing before quoting a per-gene cost from any one
+fixture. But the aggregate effect is small: at ~10% escalation a whole run moves
+~10%, NOT the ~2x that an earlier draft of `docs/state/next.md` claimed. The 2x
+is per escalated gene only.

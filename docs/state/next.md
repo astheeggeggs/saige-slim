@@ -19,15 +19,27 @@ That ranking is not expected to hold at biobank N, so choosing among the items
 below before measuring is guessing. The sim fixtures are the instrument
 (`harness/sim/`; the N=50k `bench50k` build lives outside the repo).
 
-**A group-test profile MUST report the ESCALATION RATE, not just per-gene time.**
-[Grounded, S12a] Under `--is_fastTest` a region whose Cauchy p falls below
-`pval_cutoff_for_fastTest` runs `mainRegionInCPP` a SECOND time; the escalated
-pass is numerically inert on the bundled fixture (P2 and P6 are byte-identical)
-but costs a full extra pass. So per-gene cost is bimodal in a way that depends on
-how much signal the fixture carries, and a fixture whose causal genes are
-underpowered will understate it -- by up to ~2x on exactly the genes that decide
-whether region threading is worth its risk. Quote per-gene cost split by
-escalated/not, and the rate alongside.
+**MEASURED 2026-09-03, so this section is now evidence rather than a worry.**
+See `harness/bench/NOTES.md` (the group-test section) and LEDGER #51. At
+N = 50,000 over 210 genes: `--is_fastTest=TRUE` costs **+16.3%** and returns
+BYTE-IDENTICAL output, because the region path never reads the flag. Escalation
+rates run 2.9% (`y_null`, against a 5% nominal -- a clean negative control) to
+14.8% on signal arms.
+
+**An earlier draft of this file said an underpowered fixture would understate
+group cost "by up to ~2x". That was wrong as stated** and is corrected here: the
+2x applies per ESCALATED gene, but at a ~10% escalation rate the aggregate bias
+is ~10%. Still worth reporting the rate alongside any per-gene cost -- it is
+signal-dependent across ~5x -- but it is not the large effect claimed.
+
+**The measurement moved the target.** Swapping the PCG score test for
+`scoreTestFast` across a whole pass saves only **8.3%**, so **~90% of gene-test
+time is NOT the per-marker score test.** A profile that goes looking there will
+find nothing. The unaccounted 90% is some mix of the ultra-rare collapse, the
+P1Mat/P2Mat gene covariance assembly, and the R-side SKAT-O post-processing
+(`R/SAIGE_SPATest_Region_Func.R`) -- and WHICH of those it is decides whether
+threading the C++ region loop is worth anything, because if the time is in R
+then it is not. That is the next measurement.
 
 ## Items
 
@@ -54,6 +66,13 @@ order. This is the same tension as the step-1 GetTrace GEMM decision, which was
 resolved the same way. Nothing else about batching is designed, and the natural
 unit for it -- a per-trait `TestContext` -- only became possible on the region
 path with S12.
+
+**`--is_fastTest` should warn on group runs.** [Measured; LEDGER #51] It is
+inert for `--groupFile` and costs +16.3%. Making it work is bounded at 8% AND
+would break byte-identity with every group golden and with upstream (a cheap
+screen uses a different variance ratio and a different test, so genes near the
+cutoff could fail to escalate). The defensible change is a warning, not an
+implementation.
 
 **`pval_cutoff_for_fastTest` is not reachable from the CLI.**
 [Grounded, S12a] It is a `SPAGMMATtest()` parameter with no `--` option here or
