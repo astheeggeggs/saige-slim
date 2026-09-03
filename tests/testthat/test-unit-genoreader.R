@@ -9,10 +9,18 @@
 # testReadMarkersInCPP / testGenoReaderCloneInCPP decode markers through a
 # named handle and hand the genotype vectors back for comparison here.
 #
-# These tests replace the process-global reader (setPLINKobjInCPP) and the
-# clone test CLOSES it, so nothing after them may assume a live reader. That is
-# safe as written: no other test in the suite touches g_reader in-process --
-# every other reader use goes through a CLI child process.
+# These tests replace the process-global reader (setPLINKobjInCPP /
+# setPGENobjInCPP) and each clone test CLOSES it, so nothing after them may
+# assume a live reader -- every test below sets its own up first. That is safe
+# as written: no other test in the suite touches g_reader in-process -- every
+# other reader use goes through a CLI child process.
+#
+# S8 added the PGEN half at the bottom. It is the same contract asked of a
+# reader that reaches it a different way: PLINK clones share one decoder because
+# its reads are const pointer arithmetic into an mmap, while PGEN clones each
+# get their own pgenlib reader over shared metadata, because a pgenlib read
+# mutates the decoder. The tests do not care which -- they ask only that a clone
+# decode identically and outlive the primary's close.
 
 bed_prefix <- file.path(saige_extdata, "input", "genotype_100markers")
 
@@ -123,4 +131,76 @@ test_that("clone is refused on the path that has not been measured", {
   setup_reader()
   expect_error(testGenoReaderCloneInCPP(0L), "mmap")
   no_mmap(FALSE)
+})
+
+
+# ---- PGEN (S8) -------------------------------------------------------------
+
+pgen_prefix <- file.path(saige_extdata, "input", "genotype_100markers")
+
+psam_ids <- function() {
+  psam <- utils::read.table(paste0(pgen_prefix, ".psam"), comment.char = "#",
+                            stringsAsFactors = FALSE)
+  as.character(psam[[1]])
+}
+
+setup_pgen_reader <- function() {
+  setPGENobjInCPP(paste0(pgen_prefix, ".pgen"),
+                  paste0(pgen_prefix, ".pvar"),
+                  paste0(pgen_prefix, ".psam"),
+                  psam_ids())
+}
+
+test_that("a pgen clone decodes identically to its primary and outlives its close", {
+  # The claim S8 rests on, stated as a test rather than as a reading of
+  # pgenlib's documentation: a second plink2::PgenReader built against the SAME
+  # PgenFileInfo decodes the same bytes, and closing the first one does not take
+  # the shared file info with it.
+  #
+  # It is also the gate on the filename PgrInit is given. Only the FIRST reader
+  # onto a file skips it (it inherits the header's open handle); a clone fopen()s
+  # it, so the pvar path that stood there since Phase 7 would have had the second
+  # reader decoding a text file. Nothing could see that while clone() threw.
+  setup_pgen_reader()
+  r <- testGenoReaderCloneInCPP(MID_STREAM_ROW0)
+
+  expect_decode_identical(r$primary, r$clone, "pgen clone vs primary")
+  expect_decode_identical(r$primary, r$cloneAfterPrimaryClose,
+                          "pgen clone after primary close")
+  expect_error(testReadMarkersInCPP(0L), "after close")
+})
+
+test_that("the pgen reader honours the LEDGER #16 random-access contract", {
+  # A pgenlib reader carries a stream position (fp_vidx) and an LD cache, so
+  # this is not a formality: row 0 requested mid-stream must be row 0, and the
+  # same row asked for twice must agree.
+  setup_pgen_reader()
+  seq_read <- testReadMarkersInCPP(MID_STREAM_ROW0)
+  lone <- testReadMarkersInCPP(0L)
+  expect_identical(seq_read$id[[2]], lone$id[[1]])
+  expect_identical(seq_read$g[[2]], lone$g[[1]])
+  expect_identical(seq_read$g[[2]], seq_read$g[[4]])
+})
+
+test_that("a pgen clone reads the same rows as the PLINK reader on the same fixture", {
+  # Cross-reader positive control, so the two tests above cannot both pass on a
+  # clone that decodes consistently WRONG. genotype_100markers.pgen was made
+  # from the alt-first .bed with `plink2 --make-pgen`, so the decoded dosages
+  # must match exactly -- these are integer genotypes, not a float pipeline.
+  no_mmap(FALSE)
+  setup_reader()
+  from_bed <- testReadMarkersInCPP(MID_STREAM_ROW0)
+  setup_pgen_reader()
+  from_pgen <- testGenoReaderCloneInCPP(MID_STREAM_ROW0)$clone
+  expect_identical(from_bed$id, from_pgen$id)
+  expect_identical(from_bed$g, from_pgen$g)
+})
+
+test_that("the pgen reader reports it cannot be forked, but can be cloned", {
+  # These two answers are independent and S8 moved only the second: a pgenlib
+  # reader owns a FILE* it fseeks, so a fork would share one offset, while a
+  # clone is a whole second reader.
+  setup_pgen_reader()
+  expect_false(isGenoReaderForkSafeInCPP())
+  expect_true(isGenoReaderCloneableInCPP())
 })

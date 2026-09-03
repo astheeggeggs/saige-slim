@@ -414,6 +414,88 @@ its commits have since landed and one of its stated gates was wrong.
   (PASS 1860 -> 1739; -129 from the deleted shard unit tests, +8 from the new
   ones), fast tier FAIL 0 | PASS 991.
 
+- **S8 DONE: PGEN THREADS, and the reader interface now has two legitimate
+  shapes.** `PgenReader::clone()` was the last thing between a pgen input and
+  `--nThreads`; it threw, so a pgen scan degraded to one thread no matter what
+  the user asked for. It does not throw any more.
+
+  **The shape is NOT PlinkReader's, and that is forced rather than stylistic.**
+  A pgenlib read MUTATES its reader -- `fp_vidx`, the fread buffer, the LD cache,
+  the workspaces -- so clones cannot share one decoder the way PLINK's share one
+  mmap. `PGEN::PgenClass` is split: `PgenShared` holds what is read-only after
+  construction (pvar/psam metadata, the sample subset, the `plink2::PgenFileInfo`
+  and its allocations) and is shared by `std::shared_ptr`; `PgenClass` is one
+  decode handle, and `clone()` builds a second against the same shared state.
+  This is pgenlib's own documented mode-2 arrangement (`PgrInit` with a non-null
+  `fname`: the struct is copied into the reader, the first reader inherits the
+  header's open handle, each later one opens its own), and the arrays that copy
+  shares -- `var_fpos`, `vrtypes`, `allele_idx_offsets`, `nonref_flags` -- are
+  written only by `PgfiInitPhase2`.
+
+  **A latent bug fell out, LEDGER #48.** `PgrInit`'s `fname` was the **pvar**
+  path, not the pgen. Only a SECOND reader ever opens that name (the first moves
+  the header's handle across), so it could not be reached while `clone()` threw.
+  Drilled in a scratch build rather than reasoned about: with the pvar argument
+  restored, the clone's first read fails with `PgrGet1D() error 6`
+  (kPglRetMalformedInput) -- loud on this fixture, but that is the pvar's
+  contents, not a guarantee.
+
+  **The safety gate is stronger than any previous one here, because pgenlib is
+  instrumented for the first time.** `libplink2_includes.a` is compiled without
+  `-fsanitize=thread` by `harness/build.sh`, so every earlier TSAN run was blind
+  inside the decoder -- the same blind spot uninstrumented `libtbb` has.
+  `harness/tsan.sh` now builds an instrumented copy and links it BY ABSOLUTE
+  PATH: R puts `-L<pixi env>/lib` on the link line before `PKG_LIBS`, so going
+  through `-lplink2_includes` silently picks up the uninstrumented archive no
+  matter where an extra `-L` is prepended (verified with `otool -L`). With that
+  in place: **`pgen` and `pgen_quant` over the full 128,868 markers, 4 and 8
+  threads, races=0 and byte-identical to serial**. The new `plantreader` control
+  -- `clone()` handing back the SAME `PgenClass` -- fires exactly where the
+  design says, worker-vs-worker inside `plink2::InitReadPtrs` reached through
+  `PgenClass::Read`. As a matched pair at 2,000 markers:
+
+  | arm | t=1 | t=4 | t=8 |
+  |---|---|---|---|
+  | clean | 0 races | 0 races, identical | 0 races, identical |
+  | plantreader | 0 races | **192 races, DIFFERS** | **54 races, DIFFERS** |
+
+  So the zero is a real zero over the decoder, and the split is load-bearing
+  rather than decorative. **The plant is capped at 2,000 markers on purpose**: a
+  shared decoder is not merely wrong, it is pathologically slow (the threads
+  thrash pgenlib's LD cache), and the full-fixture arm did not finish chunk 1 of
+  22 in eighteen minutes where the clean build does all 22 in ~2. The cap applies
+  to the 1-thread arm too, so the byte comparison stays honest;
+  `SAIGE_TSAN_MAX_MARKERS` controls it.
+
+  **Speed, paired A/B at 4 threads** (6 reps x 2 blocks, order swapped between
+  blocks, `CPU_Speed_Limit = 100`): `work_s` speedup **2.177x** (95% CI
+  2.051-2.295) on the binary pgen workload and **2.040x** (1.922-2.150)
+  quantitative, against PLINK's 2.06-2.23x on the same fixture -- the expected
+  answer, since threading the marker loop is reader-agnostic once the reader can
+  hand out per-worker handles. maxRSS moves +0.6 MB and +0.3 MB at N = 1000.
+
+  **Two harness scripts had been silently useless since S7.** Both `tsan.sh` and
+  `bench_threads.sh` still drove the arm through `SAIGE_MARKER_THREADS`, which S7
+  deleted -- so every "threaded" arm in either script had been running serially.
+  `bench_threads.sh` also still carried the `fork` mechanism dimension, which now
+  refuses with a pointer to S7. This is the second time a knob that failed to
+  arrive would have passed as a green threaded run (LEDGER #30 was the first),
+  and both scripts' own DID-NOT-THREAD checks are what made it visible.
+
+  **What this does NOT establish.** `isForkSafe()` is still `false` for PGEN --
+  now as a live hazard, not conservatism: a pgenlib reader owns a `FILE*` it
+  fseeks. Group tests still run on one thread for every format. And the
+  per-handle arena is ~130 bytes per SAMPLE (arithmetic from the allocation
+  expression, not a measurement -- most of it two transpose buffers that
+  single-variant reads never touch), so unlike PLINK's shared mmap, PGEN
+  threading costs memory that grows with N x threads; at the bundled N = 1000
+  maxRSS moves by ~1 MB between 1 and 8 threads, and nothing has measured it at
+  biobank N.
+
+  Gate: 54/54 goldens byte-identical and all five step-1 goldens at
+  `max_rel_err 0.000e+00`; standard tier FAIL 0 | PASS 1769 in BOTH compare modes
+  (+21 against the baseline -- 18 of them measured directly, `test-unit-genoreader.R`
+  26 -> 44 in isolation, and 3 from the replaced pgen threading test).
 
 All verification complete. Delivering the judgment.
 

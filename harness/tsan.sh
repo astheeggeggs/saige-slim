@@ -1,14 +1,30 @@
 #!/usr/bin/env bash
 # ThreadSanitizer over the step-2 in-process marker scan (S6).
 #
-#   bash harness/tsan.sh [clean|plant]     (default: clean)
+#   bash harness/tsan.sh [clean|plant|plantreader]     (default: clean)
 #
-# clean  build HEAD's sources and run the three marker workloads at 1/4/8
-#        threads. Expect ZERO races and byte-identity with the serial arm.
-# plant  build the SAME tree with one defect planted -- every worker shares one
-#        MarkerScratch instead of owning one -- and expect races. This is not
-#        optional colour: a clean TSAN run means nothing on its own, because a
-#        TSAN build that sees none of this code also reports zero. Run both.
+# clean       build HEAD's sources and run the marker workloads at 1/4/8
+#             threads. Expect ZERO races and byte-identity with the serial arm.
+# plant       build the SAME tree with one defect planted -- every worker shares
+#             one MarkerScratch instead of owning one -- and expect races. This
+#             is not optional colour: a clean TSAN run means nothing on its own,
+#             because a TSAN build that sees none of this code also reports
+#             zero. Run both.
+# plantreader the control for the PGEN clone (S8): PgenReader::clone() hands
+#             back a handle onto the SAME PgenClass instead of building a second
+#             pgenlib reader, which is exactly the arrangement the split of
+#             PgenShared/PgenClass exists to avoid. Run it with
+#             SAIGE_TSAN_WORKLOADS=pgen; on a PLINK workload it plants nothing
+#             (PLINK clones share one reader BY DESIGN -- its reads are const).
+#
+# SAIGE_TSAN_MAX_MARKERS caps every arm at the first N markers of the fixture,
+# via an --idstoIncludeFile written here. It defaults to 2000 in `plantreader`
+# and to the whole fixture otherwise, because the planted defect is not merely
+# incorrect, it is PATHOLOGICALLY SLOW: several threads sharing one pgenlib
+# reader thrash its LD cache, and the full 128,868-marker arm did not finish
+# chunk 1 of 22 in eighteen minutes (the clean build does all 22 in ~2). A
+# control nobody can run to completion is not a control, and the cap applies to
+# the 1-thread arm too, so the byte comparison between arms stays honest.
 #
 # Four things about this are macOS-specific and each of them fails in a way that
 # looks like "no races found", which is why they are scripted rather than
@@ -33,7 +49,7 @@
 # link against (the same class of hazard as the header rule in CLAUDE.md).
 set -euo pipefail
 MODE="${1:-clean}"
-case "$MODE" in clean|plant) ;; *) echo "usage: tsan.sh [clean|plant]" >&2; exit 2 ;; esac
+case "$MODE" in clean|plant|plantreader) ;; *) echo "usage: tsan.sh [clean|plant|plantreader]" >&2; exit 2 ;; esac
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="${SAIGE_TSAN_WORK:-$REPO/harness/work/tsan}"
 PKG="$WORK/pkg"; LIB="$WORK/lib"; RUNS="$WORK/runs.$MODE"
@@ -76,6 +92,56 @@ open(p, 'w').write(s.replace(a, b).replace(c, d))
 PY
 fi
 
+if [ "$MODE" = plantreader ]; then
+  # Share one pgenlib decoder across every worker: same FILE*, same fread
+  # buffer, same LD cache. If S8's split is doing anything, this must produce
+  # worker-vs-worker races INSIDE pgenlib and a wrong answer.
+  python3 - "$PKG/src/GenoReaderRegistry.cpp" <<'PZ'
+import sys
+p = sys.argv[1]; s = open(p).read()
+a = """    return std::unique_ptr<GenoReader>(new PgenReader(
+        std::make_shared<PGEN::PgenClass>(impl().shared())));"""
+b = """    return std::unique_ptr<GenoReader>(new PgenReader(m_impl));"""
+assert s.count(a) == 1, "plantreader anchor drifted; fix harness/tsan.sh"
+open(p, 'w').write(s.replace(a, b))
+PZ
+fi
+
+# --- instrumented pgenlib ---------------------------------------------------
+# pgenlib arrives as libplink2_includes.a, which harness/build.sh compiles
+# WITHOUT instrumentation -- so TSAN cannot see inside the decoder, and two
+# workers racing in there would be reported by nothing. That is the same blind
+# spot uninstrumented libtbb has, and it matters more here: PGEN's clone (S8)
+# rests entirely on the claim that separate plink2::PgenReaders over ONE
+# PgenFileInfo share nothing mutable, and a clean run over an uninstrumented
+# decoder does not test that claim at all. Built once and cached in $WORK.
+PGENLIB_TSAN="$WORK/libplink2_includes.a"
+if [ ! -f "$PGENLIB_TSAN" ]; then
+  echo "=== building instrumented pgenlib -> $PGENLIB_TSAN"
+  RCXX="$(pixi run --manifest-path "$REPO/pixi.toml" R CMD config CXX | awk '{print $1}')"
+  (cd "$REPO" && pixi run --manifest-path "$REPO/pixi.toml" bash -c "'$RCXX' -std=c++14 -fPIC -O1 -g -fno-omit-frame-pointer -fsanitize=thread -I.pixi/envs/default/include -L.pixi/envs/default/lib -o '$PGENLIB_TSAN' plink-ng/2.0/include/*.cc -shared -lz -lzstd -lpthread -lm -ldeflate -Wl,-install_name,'$PGENLIB_TSAN'") \
+    > "$WORK/build.pgenlib.log" 2>&1 || {
+      echo "instrumented pgenlib build failed; see $WORK/build.pgenlib.log"; exit 1; }
+fi
+# NAME THE FILE, do not go through -l, and the reason is a silent failure worth
+# knowing about: R puts `-L<pixi env>/lib` on the link line BEFORE PKG_LIBS, so
+# `-lplink2_includes` finds the uninstrumented archive there no matter where an
+# extra -L is prepended. The build then succeeds, the run works, and TSAN simply
+# sees nothing inside pgenlib. Linking the absolute path in the package COPY (the
+# same place the plant modes patch sources) is unambiguous, and the absolute
+# install_name above makes dyld load that same file at runtime.
+# (Check with `otool -L .../SAIGE.so | grep plink2`: it must print the absolute
+# path under harness/work/tsan, not the bare filename.)
+python3 - "$PKG/src/Makevars" "$PGENLIB_TSAN" <<'PM'
+import os, sys
+p, lib = sys.argv[1], sys.argv[2]
+s = open(p).read()
+a = "PKG_LIBS += -L.. -lplink2_includes"
+b = "PKG_LIBS += %s" % lib
+assert s.count(a) == 1, "Makevars anchor drifted; fix harness/tsan.sh"
+open(p, 'w').write(s.replace(a, b))
+PM
+
 # --- the instrumented build -------------------------------------------------
 # -O1 -g: TSAN needs frame pointers and symbols to be readable, and -O2 inlines
 # the loop body into something the reports cannot be attributed with.
@@ -101,6 +167,10 @@ EOF
 chmod +x "$WORK/run_r.sh"
 
 # --- the runs ---------------------------------------------------------------
+# Marker cap (see the header). The include file is written from the .pvar/.bim of
+# whichever fixture a workload names, so it is built inside tsan_run.
+MAXMK="${SAIGE_TSAN_MAX_MARKERS:-}"
+if [ -z "$MAXMK" ] && [ "$MODE" = plantreader ]; then MAXMK=2000; fi
 cd "$REPO/extdata"
 GOLD="$REPO/harness/goldens"
 P=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr
@@ -116,6 +186,13 @@ tsan_run() { # tsan_run <workload> <threads>
     binary)        model=binary_sparseGRM_a;  args="" ;;
     binary_sparse) model=binary_sparseGRM_vr; args="$SG --is_fastTest=FALSE" ;;
     quant)         model=quant_sparseGRM;     args="" ;;
+    # The same markers through the PGEN reader (S8). Its workers each hold their
+    # own pgenlib reader over shared metadata, which is a different sharing
+    # arrangement from PLINK's one-mmap-many-readers, so it needs its own run.
+    pgen)          model=binary_sparseGRM_a;  args=""
+      bed="--pgenFile=$P.pgen --pvarFile=$P.pvar --psamFile=$P.psam" ;;
+    pgen_quant)    model=quant_sparseGRM;     args=""
+      bed="--pgenFile=$P.pgen --pvarFile=$P.pvar --psamFile=$P.psam" ;;
     # Controlled ER-eligible fraction (harness/make_rare_fixture.py). rare100 is
     # the workload that matters once the ER deferral is gone: EVERY marker takes
     # the exact test on a worker, where the bundled binary fixture puts only 4.1%
@@ -127,12 +204,28 @@ tsan_run() { # tsan_run <workload> <threads>
       [ -f "$rp.bed" ] || { echo "missing $rp.bed -- run harness/make_rare_fixture.py" >&2; exit 1; }
       bed="--bedFile=$rp.bed --bimFile=$rp.bim --famFile=$rp.fam --AlleleOrder=alt-first" ;;
   esac
-  local base="$RUNS/$wl.t$nt"
-  SAIGE_MARKER_THREADS="$nt" \
+  local base="$RUNS/$wl.t$nt" include=""
+  if [ -n "$MAXMK" ]; then
+    # First N variant IDs of this workload's fixture. pvar has a #CHROM header
+    # and ID in column 3; bim has no header and ID in column 2.
+    local inc="$RUNS/$wl.include.txt" src
+    if [ ! -f "$inc" ]; then
+      # awk-with-a-counter rather than `| head -n`: head closing the pipe sends
+      # SIGPIPE to awk, and `set -o pipefail` turns that into a fatal 141.
+      src=$(echo "$bed" | tr ' ' '\n' | sed -n 's/^--pgenFile=//p')
+      if [ -n "$src" ]; then
+        awk -v n="$MAXMK" '!/^#/ {print $3; if (++i >= n) exit}' "${src%.pgen}.pvar" > "$inc"
+      else
+        src=$(echo "$bed" | tr ' ' '\n' | sed -n 's/^--bedFile=//p')
+        awk -v n="$MAXMK" '{print $2; if (++i >= n) exit}' "${src%.bed}.bim" > "$inc"
+      fi
+    fi
+    include="--idstoIncludeFile=$inc"
+  fi
   TSAN_OPTIONS="halt_on_error=0 history_size=7 exitcode=0 log_path=$base.tsan" \
   RCPP_PARALLEL_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
     pixi run --manifest-path "$REPO/pixi.toml" bash "$WORK/run_r.sh" -f step2_SPAtests.R --args \
-    $bed --minMAF=0 --minMAC=1 --LOCO=FALSE --markers_per_chunk=10000 $args \
+    $bed --minMAF=0 --minMAC=1 --LOCO=FALSE --markers_per_chunk=10000 --nThreads=$nt $include $args \
     --GMMATmodelFile="$GOLD/step1/$model.rda" \
     --varianceRatioFile="$GOLD/step1/$model.varianceRatio.txt" \
     --SAIGEOutputFile="$base.txt" > "$base.log" 2>&1 || true
@@ -152,13 +245,16 @@ tsan_run() { # tsan_run <workload> <threads>
   printf '  %-14s t=%-2s races=%-4s bytes-vs-serial=%s\n' "$wl" "$nt" "$races" "$ident"
 }
 
-echo "=== TSAN runs ($MODE); 128,868 markers each"
+echo "=== TSAN runs ($MODE); ${MAXMK:-128,868} markers each"
 for wl in ${SAIGE_TSAN_WORKLOADS:-binary binary_sparse quant}; do
   for nt in 1 4 8; do tsan_run "$wl" "$nt"; done
 done
 echo
 if [ "$MODE" = clean ]; then
   echo "Expected: races=0 everywhere and bytes-vs-serial=identical."
+elif [ "$MODE" = plantreader ]; then
+  echo "Expected (on SAIGE_TSAN_WORKLOADS=pgen): races>0 at t>1 and bytes-vs-serial=DIFFERS."
+  echo "If this mode reports races=0, the CLEAN pgen result above gates nothing."
 else
   echo "Expected: races>0 at t>1 (worker-vs-worker) and bytes-vs-serial=DIFFERS."
   echo "If this mode reports races=0, the CLEAN result above gates nothing."

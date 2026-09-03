@@ -652,10 +652,11 @@ void mainMarkerInCPP(
     if(!g_reader){
       Rcpp::stop("No genotype reader has been set up.");
     }
-    // A reader that cannot clone cannot be threaded: PGEN never clones, and the
-    // PLINK pread fallback is refused (S5). Degrade to one thread with a notice
-    // rather than failing the run -- the same posture as a group test, and NOT
-    // the silent no-op of LEDGER #30: the reason is printed.
+    // A reader that cannot clone cannot be threaded. Since S8 that is one case
+    // only: the PLINK pread fallback, which refuses (S5). PGEN clones -- each
+    // worker gets its own pgenlib reader over shared metadata. Degrade to one
+    // thread with a notice rather than failing the run -- the same posture as a
+    // group test, and NOT the silent no-op of LEDGER #30: the reason is printed.
     try {
       std::unique_ptr<Geno::GenoReader> probe = g_reader->clone();
     } catch (const std::exception& e) {
@@ -697,7 +698,8 @@ void mainMarkerInCPP(
   }else{
     // Every marker's arithmetic depends only on its own genotype, the model
     // (const on this path since S3) and the config; its outputs land in its own
-    // slot (S4); and its reader is its own handle onto one shared mapping (S5).
+    // slot (S4); and its reader is its own handle onto shared, read-only file
+    // state (S5 for PLINK, S8 for PGEN).
     // So the only thing order can change is which THREAD computes a row, not
     // what the row contains -- which is why byte-identity with the serial run
     // is the right gate rather than a tolerance.
@@ -2880,10 +2882,11 @@ bool isGenoReaderForkSafeInCPP(){
 }
 
 // Whether the active reader can hand out per-worker clones, i.e. whether the
-// marker scan can actually thread. PGEN never clones, and the PLINK pread
-// fallback refuses (S5). The C++ marker loop degrades to one thread on its own
-// if this is false; R asks FIRST only so the user gets a real R warning()
-// rather than a line of stdout that scrolls past in a cluster log.
+// marker scan can actually thread. Both built-in readers do since S8; the one
+// refusal left is the PLINK pread fallback (S5). The C++ marker loop degrades
+// to one thread on its own if this is false; R asks FIRST only so the user gets
+// a real R warning() rather than a line of stdout that scrolls past in a
+// cluster log.
 // [[Rcpp::export]]
 bool isGenoReaderCloneableInCPP(){
   if(!g_reader){

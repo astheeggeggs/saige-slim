@@ -458,3 +458,39 @@ In-process now matches or slightly beats fork at every f while using 80-98 MB
 less. The trade-off that made the retirement hard is gone; what remains before
 fork can actually be deleted is criterion item 2 (feature parity), not a
 measurement.
+
+## PGEN threads too, and it costs almost nothing here (2026-09-03, S8)
+
+`PgenReader::clone()` landed, so `--nThreads` now threads a pgen marker scan.
+Paired A/B on the 128,868-marker fixture, 6 reps x 2 blocks with the arm order
+swapped between blocks, 1 vs 4 threads, `CPU_Speed_Limit = 100`:
+
+| workload | n | work_s speedup | 95% CI | elapsed_s | maxRSS 1t -> 4t |
+|---|---|---|---|---|---|
+| `pgen` (binary) | 12 | **2.177x** | 2.051-2.295 | 1.256x | 245.6 -> 246.2 MB |
+| `pgen_quant` | 12 | **2.040x** | 1.922-2.150 | 1.186x | 241.7 -> 242.0 MB |
+
+That sits alongside PLINK's 2.06-2.23x at 4 threads on the same fixture, which is
+the expected answer: threading the marker loop is reader-agnostic once the reader
+can hand out per-worker handles. `elapsed_s` is much lower than `work_s` for the
+usual reason -- ~2.1 s of the ~7 s run is process startup, which threading cannot
+touch (see the top of this file).
+
+**The memory line needs a caveat, and it is the one thing that differs from
+PLINK.** PLINK clones share one mmap and cost nothing per worker. A PGEN clone is
+a whole second `plink2::PgenReader` with its own arena: **~130 bytes per SAMPLE
+per handle** (arithmetic from the allocation expression in
+`PgenClass::initReader`, not a measurement), most of it two transpose buffers
+that `Read()` never touches. At N = 1000 that is ~0.13 MB per thread, which is
+exactly why the table above shows nothing. At biobank N it is tens of MB per
+thread, and **nothing here can measure that** -- the bundled fixture has 1,000
+samples. The obvious follow-up is to stop allocating the buffers the
+single-variant read path never uses.
+
+**A measurement note that cost two runs.** `harness/bench_threads.sh` was still
+driving its threaded arm through `SAIGE_MARKER_THREADS`, which S7 deleted, so
+every "threaded" arm it produced after S7 would have been serial; `harness/tsan.sh`
+had the same defect. Both now pass `--nThreads`, and both keep their
+DID-NOT-THREAD check, which is what makes the failure visible rather than silent.
+The `fork` mechanism dimension of `bench_threads.sh` refuses with a pointer to
+S7 rather than pretending.

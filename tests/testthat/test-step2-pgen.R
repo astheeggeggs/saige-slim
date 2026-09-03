@@ -337,7 +337,7 @@ test_that("POSITIVE CONTROL: pgen and plink marker scans reconcile at float tole
   expect_lt(perr, 1e-4)
 })
 
-# ---- --nThreads > 1 refusal for PGEN (v1: not fork-safe) -------------------
+# ---- --nThreads > 1 through the pgen reader (S8) is at the end of the file --
 
 # ---- live Firth path through the pgen reader -------------------------------
 # Mirror of tests/testthat/test-step2-firth.R (the last arm of the
@@ -448,20 +448,21 @@ test_that("golden P26: pgen group test, BURDEN conditional (r.corr=1, rs30,rs79)
     cols = c(BURDEN_COLS, "Pvalue_Burden_c", "Beta_Burden_c", "seBeta_Burden_c"))
 })
 
-test_that("--nThreads > 1 on a pgen input degrades to one thread, loudly", {
-  # INVERTED BY S7, deliberately. This used to assert a hard ERROR, because
-  # --nThreads forked and PgenReader::isForkSafe() is always false. S7 routed
-  # --nThreads to the in-process path, where the question is whether the reader
-  # can CLONE -- PgenReader::clone() still throws (v1 decision unchanged) -- and
-  # the agreed behaviour became: degrade to one thread rather than fail.
+test_that("--nThreads > 1 on a pgen input really threads, byte-identically (S8)", {
+  # INVERTED TWICE, and the history is the point. Originally this asserted a
+  # hard ERROR (--nThreads forked; PgenReader::isForkSafe() is always false).
+  # S7 routed --nThreads to the in-process path, where the question became
+  # whether the reader can CLONE, and it asserted the degrade-to-one-thread
+  # warning. S8 implemented PgenReader::clone(), so what is asserted now is the
+  # thing the other two were standing in for: PGEN threads, and the answer does
+  # not move.
   #
-  # The reasoning, so this is not re-inverted on taste: erroring would break
-  # anyone scripting a single --nThreads across a mix of PLINK and PGEN inputs,
-  # and degrading is the posture group tests already take. It is NOT the silent
-  # no-op of LEDGER #30 -- the reason is both printed and raised as an R
-  # warning -- which is why the message is asserted here and not merely the
-  # exit status. PGEN gains real parallelism only when PgenReader::clone() is
-  # implemented; until then this is the honest answer.
+  # Byte-identity is the right gate for the same reason it is on the PLINK side
+  # (test-step2-threads-inprocess.R): this is ONE code path re-run over a
+  # disjoint partition, not two paths compared. And the thread-count LINE is
+  # asserted, not merely the exit status -- a run that silently fell back to one
+  # thread would otherwise reproduce the golden and gate nothing, which is the
+  # LEDGER #30 shape.
   skip_unless_level("standard")
   skip_if_no_goldens()
   log <- tempfile(fileext = ".log")
@@ -475,11 +476,37 @@ test_that("--nThreads > 1 on a pgen input degrades to one thread, loudly", {
                           log = log)
   expect_cli_ok(status)
   txt <- readLines(log, warn = FALSE)
-  expect_true(any(grepl("cannot be cloned", txt)))
-  expect_true(any(grepl("ONE thread", txt)))
-  # It really did fall back -- no threaded-scan line was printed ...
-  expect_false(any(grepl("in-process threads", txt)))
-  # ... and the degraded run still produced the right answer.
+  expect_true(any(grepl("use 4 in-process threads", txt, fixed = TRUE)),
+              label = "the run reported 4 in-process threads")
+  # ... and it is no longer refusing: neither the C++ notice nor the R warning
+  # that stood here from Phase 7 to S7 may appear.
+  expect_false(any(grepl("cannot be cloned", txt)))
+  expect_false(any(grepl("run on ONE thread", txt)))
   expect_output_matches_golden(
     file.path(saige_goldens, "step2", "pgen_marker_binary.txt"), out)
+})
+
+test_that("pgen threading holds over the 128k-marker fixture (P20 at 4 threads)", {
+  # The 100-marker fixture above is two grains: it proves the knob arrives and
+  # the answer is right, but the workers barely overlap. This is the run where
+  # several pgenlib readers really are decoding at once for seconds at a time,
+  # which is what PgenReader::clone() actually changed -- each worker holding
+  # its own plink2::PgenReader over one shared PgenFileInfo.
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  log <- tempfile(fileext = ".log")
+  out <- file.path(tempfile("step2_pgen_nthreads_big_"), "out.txt")
+  dir.create(dirname(out), recursive = TRUE)
+  status <- run_saige_cli("step2_SPAtests.R",
+                          c(PGEN_CHUNK_G, "--chrom=1", "--minMAF=0", "--minMAC=1",
+                            "--LOCO=FALSE", BIN_MODEL(),
+                            "--markers_per_chunk=1000", "--nThreads=4",
+                            paste0("--SAIGEOutputFile=", out)),
+                          log = log)
+  expect_cli_ok(status)
+  txt <- readLines(log, warn = FALSE)
+  expect_true(any(grepl("use 4 in-process threads", txt, fixed = TRUE)),
+              label = "the run reported 4 in-process threads")
+  expect_output_matches_golden(
+    file.path(saige_goldens, "step2", "pgen_marker_chunked.txt"), out)
 })

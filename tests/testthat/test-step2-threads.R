@@ -184,8 +184,9 @@ test_that("a reader that cannot be cloned falls back to one thread with a warnin
   skip_unless_level("standard")
   skip_if_no_goldens()
   # S7 decision: DEGRADE, do not error. Erroring would break anyone scripting
-  # one --nThreads across a mix of PLINK and PGEN inputs, and it is the same
-  # posture group tests already take. It is not the silent no-op of LEDGER #30
+  # one --nThreads across a mix of inputs, and it is the same posture group
+  # tests already take. (The mix that motivated it was PLINK vs PGEN; PGEN
+  # threads since S8, so the pread fallback below is the last refusal.) It is not the silent no-op of LEDGER #30
   # because the reason is printed AND raised as an R warning -- which is why
   # this asserts the message, not just that the run succeeded.
   #

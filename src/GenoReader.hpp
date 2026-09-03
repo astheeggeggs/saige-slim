@@ -3,11 +3,10 @@
 
 // Genotype-reader interface (Phase 3 refactor).
 //
-// One implementation exists today (PlinkReader, wrapping PLINK::PlinkClass).
-// The registry below is the open registration point for future formats —
-// PGEN/plink2 input returns as a new implementation registered here (see
-// CLAUDE.md and the Phase-3 design notes). The R layer keeps addressing
-// formats by the genoType string ("plink", later "pgen", ...).
+// Two implementations exist: PlinkReader (wrapping PLINK::PlinkClass) and
+// PgenReader (wrapping PGEN::PgenClass, added in Phase 7). The registry below
+// is the open registration point for further formats. The R layer addresses
+// formats by the genoType string ("plink", "pgen", ...).
 //
 // Cursor/seek behavior is reader-private. gIndex addresses the 0-based row of
 // the variant metadata file (bim/pvar); random access must be supported —
@@ -60,7 +59,12 @@ public:
   // worker can read without coordinating with any other. Implementations own
   // the underlying data jointly: whatever the last surviving handle releases is
   // what gets released, so close() on one handle must never invalidate another.
-  // Implemented for PLINK on the mmap path (S5); PGEN still throws.
+  // How that joint ownership is arranged is the implementation's business, and
+  // the two built-ins do it differently: PLINK clones SHARE one decoder because
+  // its reads are const pointer arithmetic into an mmap (S5), while PGEN clones
+  // each build their own pgenlib reader over shared metadata, because a pgenlib
+  // read mutates the decoder (S8). Refusing is still allowed -- PLINK's pread
+  // fallback does -- and the marker scan degrades to one thread when it happens.
   virtual std::unique_ptr<GenoReader> clone() const = 0;
 };
 

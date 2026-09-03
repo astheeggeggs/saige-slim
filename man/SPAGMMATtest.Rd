@@ -175,7 +175,7 @@ SPAGMMATtest(
 
 \item{sampleFile_male}{character. Path to the file containing one column for IDs of MALE samples in the bgen or vcf file with NO header. Order does not matter}
 
-\item{nThreads}{integer. Number of forked worker processes for the single-variant marker scan. The markers are split into that many contiguous blocks, tested in parallel after the null model has been loaded (so the model is shared copy-on-write), and the per-block outputs are concatenated, which reproduces the one-thread output byte for byte. Restarting an interrupted run is not supported with nThreads > 1, and group tests always run on one thread. By default, 1}
+\item{nThreads}{integer. Number of threads for the single-variant marker scan. The C++ marker loop is threaded in place, so there is one process, one copy of the null model and one output file; the result is byte-identical to a one-thread run. Restarting an interrupted run works exactly as it does serially. Group tests always run on one thread, and a genotype reader that cannot be cloned (PLINK when the .bed could not be memory mapped) falls back to one thread with a warning. PGEN threads too, since S8. By default, 1}
 }
 \value{
 SAIGEOutputFile

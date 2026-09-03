@@ -99,9 +99,9 @@ test_that("the ER resampling branch is unchanged at 4 threads (P33)", {
 })
 
 test_that("a reader that cannot clone degrades to one thread instead of failing", {
-  # The pread fallback refuses to clone (S5), and PGEN never clones. That must
-  # be a notice and a serial run, not an error -- and NOT the silent no-op of
-  # LEDGER #30, so the reason is printed.
+  # The pread fallback refuses to clone (S5). It is the only refusal left --
+  # PGEN cloned from S8 -- and it must be a notice and a serial run, not an
+  # error, and NOT the silent no-op of LEDGER #30, so the reason is printed.
   status <- th_run("plink_marker_binary.txt", th_model("binary_sparseGRM_a"),
                    threads = 4, env = c(SAIGE_PLINK_NO_MMAP = "1"),
                    expect_threaded = FALSE)

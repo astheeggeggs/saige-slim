@@ -10,26 +10,35 @@ namespace PGEN {
 
 static const double kGenoRDoublePairs[32] ALIGNV16 = PAIR_TABLE16(0.0, 1.0, 2.0, NA_REAL);
 
-PgenClass::PgenClass(std::string pgenFile,
-    std::string psamFile,
-    std::string pvarFile,
-    std::vector<std::string>& sampleInModel) : pgenFile(pgenFile), psamFile(psamFile), pvarFile(pvarFile), _allele_idx_offsetsp(nullptr)
+// ---- PgenShared: metadata + PgenFileInfo, read-only once built -------------
+
+PgenShared::PgenShared(const std::string& t_pgenFile,
+    const std::string& t_psamFile,
+    const std::string& t_pvarFile,
+    const std::vector<std::string>& t_sampleInModel)
+    : M(0), N(0), N0(0),
+      pgenFile(t_pgenFile), psamFile(t_psamFile), pvarFile(t_pvarFile),
+      _pgfi_alloc(nullptr), _allele_idx_offsetsp(nullptr), _nonref_flagsp(nullptr),
+      _max_vrec_width(0), _pgr_alloc_cacheline_ct(0), _file_sample_ct(0),
+      _is_not_plink1_bed(false)
 {
     readPvarFile();
     readPsamFile();
-    setPosSampleInPgen(sampleInModel);
+    setPosSampleInPgen(t_sampleInModel);
 
     N0 = sampleInPgen.size();
     N = posSampleInPgen.size();
     M = variantId.size();
 
-    loadPgen(N0);
-    readBuffer.resize(_subset_size);
+    loadPgfi();
 }
 
-void PgenClass::loadPgen(uint32_t raw_sample_ct)
+void PgenShared::loadPgfi()
 {
-    // similar to pgenlibr/src/pgenlibr.cpp
+    // similar to pgenlibr/src/pgenlibr.cpp; the second half (PgrInit and the
+    // buffers carved out of pgr_alloc) is per-reader and lives in
+    // PgenClass::initReader.
+    const uint32_t raw_sample_ct = N0;
     plink2::PgenHeaderCtrl header_ctrl;
     _info_ptr = std::unique_ptr<plink2::PgenFileInfo>(new plink2::PgenFileInfo);
     uintptr_t pgfi_alloc_cacheline_ct;
@@ -52,7 +61,7 @@ void PgenClass::loadPgen(uint32_t raw_sample_ct)
         _nonref_flagsp = plink2::CreateRefcountedWptr(raw_variant_ctl + 1);
         _info_ptr->nonref_flags = _nonref_flagsp->p;
     }
-    const uint32_t file_sample_ct = _info_ptr->raw_sample_ct;
+    _file_sample_ct = _info_ptr->raw_sample_ct;
     unsigned char* pgfi_alloc = nullptr;
     if(plink2::cachealigned_malloc(pgfi_alloc_cacheline_ct * plink2::kCacheline, &pgfi_alloc)) {
         Rcpp::stop("Out of memory");
@@ -68,6 +77,147 @@ void PgenClass::loadPgen(uint32_t raw_sample_ct)
     if((!_allele_idx_offsetsp) && (_info_ptr->gflags & 4)) {
         Rcpp::stop("Multiallelic variants and phase/dosage info simultaneously present; not supported by SAIGE");
     }
+    // var_fpos/vrtypes point INTO this block, and every reader's copy of the
+    // PgenFileInfo shares those pointers -- so it must outlive them all, which
+    // is what holding it here (rather than in a reader) buys.
+    _pgfi_alloc = pgfi_alloc;
+    _max_vrec_width = max_vrec_width;
+    _pgr_alloc_cacheline_ct = pgr_alloc_cacheline_ct;
+    _is_not_plink1_bed = (_info_ptr->vrtypes != nullptr);
+}
+
+PgenShared::~PgenShared()
+{
+    if(_info_ptr) {
+        CondReleaseRefcountedWptr(&_allele_idx_offsetsp);
+        CondReleaseRefcountedWptr(&_nonref_flagsp);
+        plink2::PglErr reterr = plink2::kPglRetSuccess;
+        plink2::CleanupPgfi(_info_ptr.get(), &reterr);
+        _info_ptr.reset();
+    }
+    if(_pgfi_alloc) {
+        plink2::aligned_free(_pgfi_alloc);
+        _pgfi_alloc = nullptr;
+    }
+}
+
+static void to_upper_inplace(std::string& str) {
+    std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return std::toupper(c); });
+}
+
+void PgenShared::readPvarFile()
+{
+    std::ifstream bim(pvarFile);
+    std::string line;
+
+    int col_pos = -1;
+    int col_id = -1;
+    int col_ref = -1;
+    int col_alt = -1;
+
+    while(getline(bim, line)) {
+        std::vector<std::string> line_elements;
+        boost::split(line_elements, line, boost::is_any_of("\t "));
+        boost::replace_all(line_elements.back(), "\r", "");
+
+        if(line[0] == '#') {
+            if(line.rfind("#CHROM", 0) == 0) {
+                for(size_t i = 0; i < line_elements.size(); i++) {
+                    if(line_elements[i] == "POS") col_pos = i;
+                    if(line_elements[i] == "ID") col_id = i;
+                    if(line_elements[i] == "REF") col_ref = i;
+                    if(line_elements[i] == "ALT") col_alt = i;
+                }
+                if(col_pos == -1 || col_id == -1 || col_ref == -1 || col_alt == -1) {
+                    Rcpp::stop("pvar file does not have pos/id/ref/alt columns");
+                }
+            }
+            continue;
+        }
+
+        chr.push_back(line_elements[0]);
+        variantId.push_back(line_elements[col_id]);
+        position.push_back(std::stoi(line_elements[col_pos]));
+        to_upper_inplace(line_elements[col_ref]);
+        to_upper_inplace(line_elements[col_alt]);
+        ref.push_back(line_elements[col_ref]);
+        alt.push_back(line_elements[col_alt]);
+    }
+}
+
+void PgenShared::readPsamFile()
+{
+    std::ifstream fam(psamFile);
+
+    std::string line;
+    size_t idx = 0;
+    while(getline(fam, line)) {
+        if(line[0] == '#') continue;
+        std::vector<std::string> line_elements;
+        boost::split(line_elements, line, boost::is_any_of("\t "));
+        sampleInPgen[line_elements[0]] = idx;  // IID
+        idx++;
+    }
+}
+
+void PgenShared::setPosSampleInPgen(const std::vector<std::string>& sampleInModel)
+{
+    auto m_N = sampleInModel.size();
+    posSampleInPgen.reserve(m_N);
+
+    for(auto& sample : sampleInModel) {
+        auto res = sampleInPgen.find(sample);
+        if(res == sampleInPgen.end()) {
+            Rcpp::stop("At least one subject requested is not in psam file ("+sample+").");
+        }
+        posSampleInPgen.push_back(res->second);
+    }
+}
+
+// ---- PgenClass: one decode handle ------------------------------------------
+
+PgenClass::PgenClass(std::string pgenFile,
+    std::string psamFile,
+    std::string pvarFile,
+    std::vector<std::string>& sampleInModel)
+    : m_shared(std::make_shared<PgenShared>(pgenFile, psamFile, pvarFile, sampleInModel)),
+      _pgr_alloc(nullptr), _subset_size(0)
+{
+    initReader();
+}
+
+PgenClass::PgenClass(std::shared_ptr<PgenShared> t_shared)
+    : m_shared(std::move(t_shared)), _pgr_alloc(nullptr), _subset_size(0)
+{
+    if(!m_shared) {
+        Rcpp::stop("PgenClass: no shared pgen state");
+    }
+    initReader();
+}
+
+PgenClass::~PgenClass()
+{
+    closegenofile();
+}
+
+void PgenClass::initReader()
+{
+    // similar to pgenlibr/src/pgenlibr.cpp. Everything allocated here is this
+    // handle's own: the plink2::PgenReader (its FILE*, fread buffer, LD cache
+    // and workspaces) and every buffer carved out of pgr_alloc below.
+    //
+    // The lock is for PgrInit alone: the first reader onto a file MOVES
+    // shared_ff out of the PgenFileInfo, and a second thread arriving at that
+    // moment would either lose the handle or fopen a second one. Reads take
+    // nothing.
+    std::lock_guard<std::mutex> lock(m_shared->initMutex);
+
+    plink2::PgenFileInfo* info_ptr = m_shared->info();
+    const uint32_t file_sample_ct = m_shared->fileSampleCt();
+    const uint32_t max_vrec_width = m_shared->maxVrecWidth();
+    const uintptr_t pgr_alloc_cacheline_ct = m_shared->pgrAllocCachelineCt();
+    char errstr_buf[plink2::kPglErrstrBufBlen];
+
     _state_ptr = std::unique_ptr<plink2::PgenReader>(new plink2::PgenReader);
 
     if(! _state_ptr) {
@@ -79,7 +229,7 @@ void PgenClass::loadPgen(uint32_t raw_sample_ct)
     const uintptr_t sample_subset_byte_ct = plink2::DivUp(file_sample_ct, plink2::kBitsPerVec) * plink2::kBytesPerVec;
     const uintptr_t cumulative_popcounts_byte_ct = plink2::DivUp(file_sample_ct, plink2::kBitsPerWord * plink2::kInt32PerVec) * plink2::kBytesPerVec;
     const uintptr_t genovec_byte_ct = plink2::DivUp(file_sample_ct, plink2::kNypsPerVec) * plink2::kBytesPerVec;
-    const uint32_t is_not_plink1_bed = (_info_ptr->vrtypes != nullptr);
+    const uint32_t is_not_plink1_bed = m_shared->isNotPlink1Bed();
     uintptr_t raregeno_byte_ct = 0;
     uintptr_t difflist_sample_ids_byte_ct = 0;
     if(is_not_plink1_bed) {
@@ -90,7 +240,7 @@ void PgenClass::loadPgen(uint32_t raw_sample_ct)
     const uintptr_t ac_byte_ct = plink2::RoundUpPow2(file_sample_ct * sizeof(plink2::AlleleCode), plink2::kBytesPerVec);
     const uintptr_t ac2_byte_ct = plink2::RoundUpPow2(file_sample_ct * 2 * sizeof(plink2::AlleleCode), plink2::kBytesPerVec);
     uintptr_t multiallelic_hc_byte_ct = 0;
-    if(_info_ptr->max_allele_ct != 2) {
+    if(info_ptr->max_allele_ct != 2) {
         multiallelic_hc_byte_ct = 2 * sample_subset_byte_ct + ac_byte_ct + ac2_byte_ct;
     }
     const uintptr_t dosage_main_byte_ct = plink2::DivUp(file_sample_ct, (2 * plink2::kInt32PerVec)) * plink2::kBytesPerVec;
@@ -98,7 +248,12 @@ void PgenClass::loadPgen(uint32_t raw_sample_ct)
     if(plink2::cachealigned_malloc(pgr_alloc_main_byte_ct + (2 * plink2::kPglNypTransposeBatch + 5) * sample_subset_byte_ct + cumulative_popcounts_byte_ct + (1 + plink2::kPglNypTransposeBatch) * genovec_byte_ct + raregeno_byte_ct + difflist_sample_ids_byte_ct + multiallelic_hc_byte_ct + dosage_main_byte_ct + plink2::kPglBitTransposeBufbytes + 4 * (plink2::kPglNypTransposeBatch * plink2::kPglNypTransposeBatch / 8), &pgr_alloc)) {
         Rcpp::stop("Out of memory");
     }
-    plink2::PglErr reterr = plink2::PgrInit(pvarFile.c_str(), max_vrec_width, _info_ptr.get(), _state_ptr.get(), pgr_alloc);
+    // The filename must be the PGEN, not the pvar. It goes unread by the FIRST
+    // reader onto a file -- that one moves the header's already-open shared_ff
+    // across -- which is why passing pvarFile here was invisible for as long as
+    // there was only ever one reader. A clone is the second reader: it fopen()s
+    // this name, so a wrong one would decode a text file as genotypes.
+    plink2::PglErr reterr = plink2::PgrInit(m_shared->pgenFile.c_str(), max_vrec_width, info_ptr, _state_ptr.get(), pgr_alloc);
     if(reterr != plink2::kPglRetSuccess) {
         if(!plink2::PgrGetFreadBuf(_state_ptr.get())) {
             plink2::aligned_free(pgr_alloc);
@@ -106,6 +261,7 @@ void PgenClass::loadPgen(uint32_t raw_sample_ct)
         snprintf(errstr_buf, plink2::kPglErrstrBufBlen, "PgrInit() error %d", static_cast<int>(reterr));
         Rcpp::stop(errstr_buf);
     }
+    _pgr_alloc = pgr_alloc;
     unsigned char* pgr_alloc_iter = &(pgr_alloc[pgr_alloc_main_byte_ct]);
     _subset_include_vec = reinterpret_cast<uintptr_t*>(pgr_alloc_iter);
     pgr_alloc_iter = &(pgr_alloc_iter[sample_subset_byte_ct]);
@@ -170,15 +326,17 @@ void PgenClass::loadPgen(uint32_t raw_sample_ct)
     pgr_alloc_iter = &(pgr_alloc_iter[plink2::kPglNypTransposeBatch * plink2::kPglNypTransposeBatch / 8]);
     _multivar_smaj_phasepresent_batch_buf = reinterpret_cast<uintptr_t*>(pgr_alloc_iter);
     // pgr_alloc_iter = &(pgr_alloc_iter[plink2::kPglNypTransposeBatch * plink2::kPglNypTransposeBatch / 8]);
+
+    readBuffer.resize(_subset_size);
 }
 
 void PgenClass::Read(std::vector<double>& buf, int variant_idx, int allele_idx) {
     // similar to pgenlibr/src/pgenlibr.cpp
-    if(!_info_ptr.get()) {
+    if(!m_shared || !m_shared->info()) {
         Rcpp::stop("pgen is closed");
     }
-    if(static_cast<uint32_t>(variant_idx) >= _info_ptr->raw_variant_ct) {
-        Rcpp::stop("variant_num out of range ("+std::to_string(variant_idx + 1)+"; must be 1.."+std::to_string(_info_ptr->raw_variant_ct)+")");
+    if(static_cast<uint32_t>(variant_idx) >= m_shared->info()->raw_variant_ct) {
+        Rcpp::stop("variant_num out of range ("+std::to_string(variant_idx + 1)+"; must be 1.."+std::to_string(m_shared->info()->raw_variant_ct)+")");
     }
     if(buf.size() != _subset_size) {
         Rcpp::stop("buf has wrong length ("+std::to_string(buf.size())+"; "+std::to_string(_subset_size)+" expected)");
@@ -191,99 +349,28 @@ void PgenClass::Read(std::vector<double>& buf, int variant_idx, int allele_idx) 
     plink2::Dosage16ToDoubles(kGenoRDoublePairs, _pgv.genovec, _pgv.dosage_present, _pgv.dosage_main, _subset_size, dosage_ct, &buf[0]);
 }
 
-static void to_upper_inplace(std::string& str) {
-    std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return std::toupper(c); });
-}
-
-void PgenClass::readPvarFile()
-{
-    std::ifstream bim(pvarFile);
-    std::string line;
-
-    int col_pos = -1;
-    int col_id = -1;
-    int col_ref = -1;
-    int col_alt = -1;
-
-    while(getline(bim, line)) {
-        std::vector<std::string> line_elements;
-        boost::split(line_elements, line, boost::is_any_of("\t "));
-        boost::replace_all(line_elements.back(), "\r", "");
-
-        if(line[0] == '#') {
-            if(line.rfind("#CHROM", 0) == 0) {
-                for(size_t i = 0; i < line_elements.size(); i++) {
-                    if(line_elements[i] == "POS") col_pos = i;
-                    if(line_elements[i] == "ID") col_id = i;
-                    if(line_elements[i] == "REF") col_ref = i;
-                    if(line_elements[i] == "ALT") col_alt = i;
-                }
-                if(col_pos == -1 || col_id == -1 || col_ref == -1 || col_alt == -1) {
-                    Rcpp::stop("pvar file does not have pos/id/ref/alt columns");
-                }
-            }
-            continue;
-        }
-
-        chr.push_back(line_elements[0]);
-        variantId.push_back(line_elements[col_id]);
-        position.push_back(std::stoi(line_elements[col_pos]));
-        to_upper_inplace(line_elements[col_ref]);
-        to_upper_inplace(line_elements[col_alt]);
-        ref.push_back(line_elements[col_ref]);
-        alt.push_back(line_elements[col_alt]);
-    }
-}
-
-void PgenClass::readPsamFile()
-{
-    std::ifstream fam(psamFile);
-
-    std::string line;
-    size_t idx = 0;
-    while(getline(fam, line)) {
-        if(line[0] == '#') continue;
-        std::vector<std::string> line_elements;
-        boost::split(line_elements, line, boost::is_any_of("\t "));
-        sampleInPgen[line_elements[0]] = idx;  // IID
-        idx++;
-    }
-}
-
-void PgenClass::setPosSampleInPgen(std::vector<std::string>& sampleInModel)
-{
-    auto m_N = sampleInModel.size();
-    posSampleInPgen.reserve(m_N);
-
-    for(auto& sample : sampleInModel) {
-        auto res = sampleInPgen.find(sample);
-        if(res == sampleInPgen.end()) {
-            Rcpp::stop("At least one subject requested is not in psam file ("+sample+").");
-        }
-        posSampleInPgen.push_back(res->second);
-    }
-}
-
+// Releases THIS handle. The shared file info goes with the LAST handle onto it,
+// so closing one reader can never invalidate another (the same ownership
+// contract PlinkReader states, reached a different way -- there the clones
+// share one decoder, here each has its own).
 void PgenClass::closegenofile() {
-    if(_info_ptr) {
-        CondReleaseRefcountedWptr(&_allele_idx_offsetsp);
-        CondReleaseRefcountedWptr(&_nonref_flagsp);
-        if(_info_ptr->vrtypes) {
-            plink2::aligned_free(_info_ptr->vrtypes);
-        }
-        plink2::PglErr reterr = plink2::kPglRetSuccess;
-        plink2::CleanupPgfi(_info_ptr.get(), &reterr);
-        _info_ptr.release();
-    }
     if(_state_ptr) {
         plink2::PglErr reterr = plink2::kPglRetSuccess;
         plink2::CleanupPgr(_state_ptr.get(), &reterr);
         if(PgrGetFreadBuf(_state_ptr.get())) {
             plink2::aligned_free(PgrGetFreadBuf(_state_ptr.get()));
+            plink2::PgrSetFreadBuf(nullptr, _state_ptr.get());
+            _pgr_alloc = nullptr;   // fread_buf IS the base of pgr_alloc
         }
-        _state_ptr.release();
+        _state_ptr.reset();
+    }
+    if(_pgr_alloc) {
+        plink2::aligned_free(_pgr_alloc);
+        _pgr_alloc = nullptr;
     }
     _subset_size = 0;
+    readBuffer.clear();
+    m_shared.reset();
 }
 
 void PgenClass::getOneMarker(
@@ -303,16 +390,20 @@ void PgenClass::getOneMarker(
     std::vector<uint>& t_indexForNonZero,
     arma::vec& OneMarkerG1)
 {
+    if(!m_shared) {
+        Rcpp::stop("PgenClass::getOneMarker called after the pgen file was closed.");
+    }
+    const PgenShared& sh = *m_shared;
     uint32_t numMissing = 0;
 
     t_indexForMissing.clear();
     t_indexForNonZero.clear();
 
-    t_chr = chr[t_gIndex];
-    t_pd = position[t_gIndex];
-    t_ref = ref[t_gIndex];
-    t_alt = alt[t_gIndex];
-    t_marker = variantId[t_gIndex];
+    t_chr = sh.chr[t_gIndex];
+    t_pd = sh.position[t_gIndex];
+    t_ref = sh.ref[t_gIndex];
+    t_alt = sh.alt[t_gIndex];
+    t_marker = sh.variantId[t_gIndex];
 
     // pvar is always REF/ALT-ordered (no ref-first/alt-first toggle like
     // bim), and allele_idx = 1 reads ALT-allele dosage directly -- so, unlike
@@ -323,9 +414,10 @@ void PgenClass::getOneMarker(
 
     uint j = 0;
     t_altCounts = 0;
+    const uint32_t N = sh.N;
     for(uint32_t i = 0; i < N; i++)
     {
-        auto sampleIdx = posSampleInPgen[i];
+        auto sampleIdx = sh.posSampleInPgen[i];
         auto numAltReads = readBuffer[sampleIdx];
         if(std::isnan(numAltReads)) {
             numMissing++;

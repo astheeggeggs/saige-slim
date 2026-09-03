@@ -106,13 +106,19 @@ runMarkerScan <- function(traitType,
   # #30 -- but a line of stdout is easy to lose in a cluster log, so ask first
   # and raise a real R warning too. Degrade rather than error, deliberately: it
   # is the same posture as a group test, and erroring would break anyone
-  # scripting one --nThreads across a mix of PLINK and PGEN inputs.
+  # scripting one --nThreads across a mix of inputs.
+  #
+  # Only ONE case reaches this now. PGEN was the other until S8 implemented
+  # PgenReader::clone(); what is left is a .bed that could not be memory mapped,
+  # where the pread fallback refuses to clone -- not because it is unsafe (pread
+  # takes its offset as an argument) but because nothing has measured it under
+  # threads (S5).
   if (nThreads > 1L && !isGenoReaderCloneableInCPP()) {
     warning(
       "--nThreads=", nThreads, " was requested but this genotype reader cannot ",
-      "be cloned, so the marker scan will run on ONE thread. For PGEN the ",
-      "reader is single-threaded in this version; for PLINK the .bed could not ",
-      "be memory mapped and the buffered fallback is in use.",
+      "be cloned, so the marker scan will run on ONE thread. For PLINK this ",
+      "means the .bed could not be memory mapped and the buffered fallback is ",
+      "in use.",
       call. = FALSE
     )
   }

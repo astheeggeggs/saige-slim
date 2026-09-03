@@ -11,9 +11,9 @@ genotype input**. The BGEN/VCF/SAV readers, step 3 (LD matrices), and
 RareEffect were stripped in commits "Strip 1"–"Strip 7", each verified
 byte-exact against `main`-HEAD goldens; the PGEN reader (also stripped there,
 in Strip 4) was added back in Phase 7 as fresh code implementing the
-`GenoReader` interface (step 2 only, single-threaded-only in v1 --
-`--nThreads > 1` refuses cleanly on a pgen input), not a restore of `main`'s
-pre-refactor `PgenClass`. `main` holds the full upstream fork (docs:
+`GenoReader` interface (step 2 only; single-threaded until S8, which made
+`PgenReader::clone()` real so `--nThreads` threads a pgen scan too), not a
+restore of `main`'s pre-refactor `PgenClass`. `main` holds the full upstream fork (docs:
 https://saigegit.github.io/SAIGE-doc/). Binary and quantitative traits are
 supported; survival-trait support was removed in Phase 3a of the refactor.
 
@@ -349,8 +349,10 @@ dead files).
   enters the R API -- on every ER marker; it is now conditional on a resampling
   arm actually running, and P1 (all-exact) plus P33 (one resampling marker) are
   what make that checkable.
-- `bash harness/tsan.sh [clean|plant]` -- ThreadSanitizer over the in-process
-  marker scan, all three workloads at 1/4/8 threads. **Always run both modes**:
+- `bash harness/tsan.sh [clean|plant|plantreader]` -- ThreadSanitizer over the
+  in-process marker scan, the selected workloads at 1/4/8 threads
+  (`SAIGE_TSAN_WORKLOADS`; `binary binary_sparse quant` by default, plus
+  `rare100` and, since S8, `pgen`/`pgen_quant`). **Always run a plant mode too**:
   `clean` must report zero races, and `plant` (one `MarkerScratch` shared by
   every worker) must report races -- a TSAN build that sees none of this code
   also reports zero, so the clean run alone gates nothing. Four macOS-specific
@@ -363,6 +365,25 @@ dead files).
   Expect the raw run to report main-thread-vs-worker races anyway: `libtbb` is
   not instrumented, so TSAN cannot see `parallelFor`'s join. `Main.cpp` declares
   that edge under `SAIGE_TSAN_ANNOTATIONS`, which only `tsan.sh` defines.
+  **Two S8 repairs to this script, both of which had been failing silently.**
+  (a) It drove the arm through `SAIGE_MARKER_THREADS`, which S7 deleted, so every
+  "threaded" arm had been running serially; the knob is `--nThreads` now, and the
+  script's own DID NOT THREAD check is what makes that visible. (b) pgenlib comes
+  from `libplink2_includes.a`, which `harness/build.sh` compiles WITHOUT
+  instrumentation, so a clean run said nothing about races inside the decoder --
+  the same blind spot uninstrumented `libtbb` has. `tsan.sh` now builds an
+  instrumented copy and, crucially, PREPENDS its `-L` in the package copy's
+  `src/Makevars`: `PKG_LIBS` puts `$(LAPACK_LIBS)` first, so the env's
+  uninstrumented archive would otherwise win the link and nothing would say so.
+  Check with `otool -L .../SAIGE.so | grep plink2` -- it must name the absolute
+  path under `harness/work/tsan`, not a bare filename. `plantreader` is the
+  matching positive control for S8: `PgenReader::clone()` returns a handle onto
+  the SAME `PgenClass`, which is the arrangement the `PgenShared`/`PgenClass`
+  split exists to prevent (0 / 192 / 54 races at 1/4/8 threads with output
+  DIFFERS, against 0/0/0 and identical for the same fixture clean). It is capped
+  at 2,000 markers by `SAIGE_TSAN_MAX_MARKERS` because a shared decoder thrashes
+  pgenlib's LD cache and the full-fixture arm does not finish -- the cap applies
+  to the 1-thread arm too, so the byte comparison stays honest.
 - `bash harness/make_controls.sh <dir>` — permuted-phenotype negative control
   through the full pipeline + KS uniformity check (`harness/check_null.R`),
   run through both the PLINK and PGEN readers (Phase 7) over the same
@@ -444,9 +465,26 @@ long-running `main*InCPP()` loop that writes output files from C++
   `PgenReader` (wraps `PGEN::PgenClass`, `src/PGEN.{hpp,cpp}`, added Phase 7 —
   fresh code implementing the interface, not a restore of `main`'s
   pre-refactor `PgenClass`, which predates `GenoReader` and used out-param
-  overloads instead of `MarkerMeta`). `PgenReader::clone()` still throws and
-  `PgenReader::isForkSafe()` is unconditionally `false` (v1 decision — no
-  fork-safety work done for PGEN yet).
+  overloads instead of `MarkerMeta`). **`PgenReader` clones (S8), but not the
+  way `PlinkReader` does** — and the difference is forced, not stylistic. A
+  pgenlib read MUTATES its reader (fread buffer, LD cache, `fp_vidx`,
+  workspaces), so clones cannot share one decoder the way PLINK's share one
+  mmap. `PGEN::PgenClass` is therefore split in two: `PgenShared` holds
+  everything read-only after construction (the pvar/psam metadata, the sample
+  subset, the `plink2::PgenFileInfo` and its allocations) and is shared by
+  `std::shared_ptr`; `PgenClass` is ONE decode handle, and `clone()` builds a
+  second one against the same shared state. That is pgenlib's own mode-2
+  contract — `PgrInit()` with a non-null `fname` copies the `PgenFileInfo` into
+  the reader, the first reader inherits the header's open handle and each later
+  one opens its own — and no read path writes the arrays that copy shares
+  (`var_fpos`/`vrtypes`/`allele_idx_offsets`/`nonref_flags` are written only by
+  `PgfiInitPhase2`). Two consequences worth knowing: the per-handle arena is
+  ~130 bytes per SAMPLE (arithmetic from the allocation expression, not measured
+  at scale — most of it two transpose buffers that single-variant reads never
+  touch), so PGEN threading costs memory where PLINK's shared mmap does not; and
+  `PgenReader::isForkSafe()` is still `false`, now as a live hazard rather than
+  conservatism — a pgenlib reader owns a `FILE*` it fseeks, so a fork would share
+  one offset.
   **`PlinkReader` clones (S5).** It holds a `std::shared_ptr<PLINK::PlinkClass>`
   and clones SHARE that one instance; `close()` releases only that handle, so
   the map and the `FILE*` die with the LAST owner and closing the primary under
@@ -531,12 +569,14 @@ both directions: sharing one `MarkerScratch` across workers fails it, and forcin
 "TBB is involved" from "markers ran concurrently".
 
 **Two behaviours are deliberate degradations, not oversights.** Group tests warn
-and drop to one thread. A reader that cannot be CLONED — PGEN always, PLINK when
-the `.bed` could not be mmapped and the pread fallback is in use (S5) — also
-drops to one thread, with the reason both printed and raised as an R `warning()`.
-Degrading rather than erroring is the agreed S7 decision: erroring would break
-anyone scripting one `--nThreads` across mixed inputs. PGEN gains real
-parallelism only when `PgenReader::clone()` is implemented.
+and drop to one thread. A reader that cannot be CLONED also drops to one thread,
+with the reason both printed and raised as an R `warning()`. Degrading rather
+than erroring is the agreed S7 decision: erroring would break anyone scripting
+one `--nThreads` across mixed inputs. **Since S8 there is exactly one such
+reader**: PLINK when the `.bed` could not be mmapped and the pread fallback is in
+use (S5). PGEN threads — `PgenReader::clone()` hands each worker its own pgenlib
+reader over shared metadata — and the pgen half of the byte-identity gate is in
+`test-step2-pgen.R`, at 100 markers and again over the 128,868-marker fixture.
 
 **Three findings that must outlive the retired fork path**, all about THIS
 codebase rather than about fork:

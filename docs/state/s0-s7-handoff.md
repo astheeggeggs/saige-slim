@@ -266,7 +266,13 @@ Phase 4's step-2 thread of work is FINISHED: one parallelism mechanism, and
 Working tree clean, everything pushed to `slim/strip`, CI green through
 `60e65e3b`.
 
-### Next: `PgenReader::clone()`
+### Next: `PgenReader::clone()` -- **DONE, see `docs/state/s8-pgen-clone.md`**
+
+Everything below in this section is the brief S8 worked from; the S8 handoff
+records what was actually built (a `PgenShared`/`PgenClass` split rather than
+PLINK's shared-decoder shape, because a pgenlib read mutates its reader), the
+latent `PgrInit` filename bug it exposed (LEDGER #48), and the two harness
+scripts that had been silently running serial arms since S7.
 
 **PGEN gets no marker parallelism at all today, from anything.** `--nThreads > 1`
 on a pgen input degrades to one thread with a warning, because

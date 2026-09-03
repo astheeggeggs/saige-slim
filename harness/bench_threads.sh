@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
 # S6 measurement: the in-process marker threading (nThreadsMarker), 1 vs N.
 #
-#   bash harness/bench_threads.sh <label> [reps] [threads] [mech]
+#   bash harness/bench_threads.sh <label> [reps] [threads]
 #
-# mech is `inproc` (default) or `fork`, selecting which of the two parallelism
-# mechanisms the N-thread arm uses -- nThreadsMarker (S6, in-process TBB) or
-# --nThreads (C2, mclapply shards). The 1-thread arm is the same serial run
-# either way, which is what makes the two mechanisms comparable through it:
-# each is measured against the SAME baseline rather than against each other in
-# a single interleaved block. That matters for the retirement decision in
-# docs/design/step2-threading-verdict.md, item 3.
+# S7 RETIRED THE SECOND MECHANISM, and this script had been left driving the
+# arm through `SAIGE_MARKER_THREADS`, which S7 deleted -- so every "threaded"
+# arm was silently serial until S8 repaired it. There is one mechanism now and
+# the knob is `--nThreads`; the `mech` column is kept in the TSV so the rows
+# already recorded under `inproc`/`fork` still parse.
 #
 # This is NOT harness/bench.sh's job. bench.sh times ONE configuration per row
 # and appends; this one is a PAIRED A/B in the sense harness/bench/NOTES.md
@@ -42,7 +40,11 @@ LABEL="${1:?usage: bench_threads.sh <label> [reps] [threads]}"
 REPS="${2:-8}"
 NT="${3:-4}"
 MECH="${4:-inproc}"
-case "$MECH" in inproc|fork) ;; *) echo "mech must be inproc or fork" >&2; exit 2 ;; esac
+case "$MECH" in
+  inproc) ;;
+  fork) echo "the forked marker scan was retired in S7; there is only one mechanism" >&2; exit 2 ;;
+  *) echo "mech must be inproc" >&2; exit 2 ;;
+esac
 cd "$REPO/extdata"
 source "$REPO/harness/env.sh"
 mkdir -p "$REPO/harness/bench"
@@ -53,6 +55,8 @@ SCRATCH=$(mktemp -d)
 trap 'rm -rf "$SCRATCH"' EXIT
 GOLD="$REPO/harness/goldens"
 SG="--sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx --sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt"
+PGENPFX="./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr"
+PGEN="--pgenFile=$PGENPFX.pgen --pvarFile=$PGENPFX.pvar --psamFile=$PGENPFX.psam"
 BED="--bedFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.bed --bimFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.bim --famFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.fam --AlleleOrder=alt-first"
 COMMON="--minMAF=0 --minMAC=1 --LOCO=FALSE --markers_per_chunk=10000"
 
@@ -94,17 +98,17 @@ run_arm() { # run_arm <workload> <threads> <block> <rep> -> writes a TSV row, ec
       local rp="$REPO/harness/work/rarefix/$wl"
       [ -f "$rp.bed" ] || { echo "missing $rp.bed -- run harness/make_rare_fixture.py first" >&2; exit 1; }
       bed="--bedFile=$rp.bed --bimFile=$rp.bim --famFile=$rp.fam --AlleleOrder=alt-first" ;;
+    # The same markers through the OTHER reader (S8). PGEN threads by giving
+    # each worker its own pgenlib reader over shared metadata, where PLINK
+    # shares one mmap -- so the per-worker cost differs and the two are not
+    # interchangeable measurements.
+    pgen)       model="binary_sparseGRM_a"; args=""; bed="$PGEN" ;;
+    pgen_quant) model="quant_sparseGRM";    args=""; bed="$PGEN" ;;
     *) echo "unknown workload $wl" >&2; exit 1 ;;
   esac
-  # The 1-thread arm is identical under both mechanisms (both dispatch to the
-  # same serial call), so only the N-thread arm differs.
-  local mt=1 ft=1
-  if [ "$nt" -gt 1 ]; then
-    if [ "$MECH" = inproc ]; then mt=$nt; else ft=$nt; fi
-  fi
-  SAIGE_MARKER_THREADS="$mt" /usr/bin/time -l \
+  /usr/bin/time -l \
     pixi run --manifest-path "$REPO/pixi.toml" Rscript step2_SPAtests.R \
-    $bed $COMMON $args --nThreads=$ft \
+    $bed $COMMON $args --nThreads=$nt \
     --GMMATmodelFile="$GOLD/step1/$model.rda" \
     --varianceRatioFile="$GOLD/step1/$model.varianceRatio.txt" \
     --SAIGEOutputFile="$of" > "$lf" 2> "$tf" || {
@@ -113,15 +117,10 @@ run_arm() { # run_arm <workload> <threads> <block> <rep> -> writes a TSV row, ec
   # be two serial runs -- the LEDGER #30 shape, and exactly what the standing
   # test in test-step2-threads-inprocess.R asserts for the same reason.
   if [ "$nt" -gt 1 ]; then
-    if [ "$MECH" = inproc ]; then
-      grep -q "will use $nt in-process threads" "$lf" || {
-        echo "ARM DID NOT THREAD: $tag (no thread-count line)"; exit 1; }
-    else
-      grep -q "shards over $nt threads" "$lf" || {
-        echo "ARM DID NOT FORK: $tag (no shard line)"; exit 1; }
-    fi
+    grep -q "will use $nt in-process threads" "$lf" || {
+      echo "ARM DID NOT THREAD: $tag (no thread-count line)"; exit 1; }
   else
-    grep -qE "in-process threads|shards over" "$lf" && {
+    grep -q "in-process threads" "$lf" && {
       echo "SERIAL ARM PARALLELISED: $tag"; exit 1; } || true
   fi
   local real user sys rss startup work thru
