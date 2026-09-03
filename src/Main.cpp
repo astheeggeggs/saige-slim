@@ -19,7 +19,9 @@
 #include <RcppParallel.h>   // S6: parallelFor for the marker scan
 #include <mutex>
 #include "Main.hpp"
+#include <cstring>
 #include "Binary_global.hpp"   // S6: SKATMainThread, the ER handback
+#include "Binary_HyperGeo.hpp" // lchoose_threadsafe, for its regression test
 #include "GenoReader.hpp"
 #include "SAIGE_test.hpp"
 #include "UTIL.hpp"
@@ -3345,4 +3347,27 @@ void copy_singleInGroup(){
   ini_file.close();
 }
 
-
+// Exhaustively compare lchoose_threadsafe against Rf_lchoose over the integer
+// domain HyperGeo::lCombinations can reach, and report the number of pairs that
+// differ AS BITS (memcmp, so NaN/Inf/-0.0 are held to the same standard rather
+// than compared with ==, which would call every NaN pair a difference and every
+// -0.0/0.0 pair a match).
+//
+// This exists because the goldens cannot do the job. They DO execute the
+// function -- replacing its main branch with a hard error fails the standard
+// tier -- but perturbing that branch by +1e-9 leaves the entire tier green, so
+// they bound its numerics only loosely. The swap's whole justification is
+// bit-identity, so bit-identity is what gets tested.
+// [[Rcpp::export]]
+int lchooseThreadsafeDiffCountInCPP(int t_nmax)
+{
+  int ndiff = 0;
+  for(int n = 0; n <= t_nmax; n++){
+    for(int k = -3; k <= n; k++){
+      double a = Rf_lchoose((double)n, (double)k);
+      double b = lchoose_threadsafe((double)n, (double)k);
+      if(std::memcmp(&a, &b, sizeof(double)) != 0) ndiff++;
+    }
+  }
+  return ndiff;
+}

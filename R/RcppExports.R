@@ -125,6 +125,10 @@ copy_singleInGroup <- function() {
     invisible(.Call('_SAIGE_copy_singleInGroup', PACKAGE = 'SAIGE'))
 }
 
+lchooseThreadsafeDiffCountInCPP <- function(t_nmax) {
+    .Call('_SAIGE_lchooseThreadsafeDiffCountInCPP', PACKAGE = 'SAIGE', t_nmax)
+}
+
 closeGenoFile_plink <- function() {
     invisible(.Call('_SAIGE_closeGenoFile_plink', PACKAGE = 'SAIGE'))
 }

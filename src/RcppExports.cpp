@@ -453,6 +453,17 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// lchooseThreadsafeDiffCountInCPP
+int lchooseThreadsafeDiffCountInCPP(int t_nmax);
+RcppExport SEXP _SAIGE_lchooseThreadsafeDiffCountInCPP(SEXP t_nmaxSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type t_nmax(t_nmaxSEXP);
+    rcpp_result_gen = Rcpp::wrap(lchooseThreadsafeDiffCountInCPP(t_nmax));
+    return rcpp_result_gen;
+END_RCPP
+}
 // closeGenoFile_plink
 void closeGenoFile_plink();
 RcppExport SEXP _SAIGE_closeGenoFile_plink() {
@@ -1967,6 +1978,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_set_flagSparseGRM_cur_SAIGE", (DL_FUNC) &_SAIGE_set_flagSparseGRM_cur_SAIGE, 1},
     {"_SAIGE_set_flagSparseGRM_cur_SAIGE_org", (DL_FUNC) &_SAIGE_set_flagSparseGRM_cur_SAIGE_org, 0},
     {"_SAIGE_copy_singleInGroup", (DL_FUNC) &_SAIGE_copy_singleInGroup, 0},
+    {"_SAIGE_lchooseThreadsafeDiffCountInCPP", (DL_FUNC) &_SAIGE_lchooseThreadsafeDiffCountInCPP, 1},
     {"_SAIGE_closeGenoFile_plink", (DL_FUNC) &_SAIGE_closeGenoFile_plink, 0},
     {"_SAIGE_gettotalMarker", (DL_FUNC) &_SAIGE_gettotalMarker, 0},
     {"_SAIGE_getAlleleFreqVec", (DL_FUNC) &_SAIGE_getAlleleFreqVec, 0},

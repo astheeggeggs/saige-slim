@@ -189,7 +189,7 @@ int     HyperGeo::Print(){
 // computed on a worker thread with R's stack check LEFT ON, again with zero
 // differences. harness/probes/lchoose_replacement.cpp reproduces both.
 // Because it is bit-identical, no golden can move.
-static double lchoose_threadsafe(double n, double k)
+double lchoose_threadsafe(double n, double k)
 {
     if (k < 2) {
         if (k < 0) return R_NegInf;
