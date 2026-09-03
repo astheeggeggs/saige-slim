@@ -113,6 +113,8 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
   re1 <- system.time({
     setgenoFromInput(genoIn, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne)
   })
+  cat("genotype ingest (setgeno) took\n")
+  print(re1)
   if (verbose) {
     print("Genotype reading is done")
   }
@@ -342,6 +344,8 @@ glmmkin.ai_PCG_Rcpp_Quantitative <- function(bedFile, bimFile, famFile, Xorig, i
   re1 <- system.time({
     setgenoFromInput(genoIn, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne)
   })
+  cat("genotype ingest (setgeno) took\n")
+  print(re1)
   if (verbose) {
     print("Genotype reading is done")
   }
@@ -1192,7 +1196,7 @@ fitNULLGLMM <- function(plinkFile = "",
       cat("Start fitting the NULL GLMM\n")
       t_begin <- proc.time()
       print(t_begin)
-      system.time(modglmm <- glmmkin.ai_PCG_Rcpp_Binary(bedFile, bimFile, famFile, Xorig, isCovariateOffset,
+      re_fit <- system.time(modglmm <- glmmkin.ai_PCG_Rcpp_Binary(bedFile, bimFile, famFile, Xorig, isCovariateOffset,
         fit0,
         tau = c(0, 0), fixtau = c(0, 0), maxiter = maxiter,
         tol = tol, verbose = TRUE, nrun = nrun, tolPCG = tolPCG,
@@ -1347,6 +1351,8 @@ fitNULLGLMM <- function(plinkFile = "",
       print(t_end)
       cat("t_end - t_begin, fitting the NULL model took\n")
       print(t_end - t_begin)
+      cat("of which the null-model fit itself (glmmkin.ai_PCG_Rcpp) took\n")
+      print(re_fit)
     } else {
       cat("Skip fitting the NULL GLMM\n")
 
@@ -1439,7 +1445,7 @@ fitNULLGLMM <- function(plinkFile = "",
         setisUsePCGwithSparseSigma(usePCGwithSparseGRM)
       }
       cat("Start fitting the NULL GLMM\n")
-      system.time(modglmm <- glmmkin.ai_PCG_Rcpp_Quantitative(bedFile, bimFile, famFile, Xorig, isCovariateOffset,
+      re_fit <- system.time(modglmm <- glmmkin.ai_PCG_Rcpp_Quantitative(bedFile, bimFile, famFile, Xorig, isCovariateOffset,
         fit0,
         tau = c(0, 0), fixtau = c(0, 0), maxiter = maxiter,
         tol = tol, verbose = TRUE, nrun = nrun, tolPCG = tolPCG,
@@ -1588,6 +1594,8 @@ fitNULLGLMM <- function(plinkFile = "",
       print(t_end)
       cat("t_end - t_begin, fitting the NULL model took\n")
       print(t_end - t_begin)
+      cat("of which the null-model fit itself (glmmkin.ai_PCG_Rcpp) took\n")
+      print(re_fit)
     } else {
       cat("Skip fitting the NULL GLMM\n")
       if (!file.exists(modelOut)) {

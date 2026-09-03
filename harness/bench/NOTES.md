@@ -569,3 +569,66 @@ across ~5x, which is worth knowing before quoting a per-gene cost from any one
 fixture. But the aggregate effect is small: at ~10% escalation a whole run moves
 ~10%, NOT the ~2x that an earlier draft of `docs/state/next.md` claimed. The 2x
 is per escalated gene only.
+
+---
+
+## Phase 0 of the multi-phenotype work: how much of a marker's cost is SHARED?
+
+**2026-09-04**, N = 50,000 (`SAIGE-sim/harness/work/sim50k`, 210,515 markers on
+chr20, `--minMAC=20`, `--nThreads=1`, warm cache, 2 reps per trait). `uptime`
+before the run: load 4.56 -- there WAS background load, which matters for the
+absolute seconds and not for the ratio, which is what this measurement is for.
+
+The instrument is `SAIGE_PROFILE_MARKER` (off by default; three
+`std::chrono::steady_clock` buckets inside `testOneMarker`, serial arm only,
+printed once per chunk). Buckets:
+
+* **prepare** = read + decode + QC gate 1 + `imputeGenoAndFlip` + QC gate 2 +
+  the two `conv_to` index copies. This is the work a multi-model scan does ONCE
+  per sample-set group however many null models are tested.
+* **test** = the score/SPA/ER calls and the fastTest re-test. Per model.
+* **summary** = the row fields, including the binary case/control gather. Per
+  model.
+
+Whole-run totals (seconds of wall time inside `testOneMarker`):
+
+| run | prepare `s` | test | summary | per-model `m` | `m/s` | P=5 factor | ceiling |
+|---|---|---|---|---|---|---|---|
+| y_binary rep1 | 63.27 | 24.39 | 6.50 | 30.89 | 0.488 | **2.16x** | 3.05x |
+| y_binary rep2 | 58.43 | 21.88 | 6.00 | 27.88 | 0.477 | **2.18x** | 3.10x |
+| y_quant rep1 | 63.82 | 5.88 | 0.02 | 5.89 | 0.092 | **3.74x** | 11.8x |
+| y_quant rep2 | 74.32 | 5.88 | 0.02 | 5.90 | 0.079 | **3.86x** | 13.6x |
+
+The factor is `P(s+m)/(s+Pm)` -- P serial runs against one P-model run. The
+ceiling is `(s+m)/m`, what infinitely many phenotypes would approach.
+
+Three things worth keeping:
+
+1. **The prepare bucket is ~91% of the run's wall time on the quantitative arm
+   and ~67% on the binary one.** `testOneMarker` accounts for 94.2 s of a
+   103.9 s run at N=50k, so the flat/startup terms that dominate the N=1,000
+   benches (`s2_marker6k`, ~90% startup) are gone at this scale. A speedup
+   predicted from these buckets is therefore a prediction about the run.
+2. **`summary` separates the two trait types completely**: 6.0-6.5 s for binary,
+   0.02 s for quantitative. That whole difference is the two
+   `GVec.elem(m_case_indices)` gathers, which are O(N) per marker per model --
+   the term the "make the case/control summary O(MAC)" item in
+   `docs/state/next.md` would remove, and the reason binary's ceiling is 3x
+   where quantitative's is >11x.
+3. The plan's a-priori arithmetic said ~2.5x (rare binary) / ~1.7x (common
+   binary) and ~4-5x (quantitative) at P=5. Measured: 2.17x and 3.80x. Same
+   ranking, same order of magnitude, binary at the pessimistic end of its
+   predicted band -- which is expected, since `--minMAC=20` on this fixture is
+   the COMMON-variant regime the 1.7x row describes, not the rare one.
+
+Not measured here, and additive to the above: the `.bed` is read once instead of
+P times (2.63 GB on this fixture) and there is one reader/mmap instead of P.
+Working against it: the serial writer formats P rows per marker, so the Amdahl
+serial fraction under `--nThreads` rises with P.
+
+**Step 1.** `R/SAIGE_fitGLMM_fast.R` now prints the two timers it used to
+compute and discard (the `system.time` around `setgenoFromInput`, and the one
+around `glmmkin.ai_PCG_Rcpp_*`). At N=1,000 on the sparse-GRM golden the ingest
+is `time: 2164 ms` of a ~6.5 s run, so sharing it across P=5 phenotypes predicts
+~1.4x there; the ingest is O(M x N) against the sparse fit's O(nnz x iter), so
+its share -- and the saving -- grows with the number of GRM markers.

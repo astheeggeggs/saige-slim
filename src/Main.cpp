@@ -206,6 +206,72 @@ static bool getOneMarkerThrough(Geno::GenoReader& t_reader,
 }
 
 
+// Phase 0 instrumentation: an OFF-BY-DEFAULT stopwatch over the three phases of
+// testOneMarker, so the shared/per-model split that multi-model scanning turns
+// on can be predicted from a measurement rather than from arithmetic.
+//
+// Gated on the environment variable SAIGE_PROFILE_MARKER (precedent:
+// SAIGE_PLINK_NO_MMAP, src/PLINK.cpp). When unset the only cost is a null
+// pointer check per phase and nothing is printed, so no golden can move. It is
+// reported for the SERIAL arm only -- the accumulators are plain statics, and
+// summing wall time across workers would answer a different question anyway.
+namespace {
+
+struct MarkerProfile {
+  bool enabled = false;
+  double prepare = 0.0;   // read + QC gate 1 + impute/flip + QC gate 2
+  double test = 0.0;      // the score/SPA/ER calls and the fastTest re-test
+  double summary = 0.0;   // per-model row fields, incl. the case/ctrl gather
+  long long nPrepare = 0;
+  long long nTest = 0;
+  long long nSummary = 0;
+
+  void reset() {
+    prepare = test = summary = 0.0;
+    nPrepare = nTest = nSummary = 0;
+  }
+};
+
+static MarkerProfile g_markerProfile;
+
+static bool markerProfileRequested()
+{
+  const char* e = std::getenv("SAIGE_PROFILE_MARKER");
+  return (e != nullptr) && (e[0] != '\0') && (std::strcmp(e, "0") != 0);
+}
+
+// Stops on destruction so the early returns inside the prepare phase are timed
+// too; stop() makes it explicit where a phase ends mid-function.
+class ProfileScope {
+public:
+  ProfileScope(double* t_acc, long long* t_cnt)
+    : m_acc(t_acc), m_cnt(t_cnt)
+  {
+    if(m_acc != nullptr){
+      m_t0 = std::chrono::steady_clock::now();
+    }
+  }
+  ~ProfileScope() { stop(); }
+  void stop()
+  {
+    if(m_acc == nullptr){
+      return;
+    }
+    *m_acc += std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - m_t0).count();
+    ++(*m_cnt);
+    m_acc = nullptr;
+  }
+  ProfileScope(const ProfileScope&) = delete;
+  ProfileScope& operator=(const ProfileScope&) = delete;
+private:
+  double* m_acc;
+  long long* m_cnt;
+  std::chrono::steady_clock::time_point m_t0;
+};
+
+}  // namespace
+
 // S4: one marker's analysis, lifted out of mainMarkerInCPP's loop body. Every
 // value it produces goes into t_res (one slot per marker, never shared); every
 // buffer it reuses comes from t_scratch (shared across markers by design, so
@@ -228,6 +294,9 @@ static bool testOneMarker(Geno::GenoReader & t_reader,
                           Marker::MarkerResult & t_res)
 {
   int n = g_model->m_n;
+
+  ProfileScope profPrepare(g_markerProfile.enabled ? &g_markerProfile.prepare : nullptr,
+                           &g_markerProfile.nPrepare);
 
   // information of marker
   double altFreq, altCounts, missingRate, imputeInfo, AF_case, AF_ctrl, N_case_hom, N_ctrl_het, N_case_het, N_ctrl_hom;
@@ -317,6 +386,8 @@ static bool testOneMarker(Geno::GenoReader & t_reader,
 
   t_scratch.indexZeroVec.clear();
   t_scratch.indexNonZeroVec.clear();
+  profPrepare.stop();
+
   // P2Vec / G1tilde_P_G2tilde_Vec are NOT cleared here. Both are fully assigned
   // before any read (SAIGE_test.cpp:166/174/930/934 and :786 respectively), so
   // clearing them only freed the scratch buffers and made the next marker
@@ -364,6 +435,9 @@ static bool testOneMarker(Geno::GenoReader & t_reader,
   // Gated on harness/tsan.sh, both modes, WITH THIS DEFERRAL REMOVED -- which is
   // the first time a worker has ever run the ER machinery, and so the first time
   // SL_calloc and the Binary_* internals have been under a race detector.
+
+  ProfileScope profTest(g_markerProfile.enabled ? &g_markerProfile.test : nullptr,
+                        &g_markerProfile.nTest);
 
   if(MAC <= g_cfg.MACCutoffforER && t_traitType == "binary"){
     Unified_getMarkerPval(
@@ -414,6 +488,11 @@ static bool testOneMarker(Geno::GenoReader & t_reader,
                           altFreq, isSPAConverge, t_scratch.gtildeVec, is_gtilde, is_region, t_scratch.P2Vec, t_isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, t_scratch.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctxRetest);
      }
   }//if((t_traitType == "binary" && MAC > g_cfg.MACCutoffforER) || t_traitType != "binary"){
+
+  profTest.stop();
+
+  ProfileScope profSummary(g_markerProfile.enabled ? &g_markerProfile.summary : nullptr,
+                           &g_markerProfile.nSummary);
 
   // The two Firth counters were the loop's only cross-marker accumulators;
   // recorded per marker here and summed by the caller after the scan. Reading
@@ -660,6 +739,13 @@ void mainMarkerInCPP(
   bool isSingleVarianceRatio = ((g_model->m_varRatio_null).n_elem == 1);
 
   int nThreads = (t_nThreadsMarker < 1) ? 1 : t_nThreadsMarker;
+
+  // Phase 0: the profile is serial-arm only, so the decision is taken after
+  // nThreads has been resolved (a reader that refuses to clone degrades to 1
+  // below, which is still a serial scan and is still worth profiling).
+  g_markerProfile.reset();
+  g_markerProfile.enabled = (nThreads == 1) && markerProfileRequested();
+
   if(nThreads > 1){
     if(!g_reader){
       Rcpp::stop("No genotype reader has been set up.");
@@ -794,6 +880,20 @@ void mainMarkerInCPP(
         std::cout << "Completed " << (i+1) << "/" << q << " markers in the chunk." << std::endl;
       }
     }
+  }
+
+  if(g_markerProfile.enabled){
+    double total = g_markerProfile.prepare + g_markerProfile.test + g_markerProfile.summary;
+    std::cout << "MARKER PROFILE (serial, SAIGE_PROFILE_MARKER set):" << std::endl;
+    std::cout << "  markers in chunk: " << q << ", scanned: " << nScanned << std::endl;
+    std::cout << "  prepare (read+QC+impute): " << g_markerProfile.prepare
+              << " s over " << g_markerProfile.nPrepare << " markers" << std::endl;
+    std::cout << "  test    (score/SPA/ER)  : " << g_markerProfile.test
+              << " s over " << g_markerProfile.nTest << " markers" << std::endl;
+    std::cout << "  summary (row fields)   : " << g_markerProfile.summary
+              << " s over " << g_markerProfile.nSummary << " markers" << std::endl;
+    std::cout << "  accounted total        : " << total << " s" << std::endl;
+    g_markerProfile.enabled = false;
   }
 
   int mFirth = 0;
