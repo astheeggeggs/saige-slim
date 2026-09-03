@@ -18,7 +18,8 @@ https://saigegit.github.io/SAIGE-doc/). Binary and quantitative traits are
 supported; survival-trait support was removed in Phase 3a of the refactor.
 
 **`LEDGER.md` and `docs/state/` are the authoritative record of where this branch
-is** -- read those first. There is a plan at
+is** -- read those first; `docs/state/next.md` is the short list of what is NOT
+done, with provenance marked on each item. There is a plan at
 `~/.claude/plans/based-on-this-repository-silly-shore.md` (superseding
 `rosy-munching-pudding.md`, which holds the Phase 0-5 history), but it was last
 written 2026-09-01 and so predates S8-S12 entirely; treat it as history, not as
