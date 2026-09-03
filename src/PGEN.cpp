@@ -33,6 +33,52 @@ PgenShared::PgenShared(const std::string& t_pgenFile,
     loadPgfi();
 }
 
+// All file samples, in file order. Deliberately does NOT call
+// setPosSampleInPgen: no sample-ID matching happens, so this path cannot be
+// affected by readPsamFile's FID/IID column-0 keying.
+PgenShared::PgenShared(const std::string& t_pgenFile,
+    const std::string& t_psamFile,
+    const std::string& t_pvarFile)
+    : M(0), N(0), N0(0),
+      pgenFile(t_pgenFile), psamFile(t_psamFile), pvarFile(t_pvarFile),
+      _pgfi_alloc(nullptr), _allele_idx_offsetsp(nullptr), _nonref_flagsp(nullptr),
+      _max_vrec_width(0), _pgr_alloc_cacheline_ct(0), _file_sample_ct(0),
+      _is_not_plink1_bed(false)
+{
+    readPvarFile();
+
+    // Counted, NOT taken from sampleInPgen.size(): that map keys on psam
+    // column 0, so any two samples sharing an FID would collapse into one
+    // entry and undercount N0. Nothing on this path needs the map, so it is
+    // never built.
+    N0 = countPsamSamples();
+    posSampleInPgen.reserve(N0);
+    for(size_t i = 0; i < N0; i++) {
+        posSampleInPgen.push_back(i);
+    }
+    N = N0;
+    M = variantId.size();
+
+    loadPgfi();
+}
+
+// Data rows in the psam: every line that is neither a '#' header nor blank.
+size_t PgenShared::countPsamSamples() const
+{
+    std::ifstream psam(psamFile);
+    if(!psam.is_open()) {
+        Rcpp::stop("Cannot open psam file (" + psamFile + ").");
+    }
+    std::string line;
+    size_t n = 0;
+    while(getline(psam, line)) {
+        if(line.empty() || line[0] == '#') continue;
+        if(line.size() == 1 && line[0] == '\r') continue;
+        n++;
+    }
+    return n;
+}
+
 void PgenShared::loadPgfi()
 {
     // similar to pgenlibr/src/pgenlibr.cpp; the second half (PgrInit and the
@@ -181,6 +227,15 @@ PgenClass::PgenClass(std::string pgenFile,
     std::string pvarFile,
     std::vector<std::string>& sampleInModel)
     : m_shared(std::make_shared<PgenShared>(pgenFile, psamFile, pvarFile, sampleInModel)),
+      _pgr_alloc(nullptr), _subset_size(0)
+{
+    initReader();
+}
+
+PgenClass::PgenClass(std::string pgenFile,
+    std::string psamFile,
+    std::string pvarFile)
+    : m_shared(std::make_shared<PgenShared>(pgenFile, psamFile, pvarFile)),
       _pgr_alloc(nullptr), _subset_size(0)
 {
     initReader();

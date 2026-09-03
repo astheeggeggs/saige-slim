@@ -15,9 +15,151 @@
 #include <boost/date_time.hpp> // for gettimeofday and timeval
 #include <oneapi/tbb/concurrent_vector.h>
 #include "getMem.hpp"
+#include "PGEN.hpp"
 using namespace Rcpp;
 using namespace std;
 using namespace RcppParallel;
+
+
+// ---------------------------------------------------------------------------
+// Where one marker's genotypes come from.
+//
+// setGenoObj has always streamed the .bed one marker at a time into a
+// ceil(N/4)-byte PLINK-1 record and handed that to
+// Get_OneSNP_Geno_atBeginning, which does the unpack, QC, mean imputation and
+// 2-bit repack. The PGEN path produces the SAME record and calls the SAME
+// function, so every float downstream of it is literally the same code and
+// byte-identity between the two front-ends holds structurally rather than by
+// coincidence. The pack/unpack round trip is deliberate overhead bought in
+// exchange for that guarantee.
+// ---------------------------------------------------------------------------
+class MarkerByteSource {
+public:
+        virtual ~MarkerByteSource() {}
+        // Samples in the genotype file, in file order.
+        virtual size_t numSamples() const = 0;
+        // Variants in the genotype file, in file order.
+        virtual size_t numMarkers() const = 0;
+        // Fill t_out (already sized to ceil(numSamples()/4)) with marker
+        // t_markerIdx as a PLINK-1 .bed record.
+        virtual void fill(size_t t_markerIdx, std::vector<unsigned char> & t_out) = 0;
+        virtual void close() = 0;
+};
+
+// The original path: count fam/bim lines, seek+read one .bed record.
+class BedByteSource : public MarkerByteSource {
+private:
+        std::ifstream m_bed;
+        size_t m_N, m_M, m_nbyte;
+public:
+        BedByteSource(const std::string & t_bedfile,
+                      const std::string & t_bimfile,
+                      const std::string & t_famfile)
+          : m_N(0), m_M(0), m_nbyte(0)
+        {
+                std::string junk;
+                std::ifstream test_famfile;
+                test_famfile.open(t_famfile.c_str());
+                if (!test_famfile.is_open()){
+                        printf("Error! fam file not open!");
+                        return;
+                }
+                int indexRow = 0;
+                while (std::getline(test_famfile, junk)){
+                        indexRow = indexRow + 1;
+                        junk.clear();
+                }
+                m_N = indexRow;
+                test_famfile.clear();
+
+                std::ifstream test_bimfile;
+                test_bimfile.open(t_bimfile.c_str());
+                if (!test_bimfile.is_open()){
+                        printf("Error! bim file not open!");
+                        return;
+                }
+                indexRow = 0;
+                while (std::getline(test_bimfile, junk)){
+                        indexRow = indexRow + 1;
+                        junk.clear();
+                }
+                m_M = indexRow;
+                test_bimfile.clear();
+
+                m_nbyte = ceil(float(m_N)/4);
+
+                m_bed.open(t_bedfile.c_str(), ios::binary);
+                if (!m_bed.is_open()){
+                        printf("Error! file open!");
+                        return;
+                }
+        }
+        size_t numSamples() const { return m_N; }
+        size_t numMarkers() const { return m_M; }
+        void fill(size_t t_markerIdx, std::vector<unsigned char> & t_out){
+                m_bed.seekg(3 + m_nbyte*t_markerIdx);
+                m_bed.read((char*)(&t_out[0]), m_nbyte);
+        }
+        void close(){ if(m_bed.is_open()) m_bed.close(); }
+};
+
+// PGEN: decode one variant with pgenlib, re-encode it as a .bed record.
+//
+// PLINK-1 packs four samples per byte, sample j in bits 2j (low, read as `b`)
+// and 2j+1 (`a`); Get_OneSNP_Geno_atBeginning maps (b,a) -> (1,0) missing,
+// (0,0) 2, (0,1) 1, (1,1) 0, i.e. it counts copies of the bim column-5 allele.
+// pgenlib's alleleIdx = 1 gives the ALT count, and plink2 --make-pgen from a
+// bfile puts bim column 5 in ALT -- so the two are the same quantity and the
+// field value is a*2 + b:
+//     ALT count 2 -> 0b00 ; 1 -> 0b10 ; 0 -> 0b11 ; missing -> 0b01
+class PgenByteSource : public MarkerByteSource {
+private:
+        PGEN::PgenClass m_pgen;
+        std::vector<double> m_buf;
+        size_t m_N, m_M, m_nbyte;
+        // Dosages cannot be held by a 2-bit store, so they are hard-called.
+        // Counted across the whole scan and reported once.
+        unsigned long long m_nDosageHardCalled;
+public:
+        PgenByteSource(const std::string & t_pgenfile,
+                       const std::string & t_pvarfile,
+                       const std::string & t_psamfile)
+          : m_pgen(t_pgenfile, t_psamfile, t_pvarfile),
+            m_N(m_pgen.getN()), m_M(m_pgen.getM()),
+            m_nbyte(ceil(float(m_pgen.getN())/4)),
+            m_nDosageHardCalled(0)
+        {
+                m_buf.resize(m_N);
+        }
+        size_t numSamples() const { return m_N; }
+        size_t numMarkers() const { return m_M; }
+        unsigned long long numDosageHardCalled() const { return m_nDosageHardCalled; }
+        void fill(size_t t_markerIdx, std::vector<unsigned char> & t_out){
+                m_pgen.Read(m_buf, (int)t_markerIdx, 1);
+                std::fill(t_out.begin(), t_out.end(), (unsigned char)0);
+                for(size_t i = 0; i < m_N; i++){
+                        double d = m_buf[i];
+                        unsigned char field;
+                        if(std::isnan(d)){
+                                field = 1;              // 0b01, missing
+                        }else{
+                                if(d != std::floor(d)){
+                                        m_nDosageHardCalled++;
+                                }
+                                long g = lround(d);
+                                if(g <= 0){
+                                        field = 3;      // 0b11, ALT count 0
+                                }else if(g == 1){
+                                        field = 2;      // 0b10, ALT count 1
+                                }else{
+                                        field = 0;      // 0b00, ALT count 2
+                                }
+                        }
+                        t_out[i >> 2] |= (unsigned char)(field << ((i & 3) << 1));
+                }
+        }
+        void close(){ m_pgen.closegenofile(); }
+};
 
 
 float minMAFtoConstructGRM = 0;
@@ -684,7 +826,23 @@ public:
   	//This function is used instead of using a constructor because using constructor can not take
   	//genofile as an argument from runModel.R 
         //genofile is the predix for plink bim, bed, fam, files   
+  	// Front-ends. Both build a MarkerByteSource and hand it to the one
+  	// implementation below, so the .bed and .pgen paths share every line of
+  	// the decode/QC/impute/repack pipeline.
   	void setGenoObj(std::string bedfile, std::string bimfile, std::string famfile, std::vector<int> & subSampleInGeno, std::vector<bool> & indicatorGenoSamplesWithPheno, float memoryChunk, bool  isDiagofKinSetAsOne){
+		BedByteSource src(bedfile, bimfile, famfile);
+		setGenoObjFromSource(src, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne);
+	}
+
+  	void setGenoObj_pgen(std::string pgenfile, std::string pvarfile, std::string psamfile, std::vector<int> & subSampleInGeno, std::vector<bool> & indicatorGenoSamplesWithPheno, float memoryChunk, bool  isDiagofKinSetAsOne){
+		PgenByteSource src(pgenfile, pvarfile, psamfile);
+		setGenoObjFromSource(src, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne);
+		if(src.numDosageHardCalled() > 0){
+			Rcpp::warning("The pgen file carries dosages, which the GRM genotype store cannot hold: %s genotype(s) were hard-called to the nearest of 0/1/2.", std::to_string(src.numDosageHardCalled()));
+		}
+	}
+
+  	void setGenoObjFromSource(MarkerByteSource & t_src, std::vector<int> & subSampleInGeno, std::vector<bool> & indicatorGenoSamplesWithPheno, float memoryChunk, bool  isDiagofKinSetAsOne){
 		//cout << "OK1\n";
 		setKinDiagtoOne = isDiagofKinSetAsOne;   
 		ptrsubSampleInGeno = subSampleInGeno;
@@ -699,49 +857,15 @@ public:
    		M=0;
   		N=0;
    	
-		//std::string bedfile = genofile+".bed";
-		//std::string bimfile = genofile+".bim"; 
-		//std::string famfile = genofile+".fam"; 
-		std::string junk;
-		//cout << "OK2\n";
-		//count the number of individuals
-		ifstream test_famfile;
-		test_famfile.open(famfile.c_str());
-        	if (!test_famfile.is_open()){
-                	printf("Error! fam file not open!");
-                	return ;
-        	}
-		int indexRow = 0;
-		while (std::getline(test_famfile,junk)){
-                	indexRow = indexRow + 1;
-                	junk.clear();
-        	}
-		N = indexRow;
-		test_famfile.clear();	
-		//cout << "OK3\n";
-		//count the number of markers
-		ifstream test_bimfile;
-        	test_bimfile.open(bimfile.c_str());
-        	if (!test_bimfile.is_open()){
-                	printf("Error! bim file not open!");
-                	return ;
-        	}
-        	indexRow = 0;
-        	while (std::getline(test_bimfile,junk)){
-                	indexRow = indexRow + 1;
-                	junk.clear();
-        	}
-        	M = indexRow;
-        	test_bimfile.clear(); 
-
-    		junk.clear();
+		// N (samples) and M (variants) in genotype-file order, from whichever
+		// format the source wraps.
+		N = t_src.numSamples();
+		M = t_src.numMarkers();
 		//cout << "OK3b\n";
     		// Init OneSNP Geno
     		Init_OneSNP_Geno();
 		//cout << "OK3c\n";
     
-    		//std::string junk;
-    		indexRow = 0;
     		int buffer;
     		int TotalRead=0;
 
@@ -762,12 +886,6 @@ public:
 		
 		//cout << "OK4\n";
 
-		ifstream test_bedfile;
-        	test_bedfile.open(bedfile.c_str(), ios::binary);
-        	if (!test_bedfile.is_open()){
-                	printf("Error! file open!");
-                	return;
-        	}		
 		//printf("\nM: %zu, N: %zu, Reserve: %zu\n", M, N, reserveTemp);
 		printf("\nM: %zu, N: %zu\n", M, N);
 
@@ -847,8 +965,7 @@ public:
 			genoVecOneMarkerOld.reserve(nbyteOld);
                         genoVecOneMarkerOld.resize(nbyteOld);
 
-			test_bedfile.seekg(3+nbyteOld*i);
-			test_bedfile.read((char*)(&genoVecOneMarkerOld[0]),nbyteOld);
+			t_src.fill(i, genoVecOneMarkerOld);
  			//printf("\nFile read is done: M: %zu, N: %zu, TotalByte %zu\n", M, N, genoVecTemp.size());
 			//cout << "Imputing missing genotypes and extracting the subset of samples with nonmissing genotypes and phenotypes\n";  
 	//		cout << "i is " << i << endl;  
@@ -963,7 +1080,7 @@ public:
 		}
 	}
 
-        	test_bedfile.close();
+        	t_src.close();
 //		cout << "setgeno mark5" << endl;
 //		printAlleleFreqVec();
 		//printGenoVec();
@@ -2129,6 +2246,20 @@ void setgeno(std::string bedfile, std::string bimfile, std::string famfile, std:
         geno.setGenoObj(bedfile, bimfile, famfile, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne);
 	//geno.printAlleleFreqVec();
 	//geno.printGenoVec();
+	int stop_s=clock();
+	cout << "time: " << (stop_s-start_s)/double(CLOCKS_PER_SEC)*1000 << endl;
+	resetTraceAuCache();
+}
+
+
+// PGEN counterpart of setgeno. Same contract: subSampleInGeno is 1-based into
+// GENOTYPE-FILE row order (psam rows here, as fam rows there) and
+// indicatorGenoSamplesWithPheno is a mask over all of them.
+// [[Rcpp::export]]
+void setgeno_pgen(std::string pgenfile, std::string pvarfile, std::string psamfile, std::vector<int> & subSampleInGeno, std::vector<bool> & indicatorGenoSamplesWithPheno, float memoryChunk, bool isDiagofKinSetAsOne)
+{
+	int start_s=clock();
+        geno.setGenoObj_pgen(pgenfile, pvarfile, psamfile, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne);
 	int stop_s=clock();
 	cout << "time: " << (stop_s-start_s)/double(CLOCKS_PER_SEC)*1000 << endl;
 	resetTraceAuCache();

@@ -253,6 +253,10 @@ setgeno <- function(bedfile, bimfile, famfile, subSampleInGeno, indicatorGenoSam
     invisible(.Call('_SAIGE_setgeno', PACKAGE = 'SAIGE', bedfile, bimfile, famfile, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne))
 }
 
+setgeno_pgen <- function(pgenfile, pvarfile, psamfile, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne) {
+    invisible(.Call('_SAIGE_setgeno_pgen', PACKAGE = 'SAIGE', pgenfile, pvarfile, psamfile, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne))
+}
+
 Get_OneSNP_Geno <- function(SNPIdx) {
     .Call('_SAIGE_Get_OneSNP_Geno', PACKAGE = 'SAIGE', SNPIdx)
 }

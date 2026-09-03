@@ -53,6 +53,20 @@ public:
                const std::string& t_psamFile,
                const std::string& t_pvarFile,
                const std::vector<std::string>& t_sampleInModel);
+
+    // ALL file samples, in file order: posSampleInPgen is the identity and
+    // N == N0. Steps 0/1 want this -- genoClass does its own subsetting, in
+    // genotype-file row order, via ptrsubSampleInGeno and
+    // indicatorGenoSamplesWithPheno_in (both built in R from the psam), so it
+    // needs every psam row and never consults posSampleInPgen. Using this
+    // overload also keeps steps 0/1 clear of readPsamFile's sample-ID map,
+    // which keys on psam COLUMN 0 -- FID, not IID, whenever the psam carries a
+    // "#FID IID ..." header (LEDGER #52: masked today only because both
+    // committed fixtures have FID == IID).
+    PgenShared(const std::string& t_pgenFile,
+               const std::string& t_psamFile,
+               const std::string& t_pvarFile);
+
     ~PgenShared();
 
     PgenShared(const PgenShared&) = delete;
@@ -89,6 +103,7 @@ public:
 private:
     void readPvarFile();
     void readPsamFile();
+    size_t countPsamSamples() const;
     void setPosSampleInPgen(const std::vector<std::string>& t_sampleInModel);
     void loadPgfi();
 
@@ -138,6 +153,11 @@ public:
         std::string psamFile,
         std::string pvarFile,
         std::vector<std::string>& sampleInModel);
+
+    // All file samples, in file order (see the PgenShared overload above).
+    PgenClass(std::string pgenFile,
+        std::string psamFile,
+        std::string pvarFile);
 
     // A second handle onto the same open pgen: same metadata, its own
     // plink2::PgenReader. Safe to call while other handles are reading.

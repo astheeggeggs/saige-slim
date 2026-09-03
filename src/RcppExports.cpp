@@ -790,6 +790,22 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// setgeno_pgen
+void setgeno_pgen(std::string pgenfile, std::string pvarfile, std::string psamfile, std::vector<int>& subSampleInGeno, std::vector<bool>& indicatorGenoSamplesWithPheno, float memoryChunk, bool isDiagofKinSetAsOne);
+RcppExport SEXP _SAIGE_setgeno_pgen(SEXP pgenfileSEXP, SEXP pvarfileSEXP, SEXP psamfileSEXP, SEXP subSampleInGenoSEXP, SEXP indicatorGenoSamplesWithPhenoSEXP, SEXP memoryChunkSEXP, SEXP isDiagofKinSetAsOneSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type pgenfile(pgenfileSEXP);
+    Rcpp::traits::input_parameter< std::string >::type pvarfile(pvarfileSEXP);
+    Rcpp::traits::input_parameter< std::string >::type psamfile(psamfileSEXP);
+    Rcpp::traits::input_parameter< std::vector<int>& >::type subSampleInGeno(subSampleInGenoSEXP);
+    Rcpp::traits::input_parameter< std::vector<bool>& >::type indicatorGenoSamplesWithPheno(indicatorGenoSamplesWithPhenoSEXP);
+    Rcpp::traits::input_parameter< float >::type memoryChunk(memoryChunkSEXP);
+    Rcpp::traits::input_parameter< bool >::type isDiagofKinSetAsOne(isDiagofKinSetAsOneSEXP);
+    setgeno_pgen(pgenfile, pvarfile, psamfile, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne);
+    return R_NilValue;
+END_RCPP
+}
 // Get_OneSNP_Geno
 arma::ivec Get_OneSNP_Geno(int SNPIdx);
 RcppExport SEXP _SAIGE_Get_OneSNP_Geno(SEXP SNPIdxSEXP) {
@@ -2041,6 +2057,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_parallelcalsparseGRM", (DL_FUNC) &_SAIGE_parallelcalsparseGRM, 1},
     {"_SAIGE_parallelsumTwoVec", (DL_FUNC) &_SAIGE_parallelsumTwoVec, 1},
     {"_SAIGE_setgeno", (DL_FUNC) &_SAIGE_setgeno, 7},
+    {"_SAIGE_setgeno_pgen", (DL_FUNC) &_SAIGE_setgeno_pgen, 7},
     {"_SAIGE_Get_OneSNP_Geno", (DL_FUNC) &_SAIGE_Get_OneSNP_Geno, 1},
     {"_SAIGE_Get_OneSNP_Geno_forVarRatio", (DL_FUNC) &_SAIGE_Get_OneSNP_Geno_forVarRatio, 1},
     {"_SAIGE_Get_OneSNP_StdGeno", (DL_FUNC) &_SAIGE_Get_OneSNP_StdGeno, 1},
