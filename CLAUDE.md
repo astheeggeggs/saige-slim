@@ -17,8 +17,14 @@ restore of `main`'s pre-refactor `PgenClass`. `main` holds the full upstream for
 https://saigegit.github.io/SAIGE-doc/). Binary and quantitative traits are
 supported; survival-trait support was removed in Phase 3a of the refactor.
 
-**The working plan lives at `~/.claude/plans/based-on-this-repository-silly-shore.md`**
-(it supersedes `rosy-munching-pudding.md`, which holds the Phase 0-5 history):
+**`LEDGER.md` and `docs/state/` are the authoritative record of where this branch
+is** -- read those first. There is a plan at
+`~/.claude/plans/based-on-this-repository-silly-shore.md` (superseding
+`rosy-munching-pudding.md`, which holds the Phase 0-5 history), but it was last
+written 2026-09-01 and so predates S8-S12 entirely; treat it as history, not as
+a statement of what is left. Plan files in that directory are written by
+whichever session is running and there may be several -- do not assume the one
+named here is the only or newest one.
 Phases 0-3 are done (baseline/harness; strip; test suite; refactor — survival
 removed in 3a, GenoReader interface + de-globalized Step2Config/Step2Output/
 owned model in 3b-d, ten ledger fixes in 3e); Phase 5 (multi-weights) done
