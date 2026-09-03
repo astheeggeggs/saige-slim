@@ -27,12 +27,25 @@ SAIGE.Marker <- function(traitType,
 
   # genoType = objGeno$genoType
 
-  outIndex <- checkOutputFile(OutputFile, OutputFileIndex, "Marker", format(nMarkersEachChunk, scientific = FALSE), isOverWriteOutput) # this function is in 'Util.R'
-  outIndex <- outIndex$indexChunk
+  outCheck <- checkOutputFile(OutputFile, OutputFileIndex, "Marker", format(nMarkersEachChunk, scientific = FALSE), isOverWriteOutput) # this function is in 'Util.R'
+  outIndex <- outCheck$indexChunk
   isappend <- FALSE
   if (outIndex != 1) {
     cat("Restart the analysis from chunk:\t", outIndex, "\n")
     isappend <- TRUE
+    # LEDGER #47. The interrupted run may have flushed rows belonging to chunks
+    # the index never recorded; appending would write them twice. Drop them
+    # before the output is reopened (truncateOutputToIndex is in 'Util.R').
+    #
+    # The target is the size at the end of chunk outIndex - 1, NOT outIndex,
+    # because the loop below RESUMES AT outIndex and re-runs it. That off-by-one
+    # is pre-existing and contradicts checkOutputFile's own message ("we restart
+    # the analysis from the indexChunk + 1 chunk"); it costs one chunk of
+    # recomputation and, with this truncation in place, produces exactly the
+    # file a complete run would. It was found by the #47 regression test, which
+    # failed with a whole duplicated chunk when the target was outIndex.
+    truncateOutputToIndex(OutputFile,
+                          outCheck$chunkBytes[as.character(outIndex - 1)])
   }
 
   isOpenOutFile_single <- openOutfile_single(traitType, isImputation, isappend, isMoreOutput)
@@ -123,13 +136,22 @@ SAIGE.Marker <- function(traitType,
 
     # }
 
+    # LEDGER #47. Flush the C++ stream FIRST, then record how big the output is,
+    # then write the index line: that order is what makes the recorded count
+    # mean "everything on disk belongs to chunks <= i". Without the flush the
+    # stream would still be holding this chunk's tail, and the count would be an
+    # underestimate that a restart would use to discard good rows.
+    flushOutfile_singleInCPP()
+    outputBytes <- if (file.exists(OutputFile)) file.size(OutputFile) else NA_real_
+
     writeOutputFileIndex(
       OutputFileIndex = OutputFileIndex,
       AnalysisType = "Marker",
       nEachChunk = format(nMarkersEachChunk, scientific = FALSE),
       indexChunk = i,
       Start = (i == 1),
-      End = isEnd_Output
+      End = isEnd_Output,
+      outputBytes = outputBytes
     )
 
     # writeOutputFile(Output = list(resMarker),

@@ -28,7 +28,9 @@
 #     silently lost everything past the stream's 192 KiB buffer boundary WHILE
 #     STILL RETURNING SUCCESS. `closeOutfile_single()` in SAIGE.Marker is
 #     byte-neutral without the fork and is kept: it makes the stream's lifetime
-#     explicit, and the same buffer is the mechanism behind LEDGER #47.
+#     explicit, and the same buffer was the mechanism behind LEDGER #47 (fixed
+#     in S9: the chunk loop flushes the stream and records the output file's
+#     size in the index, and a restart truncates to it).
 
 # Do the categorical variance-ratio bins leave some MAC uncovered?
 #

@@ -97,6 +97,10 @@ closeOutfile_single <- function() {
     invisible(.Call('_SAIGE_closeOutfile_single', PACKAGE = 'SAIGE'))
 }
 
+flushOutfile_singleInCPP <- function() {
+    .Call('_SAIGE_flushOutfile_singleInCPP', PACKAGE = 'SAIGE')
+}
+
 setSingleOutputPrefixInCPP <- function(t_outputFilePrefix) {
     invisible(.Call('_SAIGE_setSingleOutputPrefixInCPP', PACKAGE = 'SAIGE', t_outputFilePrefix))
 }

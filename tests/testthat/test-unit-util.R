@@ -1,12 +1,26 @@
 # R/Util.R: output-file/index protocol and small pure helpers.
 
+# checkOutputFile gained a fourth element, `chunkBytes`, with the LEDGER #47 fix
+# (S9): the size the output file had at the end of each recorded chunk, so a
+# restart can truncate to it. These assertions were whole-list `expect_identical`
+# comparisons and are now field-by-field -- pinning the three fields that existed
+# plus the shape of the new one, rather than pinning "the list has exactly three
+# elements", which is a property nothing depends on and which made an additive
+# change look like a regression.
+expect_output_state <- function(actual, Start, End, indexChunk) {
+  expect_identical(actual$Start, Start)
+  expect_identical(actual$End, End)
+  expect_identical(actual$indexChunk, indexChunk)
+}
+
 test_that("checkOutputFile fresh/overwrite semantics", {
   f <- tempfile(); fi <- tempfile()
-  expect_identical(checkOutputFile(f, fi, "Region", 5, TRUE),
-                   list(Start = TRUE, End = FALSE, indexChunk = 0))
+  out <- checkOutputFile(f, fi, "Region", 5, TRUE)
+  expect_output_state(out, TRUE, FALSE, 0)
+  # a fresh run has no recorded chunks at all
+  expect_identical(out$chunkBytes, numeric(0))
   f2 <- tempfile(); fi2 <- tempfile()
-  expect_identical(checkOutputFile(f2, fi2, "Marker", 5, TRUE),
-                   list(Start = TRUE, End = FALSE, indexChunk = 1))
+  expect_output_state(checkOutputFile(f2, fi2, "Marker", 5, TRUE), TRUE, FALSE, 1)
 })
 
 test_that("index-file round trip: resume and completion states", {
@@ -14,7 +28,11 @@ test_that("index-file round trip: resume and completion states", {
   writeOutputFileIndex(OutputFileIndex = fi, AnalysisType = "Region",
                        nEachChunk = "5", indexChunk = 3, Start = TRUE, End = FALSE)
   out <- checkOutputFile(f, fi, "Region", "5", FALSE)
-  expect_identical(out, list(Start = FALSE, End = FALSE, indexChunk = 3))
+  expect_output_state(out, FALSE, FALSE, 3)
+  # The region path writes its index without a byte count, so a resume there
+  # cannot be verified -- NA, named for the chunk it came from. Only the marker
+  # path records one (LEDGER #47).
+  expect_identical(out$chunkBytes, c("3" = NA_real_))
 
   writeOutputFileIndex(OutputFileIndex = fi, AnalysisType = "Region",
                        nEachChunk = "5", indexChunk = 3, Start = FALSE, End = TRUE)

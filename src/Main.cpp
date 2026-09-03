@@ -2861,6 +2861,29 @@ void closeOutfile_single(){
   }
 }
 
+// Flush the single-variant output stream, so that everything written so far is
+// on disk rather than sitting in the stream's buffer.
+//
+// LEDGER #47: the `.index` progress file and this stream flush at INDEPENDENT
+// points -- the index once per chunk from R, the stream whenever its ~192 KiB
+// buffer fills -- and those boundaries do not align. A killed run therefore
+// leaves rows on disk belonging to chunks LATER than the last indexed one, and
+// `--is_overwrite_output=FALSE` resumes at the indexed chunk and appends them a
+// second time (measured: 3,826 duplicated markers). The chunk loop calls this
+// at each boundary so R can record a byte count that means exactly "everything
+// on disk belongs to chunks <= i"; a restart truncates the file to it.
+//
+// Returns false if the stream is not open, so the caller can tell "nothing to
+// flush" from "flushed zero bytes".
+// [[Rcpp::export]]
+bool flushOutfile_singleInCPP(){
+  if(!g_out.single.is_open()){
+    return false;
+  }
+  g_out.single.flush();
+  return true;
+}
+
 // Re-point the single-variant output file without re-running the 11-argument
 // setAssocTest_GlobalVarsInCPP. Used by a forked marker-scan worker to write
 // its own shard.

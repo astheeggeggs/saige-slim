@@ -587,10 +587,19 @@ codebase rather than about fork:
   `mcexit` calls `_exit()`, no static destructor runs, and the child silently
   lost everything past the stream's 192 KiB buffer boundary *while still
   returning success*. `closeOutfile_single()` is byte-neutral without the fork
-  and is kept, because that same buffer is the mechanism behind **LEDGER #47**:
-  the `.index` and the output stream flush independently, so restarting after a
-  hard kill DUPLICATES rows (measured: 3,826 duplicates, identical serially and
-  threaded — it is pre-existing and not a threading defect).
+  and is kept, because that same buffer WAS the mechanism behind **LEDGER #47**:
+  the `.index` and the output stream flushed independently, so restarting after a
+  hard kill DUPLICATED rows (measured: 3,826 duplicates, identical serially and
+  threaded — pre-existing, not a threading defect). **#47 is FIXED (S9)**: the
+  chunk loop calls `flushOutfile_singleInCPP()` and records the output file's
+  size in the index line, and a restart truncates to the size recorded for the
+  chunk BEFORE the one it resumes at. The marker `.index` goldens were refreshed
+  with it (chunk lines only; no `.txt` result changed, 54/54 byte-identical) —
+  but `compare_goldens.sh` excludes `*.index` from the byte gate, so those files
+  are a record of what the pipeline writes, not a check on it. The "before" is **LEDGER
+  #49**: a restart resumes AT the last completed chunk and re-runs it, which
+  contradicts `checkOutputFile`'s own message and costs one chunk of
+  recomputation.
 - **`varianceRatioBinsHaveGap`** survives in `R/MarkerScan.R`, gated on
   `nThreads > 1`, purely because its message is better than the C++ throw's. Its
   original rationale — that gapped bins made a threaded run unreproducible — was

@@ -148,11 +148,14 @@ test_that("restarting an interrupted run works, and matches a serial restart", {
   # behaviour, and that is what is asserted: threaded and serial restarts from
   # the SAME interrupted state must agree byte for byte.
   #
-  # Note this deliberately does NOT assert the restarted file equals a complete
-  # run: it does not, and that is LEDGER #47 (the .index and the output stream
-  # have independent flush points, so a restart can duplicate rows). That is a
-  # pre-existing property of restart, identical in both arms, and pinning the
-  # agreement is the parity claim; pinning the row count would pin the bug.
+  # This deliberately does NOT assert the restarted file equals a complete run,
+  # and the reason CHANGED with the LEDGER #47 fix. It used to be that a restart
+  # duplicated rows; now it does not, but the state seeded below is a LEGACY
+  # index -- no byte count, which is what an older SAIGE wrote -- so the restart
+  # cannot verify what is on disk and says so. Here the seeded output is empty
+  # while the index claims two chunks done, so chunks 1-2 are missing from the
+  # result either way. The parity claim (both arms agree) is what this test is
+  # for; the #47 regression is the test below.
   seed_state <- function(out) {
     dir.create(dirname(out), recursive = TRUE, showWarnings = FALSE)
     file.create(out)
@@ -178,6 +181,61 @@ test_that("restarting an interrupted run works, and matches a serial restart", {
   serial <- run_restart(1, "serial")
   threaded <- run_restart(4, "threaded")
   expect_identical(readLines(threaded), readLines(serial))
+})
+
+test_that("a restart drops what the interrupted run wrote past its last chunk (LEDGER #47)", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  # THE #47 REGRESSION. The bug: the `.index` is written once per chunk from R
+  # while the output stream flushes on its own ~192 KiB boundary, so a killed
+  # run leaves rows belonging to chunks the index never recorded, and appending
+  # from the indexed chunk writes them AGAIN (measured at 3,826 duplicated
+  # markers on this fixture).
+  #
+  # The interrupted state is RECONSTRUCTED rather than produced by a kill, on
+  # purpose: where the stream buffer happens to sit when a signal lands is
+  # timing-dependent, and a flaky test that only sometimes reproduces a
+  # duplication bug is worse than none. Truncating a complete run's output to a
+  # point PAST a recorded chunk boundary is the same state, exactly and every
+  # time.
+  complete <- file.path(tempfile("step2_restart_full_"), "marker.txt")
+  dir.create(dirname(complete), recursive = TRUE)
+  expect_cli_ok(run_saige_cli("step2_SPAtests.R",
+                              c(th_workloads[["P7"]]$args(),
+                                paste0("--SAIGEOutputFile=", complete))))
+  idx <- readLines(paste0(complete, ".index"), warn = FALSE)
+  chunkLines <- grep("^Have completed the analysis of chunk ", idx, value = TRUE)
+  expect_gt(length(chunkLines), 4)
+  # The fix's own record: each chunk line now carries the output size at that
+  # point. Without it there is nothing to truncate to, so assert it is there.
+  expect_true(all(grepl(" bytes [0-9]+$", chunkLines)),
+              label = "every chunk line records a byte count")
+  bytesAt <- as.numeric(sub("^.* bytes ([0-9]+)$", "\\1", chunkLines))
+  expect_false(is.unsorted(bytesAt))
+
+  # Interrupted state: index stops after chunk 3, but the file on disk holds
+  # chunk 3 plus HALF of chunk 4 -- rows that a naive append would duplicate.
+  keep <- 3L
+  partialBytes <- floor((bytesAt[keep] + bytesAt[keep + 1L]) / 2)
+  expect_gt(partialBytes, bytesAt[keep])
+
+  restarted <- file.path(tempfile("step2_restart_partial_"), "marker.txt")
+  dir.create(dirname(restarted), recursive = TRUE)
+  file.copy(complete, restarted)
+  con <- file(restarted, open = "r+b")
+  seek(con, where = partialBytes, origin = "start")
+  truncate(con)
+  close(con)
+  writeLines(c(idx[seq_len(3L)], chunkLines[seq_len(keep)]),
+             paste0(restarted, ".index"))
+
+  expect_cli_ok(run_saige_cli("step2_SPAtests.R",
+                              c(th_workloads[["P7"]]$args(),
+                                paste0("--SAIGEOutputFile=", restarted),
+                                "--is_overwrite_output=FALSE")))
+  # The claim: a restart reproduces the file a complete run would have written,
+  # byte for byte. Before the fix this was 132,695 rows against 128,869.
+  expect_identical(readLines(restarted), readLines(complete))
 })
 
 test_that("a reader that cannot be cloned falls back to one thread with a warning", {

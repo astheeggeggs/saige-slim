@@ -131,13 +131,74 @@ do not re-do it.
 
 So what is actually left:
 
-- **LEDGER #47** -- restart after a hard kill DUPLICATES rows (3,826 of them on
-  the bundled fixture), because the `.index` and the output stream flush at
-  independent points. User-visible, pre-existing, orthogonal to threading, and
-  with a measured reproduction already written down. The obvious next fix.
+- ~~LEDGER #47~~ -- **FIXED in S9, see below.**
 - The other open ledger entries: #6 (deliberately deferred), #14 (unverified),
   #17 (uninitialised `w0`, real UB on a reachable path), #18-#26, #35-#39, #42
   (a halved log in the `log.p=TRUE` SE back-calculation), #45, #46.
 - **Group tests still run on one thread, for every format.** The marker path is
   done; the region path has had none of this work.
 - The PGEN arena trim above, if a large-N fixture appears.
+
+
+---
+
+# S9: LEDGER #47 fixed -- a restart no longer duplicates rows
+
+## The bug and the fix
+
+The `.index` was written once per chunk from R while the output stream flushed on
+its own ~192 KiB boundary. Those boundaries do not align, so a killed run left
+rows on disk belonging to chunks the index never recorded, and
+`--is_overwrite_output=FALSE` appended them a second time (measured: 3,826
+duplicated markers, 132,695 rows against a complete run's 128,869).
+
+Three pieces, and the ORDER is the fix:
+
+1. `flushOutfile_singleInCPP()` (new export in `src/Main.cpp`) flushes
+   `g_out.single`.
+2. The chunk loop flushes, THEN takes `file.size(OutputFile)`, THEN writes the
+   index line -- which now reads `Have completed the analysis of chunk 7 bytes
+   123456`. Without the flush the recorded count would omit that chunk's own
+   tail, and a restart would discard good rows: the fix would have inverted the
+   bug rather than removed it.
+3. A restart truncates the output to the recorded size before reopening it.
+
+An index written before this carries no byte count; that restart still runs, with
+a warning that rows may be duplicated, rather than being refused.
+
+## LEDGER #49, which the regression test found
+
+The truncation target is the size recorded for the chunk **before** the one the
+run resumes at, because **a restart resumes AT the last completed chunk and
+re-runs it** -- contradicting `checkOutputFile`'s own message ("we restart the
+analysis from the indexChunk + 1 chunk"). The first version of the fix truncated
+to the resumed chunk's own offset and the test failed with a whole duplicated
+chunk, which is how this surfaced. Left as OPEN: with the truncation in place the
+output is correct, and it costs one chunk of recomputation.
+
+## Gates
+
+- **The regression test reconstructs the interruption rather than racing a
+  `kill`**: take a complete run, truncate its output to a point PAST a recorded
+  chunk boundary, truncate its index to that chunk. That is the same state a kill
+  leaves, but deterministic -- a flaky test for a duplication bug is worse than
+  none. It asserts the restart reproduces the complete run byte for byte.
+- **Drill-verified**: disabling `truncateOutputToIndex` fails it.
+- Standard tier **FAIL 0 | PASS 1784 in both compare modes**. +15 on 1769, all
+  accounted: 7 from the new test, 8 from `test-unit-util.R`, whose whole-list
+  `expect_identical` on `checkOutputFile`'s return was pinning "this list has
+  exactly three elements" -- a property nothing depends on, which made an
+  additive field look like a regression. Now field-by-field.
+- **54/54 goldens byte-identical**: no `.txt` result changed. The marker
+  `.index` goldens were refreshed (chunk lines only) -- but note
+  `compare_goldens.sh` EXCLUDES `*.index` from the byte gate, so those committed
+  files are a record of what the pipeline writes, not a check on it.
+
+## What is still not covered
+
+- **Region-level restart is impossible** (LEDGER #25), so none of this applies
+  there, and the region index still records no byte count.
+- The output stream is flushed per chunk, not per row: a kill still loses the
+  current chunk's work, which is the intended granularity.
+- Nothing here defends against a machine crash -- `flush()` reaches the OS, not
+  the platter.
