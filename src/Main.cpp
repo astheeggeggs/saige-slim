@@ -2332,7 +2332,15 @@ if(t_regionTestType == "BURDEN"){
     if(!t_isFastTest){
             iswriteOutput = true;
      }else{
-        if(g_model->m_flagSparseGRM_cur){
+        // LEDGER #50 fix, the non-BURDEN twin of #27 at :2240. This read used to
+        // be g_model->m_flagSparseGRM_cur, which the marker and ultra-rare loops
+        // above overwrite from each marker's MAC -- so by the time the write
+        // decision runs, R's "this is the escalated pass, DO write" signal has
+        // been replaced by the last pseudo-marker's variance-ratio choice. On the
+        // fast pass R takes the rows from the temp bin itself (copy_singleInGroup),
+        // so the escalated pass is the ONLY route by which an escalated region's
+        // single-variant rows can be written, and they were silently dropped.
+        if(isEscalatedPass){
             iswriteOutput = true;
         }
      }
