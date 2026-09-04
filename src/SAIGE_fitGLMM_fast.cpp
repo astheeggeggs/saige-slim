@@ -842,6 +842,27 @@ public:
 		}
 	}
 
+	// Free BOTH pointer arrays and forget how many there were. Used by
+	// closeGenoFile_plink and by a re-ingest; the forVarRatio array was leaked
+	// by both before LEDGER #55.
+	void freeGenoArrays(){
+		for(size_t i = 0; i < genoVecofPointers.size(); i++){
+			if(genoVecofPointers[i] != nullptr){
+				delete genoVecofPointers[i];
+				genoVecofPointers[i] = nullptr;
+			}
+		}
+		genoVecofPointers.clear();
+		for(size_t i = 0; i < genoVecofPointers_forVarRatio.size(); i++){
+			if(genoVecofPointers_forVarRatio[i] != nullptr){
+				delete genoVecofPointers_forVarRatio[i];
+				genoVecofPointers_forVarRatio[i] = nullptr;
+			}
+		}
+		genoVecofPointers_forVarRatio.clear();
+		numofGenoArray = 0;
+	}
+
   	void setGenoObjFromSource(MarkerByteSource & t_src, std::vector<int> & subSampleInGeno, std::vector<bool> & indicatorGenoSamplesWithPheno, float memoryChunk, bool  isDiagofKinSetAsOne){
 		//cout << "OK1\n";
 		setKinDiagtoOne = isDiagofKinSetAsOne;   
@@ -853,6 +874,44 @@ public:
     		alleleFreqVec.clear();
 		MACVec.clear();
   		invstdvVec.clear();
+
+		// LEDGER #55. Only the four lines above used to be reset, and the
+		// loop below APPENDS to every accumulator listed here. One ingest per
+		// process hid that; a second one doubled
+		// numberofMarkerswithMAFge_minMAFtoConstructGRM, left
+		// getQCdMarkerIndex() returning 2M flags (so the LOCO chromosome
+		// ranges were wrong), and made the variance-ratio sampling index the
+		// FIRST ingest's never-freed genoVecofPointers_forVarRatio entries --
+		// silently wrong genotypes when N2 <= N1, an at() throw otherwise.
+		//
+		// Resetting here rather than in closeGenoFile_plink is deliberate: the
+		// invariant belongs to "an ingest starts from nothing", and a caller
+		// that forgets to close must not be able to corrupt the next fit.
+		// Byte-neutral for every existing golden by construction -- no path
+		// re-ingests today.
+		alleleFreqVec0.clear();
+		MACVec0.clear();
+		invstdvVec0.clear();
+		numberofMarkerswithMAFge_minMAFtoConstructGRM = 0;
+		MarkerswithMAFge_minMAFtoConstructGRM_indVec.clear();
+		numberofMarkers_varRatio = 0;
+		numberofMarkers_varRatio_common = 0;
+		invstdvVec0_forVarRatio.clear();
+		alleleFreqVec0_forVarRatio.clear();
+		MACVec0_forVarRatio.clear();
+		markerIndexVec0_forVarRatio.clear();
+		invstdvVec_forVarRatio.clear();
+		alleleFreqVec_forVarRatio.clear();
+		MACVec_forVarRatio.clear();
+		markerIndexVec_forVarRatio.clear();
+		g_randMarkerIndforVR.clear();
+		// m_DiagStd is guarded only on size == Nnomissing, so a second ingest
+		// with the SAME sample count would reuse the first one's GRM diagonal.
+		m_DiagStd.clear();
+		m_DiagStd_LOCO.clear();
+		mtx_DiagStd_LOCO.clear();
+		Msub_MAFge_minMAFtoConstructGRM_byChr.clear();
+		freeGenoArrays();
 
    		M=0;
   		N=0;
@@ -1256,12 +1315,10 @@ genoClass geno;
 void closeGenoFile_plink()
 {
   //genoToTest_plainDosage.test_genoGZfile.close();
-	for (int i = 0; i < geno.numofGenoArray; i++){
-		(*geno.genoVecofPointers[i]).clear();	
-    		delete geno.genoVecofPointers[i];
-  	}
-
-  	geno.genoVecofPointers.clear();
+	// LEDGER #55: this freed only genoVecofPointers and leaked every
+	// genoVecofPointers_forVarRatio entry. freeGenoArrays does both and is the
+	// same call a re-ingest makes, so the two cannot drift apart.
+	geno.freeGenoArrays();
 
   	//geno.genoVec.clear();
   	geno.invstdvVec.clear();

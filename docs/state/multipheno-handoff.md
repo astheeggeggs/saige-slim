@@ -146,3 +146,35 @@ Verification detail worth keeping: the multi-model conditional test first
 `--condition=rs13,rs79`. Not a bug -- but the shape of that mistake (a golden
 compared against a run it does not describe) is exactly what the byte gate is
 for, so it is recorded rather than quietly fixed.
+
+## Phase 2 -- step 1 shared ingest
+
+### N1 -- the re-ingest reset (LEDGER #55, FIXED)
+
+What: `setGenoObjFromSource` reset only four members; everything else APPENDS.
+A second ingest in one process doubled
+`numberofMarkerswithMAFge_minMAFtoConstructGRM`, returned 2M QC flags (wrong
+LOCO chromosome ranges), and made variance-ratio sampling index the FIRST
+ingest's never-freed `genoVecofPointers_forVarRatio` entries.
+`closeGenoFile_plink` cleared none of it and leaked that whole array. Fixed by
+zeroing/clearing every accumulator at the TOP of the ingest plus a new
+`freeGenoArrays()` that the close also uses. No shipped path re-ingests, so the
+fix is byte-neutral BY CONSTRUCTION.
+
+Gate: **PASSED.**
+* goldens: 58/58 step-0/step-2 byte-identical; and all TWENTY step-1 files
+  (`.rda` + `.varianceRatio.txt`, PLINK and PGEN) byte-identical by `cmp`, which
+  is strictly stronger than `compare_goldens.sh`'s toleranced step-1 arm.
+* standard tier: `[ FAIL 0 | WARN 0 | SKIP 4 | PASS 1971 ]`.
+* **Drill D1 (positive control): PASSED, emphatically.** With the reset
+  `#if 0`-ed out and rebuilt, the second ingest reports **17,166** markers
+  passing the GRM gate against **8,494** fresh, and then SEGFAULTS in
+  `get_GRMdiagVec()` -- `[ FAIL 6 | PASS 0 ]`. The bug is real and the test sees
+  it. Fix restored and rebuilt before the gate above.
+
+One test bug worth recording, because it looked exactly like the leak:
+`indicatorGenoSamplesWithPheno` is indexed by FILE sample, not by kept sample,
+so a length-900 vector for a 1000-row `.fam` is read out of bounds in C++. Being
+UB, it read different memory in a fresh process than in one that had already
+ingested -- i.e. it produced a difference between the two arms that was NOT the
+bug under test. The test now builds the full-length indicator.
