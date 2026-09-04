@@ -275,11 +275,25 @@ standalone command run in two different batches differs from ITSELF by up to
    not remove the difference -- it changes WHICH phenotypes differ, which is
    what noise does and a systematic effect does not.
 
-LEDGER #7's family: this configuration's category-2 ratio goes through
-`createSparseKinParallel`'s TBB float `parallel_reduce`. At N=1,000 with
-`--useSparseGRMforVarRatio=FALSE` (the test suite's fixture) the files ARE
-byte-identical in both phenotype orders, which is what the gated tests assert.
-**No golden was regenerated and none changed.**
+**CORRECTION (same day).** Control 1 above was drawn from n = 3 and its
+conclusion was wrong. Eleven runs of ONE identical command -- same binary, back
+to back, plus a rebuild with no source change, plus two under 8-way load --
+produced **six distinct `varianceRatio.txt` files**, disagreeing WITHIN the
+batch as well as across batches. There is no "stable within a batch"; the
+command is simply not reproducible on this configuration. Recorded as
+**LEDGER #56**. Per row over the 11 runs: category 1 has ONE distinct value
+(spread 0.000e+00), category 2 has six (`null_noXadj 2` spread 1.5e-7), and all
+eleven `.rda` files are byte-identical.
+
+This makes the Phase 3 conclusion stronger -- the multi-vs-serial difference of
+1.1e-7 sits inside the identical command's own 1.5e-7 spread, in the same rows
+-- but the reasoning that first reached it was faulty and is replaced.
+Control 3 (a fresh ingest per phenotype does not remove the difference, it
+changes which phenotypes show it) still stands and is now the load-bearing one.
+
+At N=1,000 with `--useSparseGRMforVarRatio=FALSE` (the test suite's fixture) the
+files ARE byte-identical in both phenotype orders, which is what the gated tests
+assert. **No golden was regenerated and none changed.**
 
 ## Status: all four phases complete
 

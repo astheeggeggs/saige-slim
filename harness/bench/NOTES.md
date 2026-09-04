@@ -696,21 +696,51 @@ that is NOT attributable to this feature.** Measured both magnitudes:
 | multi vs serial, within ONE batch (the feature) | **1.1e-7** |
 
 Same magnitude, and in BOTH cases confined entirely to **MAC category 2**
-(category 1 is exactly 0.000e+00 everywhere). The controls that establish this:
+(category 1 is exactly 0.000e+00 everywhere).
 
-* three standalone `y_quant` runs in one batch reproduce each other EXACTLY --
-  so the run is self-reproducing within a batch;
-* the SAME standalone command run in a different batch differs from itself for
-  `y_binary` (5.5e-8) and `y_null` (1.0e-7) -- so the baseline itself moves;
-* forcing the multi run to re-ingest per phenotype (shared PROCESS, no shared
-  ingest) does not remove the difference -- it merely moves WHICH phenotypes
-  differ, which is what noise does and a systematic effect does not.
+**CORRECTION to the first version of this section.** It said "three standalone
+`y_quant` runs in one batch reproduce each other exactly, so the run is
+self-reproducing within a batch", and inferred that the noise was a
+between-batch effect. **That inference was drawn from n = 3 and is wrong.**
+Eleven runs of ONE identical command (same binary, same machine, back to back,
+plus a rebuild with no source change, plus two under deliberate 8-way load)
+produced **SIX DISTINCT `varianceRatio.txt` files** -- and the within-batch runs
+disagreed among themselves (`a1 == a2`, `a1 != a3, a4, a5`, `a1 == a6`). There
+is no "stable within a batch": the command is simply not reproducible. This is
+recorded as **LEDGER #56**. It makes the conclusion below STRONGER, not weaker,
+but the reasoning that reached it was faulty and is replaced here.
 
-This is LEDGER #7's family: this configuration's category-2 variance ratio goes
-through `createSparseKinParallel`'s TBB float `parallel_reduce`. At N = 1,000
-with `--useSparseGRMforVarRatio=FALSE` -- the test suite's fixture -- the
-variance ratio files ARE byte-identical, in both phenotype orders, which is what
-`tests/testthat/test-step1-multipheno.R` gates.
+The measurement, over those 11 identical runs:
+
+| row | distinct values | spread (relative) |
+|---|---|---|
+| `sparse 1`, `null 1`, `null_noXadj 1` | **1** | **0.000e+00** |
+| `sparse 2` | 6 | 3.8e-12 |
+| `null 2` | 6 | 1.1e-7 |
+| `null_noXadj 2` | 6 | 1.5e-7 |
+
+All ELEVEN `.rda` files are byte-identical. So the null model is fully
+reproducible and only the HIGH-MAC variance-ratio category is not.
+
+The multi-vs-serial difference (1.1e-7) sits inside that 1.5e-7 spread, in the
+same rows, and the third control still stands: forcing the multi run to
+re-ingest per phenotype (shared PROCESS, no shared ingest) does not remove the
+difference, it merely changes WHICH phenotypes differ -- which is what a draw
+from a noisy distribution does and a systematic effect does not.
+
+LEDGER #56 records the defect and what is and is not known about its mechanism.
+`[ASSUMPTION: the mechanism is one of the RcppParallel `parallelReduce` sites in
+`src/SAIGE_fitGLMM_fast.cpp` (`parallelCrossProd` at :1773 for the `null` rows,
+`CorssProd_usingSubMarker` at :4031 for `sparse`) or the `tbb::concurrent_vector`
+insertion order in `indicesRelatedSamples` (:231, :2101). Basis: those are the
+only concurrency on this path and the magnitudes match a float reduction whose
+order changed. NOT established -- `setThreadOptions(1)` is called
+unconditionally at `R/SAIGE_fitGLMM_fast.R:824` and `nThreads` is forced to 1
+here, which SHOULD make all of them deterministic. That contradiction is the
+thing to chase.]` At N = 1,000 with `--useSparseGRMforVarRatio=FALSE` -- the
+test suite's fixture -- the variance ratio files ARE byte-identical, in both
+phenotype orders, which is what `tests/testthat/test-step1-multipheno.R`
+gates.
 
 **What is safe to claim:** the step-1 null MODEL (`.rda`) -- everything step 2
 consumes -- is byte-identical, unconditionally, at both N. The variance ratio is
