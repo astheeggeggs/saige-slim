@@ -82,11 +82,14 @@ a = """    for(int i = 0; i < t_nStates; i++){
 b = """    for(int i = 0; i < t_nStates; i++){
       m_free.push_back(make());
     }
-    m_plantShared = &m_free.front()->scratch;
+    m_plantShared = m_free.front()->scratch[0].get();
   }
   Marker::MarkerScratch* m_plantShared = nullptr;"""
-c = "state->scratch, m_resultVec.at(i));"
-d = "*m_pool.m_plantShared, m_resultVec.at(i));"
+# M1: a worker state now holds one scratch PER SAMPLE-SET GROUP, so the defect
+# is "every worker uses the first state's group-0 scratch". On a single-group
+# workload -- which every workload here is -- that is exactly the old plant.
+c = "*state->scratch[g], rows);"
+d = "*m_pool.m_plantShared, rows);"
 assert s.count(a) == 1 and s.count(c) == 1, "plant anchors drifted; fix harness/tsan.sh"
 open(p, 'w').write(s.replace(a, b).replace(c, d))
 PY

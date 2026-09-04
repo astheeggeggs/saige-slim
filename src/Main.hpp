@@ -173,7 +173,8 @@ void assign_conditionMarkers_factors(
                            std::string t_genoType,     // "plink"
                            std::vector<std::string> & t_genoIndex,
                            unsigned int t_n,
-                           arma::vec & t_weight_cond
+                           arma::vec & t_weight_cond,
+                           int t_modelIndex
                            );
 
 
@@ -204,7 +205,7 @@ bool openOutfile(std::string t_traitType, bool isappend, unsigned int t_nWeightS
 
 bool openOutfile_singleinGroup(std::string t_traitType, bool t_isImputation, bool isappend, bool t_isMoreOutput);
 
-bool openOutfile_single(std::string t_traitType, bool t_isImputation, bool isappend, bool t_isMoreOutput);
+bool openOutfile_single(int t_modelIndex, bool t_isImputation, bool isappend, bool t_isMoreOutput);
 
 void writeOutfile_single(bool t_isMoreOutput,
       bool t_isImputation,
@@ -213,7 +214,8 @@ void writeOutfile_single(bool t_isMoreOutput,
                          int mFirth,
                          int mFirthConverge,
                         std::string t_traitType,
-                        const std::vector<Marker::MarkerResult> & t_resultVec);
+                        const std::vector<Marker::MarkerResult> & t_resultVec,
+                        std::ofstream & t_stream);
 
 
 

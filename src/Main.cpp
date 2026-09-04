@@ -34,9 +34,41 @@
 
 // the genotype reader for the current analysis (see GenoReader.hpp)
 
-static std::unique_ptr<Geno::GenoReader> g_reader;
+// M1: the marker scan can carry several null models over one genotype read.
+// g_models owns them in MANIFEST order; g_readers owns ONE reader per
+// sample-set group (models whose sampleID vectors are identical() share a
+// reader, a decode and a QC pass); g_modelGroup maps a model to its group.
+//
+// g_model and g_reader are NON-OWNING aliases of element 0. Everything outside
+// the marker loop -- the region path, the conditioning setup,
+// set_flagSparseGRM_cur_SAIGE_org, the S5 test hooks -- keeps using them and
+// keeps meaning exactly what it meant when there could only be one model, which
+// is why P > 1 is refused for those paths in R rather than half-supported here.
+static std::vector<std::unique_ptr<Geno::GenoReader>> g_readers;
+static Geno::GenoReader* g_reader = nullptr;
 // global objects for different analysis methods
-static std::unique_ptr<SAIGE::SAIGEClass> g_model;
+static std::vector<std::unique_ptr<SAIGE::SAIGEClass>> g_models;
+static SAIGE::SAIGEClass* g_model = nullptr;
+static std::vector<int> g_modelGroup;
+
+// Install the FIRST reader (a new run) or an additional one (a second
+// sample-set group). The owned objects never move, so g_reader survives the
+// vector reallocating.
+static void resetReaders(std::unique_ptr<Geno::GenoReader> t_first)
+{
+  g_readers.clear();
+  g_readers.push_back(std::move(t_first));
+  g_reader = g_readers[0].get();
+}
+
+static void addReader(std::unique_ptr<Geno::GenoReader> t_next)
+{
+  if(g_readers.empty()){
+    Rcpp::stop("A genotype reader for the first sample-set group must be set up first.");
+  }
+  g_readers.push_back(std::move(t_next));
+  g_reader = g_readers[0].get();
+}
 
 // The fastTest ESCALATION signal for region tests, set from R between calls to
 // mainRegionInCPP (set_flagSparseGRM_cur_SAIGE / _org): false on the cheap
@@ -85,9 +117,18 @@ struct Step2Config {
 static Step2Config g_cfg;
 
 
+// One single-variant output file per null model. unique_ptr because an open
+// std::ofstream must never be moved, and a vector reallocating on push_back
+// would do exactly that.
+struct SingleWriter {
+  std::ofstream stream;
+  std::string prefix;
+};
+
 struct Step2Output {
-  std::ofstream group, single, singleInGroup, singleInGroupTemp;
-  std::string prefixGroup, prefixSingle, prefixSingleInGroup, prefixSingleInGroupTemp;
+  std::ofstream group, singleInGroup, singleInGroupTemp;
+  std::string prefixGroup, prefixSingleInGroup, prefixSingleInGroupTemp;
+  std::vector<std::unique_ptr<SingleWriter>> singles;
 };
 static Step2Output g_out;
 
@@ -118,7 +159,11 @@ void setAssocTest_GlobalVarsInCPP(std::string t_impute_method,
   g_out.prefixGroup = t_outputFilePrefix;
   g_out.prefixSingleInGroup = t_outputFilePrefix + ".singleAssoc.txt";
   g_out.prefixSingleInGroupTemp = t_outputFilePrefix + ".singleAssoc.txt_temp";
-  g_out.prefixSingle = t_outputFilePrefix;
+  // One writer by default: the single-model run, whose file is the run prefix.
+  // setSingleOutputPrefixesInCPP resizes this when a manifest asks for more.
+  g_out.singles.clear();
+  g_out.singles.push_back(std::unique_ptr<SingleWriter>(new SingleWriter()));
+  g_out.singles[0]->prefix = t_outputFilePrefix;
   g_cfg.MACCutoffforER = t_MACCutoffforER;
 }
 
@@ -282,26 +327,47 @@ private:
 // Returns false only on a short read, which is what the loop's `break` used to
 // respond to -- so the caller stops the scan and the remaining slots keep their
 // untested defaults, exactly as the q-length vectors did.
-static bool testOneMarker(Geno::GenoReader & t_reader,
-                          const std::string & t_genoType,
-                          const std::string & t_traitType,
-                          const std::string & t_genoIndexStr,
-                          bool t_isMoreOutput,
-                          bool t_isImputation,
-                          bool t_isCondition,
-                          bool t_isSingleVarianceRatio,
-                          Marker::MarkerScratch & t_scratch,
-                          Marker::MarkerResult & t_res)
+// S4 split it out of the loop; M1 splits it again, into the half that depends
+// only on the GENOTYPE and the half that depends on a null MODEL. That is the
+// whole of multi-model scanning: prepare once per sample-set group, test once
+// per model.
+//
+// The model-independent half: the read, the two QC gates, the mean imputation
+// and flip, and the two index-vector copies. Everything a model needs from it
+// travels in MarkerPrep; everything the WRITER needs is written into every row
+// of the group. Marker fields are duplicated per row rather than shared,
+// because two models in DIFFERENT groups legitimately disagree about
+// AC/AF/missingRate/N -- they are looking at different samples.
+struct MarkerPrep {
+  int n = 0;
+  double altFreq = 0.0;
+  double altCounts = 0.0;
+  double MAF = 0.0;
+  double MAC = 0.0;
+  bool flip = false;
+};
+
+// Returns -1 on a short read (the caller stops the scan, which is what the
+// loop's `break` used to do), 0 when a QC gate dropped the marker (the rows keep
+// their untested defaults, so pval stays "NA"), 1 when the marker is ready.
+static int prepareOneMarker(Geno::GenoReader & t_reader,
+                            const std::string & t_genoType,
+                            const std::string & t_genoIndexStr,
+                            bool t_isImputation,
+                            int t_n,
+                            Marker::MarkerScratch & t_scratch,
+                            const std::vector<Marker::MarkerResult*> & t_rows,
+                            MarkerPrep & t_prep)
 {
-  int n = g_model->m_n;
+  int n = t_n;
 
   ProfileScope profPrepare(g_markerProfile.enabled ? &g_markerProfile.prepare : nullptr,
                            &g_markerProfile.nPrepare);
 
   // information of marker
-  double altFreq, altCounts, missingRate, imputeInfo, AF_case, AF_ctrl, N_case_hom, N_ctrl_het, N_case_het, N_ctrl_hom;
+  double altFreq, altCounts, missingRate, imputeInfo;
   std::string chr, ref, alt, marker;
-  uint32_t pd, N_case, N_ctrl;
+  uint32_t pd;
 
   bool flip = false;
   char* end;
@@ -323,7 +389,7 @@ static bool testOneMarker(Geno::GenoReader & t_reader,
                                           t_scratch.indexNonZeroVec, t_scratch.GVec, t_isImputation);
 
   if(!isReadMarker){
-    return false;
+    return -1;
   }
 
   std::string pds = std::to_string(pd);
@@ -332,14 +398,17 @@ static bool testOneMarker(Geno::GenoReader & t_reader,
   // slot vectors rather than carried into MarkerResult.
 
   // record basic information for the marker
-  t_res.chr = chr;
-  t_res.pos = pds;
-  t_res.ref = ref;
-  t_res.alt = alt;
-  t_res.marker = marker;                    // marker IDs
-  t_res.altFreq = altFreq;                  // allele frequencies of ALT allele, this is not always < 0.5.
-  t_res.missingRate = missingRate;
-  t_res.imputationInfo = imputeInfo;
+  for(std::size_t r = 0; r < t_rows.size(); r++){
+    Marker::MarkerResult & t_res = *t_rows[r];
+    t_res.chr = chr;
+    t_res.pos = pds;
+    t_res.ref = ref;
+    t_res.alt = alt;
+    t_res.marker = marker;                    // marker IDs
+    t_res.altFreq = altFreq;                  // allele frequencies of ALT allele, this is not always < 0.5.
+    t_res.missingRate = missingRate;
+    t_res.imputationInfo = imputeInfo;
+  }
 
   // MAF and MAC are for Quality Control (QC)
   double MAF = std::min(altFreq, 1 - altFreq);
@@ -358,7 +427,7 @@ static bool testOneMarker(Geno::GenoReader & t_reader,
 
   // Quality Control (QC) based on missing rate, MAF, and MAC
   if((missingRate > g_cfg.missingRate_cutoff) || (MAF < g_cfg.marker_minMAF_cutoff) || (MAC < g_cfg.marker_minMAC_cutoff || imputeInfo < g_cfg.marker_minINFO_cutoff)){
-    return true;
+    return 0;
   }
 
   t_scratch.indexZeroVec.clear();
@@ -369,45 +438,80 @@ static bool testOneMarker(Geno::GenoReader & t_reader,
   MAF = std::min(altFreq, 1 - altFreq);
 
   if((MAF < g_cfg.marker_minMAF_cutoff) || (MAC < g_cfg.marker_minMAC_cutoff)){
-    return true;
+    return 0;
   }
 
-  t_res.altFreq = altFreq;                  // allele frequencies of ALT allele, this is not always < 0.5.
-  t_res.altCounts = altCounts;
-
-  // analysis results for single-marker
-  double Beta, seBeta, Tstat, varT, gy;
-  double Beta_c, seBeta_c, Tstat_c, varT_c;
-  std::string pval, pval_noSPA, pval_c, pval_noSPA_c;
-  bool isSPAConverge, is_gtilde, is_Firth, is_FirthConverge;
+  for(std::size_t r = 0; r < t_rows.size(); r++){
+    Marker::MarkerResult & t_res = *t_rows[r];
+    t_res.altFreq = altFreq;                  // allele frequencies of ALT allele, this is not always < 0.5.
+    t_res.altCounts = altCounts;
+  }
 
   t_scratch.indexZeroVec_arma = arma::conv_to<arma::uvec>::from(t_scratch.indexZeroVec);
   t_scratch.indexNonZeroVec_arma = arma::conv_to<arma::uvec>::from(t_scratch.indexNonZeroVec);
 
   t_scratch.indexZeroVec.clear();
   t_scratch.indexNonZeroVec.clear();
-  profPrepare.stop();
-
   // P2Vec / G1tilde_P_G2tilde_Vec are NOT cleared here. Both are fully assigned
   // before any read (SAIGE_test.cpp:166/174/930/934 and :786 respectively), so
   // clearing them only freed the scratch buffers and made the next marker
   // re-allocate n doubles. Values are unaffected.
 
+  t_prep.n = n;
+  t_prep.altFreq = altFreq;
+  t_prep.altCounts = altCounts;
+  t_prep.MAF = MAF;
+  t_prep.MAC = MAC;
+  t_prep.flip = flip;
+  return 1;
+}
+
+
+// The model-dependent half. Body unchanged from S4's testOneMarker apart from
+// g_model-> becoming t_model. and the marker quantities coming from t_prep.
+//
+// getMarkerPval is const and never assigns t_GVec or the index vectors (that is
+// what S3/S12 bought), so every model in a group tests THE SAME prepared buffer
+// without copying it. The Unified_getMarkerPval wrapper is not used here: all it
+// added was a stop on t_isOnlyOutputNonZero, which is a literal false at all
+// three call sites.
+static void testOneModel(const SAIGE::SAIGEClass & t_model,
+                         bool t_isMoreOutput,
+                         bool t_isSingleVarianceRatio,
+                         const MarkerPrep & t_prep,
+                         Marker::MarkerScratch & t_scratch,
+                         Marker::MarkerResult & t_res)
+{
+  const std::string & t_traitType = t_model.m_traitType;
+  const bool t_isCondition = t_model.m_isCondition;
+  const int n = t_prep.n;
+  const double altFreq = t_prep.altFreq;
+  const double MAC = t_prep.MAC;
+  const bool flip = t_prep.flip;
+
+  // analysis results for single-marker
+  double Beta, seBeta, Tstat, varT, gy;
+  double Beta_c, seBeta_c, Tstat_c, varT_c;
+  std::string pval, pval_noSPA, pval_c, pval_noSPA_c;
+  bool isSPAConverge, is_gtilde, is_Firth, is_FirthConverge;
+  double AF_case, AF_ctrl;
+  uint32_t N_case, N_ctrl;
+
   // S3: the marker path owns its test context instead of parking it on the
   // model between markers. Same three values, same order of derivation --
   // fastTest forces the non-sparse first pass, then the variance ratio is
-  // selected for that choice -- but nothing is written to g_model, so no
+  // selected for that choice -- but nothing is written to the model, so no
   // marker can read what another one left behind (LEDGER #32) and two markers
   // could be tested at once without racing.
   bool hasVarRatio = true;
   SAIGE::TestContext ctx;
-  ctx.useSparseGRM = g_model->m_isFastTest ? false : g_model->m_flagSparseGRM;
-  ctx.noadjCov = g_model->m_isnoadjCov;
+  ctx.useSparseGRM = t_model.m_isFastTest ? false : t_model.m_flagSparseGRM;
+  ctx.noadjCov = t_model.m_isnoadjCov;
   if(t_isSingleVarianceRatio){
-      ctx.varRatioVal = g_model->selectSingleVarianceRatio(ctx.useSparseGRM, ctx.noadjCov);
+      ctx.varRatioVal = t_model.selectSingleVarianceRatio(ctx.useSparseGRM, ctx.noadjCov);
       hasVarRatio = true;
   }else{
-      ctx.varRatioVal = g_model->selectVarianceRatio(MAC, ctx.useSparseGRM, ctx.noadjCov, hasVarRatio);
+      ctx.varRatioVal = t_model.selectVarianceRatio(MAC, ctx.useSparseGRM, ctx.noadjCov, hasVarRatio);
   }
 
   bool is_region = false;
@@ -440,17 +544,15 @@ static bool testOneMarker(Geno::GenoReader & t_reader,
                         &g_markerProfile.nTest);
 
   if(MAC <= g_cfg.MACCutoffforER && t_traitType == "binary"){
-    Unified_getMarkerPval(
+    t_model.getMarkerPval(
                   t_scratch.GVec,
-                        false, // bool t_isOnlyOutputNonZero,
-                        t_scratch.indexNonZeroVec_arma, t_scratch.indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT,
-                        altFreq, isSPAConverge, t_scratch.gtildeVec, is_gtilde, is_region, t_scratch.P2Vec, t_isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, t_scratch.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
+                        t_scratch.indexNonZeroVec_arma, t_scratch.indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,
+                        altFreq, Tstat, gy, varT, isSPAConverge, t_scratch.gtildeVec, is_gtilde, is_region, t_scratch.P2Vec, t_isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, t_scratch.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
   }else{
-    Unified_getMarkerPval(
+    t_model.getMarkerPval(
                   t_scratch.GVec,
-                        false, // bool t_isOnlyOutputNonZero,
-                        t_scratch.indexNonZeroVec_arma, t_scratch.indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT,
-                        altFreq, isSPAConverge, t_scratch.gtildeVec, is_gtilde, is_region, t_scratch.P2Vec, t_isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, t_scratch.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
+                        t_scratch.indexNonZeroVec_arma, t_scratch.indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,
+                        altFreq, Tstat, gy, varT, isSPAConverge, t_scratch.gtildeVec, is_gtilde, is_region, t_scratch.P2Vec, t_isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, t_scratch.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
   }
 
   double pval_num;
@@ -466,26 +568,25 @@ static bool testOneMarker(Geno::GenoReader & t_reader,
   }
 
   if((t_traitType == "binary" && MAC > g_cfg.MACCutoffforER) || t_traitType != "binary"){
-    if(g_model->m_isFastTest && pval_num < (g_model->m_pval_cutoff_for_fastTest)){
+    if(t_model.m_isFastTest && pval_num < (t_model.m_pval_cutoff_for_fastTest)){
      // The re-test escalates: a marker whose fast p-value cleared the cutoff is
      // re-tested with the covariate adjustment on, and on the sparse GRM unless
      // its MAC is above the last category bound. Same derivation as before, into
      // a second context rather than back onto the model.
      SAIGE::TestContext ctxRetest;
-     ctxRetest.useSparseGRM = (MAC > g_model->m_cateVarRatioMinMACVecExclude.back()) ? false : g_model->m_flagSparseGRM;
+     ctxRetest.useSparseGRM = (MAC > t_model.m_cateVarRatioMinMACVecExclude.back()) ? false : t_model.m_flagSparseGRM;
      ctxRetest.noadjCov = false;
      if(!t_isSingleVarianceRatio){
-        ctxRetest.varRatioVal = g_model->selectVarianceRatio(MAC, ctxRetest.useSparseGRM, ctxRetest.noadjCov, hasVarRatio);
+        ctxRetest.varRatioVal = t_model.selectVarianceRatio(MAC, ctxRetest.useSparseGRM, ctxRetest.noadjCov, hasVarRatio);
      }else{
-        ctxRetest.varRatioVal = g_model->selectSingleVarianceRatio(ctxRetest.useSparseGRM, ctxRetest.noadjCov);
+        ctxRetest.varRatioVal = t_model.selectSingleVarianceRatio(ctxRetest.useSparseGRM, ctxRetest.noadjCov);
         hasVarRatio = true;
      }
 
-      Unified_getMarkerPval(
+      t_model.getMarkerPval(
                     t_scratch.GVec,
-                          false, // bool t_isOnlyOutputNonZero,
-                          t_scratch.indexNonZeroVec_arma, t_scratch.indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT,
-                          altFreq, isSPAConverge, t_scratch.gtildeVec, is_gtilde, is_region, t_scratch.P2Vec, t_isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, t_scratch.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctxRetest);
+                          t_scratch.indexNonZeroVec_arma, t_scratch.indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,
+                          altFreq, Tstat, gy, varT, isSPAConverge, t_scratch.gtildeVec, is_gtilde, is_region, t_scratch.P2Vec, t_isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, t_scratch.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctxRetest);
      }
   }//if((t_traitType == "binary" && MAC > g_cfg.MACCutoffforER) || t_traitType != "binary"){
 
@@ -524,8 +625,8 @@ static bool testOneMarker(Geno::GenoReader & t_reader,
   }
 
   if(t_traitType == "binary"){
-    arma::vec dosage_case = t_scratch.GVec.elem(g_model->m_case_indices);
-    arma::vec dosage_ctrl = t_scratch.GVec.elem(g_model->m_ctrl_indices);
+    arma::vec dosage_case = t_scratch.GVec.elem(t_model.m_case_indices);
+    arma::vec dosage_ctrl = t_scratch.GVec.elem(t_model.m_ctrl_indices);
     AF_case = arma::mean(dosage_case) /2;
     AF_ctrl = arma::mean(dosage_ctrl) /2;
     N_case = dosage_case.n_elem;
@@ -558,6 +659,43 @@ static bool testOneMarker(Geno::GenoReader & t_reader,
     }
   }else if(t_traitType == "quantitative"){
     t_res.N = n;
+  }
+}
+
+
+// One marker, one sample-set group, every model listed in t_modelIdxs.
+//
+// Returns false only on a short read, which is what the loop's `break` used to
+// respond to -- so the caller stops the scan and the remaining slots keep their
+// untested defaults, exactly as the q-length vectors did.
+static bool testOneMarker(Geno::GenoReader & t_reader,
+                          const std::string & t_genoType,
+                          const std::string & t_genoIndexStr,
+                          bool t_isMoreOutput,
+                          bool t_isImputation,
+                          const std::vector<unsigned char> & t_singleVR,
+                          const std::vector<int> & t_modelIdxs,
+                          Marker::MarkerScratch & t_scratch,
+                          std::vector<Marker::MarkerResult*> & t_rows)
+{
+  MarkerPrep prep;
+  // n is the group's sample count. Every model in a group has the same sampleID
+  // vector by construction (that is what a group IS), so m_n of the first is
+  // m_n of all of them -- and it is the same value the single-model loop read
+  // from g_model->m_n.
+  int n = g_models.at(t_modelIdxs.at(0))->m_n;
+  int status = prepareOneMarker(t_reader, t_genoType, t_genoIndexStr, t_isImputation,
+                                n, t_scratch, t_rows, prep);
+  if(status < 0){
+    return false;
+  }
+  if(status == 0){
+    return true;   // QC dropped it; every row keeps pval == "NA"
+  }
+
+  for(std::size_t k = 0; k < t_modelIdxs.size(); k++){
+    testOneModel(*g_models.at(t_modelIdxs[k]), t_isMoreOutput,
+                 t_singleVR.at(t_modelIdxs[k]) != 0, prep, t_scratch, *t_rows[k]);
   }
 
   return true;
@@ -596,11 +734,13 @@ extern "C" void AnnotateHappensAfter(const char *f, int l, void *addr);
 #define SAIGE_TSAN_HAPPENS_AFTER(p)  ((void)0)
 #endif
 
+// One worker's private state: a scratch buffer and a reader clone PER
+// SAMPLE-SET GROUP. Per group, not per model: models in a group share a decode,
+// so they share the buffer that decode lands in; models in different groups do
+// not, so they cannot.
 struct MarkerWorkerState {
-  Marker::MarkerScratch scratch;
-  std::unique_ptr<Geno::GenoReader> reader;
-  MarkerWorkerState(int t_n, int t_numMarkerCond, std::unique_ptr<Geno::GenoReader> t_reader)
-    : scratch(t_n, t_numMarkerCond), reader(std::move(t_reader)) {}
+  std::vector<std::unique_ptr<Marker::MarkerScratch>> scratch;
+  std::vector<std::unique_ptr<Geno::GenoReader>> readers;
 };
 
 // A checkout pool rather than one state per range. RcppParallel's parallelFor
@@ -610,8 +750,8 @@ struct MarkerWorkerState {
 // against allocating ~n doubles per range if each made its own.
 class MarkerStatePool {
 public:
-  MarkerStatePool(int t_n, int t_numMarkerCond, int t_nStates)
-    : m_n(t_n), m_numMarkerCond(t_numMarkerCond) {
+  MarkerStatePool(const std::vector<std::vector<int>> & t_groups, int t_nStates)
+    : m_groups(t_groups) {
     for(int i = 0; i < t_nStates; i++){
       m_free.push_back(make());
     }
@@ -638,11 +778,17 @@ public:
 
 private:
   std::unique_ptr<MarkerWorkerState> make() const {
-    return std::unique_ptr<MarkerWorkerState>(
-        new MarkerWorkerState(m_n, m_numMarkerCond, g_reader->clone()));
+    std::unique_ptr<MarkerWorkerState> s(new MarkerWorkerState());
+    for(std::size_t g = 0; g < m_groups.size(); g++){
+      const SAIGE::SAIGEClass & first = *g_models.at(m_groups[g].at(0));
+      s->scratch.push_back(std::unique_ptr<Marker::MarkerScratch>(
+          new Marker::MarkerScratch(first.m_n, first.m_numMarker_cond)));
+      s->readers.push_back(g_readers.at(g)->clone());
+    }
+    return s;
   }
 
-  int m_n, m_numMarkerCond;
+  const std::vector<std::vector<int>> & m_groups;
   std::mutex m_mutex;
   std::vector<std::unique_ptr<MarkerWorkerState>> m_free;
 };
@@ -657,41 +803,60 @@ struct RefuseMainThreadGuard {
 struct MarkerScanWorker : public RcppParallel::Worker {
   MarkerScanWorker(MarkerStatePool& t_pool,
                    const std::string& t_genoType,
-                   const std::string& t_traitType,
                    const std::vector<std::string>& t_genoIndex,
                    bool t_isMoreOutput, bool t_isImputation,
-                   bool t_isCondition, bool t_isSingleVarianceRatio,
-                   std::vector<Marker::MarkerResult>& t_resultVec)
-    : m_pool(t_pool), m_genoType(t_genoType), m_traitType(t_traitType),
+                   const std::vector<unsigned char>& t_singleVR,
+                   const std::vector<std::vector<int>>& t_groups,
+                   std::vector<std::vector<Marker::MarkerResult>>& t_results)
+    : m_pool(t_pool), m_genoType(t_genoType),
       m_genoIndex(t_genoIndex), m_isMoreOutput(t_isMoreOutput),
-      m_isImputation(t_isImputation), m_isCondition(t_isCondition),
-      m_isSingleVarianceRatio(t_isSingleVarianceRatio), m_resultVec(t_resultVec) {}
+      m_isImputation(t_isImputation), m_singleVR(t_singleVR),
+      m_groups(t_groups), m_results(t_results) {}
 
   void operator()(std::size_t t_begin, std::size_t t_end) override {
     std::unique_ptr<MarkerWorkerState> state = m_pool.checkout();
     RefuseMainThreadGuard noRAPI;
+    std::vector<Marker::MarkerResult*> rows;
     for(std::size_t i = t_begin; i < t_end; i++){
       // Each marker's failure is recorded in ITS OWN slot and the scan
       // continues, so which marker fails is not a function of which thread got
       // there first. The main thread then acts on the lowest index, which is
-      // what a serial run would have stopped at.
-      try {
-        bool isReadMarker = testOneMarker(*state->reader, m_genoType, m_traitType,
-                                          m_genoIndex.at(i), m_isMoreOutput,
-                                          m_isImputation, m_isCondition,
-                                          m_isSingleVarianceRatio,
-                                          state->scratch, m_resultVec.at(i));
-        if(!isReadMarker){
-          m_resultVec.at(i) = Marker::MarkerResult();
-          m_resultVec.at(i).readFailed = true;
+      // what a serial run would have stopped at. With several models, "its own
+      // slot" means the row of EVERY model in the group that failed: a read is
+      // per group, so the outcome of a read is too.
+      for(std::size_t g = 0; g < m_groups.size(); g++){
+        const std::vector<int> & members = m_groups[g];
+        rows.clear();
+        for(std::size_t k = 0; k < members.size(); k++){
+          rows.push_back(&m_results.at(members[k]).at(i));
         }
-      } catch (const SKATMainThread::NeedsMainThread&) {
-        m_resultVec.at(i) = Marker::MarkerResult();
-        m_resultVec.at(i).deferredToMainThread = true;
-      } catch (const std::exception& e) {
-        m_resultVec.at(i) = Marker::MarkerResult();
-        m_resultVec.at(i).hasError = true;
-        m_resultVec.at(i).errMsg = e.what();
+        try {
+          bool isReadMarker = testOneMarker(*state->readers[g], m_genoType,
+                                            m_genoIndex.at(i), m_isMoreOutput,
+                                            m_isImputation, m_singleVR, members,
+                                            *state->scratch[g], rows);
+          if(!isReadMarker){
+            for(std::size_t k = 0; k < members.size(); k++){
+              *rows[k] = Marker::MarkerResult();
+              rows[k]->readFailed = true;
+            }
+          }
+        } catch (const SKATMainThread::NeedsMainThread&) {
+          // Only a MODEL's test can raise this (the ER resampling arm), never
+          // the shared prepare -- but which model is not recorded, so the whole
+          // group's rows are re-run on the main thread. Re-preparing for a
+          // subset is byte-neutral because prepare is deterministic.
+          for(std::size_t k = 0; k < members.size(); k++){
+            *rows[k] = Marker::MarkerResult();
+            rows[k]->deferredToMainThread = true;
+          }
+        } catch (const std::exception& e) {
+          for(std::size_t k = 0; k < members.size(); k++){
+            *rows[k] = Marker::MarkerResult();
+            rows[k]->hasError = true;
+            rows[k]->errMsg = e.what();
+          }
+        }
       }
     }
     m_pool.checkin(std::move(state));
@@ -700,10 +865,11 @@ struct MarkerScanWorker : public RcppParallel::Worker {
 
   MarkerStatePool& m_pool;
   const std::string& m_genoType;
-  const std::string& m_traitType;
   const std::vector<std::string>& m_genoIndex;
-  bool m_isMoreOutput, m_isImputation, m_isCondition, m_isSingleVarianceRatio;
-  std::vector<Marker::MarkerResult>& m_resultVec;
+  bool m_isMoreOutput, m_isImputation;
+  const std::vector<unsigned char>& m_singleVR;
+  const std::vector<std::vector<int>>& m_groups;
+  std::vector<std::vector<Marker::MarkerResult>>& m_results;
 };
 
 }  // namespace
@@ -711,7 +877,6 @@ struct MarkerScanWorker : public RcppParallel::Worker {
 // [[Rcpp::export]]
 void mainMarkerInCPP(
                            std::string & t_genoType,     // "PLINK"
-			   std::string & t_traitType,
 			   std::vector<std::string> & t_genoIndex,
 			   bool & t_isMoreOutput,
 			   bool & t_isImputation,
@@ -721,22 +886,56 @@ void mainMarkerInCPP(
 
   int q = t_genoIndex.size();  // number of markers
 
-  // One output slot per marker (S4). This replaces the ~30 q-length vectors the
-  // loop used to fill in lockstep -- including std::vector<bool>
-  // isSPAConvergeVec, whose bit packing made writes to distinct markers writes
-  // to the same word.
-  std::vector<Marker::MarkerResult> resultVec(q);
+  // --- the models, and the sample-set groups they fall into --------------
+  const int P = (int)g_models.size();
+  if(P < 1){
+    Rcpp::stop("No null model has been set up.");
+  }
+  if((int)g_out.singles.size() != P){
+    Rcpp::stop("There are " + std::to_string(P) + " null models but " +
+               std::to_string(g_out.singles.size()) + " output files.");
+  }
+  if((int)g_modelGroup.size() != P){
+    Rcpp::stop("There are " + std::to_string(P) + " null models but " +
+               std::to_string(g_modelGroup.size()) + " sample-set group assignments.");
+  }
+  const int G = (int)g_readers.size();
+  if(G < 1){
+    Rcpp::stop("No genotype reader has been set up.");
+  }
+  std::vector<std::vector<int>> groups(G);
+  for(int k = 0; k < P; k++){
+    int g = g_modelGroup[k];
+    if(g < 0 || g >= G){
+      Rcpp::stop("Null model " + std::to_string(k + 1) + " names sample-set group " +
+                 std::to_string(g + 1) + ", but only " + std::to_string(G) +
+                 " genotype reader(s) were set up.");
+    }
+    groups[g].push_back(k);
+  }
+  for(int g = 0; g < G; g++){
+    if(groups[g].empty()){
+      Rcpp::stop("Sample-set group " + std::to_string(g + 1) +
+                 " has a genotype reader but no null model.");
+    }
+  }
 
-  bool isCondition = g_model->m_isCondition;
-
-  // The reusable buffers, one set for the whole (serial) scan.
-  Marker::MarkerScratch scratch(g_model->m_n, g_model->m_numMarker_cond);
+  // One output slot per (model, marker) (S4 for the marker axis, M1 for the
+  // model axis). Model-major, so each model's rows are contiguous and the
+  // writer streams one model's vector at a time exactly as it did when there
+  // was one.
+  std::vector<std::vector<Marker::MarkerResult>> results(
+      P, std::vector<Marker::MarkerResult>(q));
 
   // S3 moved the marker path's variance ratio into the per-marker TestContext;
   // the assignSingleVarianceRatio call that used to stand here wrote a model
   // member nothing on this path reads any more, and it is gone with the member
-  // (S12). All that survives is the single-vs-categorical decision itself.
-  bool isSingleVarianceRatio = ((g_model->m_varRatio_null).n_elem == 1);
+  // (S12). All that survives is the single-vs-categorical decision itself --
+  // per model, because two models can have been fitted differently.
+  std::vector<unsigned char> singleVR(P);
+  for(int k = 0; k < P; k++){
+    singleVR[k] = ((g_models[k]->m_varRatio_null).n_elem == 1) ? 1 : 0;
+  }
 
   int nThreads = (t_nThreadsMarker < 1) ? 1 : t_nThreadsMarker;
 
@@ -747,22 +946,33 @@ void mainMarkerInCPP(
   g_markerProfile.enabled = (nThreads == 1) && markerProfileRequested();
 
   if(nThreads > 1){
-    if(!g_reader){
-      Rcpp::stop("No genotype reader has been set up.");
-    }
     // A reader that cannot clone cannot be threaded. Since S8 that is one case
     // only: the PLINK pread fallback, which refuses (S5). PGEN clones -- each
     // worker gets its own pgenlib reader over shared metadata. Degrade to one
     // thread with a notice rather than failing the run -- the same posture as a
     // group test, and NOT the silent no-op of LEDGER #30: the reason is printed.
+    // EVERY group's reader is probed: one uncloneable reader is enough to make
+    // the scan serial, and finding that out mid-`parallelFor` is not an option.
     try {
-      std::unique_ptr<Geno::GenoReader> probe = g_reader->clone();
+      for(int g = 0; g < G; g++){
+        std::unique_ptr<Geno::GenoReader> probe = g_readers[g]->clone();
+      }
     } catch (const std::exception& e) {
       std::cout << "WARNING: the genotype reader cannot be cloned ("
                 << e.what() << "); the marker scan will run on one thread."
                 << std::endl;
       nThreads = 1;
     }
+  }
+
+  // Say what this scan is, but only when it is not the single-model scan every
+  // existing golden was produced by -- P == 1 keeps its log verbatim. The
+  // standing test asserts this line for the same reason the threading one does
+  // (LEDGER #30): a manifest that failed to arrive would otherwise pass as a
+  // green multi-model run.
+  if(P > 1){
+    std::cout << "Marker scan will test " << P << " models in " << G
+              << " sample-set group(s) per marker." << std::endl;
   }
 
   // How far the scan got. Serially this is where the `break` fired; in the
@@ -773,21 +983,35 @@ void mainMarkerInCPP(
     // S6: the serial path is LITERALLY serial -- no worker, no pool, no TBB
     // touched at all -- so the default configuration cannot be affected by any
     // of the threading machinery, including its initialisation.
+    std::vector<std::unique_ptr<Marker::MarkerScratch>> scratch;
+    for(int g = 0; g < G; g++){
+      const SAIGE::SAIGEClass & first = *g_models.at(groups[g].at(0));
+      scratch.push_back(std::unique_ptr<Marker::MarkerScratch>(
+          new Marker::MarkerScratch(first.m_n, first.m_numMarker_cond)));
+    }
+    std::vector<Marker::MarkerResult*> rows;
     for(int i = 0; i < q; i++){
       if((i+1) % g_cfg.marker_chunksize == 0){
         std::cout << "Completed " << (i+1) << "/" << q << " markers in the chunk." << std::endl;
       }
 
-      bool isReadMarker = testOneMarker(*g_reader,
-                                        t_genoType,
-                                        t_traitType,
-                                        t_genoIndex.at(i),
-                                        t_isMoreOutput,
-                                        t_isImputation,
-                                        isCondition,
-                                        isSingleVarianceRatio,
-                                        scratch,
-                                        resultVec.at(i));
+      bool isReadMarker = true;
+      for(int g = 0; g < G && isReadMarker; g++){
+        const std::vector<int> & members = groups[g];
+        rows.clear();
+        for(std::size_t k = 0; k < members.size(); k++){
+          rows.push_back(&results[members[k]][i]);
+        }
+        isReadMarker = testOneMarker(*g_readers[g],
+                                     t_genoType,
+                                     t_genoIndex.at(i),
+                                     t_isMoreOutput,
+                                     t_isImputation,
+                                     singleVR,
+                                     members,
+                                     *scratch[g],
+                                     rows);
+      }
       if(!isReadMarker){
         nScanned = i;
         break;
@@ -808,10 +1032,10 @@ void mainMarkerInCPP(
     // to serial cannot masquerade as a green threaded run.
     std::cout << "Marker scan will use " << nThreads
               << " in-process threads." << std::endl;
-    MarkerStatePool pool(g_model->m_n, g_model->m_numMarker_cond, nThreads);
-    MarkerScanWorker worker(pool, t_genoType, t_traitType, t_genoIndex,
-                            t_isMoreOutput, t_isImputation, isCondition,
-                            isSingleVarianceRatio, resultVec);
+    MarkerStatePool pool(groups, nThreads);
+    MarkerScanWorker worker(pool, t_genoType, t_genoIndex,
+                            t_isMoreOutput, t_isImputation,
+                            singleVR, groups, results);
     // Contiguous grain so each worker streams a run of the .bed rather than
     // stepping through it. numThreads is passed EXPLICITLY: RcppParallel's
     // resolveValue returns an explicit value whenever it is > 0 and not the
@@ -823,22 +1047,33 @@ void mainMarkerInCPP(
     SAIGE_TSAN_HAPPENS_AFTER(&pool);
 
     // --- post-pass 1: report the error a serial run would have reported ---
+    // Serial order is (marker, group, model), so that is the order to scan.
     for(int i = 0; i < q; i++){
-      if(resultVec.at(i).hasError){
-        throw std::runtime_error(resultVec.at(i).errMsg);
+      for(int g = 0; g < G; g++){
+        for(std::size_t k = 0; k < groups[g].size(); k++){
+          if(results[groups[g][k]][i].hasError){
+            throw std::runtime_error(results[groups[g][k]][i].errMsg);
+          }
+        }
       }
     }
 
     // --- post-pass 2: truncate at the earliest short read ---
-    // Serially a failed read breaks the loop, so every LATER marker is untested.
-    // Workers cannot know which failure is earliest, so discard from there on.
-    for(int i = 0; i < q; i++){
-      if(resultVec.at(i).readFailed){
-        nScanned = i;
-        for(int j = i; j < q; j++){
-          resultVec.at(j) = Marker::MarkerResult();
+    // Serially a failed read breaks the loop, so every LATER marker is untested
+    // FOR EVERY MODEL -- the loop is one loop however many models it carries.
+    for(int i = 0; i < q && nScanned == q; i++){
+      for(int k = 0; k < P; k++){
+        if(results[k][i].readFailed){
+          nScanned = i;
+          break;
         }
-        break;
+      }
+    }
+    if(nScanned < q){
+      for(int k = 0; k < P; k++){
+        for(int j = nScanned; j < q; j++){
+          results[k][j] = Marker::MarkerResult();
+        }
       }
     }
 
@@ -847,26 +1082,50 @@ void mainMarkerInCPP(
     // re-seeds with set.seed(1) at entry, so each drawing marker's sequence is
     // independent of how many drew before it (that is what makes the deferral
     // byte-neutral rather than merely safe).
+    std::vector<std::unique_ptr<Marker::MarkerScratch>> scratch;
+    for(int g = 0; g < G; g++){
+      const SAIGE::SAIGEClass & first = *g_models.at(groups[g].at(0));
+      scratch.push_back(std::unique_ptr<Marker::MarkerScratch>(
+          new Marker::MarkerScratch(first.m_n, first.m_numMarker_cond)));
+    }
+    std::vector<Marker::MarkerResult*> rows;
     for(int i = 0; i < nScanned; i++){
-      if(!resultVec.at(i).deferredToMainThread){
-        continue;
-      }
-      resultVec.at(i) = Marker::MarkerResult();
-      bool isReadMarker = testOneMarker(*g_reader,
-                                        t_genoType,
-                                        t_traitType,
-                                        t_genoIndex.at(i),
-                                        t_isMoreOutput,
-                                        t_isImputation,
-                                        isCondition,
-                                        isSingleVarianceRatio,
-                                        scratch,
-                                        resultVec.at(i));
-      if(!isReadMarker){
-        nScanned = i;
-        for(int j = i; j < q; j++){
-          resultVec.at(j) = Marker::MarkerResult();
+      for(int g = 0; g < G; g++){
+        const std::vector<int> & members = groups[g];
+        std::vector<int> deferred;
+        for(std::size_t k = 0; k < members.size(); k++){
+          if(results[members[k]][i].deferredToMainThread){
+            deferred.push_back(members[k]);
+          }
         }
+        if(deferred.empty()){
+          continue;
+        }
+        rows.clear();
+        for(std::size_t k = 0; k < deferred.size(); k++){
+          results[deferred[k]][i] = Marker::MarkerResult();
+          rows.push_back(&results[deferred[k]][i]);
+        }
+        bool isReadMarker = testOneMarker(*g_readers[g],
+                                          t_genoType,
+                                          t_genoIndex.at(i),
+                                          t_isMoreOutput,
+                                          t_isImputation,
+                                          singleVR,
+                                          deferred,
+                                          *scratch[g],
+                                          rows);
+        if(!isReadMarker){
+          nScanned = i;
+          for(int k2 = 0; k2 < P; k2++){
+            for(int j = i; j < q; j++){
+              results[k2][j] = Marker::MarkerResult();
+            }
+          }
+          break;
+        }
+      }
+      if(nScanned <= i){
         break;
       }
     }
@@ -896,26 +1155,29 @@ void mainMarkerInCPP(
     g_markerProfile.enabled = false;
   }
 
-  int mFirth = 0;
-  int mFirthConverge = 0;
-  for(int i = 0; i < q; i++){
-    if(resultVec.at(i).isFirth){
-      mFirth = mFirth + 1;
-      if(resultVec.at(i).isFirthConverge){
-        mFirthConverge = mFirthConverge + 1;
+  //output, one file per model
+  for(int k = 0; k < P; k++){
+    int mFirth = 0;
+    int mFirthConverge = 0;
+    for(int i = 0; i < q; i++){
+      if(results[k][i].isFirth){
+        mFirth = mFirth + 1;
+        if(results[k][i].isFirthConverge){
+          mFirthConverge = mFirthConverge + 1;
+        }
       }
     }
-  }
 
-  //output
-  writeOutfile_single(t_isMoreOutput,
-      t_isImputation,
-      isCondition,
-      t_isFirth,
-      mFirth,
-      mFirthConverge,
-      t_traitType,
-      resultVec);
+    writeOutfile_single(t_isMoreOutput,
+        t_isImputation,
+        g_models[k]->m_isCondition,
+        t_isFirth,
+        mFirth,
+        mFirthConverge,
+        g_models[k]->m_traitType,
+        results[k],
+        g_out.singles[k]->stream);
+  }
 
 }
 
@@ -1056,7 +1318,7 @@ void setPLINKobjInCPP(std::string t_bimFile,
                                        Rcpp::Named("famFile") = t_famFile,
                                        Rcpp::Named("bedFile") = t_bedFile,
                                        Rcpp::Named("AlleleOrder") = t_AlleleOrder);
-  g_reader = Geno::makeReader("plink", spec, t_SampleInModel);
+  resetReaders(Geno::makeReader("plink", spec, t_SampleInModel));
 }
 
 // [[Rcpp::export]]
@@ -1068,11 +1330,68 @@ void setPGENobjInCPP(std::string t_pgenFile,
   Rcpp::List spec = Rcpp::List::create(Rcpp::Named("pgenFile") = t_pgenFile,
                                        Rcpp::Named("pvarFile") = t_pvarFile,
                                        Rcpp::Named("psamFile") = t_psamFile);
-  g_reader = Geno::makeReader("pgen", spec, t_SampleInModel);
+  resetReaders(Geno::makeReader("pgen", spec, t_SampleInModel));
+}
+
+// A second (or later) SAMPLE-SET GROUP's reader. The first group's reader comes
+// from setPLINKobjInCPP/setPGENobjInCPP as it always did; this only appends, so
+// a single-model run never reaches it. The spec is the same Rcpp::List the two
+// format-specific setters build, so nothing here knows about bim/pvar columns.
+// [[Rcpp::export]]
+void addGenoReaderInCPP(std::string t_genoType,
+                        Rcpp::List t_spec,
+                        std::vector<std::string> & t_SampleInModel)
+{
+  addReader(Geno::makeReader(t_genoType, t_spec, t_SampleInModel));
 }
 
 //////// ---------- Main functions to set objects for different analysis methods --------- ////////////
 
+// Has setSAIGEobjInCPP been called in this process? addSAIGEobjInCPP appends to
+// a list that setSAIGEobjInCPP is responsible for clearing, so calling them out
+// of order would silently carry a previous run's models into this one.
+static bool g_modelSetCalled = false;
+
+// forward declaration: setSAIGEobjInCPP below forwards to it
+void addSAIGEobjInCPP(arma::mat & t_XVX,
+        arma::mat & t_XXVX_inv,
+        arma::mat & t_XV,
+        arma::mat & t_XVX_inv_XV,
+	arma::mat & t_Sigma_iXXSigma_iX,
+        arma::mat & t_X,
+        arma::vec &  t_S_a,
+        arma::vec & t_res,
+        arma::vec & t_mu2,
+        arma::vec & t_mu,
+        arma::vec & t_varRatio_sparse,
+        arma::vec & t_varRatio_null,
+        arma::vec & t_varRatio_null_noXadj,
+	arma::vec & t_cateVarRatioMinMACVecExclude,
+        arma::vec & t_cateVarRatioMaxMACVecInclude,
+        double t_SPA_Cutoff,
+        arma::vec & t_tauvec,
+        std::string t_traitType,
+        arma::vec & t_y,
+	std::string t_impute_method,
+	bool t_flagSparseGRM,
+	bool t_isFastTest,
+	bool t_isnoadjCov,
+	double t_pval_cutoff_for_fastTest,
+        arma::umat & t_locationMat,
+        arma::vec & t_valueVec,
+        int t_dimNum,
+	bool t_isCondition,
+	std::vector<uint32_t> & t_condition_genoIndex,
+	bool t_is_Firth_beta,
+	double t_pCutoffforFirth,
+	arma::vec & t_offset,
+	arma::vec & t_resout,
+	int t_groupIndex);
+
+// The FIRST null model of a run. Clears whatever a previous SPAGMMATtest call
+// in this process left behind and installs model 0 in sample-set group 0;
+// addSAIGEobjInCPP appends the rest. Splitting it this way is what keeps a
+// single-model run's call sequence exactly what it was before M1.
 // [[Rcpp::export]]
 void setSAIGEobjInCPP(arma::mat & t_XVX,
         arma::mat & t_XXVX_inv,
@@ -1108,8 +1427,93 @@ void setSAIGEobjInCPP(arma::mat & t_XVX,
 	arma::vec & t_offset,
 	arma::vec & t_resout)
 {
+  g_models.clear();
+  g_modelGroup.clear();
+  g_model = nullptr;
+  g_modelSetCalled = true;
+  addSAIGEobjInCPP(
+        t_XVX,
+        t_XXVX_inv,
+        t_XV,
+        t_XVX_inv_XV,
+        t_Sigma_iXXSigma_iX,
+        t_X,
+        t_S_a,
+        t_res,
+        t_mu2,
+        t_mu,
+        t_varRatio_sparse,
+        t_varRatio_null,
+        t_varRatio_null_noXadj,
+        t_cateVarRatioMinMACVecExclude,
+        t_cateVarRatioMaxMACVecInclude,
+        t_SPA_Cutoff,
+        t_tauvec,
+        t_traitType,
+        t_y,
+        t_impute_method,
+        t_flagSparseGRM,
+        t_isFastTest,
+        t_isnoadjCov,
+        t_pval_cutoff_for_fastTest,
+        t_locationMat,
+        t_valueVec,
+        t_dimNum,
+        t_isCondition,
+        t_condition_genoIndex,
+        t_is_Firth_beta,
+        t_pCutoffforFirth,
+        t_offset,
+        t_resout,
+        0);
+}
+
+// The SECOND and later null models, each with the index of the sample-set group
+// whose reader it shares. A single-model run never calls this.
+// [[Rcpp::export]]
+void addSAIGEobjInCPP(arma::mat & t_XVX,
+        arma::mat & t_XXVX_inv,
+        arma::mat & t_XV,
+        arma::mat & t_XVX_inv_XV,
+	arma::mat & t_Sigma_iXXSigma_iX,
+        arma::mat & t_X,
+        arma::vec &  t_S_a,
+        arma::vec & t_res,
+        arma::vec & t_mu2,
+        arma::vec & t_mu,
+        arma::vec & t_varRatio_sparse,
+        arma::vec & t_varRatio_null,
+        arma::vec & t_varRatio_null_noXadj,
+	arma::vec & t_cateVarRatioMinMACVecExclude,
+        arma::vec & t_cateVarRatioMaxMACVecInclude,
+        double t_SPA_Cutoff,
+        arma::vec & t_tauvec,
+        std::string t_traitType,
+        arma::vec & t_y,
+	std::string t_impute_method,
+	bool t_flagSparseGRM,
+	bool t_isFastTest,
+	bool t_isnoadjCov,
+	double t_pval_cutoff_for_fastTest,
+        arma::umat & t_locationMat,
+        arma::vec & t_valueVec,
+        int t_dimNum,
+	bool t_isCondition,
+	std::vector<uint32_t> & t_condition_genoIndex,
+	bool t_is_Firth_beta,
+	double t_pCutoffforFirth,
+	arma::vec & t_offset,
+	arma::vec & t_resout,
+	int t_groupIndex)
+{
+  if(!g_modelSetCalled){
+    Rcpp::stop("setSAIGEobjInCPP must be called for the first null model before addSAIGEobjInCPP.");
+  }
+  if(t_groupIndex < 0){
+    Rcpp::stop("A null model's sample-set group index must be non-negative.");
+  }
   // check SAIGE.cpp
-  g_model.reset(new SAIGE::SAIGEClass(
+  g_models.push_back(std::unique_ptr<SAIGE::SAIGEClass>(new SAIGE::SAIGEClass(
 	t_XVX,
         t_XXVX_inv,
         t_XV,
@@ -1142,8 +1546,9 @@ void setSAIGEobjInCPP(arma::mat & t_XVX,
 	t_is_Firth_beta,
         t_pCutoffforFirth,
 	t_offset,
-	t_resout));
-  //g_model->m_flagSparseGRM = false;
+	t_resout)));
+  g_modelGroup.push_back(t_groupIndex);
+  g_model = g_models[0].get();
 }
 
 
@@ -2591,9 +2996,19 @@ void assign_conditionMarkers_factors(
                            std::string t_genoType,     // "plink"
                            std::vector<std::string> & t_genoIndex,
                            unsigned int t_n, 
-			   arma::vec & t_weight_cond
+			   arma::vec & t_weight_cond,
+			   int t_modelIndex
 			   )           // sample size
 {
+  if(t_modelIndex < 0 || (std::size_t)t_modelIndex >= g_models.size()){
+    Rcpp::stop("assign_conditionMarkers_factors: no null model at index " +
+               std::to_string(t_modelIndex));
+  }
+  // Read through THIS model's sample-set group, and write the conditioning
+  // factors onto THIS model. A single-model run passes 0 and lands exactly
+  // where it did before M1.
+  SAIGE::SAIGEClass & model = *g_models[t_modelIndex];
+  Geno::GenoReader & reader = *g_readers.at(g_modelGroup.at(t_modelIndex));
   bool isImpute = false;	
   unsigned int q = t_genoIndex.size();
   arma::mat P1Mat(q, t_n);
@@ -2647,7 +3062,7 @@ void assign_conditionMarkers_factors(
     uint64_t gIndex = std::strtoull( t_genoIndex_str.c_str(), &end,10 );
 
 
-    bool isReadMarker = Unified_getOneMarker(t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
+    bool isReadMarker = getOneMarkerThrough(reader, t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
                                           isOutputIndexForMissing, // bool t_isOutputIndexForMissing,
                                           indexForMissing,
                                           isOnlyOutputNonZero, // bool t_isOnlyOutputNonZero,
@@ -2669,12 +3084,12 @@ void assign_conditionMarkers_factors(
   // outlive the marker.
   bool hasVarRatio;
   SAIGE::TestContext ctx;
-  ctx.useSparseGRM = g_model->m_flagSparseGRM;
+  ctx.useSparseGRM = model.m_flagSparseGRM;
   ctx.noadjCov = false;
-  if((g_model->m_varRatio_null).n_elem == 1){
-	ctx.varRatioVal = g_model->selectSingleVarianceRatio(ctx.useSparseGRM, false);
+  if((model.m_varRatio_null).n_elem == 1){
+	ctx.varRatioVal = model.selectSingleVarianceRatio(ctx.useSparseGRM, false);
   }else{
-	ctx.varRatioVal = g_model->selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
+	ctx.varRatioVal = model.selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
   }	  
  
   flip = imputeGenoAndFlip(GVec, altFreq, altCounts, indexForMissing, g_cfg.impute_method, g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC, indexZeroVec, indexNonZeroVec);
@@ -2690,16 +3105,24 @@ void assign_conditionMarkers_factors(
 
   arma::vec gtildeVec;
 
-  if(MAC <=  g_cfg.MACCutoffforER && g_model->m_traitType == "binary"){
-     Unified_getMarkerPval(
+  if(MAC <=  g_cfg.MACCutoffforER && model.m_traitType == "binary"){
+     // model.getMarkerPval rather than the Unified_ wrapper: the wrapper
+     // dispatches to g_models[0], which is the wrong model whenever this is
+     // called for the second or later entry of a manifest. Argument order
+     // follows SAIGEClass::getMarkerPval (altFreq before Tstat), which is the
+     // one place it differs from the wrapper's.
+     model.getMarkerPval(
                     GVec,
-                    false, // bool t_isOnlyOutputNonZero,
-                    indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
+                    indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
   }else{
-     Unified_getMarkerPval(
+     // model.getMarkerPval rather than the Unified_ wrapper: the wrapper
+     // dispatches to g_models[0], which is the wrong model whenever this is
+     // called for the second or later entry of a manifest. Argument order
+     // follows SAIGEClass::getMarkerPval (altFreq before Tstat), which is the
+     // one place it differs from the wrapper's.
+     model.getMarkerPval(
                     GVec,
-                    false, // bool t_isOnlyOutputNonZero,
-                    indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,  Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
+                    indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
 
   }
       P1Mat.row(i) = sqrt(ctx.varRatioVal)*gtildeVec.t();
@@ -2734,8 +3157,8 @@ void assign_conditionMarkers_factors(
   arma::vec gsumtildeVec;
 
 
-  g_model->getadjG(gsumVec, gsumtildeVec);
-  g_model->assignConditionFactors(
+  model.getadjG(gsumVec, gsumtildeVec);
+  model.assignConditionFactors(
 		   			P2Mat,
 					VarInvMat,
 					VarMat,
@@ -2849,7 +3272,11 @@ arma::vec fast_logistf_fit(arma::mat & x,
 void closeGenoFile(std::string & t_genoType)
 {
   if(t_genoType == "plink" || t_genoType == "pgen"){
-    g_reader->close();
+    // Every sample-set group's reader, not just the first: with a manifest
+    // there is one per group and closing only g_readers[0] would leak the rest.
+    for(std::size_t g = 0; g < g_readers.size(); g++){
+      g_readers[g]->close();
+    }
   }
 }
 
@@ -2937,29 +3364,41 @@ bool openOutfile_singleinGroup(std::string t_traitType, bool t_isImputation, boo
 }
 
 
+// Open (or reopen for append) ONE model's single-variant output file. The
+// header is derived from THAT model rather than passed in, because with several
+// models in one scan the trait type and the conditional columns differ per file.
 // [[Rcpp::export]]
-bool openOutfile_single(std::string t_traitType, bool t_isImputation, bool isappend, bool t_isMoreOutput){
+bool openOutfile_single(int t_modelIndex, bool t_isImputation, bool isappend, bool t_isMoreOutput){
+      if(t_modelIndex < 0 || (std::size_t)t_modelIndex >= g_out.singles.size()){
+        Rcpp::stop("openOutfile_single: no output file for model index " + std::to_string(t_modelIndex));
+      }
+      if((std::size_t)t_modelIndex >= g_models.size()){
+        Rcpp::stop("openOutfile_single: no null model at index " + std::to_string(t_modelIndex));
+      }
+      SingleWriter & w = *g_out.singles[t_modelIndex];
+      const SAIGE::SAIGEClass & model = *g_models[t_modelIndex];
+      const std::string t_traitType = model.m_traitType;
       bool isopen;
       if(!isappend){
-        g_out.single.open(g_out.prefixSingle.c_str());
-        isopen = g_out.single.is_open();
+        w.stream.open(w.prefix.c_str());
+        isopen = w.stream.is_open();
         if(isopen){
-                g_out.single << "CHR\tPOS\tMarkerID\tAllele1\tAllele2\tAC_Allele2\tAF_Allele2\t";
+                w.stream << "CHR\tPOS\tMarkerID\tAllele1\tAllele2\tAC_Allele2\tAF_Allele2\t";
                 if(t_isImputation){
-                        g_out.single << "imputationInfo\t";
+                        w.stream << "imputationInfo\t";
                 }else{
 
-                        g_out.single << "MissingRate\t";
+                        w.stream << "MissingRate\t";
                 }
-                g_out.single << "BETA\tSE\tTstat\tvar\tp.value\t";
+                w.stream << "BETA\tSE\tTstat\tvar\tp.value\t";
                 if(t_traitType == "binary"){
-                        g_out.single << "p.value.NA\tIs.SPA\t";
+                        w.stream << "p.value.NA\tIs.SPA\t";
                 }
 
-                if(g_model->m_isCondition){
-                        g_out.single << "BETA_c\tSE_c\tTstat_c\tvar_c\tp.value_c\t";
+                if(model.m_isCondition){
+                        w.stream << "BETA_c\tSE_c\tTstat_c\tvar_c\tp.value_c\t";
 			if(t_traitType == "binary"){
-				g_out.single << "p.value.NA_c\t";
+				w.stream << "p.value.NA_c\t";
 			}
 
 
@@ -2968,22 +3407,22 @@ bool openOutfile_single(std::string t_traitType, bool t_isImputation, bool isapp
 		
 
                 if(t_traitType == "binary"){
-                        g_out.single << "AF_case\tAF_ctrl\tN_case\tN_ctrl";
+                        w.stream << "AF_case\tAF_ctrl\tN_case\tN_ctrl";
 
 			if(t_isMoreOutput){	
-				g_out.single << "\tN_case_hom\tN_case_het\tN_ctrl_hom\tN_ctrl_het";
+				w.stream << "\tN_case_hom\tN_case_het\tN_ctrl_hom\tN_ctrl_het";
 			}
-			g_out.single << "\n";
+			w.stream << "\n";
 
                 }else if(t_traitType == "quantitative"){
-                        g_out.single << "N\n";
+                        w.stream << "N\n";
 
                 }
 
         }
      }else{
-        g_out.single.open(g_out.prefixSingle.c_str(), std::ofstream::out | std::ofstream::app);
-        isopen = g_out.single.is_open();
+        w.stream.open(w.prefix.c_str(), std::ofstream::out | std::ofstream::app);
+        isopen = w.stream.is_open();
      }
 
      return(isopen);
@@ -3001,8 +3440,10 @@ bool openOutfile_single(std::string t_traitType, bool t_isImputation, bool isapp
 // byte-neutral -- it only moves the same flush earlier.
 // [[Rcpp::export]]
 void closeOutfile_single(){
-  if(g_out.single.is_open()){
-    g_out.single.close();
+  for(std::size_t k = 0; k < g_out.singles.size(); k++){
+    if(g_out.singles[k]->stream.is_open()){
+      g_out.singles[k]->stream.close();
+    }
   }
 }
 
@@ -3022,19 +3463,35 @@ void closeOutfile_single(){
 // flush" from "flushed zero bytes".
 // [[Rcpp::export]]
 bool flushOutfile_singleInCPP(){
-  if(!g_out.single.is_open()){
+  if(g_out.singles.empty()){
     return false;
   }
-  g_out.single.flush();
-  return true;
+  bool allOpen = true;
+  for(std::size_t k = 0; k < g_out.singles.size(); k++){
+    if(!g_out.singles[k]->stream.is_open()){
+      allOpen = false;
+      continue;
+    }
+    g_out.singles[k]->stream.flush();
+  }
+  return allOpen;
 }
 
-// Re-point the single-variant output file without re-running the 11-argument
-// setAssocTest_GlobalVarsInCPP. Used by a forked marker-scan worker to write
-// its own shard.
+// Re-point the single-variant output files. One prefix per null model, in
+// manifest order; the first is the one setAssocTest_GlobalVarsInCPP already
+// installed, and a single-model run never calls this at all (so its file naming
+// is byte- and name-identical to before M1). This REPLACES the fork-era
+// setSingleOutputPrefixInCPP, which had no R caller.
 // [[Rcpp::export]]
-void setSingleOutputPrefixInCPP(std::string t_outputFilePrefix){
-  g_out.prefixSingle = t_outputFilePrefix;
+void setSingleOutputPrefixesInCPP(std::vector<std::string> t_outputFilePrefixes){
+  if(t_outputFilePrefixes.empty()){
+    Rcpp::stop("At least one single-variant output prefix is required.");
+  }
+  g_out.singles.clear();
+  for(std::size_t k = 0; k < t_outputFilePrefixes.size(); k++){
+    g_out.singles.push_back(std::unique_ptr<SingleWriter>(new SingleWriter()));
+    g_out.singles[k]->prefix = t_outputFilePrefixes[k];
+  }
 }
 
 // Whether the active genotype reader may be used from forked children. Nothing
@@ -3057,11 +3514,16 @@ bool isGenoReaderForkSafeInCPP(){
 // cluster log.
 // [[Rcpp::export]]
 bool isGenoReaderCloneableInCPP(){
-  if(!g_reader){
+  if(g_readers.empty()){
     Rcpp::stop("No genotype reader has been set up.");
   }
+  // EVERY sample-set group's reader. One uncloneable reader makes the whole
+  // scan serial, so "can this scan thread?" is the conjunction, not the answer
+  // for group 1.
   try {
-    std::unique_ptr<Geno::GenoReader> probe = g_reader->clone();
+    for(std::size_t g = 0; g < g_readers.size(); g++){
+      std::unique_ptr<Geno::GenoReader> probe = g_readers[g]->clone();
+    }
   } catch (const std::exception&) {
     return false;
   }
@@ -3176,7 +3638,8 @@ void writeOutfile_single(bool t_isMoreOutput,
                          int mFirth,
                          int mFirthConverge,
                         std::string t_traitType,
-                        const std::vector<Marker::MarkerResult> & t_resultVec
+                        const std::vector<Marker::MarkerResult> & t_resultVec,
+                        std::ofstream & t_stream
 
 ){
   int numtest = 0;
@@ -3184,85 +3647,85 @@ void writeOutfile_single(bool t_isMoreOutput,
         const Marker::MarkerResult & res = t_resultVec.at(k);
         if(res.pval != "NA"){
                 numtest = numtest + 1;
-                g_out.single << res.chr;
-                g_out.single << "\t";
-                g_out.single << res.pos;
-                g_out.single << "\t";
-                g_out.single << res.marker;
-                g_out.single << "\t";
-                g_out.single << res.ref;
-                g_out.single << "\t";
-                g_out.single << res.alt;
-                g_out.single << "\t";
-                g_out.single << res.altCounts;
-                g_out.single << "\t";
-                g_out.single << res.altFreq;
-                g_out.single << "\t";
+                t_stream << res.chr;
+                t_stream << "\t";
+                t_stream << res.pos;
+                t_stream << "\t";
+                t_stream << res.marker;
+                t_stream << "\t";
+                t_stream << res.ref;
+                t_stream << "\t";
+                t_stream << res.alt;
+                t_stream << "\t";
+                t_stream << res.altCounts;
+                t_stream << "\t";
+                t_stream << res.altFreq;
+                t_stream << "\t";
 
                 if(t_isImputation){
-                        g_out.single << res.imputationInfo;
-                        g_out.single << "\t";
+                        t_stream << res.imputationInfo;
+                        t_stream << "\t";
                 }else{
-                        g_out.single << res.missingRate;
-                        g_out.single << "\t";
+                        t_stream << res.missingRate;
+                        t_stream << "\t";
 
                 }
-                writeNumOrNA(g_out.single, res.Beta);
-                g_out.single << "\t";
-                writeNumOrNA(g_out.single, res.seBeta);
-                g_out.single << "\t";
-                g_out.single << res.Tstat;
-                g_out.single << "\t";
-                g_out.single << res.varT;
-                g_out.single << "\t";
-                g_out.single << res.pval;
-                g_out.single << "\t";
+                writeNumOrNA(t_stream, res.Beta);
+                t_stream << "\t";
+                writeNumOrNA(t_stream, res.seBeta);
+                t_stream << "\t";
+                t_stream << res.Tstat;
+                t_stream << "\t";
+                t_stream << res.varT;
+                t_stream << "\t";
+                t_stream << res.pval;
+                t_stream << "\t";
 
                 if(t_traitType == "binary"){
-                        g_out.single << res.pvalNA;
-                        g_out.single << "\t";
-                        g_out.single << std::boolalpha << res.isSPAConverge;
-                        g_out.single << "\t";
+                        t_stream << res.pvalNA;
+                        t_stream << "\t";
+                        t_stream << std::boolalpha << res.isSPAConverge;
+                        t_stream << "\t";
                 }
                 if(t_isCondition){
-                        writeNumOrNA(g_out.single, res.Beta_c);
-                        g_out.single << "\t";
-                        writeNumOrNA(g_out.single, res.seBeta_c);
-                        g_out.single << "\t";
-                        g_out.single << res.Tstat_c;
-                        g_out.single << "\t";
-                        g_out.single << res.varT_c;
-                        g_out.single << "\t";
-                        g_out.single << res.pval_c;
-                        g_out.single << "\t";
+                        writeNumOrNA(t_stream, res.Beta_c);
+                        t_stream << "\t";
+                        writeNumOrNA(t_stream, res.seBeta_c);
+                        t_stream << "\t";
+                        t_stream << res.Tstat_c;
+                        t_stream << "\t";
+                        t_stream << res.varT_c;
+                        t_stream << "\t";
+                        t_stream << res.pval_c;
+                        t_stream << "\t";
 			if(t_traitType == "binary"){	
-                        	g_out.single << res.pvalNA_c;
-                        	g_out.single << "\t";
+                        	t_stream << res.pvalNA_c;
+                        	t_stream << "\t";
 			}	
                 }
                 if(t_traitType == "binary"){
-                        g_out.single << res.AF_case;
-                        g_out.single << "\t";
-                        g_out.single << res.AF_ctrl;
-                        g_out.single << "\t";
-                        g_out.single << res.N_case;
-                        g_out.single << "\t";
-                        g_out.single << res.N_ctrl;
+                        t_stream << res.AF_case;
+                        t_stream << "\t";
+                        t_stream << res.AF_ctrl;
+                        t_stream << "\t";
+                        t_stream << res.N_case;
+                        t_stream << "\t";
+                        t_stream << res.N_ctrl;
 
                         if(t_isMoreOutput){
-                                g_out.single << "\t";
-                                g_out.single << res.N_case_hom;
-                                g_out.single << "\t";
-                                g_out.single << res.N_case_het;
-                                g_out.single << "\t";
-                                g_out.single << res.N_ctrl_hom;
-                                g_out.single << "\t";
-                                g_out.single << res.N_ctrl_het;
+                                t_stream << "\t";
+                                t_stream << res.N_case_hom;
+                                t_stream << "\t";
+                                t_stream << res.N_case_het;
+                                t_stream << "\t";
+                                t_stream << res.N_ctrl_hom;
+                                t_stream << "\t";
+                                t_stream << res.N_ctrl_het;
                         }
-                        g_out.single << "\n";
+                        t_stream << "\n";
                 }else if(t_traitType == "quantitative"){
-                        g_out.single << res.N;
-                        g_out.single << "\n";
+                        t_stream << res.N;
+                        t_stream << "\n";
 
                 }
         }

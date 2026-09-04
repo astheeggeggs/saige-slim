@@ -69,3 +69,40 @@ comparison `max_rel_err=0.000e+00`, "all comparisons PASS".
 the instrumentation is behind a `getenv` and the R change only prints.
 
 Commit: see `git log` for the Phase 0 commit.
+
+### M1 -- the C++ generalisation, with P still fixed at 1
+
+What: `src/Main.cpp` now carries `g_models` (manifest order), `g_readers` (one
+per sample-set group) and `g_modelGroup`; `g_model`/`g_reader` became
+NON-OWNING aliases of element 0, so the ~80 `g_model->` sites outside the
+marker loop compile and mean exactly what they meant. `testOneMarker` split
+into `prepareOneMarker` (model-independent: read, both QC gates, impute/flip,
+index copies) and `testOneModel` (the S4 body with `g_model->` -> `model.`,
+calling `model.getMarkerPval` directly rather than the `Unified_` wrapper,
+which dispatches to model 0). Results are `vector<vector<MarkerResult>>`,
+model-major. `g_out.singles` is a vector of `unique_ptr<SingleWriter>`;
+`openOutfile_single` takes a MODEL INDEX and derives the header from that
+model; close/flush loop. `MarkerWorkerState` holds one scratch and one reader
+clone PER GROUP. New exports `addSAIGEobjInCPP`, `addGenoReaderInCPP`,
+`setSingleOutputPrefixesInCPP` (replacing the caller-less fork vestige
+`setSingleOutputPrefixInCPP`); `assign_conditionMarkers_factors` takes a model
+index and reads through that model's group.
+
+R touched only where signatures forced it: `openOutfile_single(0L, ...)`,
+`mainMarkerInCPP` without `traitType`, `assign_conditionMarkers_factors(...,
+0L)`.
+
+`harness/tsan.sh`'s plant anchors were updated for the new worker shape (a
+worker state now holds one scratch per group, so the defect is "every worker
+uses the first state's group-0 scratch"). Without that the plant would have
+died on its own drift assert -- which is exactly what it is for.
+
+Gate: **PASSED.**
+* goldens: 58/58 step-0/step-2 byte-identical, all step-1 comparisons PASS.
+* standard tier: `[ FAIL 0 | WARN 0 | SKIP 4 | PASS 1868 ]` in BOTH
+  `SAIGE_COMPARE_MODE=byte` and `numeric`.
+* `harness/tsan.sh clean`: races=0 at t=1/4/8 on all three workloads,
+  bytes-vs-serial identical.
+* `harness/tsan.sh plant`: races 271/279 (binary), 118/523 (binary_sparse),
+  411/546 (quant) and bytes-vs-serial DIFFERS everywhere -- so the clean run
+  above is gating something.

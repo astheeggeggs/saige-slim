@@ -558,7 +558,7 @@ SPAGMMATtest <- function(bedFile = "",
     }
 
     condition_genoIndex_a <- as.character(format(condition_genoIndex$cond_genoIndex, scientific = FALSE))
-    assign_conditionMarkers_factors(genoType, condition_genoIndex_a, n, condition_weights)
+    assign_conditionMarkers_factors(genoType, condition_genoIndex_a, n, condition_weights, 0L)
     if (obj.model$traitType == "binary" & isGroupTest) {
       outG2cond <- RegionSetUpConditional_binary_InCPP(condition_weights)
 

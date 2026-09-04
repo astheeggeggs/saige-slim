@@ -48,7 +48,10 @@ SAIGE.Marker <- function(traitType,
                           outCheck$chunkBytes[as.character(outIndex - 1)])
   }
 
-  isOpenOutFile_single <- openOutfile_single(traitType, isImputation, isappend, isMoreOutput)
+  # M1: the header is derived from the null model in C++ (trait type and the
+  # conditional columns are per model), so the file is named by MODEL INDEX
+  # rather than by trait type. 0L is the only model a single-model run has.
+  isOpenOutFile_single <- openOutfile_single(0L, isImputation, isappend, isMoreOutput)
 
   if (!isOpenOutFile_single) {
     stop("Output file ", OutputFile, " can't be opened\n")
@@ -126,7 +129,7 @@ SAIGE.Marker <- function(traitType,
     # resMarker = as.data.frame(mainMarkerInCPP(genoType, traitType, genoIndex_prev, genoIndex, isMoreOutput, isImputation))
     # resMarker = resMarker[which(!is.na(resMarker$BETA)), ]
 
-    mainMarkerInCPP(genoType, traitType, genoIndex, isMoreOutput, isImputation, isFirth,
+    mainMarkerInCPP(genoType, genoIndex, isMoreOutput, isImputation, isFirth,
                     as.integer(nThreadsMarker))
 
     # timeoutput=system.time({writeOutputFile(Output = list(resMarker),

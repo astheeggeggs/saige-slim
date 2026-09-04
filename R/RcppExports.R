@@ -25,8 +25,8 @@ setRegion_GlobalVarsInCPP <- function(t_max_maf_region, t_max_markers_region, t_
     invisible(.Call('_SAIGE_setRegion_GlobalVarsInCPP', PACKAGE = 'SAIGE', t_max_maf_region, t_max_markers_region, t_MACCutoff_to_CollapseUltraRare, t_min_gourpmac_for_burdenonly))
 }
 
-mainMarkerInCPP <- function(t_genoType, t_traitType, t_genoIndex, t_isMoreOutput, t_isImputation, t_isFirth, t_nThreadsMarker) {
-    invisible(.Call('_SAIGE_mainMarkerInCPP', PACKAGE = 'SAIGE', t_genoType, t_traitType, t_genoIndex, t_isMoreOutput, t_isImputation, t_isFirth, t_nThreadsMarker))
+mainMarkerInCPP <- function(t_genoType, t_genoIndex, t_isMoreOutput, t_isImputation, t_isFirth, t_nThreadsMarker) {
+    invisible(.Call('_SAIGE_mainMarkerInCPP', PACKAGE = 'SAIGE', t_genoType, t_genoIndex, t_isMoreOutput, t_isImputation, t_isFirth, t_nThreadsMarker))
 }
 
 Unified_getOneMarker <- function(t_genoType, t_gIndex, t_ref, t_alt, t_marker, t_pd, t_chr, t_altFreq, t_altCounts, t_missingRate, t_imputeInfo, t_isOutputIndexForMissing, t_indexForMissing, t_isOnlyOutputNonZero, t_indexForNonZero, t_GVec, t_isImputation) {
@@ -53,8 +53,16 @@ setPGENobjInCPP <- function(t_pgenFile, t_pvarFile, t_psamFile, t_SampleInModel)
     invisible(.Call('_SAIGE_setPGENobjInCPP', PACKAGE = 'SAIGE', t_pgenFile, t_pvarFile, t_psamFile, t_SampleInModel))
 }
 
+addGenoReaderInCPP <- function(t_genoType, t_spec, t_SampleInModel) {
+    invisible(.Call('_SAIGE_addGenoReaderInCPP', PACKAGE = 'SAIGE', t_genoType, t_spec, t_SampleInModel))
+}
+
 setSAIGEobjInCPP <- function(t_XVX, t_XXVX_inv, t_XV, t_XVX_inv_XV, t_Sigma_iXXSigma_iX, t_X, t_S_a, t_res, t_mu2, t_mu, t_varRatio_sparse, t_varRatio_null, t_varRatio_null_noXadj, t_cateVarRatioMinMACVecExclude, t_cateVarRatioMaxMACVecInclude, t_SPA_Cutoff, t_tauvec, t_traitType, t_y, t_impute_method, t_flagSparseGRM, t_isFastTest, t_isnoadjCov, t_pval_cutoff_for_fastTest, t_locationMat, t_valueVec, t_dimNum, t_isCondition, t_condition_genoIndex, t_is_Firth_beta, t_pCutoffforFirth, t_offset, t_resout) {
     invisible(.Call('_SAIGE_setSAIGEobjInCPP', PACKAGE = 'SAIGE', t_XVX, t_XXVX_inv, t_XV, t_XVX_inv_XV, t_Sigma_iXXSigma_iX, t_X, t_S_a, t_res, t_mu2, t_mu, t_varRatio_sparse, t_varRatio_null, t_varRatio_null_noXadj, t_cateVarRatioMinMACVecExclude, t_cateVarRatioMaxMACVecInclude, t_SPA_Cutoff, t_tauvec, t_traitType, t_y, t_impute_method, t_flagSparseGRM, t_isFastTest, t_isnoadjCov, t_pval_cutoff_for_fastTest, t_locationMat, t_valueVec, t_dimNum, t_isCondition, t_condition_genoIndex, t_is_Firth_beta, t_pCutoffforFirth, t_offset, t_resout))
+}
+
+addSAIGEobjInCPP <- function(t_XVX, t_XXVX_inv, t_XV, t_XVX_inv_XV, t_Sigma_iXXSigma_iX, t_X, t_S_a, t_res, t_mu2, t_mu, t_varRatio_sparse, t_varRatio_null, t_varRatio_null_noXadj, t_cateVarRatioMinMACVecExclude, t_cateVarRatioMaxMACVecInclude, t_SPA_Cutoff, t_tauvec, t_traitType, t_y, t_impute_method, t_flagSparseGRM, t_isFastTest, t_isnoadjCov, t_pval_cutoff_for_fastTest, t_locationMat, t_valueVec, t_dimNum, t_isCondition, t_condition_genoIndex, t_is_Firth_beta, t_pCutoffforFirth, t_offset, t_resout, t_groupIndex) {
+    invisible(.Call('_SAIGE_addSAIGEobjInCPP', PACKAGE = 'SAIGE', t_XVX, t_XXVX_inv, t_XV, t_XVX_inv_XV, t_Sigma_iXXSigma_iX, t_X, t_S_a, t_res, t_mu2, t_mu, t_varRatio_sparse, t_varRatio_null, t_varRatio_null_noXadj, t_cateVarRatioMinMACVecExclude, t_cateVarRatioMaxMACVecInclude, t_SPA_Cutoff, t_tauvec, t_traitType, t_y, t_impute_method, t_flagSparseGRM, t_isFastTest, t_isnoadjCov, t_pval_cutoff_for_fastTest, t_locationMat, t_valueVec, t_dimNum, t_isCondition, t_condition_genoIndex, t_is_Firth_beta, t_pCutoffforFirth, t_offset, t_resout, t_groupIndex))
 }
 
 RegionSetUpConditional_binary_InCPP <- function(t_weight_cond) {
@@ -65,8 +73,8 @@ mainRegionInCPP <- function(t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec
     .Call('_SAIGE_mainRegionInCPP', PACKAGE = 'SAIGE', t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, P1Mat, P2Mat, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_forceWeightColumn, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput)
 }
 
-assign_conditionMarkers_factors <- function(t_genoType, t_genoIndex, t_n, t_weight_cond) {
-    invisible(.Call('_SAIGE_assign_conditionMarkers_factors', PACKAGE = 'SAIGE', t_genoType, t_genoIndex, t_n, t_weight_cond))
+assign_conditionMarkers_factors <- function(t_genoType, t_genoIndex, t_n, t_weight_cond, t_modelIndex) {
+    invisible(.Call('_SAIGE_assign_conditionMarkers_factors', PACKAGE = 'SAIGE', t_genoType, t_genoIndex, t_n, t_weight_cond, t_modelIndex))
 }
 
 assign_conditionMarkers_factors_binary_region <- function(scalefactor_G2_cond) {
@@ -89,8 +97,8 @@ openOutfile_singleinGroup <- function(t_traitType, t_isImputation, isappend, t_i
     .Call('_SAIGE_openOutfile_singleinGroup', PACKAGE = 'SAIGE', t_traitType, t_isImputation, isappend, t_isMoreOutput)
 }
 
-openOutfile_single <- function(t_traitType, t_isImputation, isappend, t_isMoreOutput) {
-    .Call('_SAIGE_openOutfile_single', PACKAGE = 'SAIGE', t_traitType, t_isImputation, isappend, t_isMoreOutput)
+openOutfile_single <- function(t_modelIndex, t_isImputation, isappend, t_isMoreOutput) {
+    .Call('_SAIGE_openOutfile_single', PACKAGE = 'SAIGE', t_modelIndex, t_isImputation, isappend, t_isMoreOutput)
 }
 
 closeOutfile_single <- function() {
@@ -101,8 +109,8 @@ flushOutfile_singleInCPP <- function() {
     .Call('_SAIGE_flushOutfile_singleInCPP', PACKAGE = 'SAIGE')
 }
 
-setSingleOutputPrefixInCPP <- function(t_outputFilePrefix) {
-    invisible(.Call('_SAIGE_setSingleOutputPrefixInCPP', PACKAGE = 'SAIGE', t_outputFilePrefix))
+setSingleOutputPrefixesInCPP <- function(t_outputFilePrefixes) {
+    invisible(.Call('_SAIGE_setSingleOutputPrefixesInCPP', PACKAGE = 'SAIGE', t_outputFilePrefixes))
 }
 
 isGenoReaderForkSafeInCPP <- function() {
