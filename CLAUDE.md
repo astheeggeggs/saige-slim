@@ -79,6 +79,8 @@ errored. Gates: `test-step2-file-integrity.R` (#60, inputs truncated at run
 time), `test-step2-maxmac-bins.R` (#61, which also asserts the new bin holds
 markers the bin below does not -- without that it passes at unpatched HEAD) and
 `test-unit-util.R` (#62, fast tier).
+**#54 is FIXED**: neither reader validated the `.bed` header the way it claimed to. Step 2 always checked the MODE byte but read the two MAGIC bytes into a 64 KiB stack buffer and dropped them, so a file that is not a `.bed` at all ran to exit 0 with BYTE-IDENTICAL output; step 1 checked neither, and a genuinely sample-major copy of `genotype_100markers` (which plink2 reads correctly) passed ALL 100 markers instead of 33 with different genotypes throughout -- a wholly wrong GRM, silently. **The #58/#60 size check cannot cover it**: `M*ceil(N/4)` and `N*ceil(M/4)` are both 250,000 on that fixture, so the two layouts are the same length. Gated in `test-step2-file-integrity.R` with all three malformed files derived at run time.
+**LEDGER #51's warning landed and `--pval_cutoff_for_fastTest` is now a CLI option**, which is what makes golden **P35** possible: P2's command with the cutoff at 1, so both regions take the fastTest ESCALATION pass. **P35's bytes are identical to P2's and that is the point, not a defect** -- #51 is exactly that the region path never consults `m_isFastTest`, so the escalated pass recomputes what the fast pass already had. The golden pins the other WRITER; under LEDGER #50 this run lost all 19 single-variant rows at exit 0 while P2 stayed green. Do not delete it as a duplicate of P2, and do not assert it against P2's file.
 **#58 and #59 are FIXED** (found by the 2026-09-04 silent-failure audit,
 reproduced by hand, then fixed): #58 the mmap `.bed` read had no bounds check
 where the pread fallback did -- a `.bim` claiming one marker more than the `.bed`
@@ -444,15 +446,17 @@ dead files).
 - `bash harness/make_goldens.sh <dir>` — regenerates step0 (sparse GRM), step1
   (binary ×2 sparse / quantitative sparse / **binary dense** / **binary sparse-VR**),
   **the step-0 and step-1 PGEN mirrors of all six of those** (see below),
-  and step2: 22
-  PLINK runs (P1-P12 + P25 + P27-P34, with P8b as a
+  and step2: 23
+  PLINK runs (P1-P12 + P25 + P27-P35, with P8b as a
   separate composed-set golden — single-variant marker/marker-conditional
   ×2 (quantitative P4, binary P12), group fastTest/conditional/BURDEN/SKAT-O
   ×2 (K=1 P2/P3/P5/P6, multi-weight P8/P9/P8b/P10), chunked marker P7, and the
   ref-first characterization golden P11, the BURDEN-conditional golden P25
   added with the LEDGER #41 fix, the seven marker-path goldens P27-P33
   added by S0 — see the marker-path bullet below — and P34, the K=1
-  CUSTOM-weighted conditional run added with the LEDGER #17 fix) plus 13 PGEN mirrors added across
+  CUSTOM-weighted conditional run added with the LEDGER #17 fix, and P35, the
+  fastTest ESCALATION run that `--pval_cutoff_for_fastTest` reaching the CLI
+  made reachable — byte-identical to P2 on purpose, see LEDGER #51/#50) plus 13 PGEN mirrors added across
   Phase 7 and its coverage-extension follow-up: P13-P15 (marker/region/
   conditional parity, mirroring P1/P2/P3) and P16-P24 (mirroring, in order,
   P4/P12/P5/P6/P7/P8/P9/P8b/P10 — quantitative conditional, the LEDGER #40

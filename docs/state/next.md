@@ -73,13 +73,19 @@ not have to be restructured. `--nThreads` on a group run drives it (it used to b
 discarded there). **1.30x at N = 50,000, byte-identical**, 8 workers no better
 than 4. The remaining ceiling is 1.43x, so most of the available win is taken.
 
-Still open on this path, in rough order of value:
-* the C++ region loop is the other 43.9%; threading it would compose with this
-  (serial fraction ~11% if both), but `qfc` thread-safety is unchecked and the
-  SKAT-O side would have to be reimplemented to run in-process -- see the
-  rejected option in NOTES.md;
+Still open on this path, in rough order of value. **Both now have a standalone
+brief: `docs/state/region-perf-handoff.md`**, which carries the profile, the
+Amdahl table, the two traps that each cost a measurement cycle, what was
+measured and REJECTED so it is not retried, and the one design question that
+must be answered before item 2 below is coded.
 * per-task overhead still costs the gap between 1.30x and 1.43x; batching cells
-  into fewer, larger tasks would narrow it and has not been tried.
+  into fewer, larger tasks would narrow it and has not been tried. Small, low
+  risk, and the gate already exists.
+* the C++ region loop is the other 43.9%; threading it would compose with the
+  above (serial fraction ~11% if both), but `qfc` thread-safety is unchecked and
+  the SKAT-O side would have to be reimplemented to run in-process. The brief
+  proposes doing **BURDEN only** first -- 93.7% C++, 3.36x at 4 threads, and
+  none of the pipelining tension.
 
 ## From the 2026-09-04 silent-failure audit
 
@@ -167,21 +173,16 @@ resolved the same way. Nothing else about batching is designed, and the natural
 unit for it -- a per-trait `TestContext` -- only became possible on the region
 path with S12.
 
-**`--is_fastTest` should warn on group runs.** [Measured; LEDGER #51] It is
-inert for `--groupFile` and costs +16.3%. Making it work is bounded at 8% AND
-would break byte-identity with every group golden and with upstream (a cheap
-screen uses a different variance ratio and a different test, so genes near the
-cutoff could fail to escalate). The defensible change is a warning, not an
-implementation.
-
-**`pval_cutoff_for_fastTest` is not reachable from the CLI.**
-[Grounded, S12a] It is a `SPAGMMATtest()` parameter with no `--` option here or
-upstream, so the fastTest mechanism cannot be tuned by anyone using the scripts,
-and the escalated region path it controls cannot be reached by a golden --
-which is why LEDGER #50 survived and why its regression test has to call
-`SPAGMMATtest` directly (`tests/testthat/test-step2-region-escalation.R`).
-Exposing it is additive and would let that path become a golden. Note the
-CLI-option rules in `CLAUDE.md` (lint-clean, `option_list` metadata verified).
+**Resolved: `--is_fastTest` warns on group runs, and
+`--pval_cutoff_for_fastTest` is a CLI option.** [LEDGER #51 / S12a; done
+2026-09-04] The warning sits beside the existing Firth/r.corr one, where
+`is_fastTest` is final -- after the conditional path has forced it FALSE. #51
+itself stays OPEN: the asymmetry is upstream's and unchanged, only the silence
+is fixed. Exposing the cutoff made golden **P35** possible (P2's command with
+the cutoff at 1, so both regions take the ESCALATION pass) -- **its bytes are
+identical to P2's and that is #51 restated**, not a defect: the second pass
+recomputes what the first already had. It pins the other WRITER, and under
+LEDGER #50 it lost all 19 single-variant rows while P2 stayed green.
 
 **Resolved: the psam sample map keyed on FID, not IID.** [LEDGER #52, FIXED
 2026-09-04] `readPsamFile` now finds the `IID` column by name from the header,
