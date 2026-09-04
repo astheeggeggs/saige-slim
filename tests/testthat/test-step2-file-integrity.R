@@ -206,3 +206,82 @@ test_that("the step-1 ingest refuses a .bed shorter than its .bim implies", {
   expect_false(identical(as.integer(r2$status), 0L))
   expect_true(any(grepl("is too short for the .bim and .fam", r2$log, fixed = TRUE)))
 })
+
+# --- LEDGER #54: the .bed header was never validated -------------------------
+#
+# The two magic bytes were read and discarded by BOTH readers, and step 1 never
+# looked at the mode byte either. Step 2 always checked the mode byte, so the
+# cases below are deliberately asymmetric: all three stop step 1, but only the
+# magic-byte one is new for step 2.
+
+# Copy the trio to a temp prefix with `mut` applied to the 3-byte header, or --
+# for "vmaj" -- with the genotypes repacked SAMPLE-major, which is what the mode
+# byte exists to declare.
+stage_header_bed <- function(mut) {
+  pfx <- tempfile("bedhdr_")
+  file.copy(paste0(BED, ".bim"), paste0(pfx, ".bim"))
+  file.copy(paste0(BED, ".fam"), paste0(pfx, ".fam"))
+  raw <- readBin(paste0(BED, ".bed"), "raw", file.size(paste0(BED, ".bed")))
+  if (identical(mut, "modezero")) {
+    raw[3] <- as.raw(0x00)
+  } else if (identical(mut, "badmagic")) {
+    raw[1:2] <- as.raw(c(0x00, 0x00))
+  } else {
+    nS <- length(readLines(paste0(BED, ".fam"), warn = FALSE))
+    nM <- length(readLines(paste0(BED, ".bim"), warn = FALSE))
+    nbS <- ceiling(nS / 4)
+    nbM <- ceiling(nM / 4)
+    bits <- as.integer(rawToBits(raw[-(1:3)]))
+    code <- bits[seq(1, length(bits), 2)] + 2L * bits[seq(2, length(bits), 2)]
+    dim(code) <- c(nbS * 4L, nM)
+    outbits <- integer(nbM * 4L * nS)
+    dim(outbits) <- c(nbM * 4L, nS)
+    outbits[seq_len(nM), ] <- t(code[seq_len(nS), ])
+    flat <- as.vector(outbits)
+    bv <- integer(length(flat) * 2L)
+    bv[seq(1, length(bv), 2)] <- flat %% 2L
+    bv[seq(2, length(bv), 2)] <- flat %/% 2L
+    raw <- c(as.raw(c(0x6c, 0x1b, 0x00)), packBits(as.raw(bv), "raw"))
+  }
+  writeBin(raw, paste0(pfx, ".bed"))
+  pfx
+}
+
+test_that("a .bed that is not SNP-major, or not a .bed, is refused by both readers", {
+  skip_unless_level("standard")
+
+  # (1) The mode byte says sample-major, the data is SNP-major. Step 1 read
+  # neither byte, so before the fix this produced output identical to the intact
+  # run -- proof the byte was simply never looked at.
+  mz <- stage_header_bed("modezero")
+  r1 <- setgeno_run(mz)
+  expect_false(identical(r1$status, 0L))
+  expect_true(any(grepl("is not SNP-major", r1$log, fixed = TRUE)))
+  r2 <- marker_run(mz, "modezero")           # step 2 always caught this one
+  expect_false(identical(as.integer(r2$status), 0L))
+
+  # (2) Not a PLINK .bed at all. NEW for step 2 as well: the magic bytes were
+  # read into a 64 KiB stack buffer and never compared, so this file gave
+  # BYTE-IDENTICAL output to the intact run at exit 0. plink2 refuses it.
+  bm <- stage_header_bed("badmagic")
+  r1 <- setgeno_run(bm)
+  expect_false(identical(r1$status, 0L))
+  expect_true(any(grepl("PLINK magic number", r1$log, fixed = TRUE)))
+  r2 <- marker_run(bm, "badmagic")
+  expect_false(identical(as.integer(r2$status), 0L))
+  expect_true(any(grepl("PLINK magic number", r2$log, fixed = TRUE)))
+
+  # (3) The hazard the mode byte exists for: a GENUINELY sample-major file,
+  # which plink2 reads correctly (it prints "Sample-major .bed file detected.
+  # Transposing" and reports frequencies identical to the SNP-major original).
+  # Step 1 decoded it as SNP-major and passed ALL 100 markers instead of 33,
+  # with different genotypes throughout -- a wholly wrong GRM at exit 0.
+  vm <- stage_header_bed("vmaj")
+  # This is why #60's size check cannot stand in for #54 on this fixture:
+  # M * ceil(N/4) and N * ceil(M/4) are both 250,000, so the two layouts are
+  # exactly the same length.
+  expect_identical(file.size(paste0(vm, ".bed")), file.size(paste0(BED, ".bed")))
+  r1 <- setgeno_run(vm)
+  expect_false(identical(r1$status, 0L))
+  expect_true(any(grepl("is not SNP-major", r1$log, fixed = TRUE)))
+})

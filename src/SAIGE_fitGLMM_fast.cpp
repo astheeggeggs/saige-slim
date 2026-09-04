@@ -94,6 +94,40 @@ public:
                         return;
                 }
 
+                // LEDGER #54. Neither the magic bytes nor the mode byte was ever
+                // read here, so a .bed that is not SNP-major -- or not a .bed at
+                // all -- was decoded as though it were. Measured on
+                // genotype_100markers: a GENUINELY sample-major copy of the same
+                // genotypes (which plink2 reads correctly, reporting frequencies
+                // byte-identical to the SNP-major original) came through this
+                // ingest at exit 0 with ALL 100 markers passing QC instead of 33,
+                // and different genotypes throughout -- a wholly wrong GRM, no
+                // warning. It is NOT covered by the size check below: for this
+                // fixture M*ceil(N/4) and N*ceil(M/4) are both 250,000, so the two
+                // layouts are exactly the same length.
+                {
+                        unsigned char hdr[3];
+                        m_bed.read((char*)hdr, 3);
+                        if(m_bed.gcount() != 3){
+                                Rcpp::stop("The .bed file (" + t_bedfile + ") is shorter than its "
+                                           "3-byte header.");
+                        }
+                        if(hdr[0] != 0x6c || hdr[1] != 0x1b){
+                                Rcpp::stop("The .bed file (" + t_bedfile + ") does not start with the "
+                                           "PLINK magic number 0x6c 0x1b, so it is not a PLINK .bed "
+                                           "file. Check that the --bedFile argument names the right "
+                                           "file.");
+                        }
+                        if(hdr[2] != 0x01){
+                                Rcpp::stop("The .bed file (" + t_bedfile + ") is not SNP-major: its "
+                                           "mode byte is " + std::to_string((int)hdr[2]) + ", not 1. "
+                                           "A sample-major .bed (plink < 1.9) would be silently "
+                                           "misread as SNP-major. Convert it with "
+                                           "`plink2 --bfile <prefix> --make-bed --out <prefix>_vmaj`.");
+                        }
+                        m_bed.clear();
+                }
+
                 // LEDGER #60, the step-1 twin of #58. fill() below discarded the
                 // seekg/read status, and the buffer it fills is resize()d from
                 // empty each iteration, so a short read left ZEROS -- which

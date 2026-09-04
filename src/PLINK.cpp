@@ -84,11 +84,26 @@ void PlinkClass::setPlinkobj(std::string t_bimFile,
   }
 
   m_fin = fopen(t_bedFile.c_str(), "rb");
-  char magicNumber_2[65536]; 
-  fread(magicNumber_2, 2, 1, m_fin);
+  // LEDGER #54. The mode byte IS checked below and always was; the two MAGIC
+  // bytes were read into a 64 KiB stack buffer and never looked at, so a file
+  // that is not a PLINK .bed at all was accepted as one -- measured on a copy of
+  // genotype_100markers with 0x6c 0x1b overwritten by zeros, which produced
+  // output BYTE-IDENTICAL to the intact run at exit 0, while plink2 refuses the
+  // same file ("first two bytes don't match the magic number"). The fread return
+  // values were discarded too, which would leave magicNumber3 uninitialised on a
+  // short file; the #58 size check above already refuses one, but the read is
+  // checked rather than left resting on that.
+  unsigned char magicNumber_2[2];
+  size_t nHdr = fread(magicNumber_2, 1, 2, m_fin);
   char magicNumber3;
-  fread(&magicNumber3, 1, 1, m_fin);
-  fseek(m_fin, 3, SEEK_SET);    
+  nHdr += fread(&magicNumber3, 1, 1, m_fin);
+  fseek(m_fin, 3, SEEK_SET);
+  if(nHdr != 3)
+    Rcpp::stop("The .bed file (" + t_bedFile + ") is shorter than its 3-byte header.");
+  if(magicNumber_2[0] != 0x6c || magicNumber_2[1] != 0x1b)
+    Rcpp::stop("The .bed file (" + t_bedFile + ") does not start with the PLINK magic number "
+               "0x6c 0x1b, so it is not a PLINK .bed file. Check that the --bedFile argument "
+               "names the right file.");
 
   // Phase 4: map the whole .bed read-only. Falls back to pread on failure.
   // S5: SAIGE_PLINK_NO_MMAP forces that fallback. It exists because the
