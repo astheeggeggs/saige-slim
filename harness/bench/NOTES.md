@@ -673,6 +673,68 @@ any one of them.
   consistent with the measured direction; it was not tested by varying the
   tolerance, and the p > 0.5 band being cheaper again (36.5 ms) does not fit it.]`
 
+**Would a C++ rewrite help? No -- the hot code is already C.** `SKAT_davies` is a
+thin R wrapper around `.C("qfc", ...)`, Davies' 1980 algorithm in compiled C.
+Self times from the profile above say where the 45% actually sits:
+
+| | self |
+|---|---|
+| `.C` (qfc, compiled) | 93.90 s |
+| `SKAT_davies` R wrapper | 2.38 s |
+| integrand `f` (R) | 1.50 s |
+
+So the R glue is **~4% of the 45%**, i.e. **~1.8% of the run**. Rewriting it in
+C++ for speed is not a lever. (C++ is still the only way to get IN-PROCESS
+threading over the cells -- see below -- but that is an argument about
+parallelism, not about C++ being faster.)
+
+**Can the accuracy be loosened instead? No -- measured, and it breaks the
+p-values that matter.** The integrand asks Davies for `acc = 1e-6` while the
+outer `integrate()` only resolves `rel.tol` ~ 1.2e-4, a 100x mismatch that looks
+like free money. Sweeping it (an identical copy of
+`SKAT_Optimal_Integrate_Func_Davies` with that one constant lifted to a variable;
+the `acc = 1e-6` arm reproduces the unmodified run BYTE-IDENTICALLY, which is the
+control that the copy is faithful):
+
+| `acc` | user CPU | davies calls | printed p unchanged | max rel diff among p < 1e-4 |
+|---|---|---|---|---|
+| 1e-6 (SKAT's) | 174.5 s | 1,123,456 | -- | -- |
+| 1e-5 | 160.2 s | 1,304,193 | 1911/3338 | **8.0e-01** |
+| 1e-4 | 132.9 s | 1,331,294 | 1720/3338 | **5.0e-01** |
+| 1e-3 | 122.3 s | 1,330,885 | 1718/3338 | **5.9e-01** |
+
+24-30% cheaper and up to **80% relative movement on genes with p < 1e-4**.
+Rejected. Note the call count RISES as `acc` loosens -- each call is cheaper but
+the outer quadrature subdivides more, so the saving is much less than the
+accuracy ratio suggests. Do not re-open this without a reason to believe the
+significant tail is safe.
+
+**So the lever is parallelism, and the vehicle matters more than the language.**
+The cells are independent, so any correct scheme is bit-identical. Measured on
+the real workload (445 `SKAT_davies` calls per cell = the measured mean, 12 cells
+per region, in a process carrying the 13 MB model plus ballast, at load average
+6-8.6 on 8 cores, so these are PESSIMISTIC):
+
+| scheme | 4 workers | 8 workers | overhead per region |
+|---|---|---|---|
+| `mclapply` (fork per region) | **1.12x** | 0.91x | 55-90 ms |
+| `makeForkCluster` (fork once) | **2.81x** | 3.02x | 10-20 ms |
+| `makeCluster` PSOCK (once) | **3.02x** | 3.18x | 8-18 ms |
+
+**Fork-per-region is dead** -- 55-90 ms of overhead against ~350 ms of work per
+region, and at 2 and 8 workers it is a net SLOWDOWN. A PERSISTENT cluster is
+another matter: ~3x on the parallel part for ~10 ms a region. Against the whole
+run that is 1/(0.55 + 0.45/3) = **~1.43x**, less ~1% for the cluster overhead
+(210 regions x ~10 ms on a 188 s run).
+
+In-process C++ threading over the cells would reach 1/(0.55 + 0.45/8) = 1.64x
+instead of 1.43x -- 15% more -- but it means reimplementing
+`Met_SKAT_Get_Pvalue`, `SKAT_META_Optimal`, the Liu fallback and the QUADPACK
+integration, and vendoring Davies' `qfc`, with every group golden encoding SKAT's
+exact output as the gate. `[Also unchecked: whether `qfc` is thread-safe. It is
+Fortran-derived C from 1980 and may carry file-scope state; that has NOT been
+looked at, and it would have to be before any in-process scheme.]`
+
 **A silent failure found by accident while doing this.** Two runs of the
 identical command disagreed: one reported GENE0002 as 16 all-`NA` rows, exit 0,
 no warning. It is not nondeterministic arithmetic -- four instrumented scans
