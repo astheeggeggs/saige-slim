@@ -47,7 +47,7 @@ test_that("a threaded run writes the same index a serial run does", {
   expect_false(file.exists(paste0(out4, ".merging")))
 })
 
-test_that("group tests fall back to one thread with a warning", {
+test_that("group tests keep the marker loop serial and say so", {
   skip_unless_level("standard")
   skip_if_no_goldens()
   out <- file.path(tempfile("step2_th_group_"), "group.txt")
@@ -70,8 +70,18 @@ test_that("group tests fall back to one thread with a warning", {
     paste0("--SAIGEOutputFile=", out),
     "--nThreads=4"), log = log)
   expect_cli_ok(status)
-  expect_true(any(grepl("only supported for single-variant tests",
-                        readLines(log, warn = FALSE))))
+  lg <- readLines(log, warn = FALSE)
+  # The message changed on 2026-09-04 and the old text is deliberately gone:
+  # --nThreads is no longer DISCARDED on a group run, it drives the SKAT-O
+  # post-processing (R/SkatoParallel.R). What is still true, and what this test
+  # exists to pin, is that the MARKER loop stays serial.
+  expect_true(any(grepl("does not thread the group test's marker loop", lg,
+                        fixed = TRUE)))
+  expect_false(any(grepl("only supported for single-variant tests", lg,
+                         fixed = TRUE)))
+  # and the threads went somewhere rather than nowhere
+  expect_true(any(grepl("SKAT-O post-processing will use 4 workers", lg,
+                        fixed = TRUE)))
   expect_output_matches_golden(
     file.path(saige_goldens, "step2", "plink_group_fastTest.txt"), out)
 })

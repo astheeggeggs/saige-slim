@@ -748,6 +748,53 @@ the annotation x max_MAF grid: a 1 x 1 run has one SKAT-O p-value per region
 instead of fifteen, and the C++ fraction would dominate again. And it is
 SKAT-O-specific -- the BURDEN row above is the same fixture with the same genes.
 
+## SKAT-O in parallel: 1.30x, and the two things that nearly killed it (2026-09-04)
+
+Built on the measurements above: the SKAT-O cells are independent, so a
+persistent worker pool evaluates them while the region loop stays serial.
+`--nThreads` drives it on a group run (it used to be discarded there).
+`sim50k`, 210 genes, `y_binary`, two blocks with the arm order reversed between
+them, load ~4.3:
+
+| nThreads | real (A) | real (B) | mean | speedup | user | sys |
+|---|---|---|---|---|---|---|
+| 1 | 203.3 | 205.6 | 204.5 | -- | 170-173 | 26 |
+| 4 | 157.5 | 155.9 | **156.7** | **1.30x** | 188-190 | 29-30 |
+| 8 | 161.8 | 158.1 | 160.0 | 1.28x | 202-211 | 31 |
+
+Replicate spread ~1%, so the effect is well clear of it. 8 workers buys nothing
+over 4, which is what a 1.43x Amdahl ceiling minus per-task overhead looks like.
+Every arm is BYTE-IDENTICAL to the one-thread run, region file and singleAssoc.
+
+**The first version of this measured 0.97x at 4 workers and 1.06x at 8, with
+user CPU UP 33 s and sys CPU up 40 s.** Two causes, and the interesting one is
+not the obvious one:
+
+- **The obvious suspect was wrong.** The design drives `region_postprocess`
+  twice (collect the cells, evaluate them, serve the answers) rather than
+  restructuring its 175-line triple-nested loop, so the loop's non-SKAT work
+  runs twice. That looked like the problem. Measured in isolation -- collect,
+  evaluate SERIALLY, serve -- the double drive costs **180.9 s user against
+  180.6 s for the single drive**, i.e. nothing. Checking it before acting on it
+  saved a pointless refactor.
+- **The real cause was closure serialization.** The worker function was defined
+  INSIDE `region_postprocess_parallel`, and R serializes a closure with its
+  enclosing environment -- which held that frame's `...`, i.e. the whole
+  `outList` including `VarMat`, shipped to a worker on EVERY task. ~13 ms per
+  task against a ~40 ms task. Hoisting it to a top-level function (whose
+  environment is the package namespace, which fork workers already have) is the
+  entire fix: sys CPU 63 s -> 30 s and 0.97x -> 1.29x. **If a worker function
+  ever wants a variable from its caller, pass it in the job, do not close over
+  it.**
+
+Also switched to `clusterApplyLB`. Cell cost spans three orders of magnitude
+(0.5 ms to 540 ms) and the top 10% of cells hold 48% of the total, so static
+round-robin would routinely hand one worker most of the work.
+
+**What did NOT work, kept so it is not retried:** `mclapply` per region, i.e.
+forking at each region rather than once. 55-90 ms of overhead against ~350 ms of
+work, 1.12x at 4 workers and a net SLOWDOWN at 8.
+
 ## Phase 0 of the multi-phenotype work: how much of a marker's cost is SHARED?
 
 **2026-09-04**, N = 50,000 (`SAIGE-sim/harness/work/sim50k`, 210,515 markers on

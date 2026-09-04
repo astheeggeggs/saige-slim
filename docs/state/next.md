@@ -63,37 +63,20 @@ routine under R adaptive quadrature, and **threading the C++ region loop caps at
 the BURDEN arm is the negative control -- it predicts `SKAT_davies` = 0 and
 measures 0.0%.
 
-**What follows from it, now measured.** A per-cell trace (2,527 SKAT-O cells,
-1,123,456 `SKAT_davies` calls, ~94 us each) settles both of the questions this
-paragraph used to pose:
-* the cost is **diffuse** -- top 10% of cells hold 48%, top 25% hold 76% -- so
-  parallelising ACROSS cells/regions is the shape that works and there is no hot
-  set to special-case;
-* it is **not** O(cell size) -- m in (2,5] is the most expensive band at 39.9% of
-  all cost, m in (100,250] is 1.3%;
-* it is **anti-correlated with significance** (p < 1e-6: 11.4 ms; p in (0.1,0.5]:
-  54.1 ms), which kills the obvious `abs.tol = 1e-25` theory: the integral is
-  `1 - p`, so the binding `rel.tol * |result|` tightens as p GROWS.
+**DONE (2026-09-04): the cells are evaluated in parallel.** `R/SkatoParallel.R`
+drives `region_postprocess` three times -- collect the cells, evaluate them on a
+persistent fork pool, serve the answers -- so its 175-line triple-nested loop did
+not have to be restructured. `--nThreads` on a group run drives it (it used to be
+discarded there). **1.30x at N = 50,000, byte-identical**, 8 workers no better
+than 4. The remaining ceiling is 1.43x, so most of the available win is taken.
 
-The cells are mutually independent 1-D integrals sharing no state, so computing
-them concurrently cannot change a digit -- unlike a float reduction, which is why
-the byte gate is not in tension here. That is the design worth writing, and it is
-not written.
-
-**Resolved: a silent all-NA gene.** [LEDGER #57, FIXED 2026-09-04] An unchecked
-`arma::Mat::load()`/`save()` of a chunked `P1Mat` temporary made
-`mainRegionInCPP` skip a `VarMat` block, SKAT throw for every cell of that gene,
-and `get_SKAT_pvalue`'s `try(silent = TRUE)` turn it into all-`NA` rows -- exit 0,
-no warning. Now stops, naming the file and the region. The entry's first claim
-that no golden could reach the path was WRONG and is corrected there: the
-ultra-rare collapse always appends a chunk, so `nchunks == 2` on every bundled
-non-BURDEN group run and the disk round trip is on the golden path already.
-
-**Still open from #57:** `get_SKAT_pvalue`'s `try(..., silent = TRUE)` swallows a
-genuine SKAT numerical failure into `NA` with an `error.code` that is set and
-never read. The I/O fault it used to hide is gone, but a numerical one would
-still vanish. Surfacing it is a behaviour choice (warn? abort? a summary line?)
-and has not been made.
+Still open on this path, in rough order of value:
+* the C++ region loop is the other 43.9%; threading it would compose with this
+  (serial fraction ~11% if both), but `qfc` thread-safety is unchecked and the
+  SKAT-O side would have to be reimplemented to run in-process -- see the
+  rejected option in NOTES.md;
+* per-task overhead still costs the gap between 1.30x and 1.43x; batching cells
+  into fewer, larger tasks would narrow it and has not been tried.
 
 ## Items
 

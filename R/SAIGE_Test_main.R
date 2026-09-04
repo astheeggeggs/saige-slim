@@ -105,7 +105,7 @@ parse_weights_beta <- function(weights.beta) {
 #' @param X_PARregion character. ranges of (pseudoautosomal) PAR region on chromosome X, which are seperated by comma and in the format start:end. By default: '60001-2699520,154931044-155260560' in the UCSC build hg19. For males, there are two X alleles in the PAR region, so PAR regions are treated the same as autosomes. In the NON-PAR regions (outside the specified PAR regions on chromosome X), for males, there is only one X allele. If is_rewrite_XnonPAR_forMales=TRUE, genotypes/dosages of all variants in the NON-PAR regions on chromosome X will be multiplied by 2 (Not activated).
 #' @param is_rewrite_XnonPAR_forMales logical. Whether to rewrite gentoypes or dosages of variants in the NON-PAR regions on chromosome X for males (multiply by 2). By default, FALSE. Note, only use is_rewrite_XnonPAR_forMales=TRUE when the specified VCF or Bgen file only has variants on chromosome X. When is_rewrite_XnonPAR_forMales=TRUE, the program does not check the chromosome value by assuming all variants are on chromosome X (Not activated)
 #' @param sampleFile_male character. Path to the file containing one column for IDs of MALE samples in the bgen or vcf file with NO header. Order does not matter
-#' @param nThreads integer. Number of threads for the single-variant marker scan. The C++ marker loop is threaded in place, so there is one process, one copy of the null model and one output file; the result is byte-identical to a one-thread run, which is the gate in tests/testthat/test-step2-threads-inprocess.R. Restarting an interrupted run works exactly as it does serially. Group tests always run on one thread, and a genotype reader that cannot be cloned (PLINK when the .bed could not be memory mapped) falls back to one thread with a warning. PGEN threads too, since S8. By default, 1
+#' @param nThreads integer. Number of threads for the single-variant marker scan. The C++ marker loop is threaded in place, so there is one process, one copy of the null model and one output file; the result is byte-identical to a one-thread run, which is the gate in tests/testthat/test-step2-threads-inprocess.R. Restarting an interrupted run works exactly as it does serially. For a GROUP test the marker loop stays on one thread, but `nThreads` is not wasted there: it drives the SKAT-O post-processing, which Rprof puts at 45% of a group run at N = 50,000 (measured 1.29x at 4 workers, byte-identical -- see harness/bench/NOTES.md). Unix only; on other platforms a group run stays serial. A genotype reader that cannot be cloned (PLINK when the .bed could not be memory mapped) falls back to one thread with a warning. PGEN threads too, since S8. By default, 1
 #' @param GMMATmodel_varianceRatio_multiTraits_File character. Path to a manifest of null models to test in ONE marker scan, sharing the genotype read. Three whitespace-separated columns, no header: a name, the step-1 .rda, and that model's variance ratio file. Mutually exclusive with GMMATmodelFile/varianceRatioFile. Output goes to <SAIGEOutputFile>_<name> per model, each with its own .index -- except for a single-row manifest, which writes the unsuffixed <SAIGEOutputFile> and is byte- and name-identical to the equivalent GMMATmodelFile run. Models whose step-1 sample IDs are identical share one genotype reader and one decode per marker; models with different sample sets each get their own. Single-variant tests only: a groupFile with more than one model is an error. By default, ""
 #' @return SAIGEOutputFile
 #' @export
@@ -214,8 +214,16 @@ SPAGMMATtest <- function(bedFile = "",
   if (is.na(nThreads) || nThreads < 1) {
     stop("nThreads should be a positive integer.")
   }
+  # Group tests keep the C++ region loop single-threaded, but --nThreads is no
+  # longer thrown away there: it drives the SKAT-O post-processing, which Rprof
+  # puts at 45% of a group run (harness/bench/NOTES.md). Carried separately so
+  # nothing downstream of `nThreads` can be surprised by a value it never saw
+  # before.
+  nThreadsSKATO <- 1L
   if (nThreads > 1 && groupFile != "") {
-    cat("WARNING: nThreads > 1 is only supported for single-variant tests; the group test will run on one thread\n")
+    nThreadsSKATO <- nThreads
+    cat("nThreads > 1 does not thread the group test's marker loop; it will be used for",
+        "the SKAT-O post-processing instead\n")
     nThreads <- 1L
   }
 
@@ -628,7 +636,8 @@ SPAGMMATtest <- function(bedFile = "",
       pval_cutoff_for_fastTest,
       is_output_moreDetails,
       weights_beta_mat = weights.beta,
-      is_output_weight_column = is_output_weight_column
+      is_output_weight_column = is_output_weight_column,
+      nThreadsSKATO = nThreadsSKATO
     )
   }
 }

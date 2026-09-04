@@ -134,7 +134,15 @@ region_postprocess <- function(outList,
                                is_single_in_groupTest,
                                is_rerun,
                                resultDF_carryover = NULL,
-                               weight_sets = NULL) {
+                               weight_sets = NULL,
+                               # The SKAT-O evaluator, injected so the cell loop
+                               # can be driven twice by skato_parallel(): once to
+                               # COLLECT every (Score, Phi) it would test, once to
+                               # SERVE the answers computed in parallel in
+                               # between. Defaults to the real thing, which is
+                               # the entire single-threaded path -- at
+                               # nThreadsSKATO = 1 nothing below changes at all.
+                               skat_fun = get_SKAT_pvalue) {
   # ---- weight-set layout (jmr decode) --------------------------------------
   # The composed weight-set list arrives as `weight_sets` (built in
   # SAIGE.Region; per-set kind/name/params in the same custom -> beta ->
@@ -369,7 +377,7 @@ region_postprocess <- function(outList,
                 )
                 Phi <- re_phi$val
               }
-              groupOutList <- get_SKAT_pvalue(Score, Phi, r.corr, regionTestType)
+              groupOutList <- skat_fun(Score, Phi, r.corr, regionTestType)
               if (isMultiWeight) {
                 # additive schema (design D3): Pvalue keeps its SKAT-O meaning,
                 # the Weight label sits right after max_MAF, and the two omnibus
@@ -474,7 +482,7 @@ region_postprocess <- function(outList,
                   Phi_cond <- wadjVarSMat_cond[tempPos, tempPos, drop = FALSE]
                 }
 
-                groupOutList_cond <- get_SKAT_pvalue(
+                groupOutList_cond <- skat_fun(
                   Score_cond,
                   Phi_cond,
                   r.corr,
@@ -681,11 +689,19 @@ SAIGE.Region <- function(mu,
                          pval_cutoff_for_fastTest,
                          is_output_moreDetails,
                          weights_beta_mat = matrix(c(1, 25), nrow = 1, ncol = 2),
-                         is_output_weight_column = FALSE) {
+                         is_output_weight_column = FALSE,
+                         # Workers for the SKAT-O post-processing only. The C++
+                         # region loop stays single-threaded; this parallelises
+                         # the 45% of a group run that Rprof puts in
+                         # SKAT_davies. 1 means the serial path runs untouched.
+                         nThreadsSKATO = 1L) {
   OutputFileIndex <- NULL
   if (is.null(OutputFileIndex)) {
     OutputFileIndex <- paste0(OutputFile, ".index")
   }
+
+  # The worker pool outlives individual regions but must not outlive the scan.
+  on.exit(stopSkatoCluster(), add = TRUE)
 
   outList <- checkOutputFile(OutputFile, OutputFileIndex, "Region", 1, isOverWriteOutput) # Check 'Util.R'
 
@@ -1134,7 +1150,7 @@ SAIGE.Region <- function(mu,
         # gc()
         # tb0 = proc.time()
 
-        res_postprocess <- region_postprocess(
+        res_postprocess <- region_postprocess_parallel(
           outList,
           mu,
           WEIGHT,
@@ -1147,7 +1163,8 @@ SAIGE.Region <- function(mu,
           regionName,
           is_single_in_groupTest,
           is_rerun = FALSE,
-          weight_sets = weight_sets
+          weight_sets = weight_sets,
+          nThreads = nThreadsSKATO
         )
         pval.Region <- res_postprocess$pval.Region
         if ("cctpval" %in% names(res_postprocess)) {
@@ -1177,7 +1194,7 @@ SAIGE.Region <- function(mu,
                 set_flagSparseGRM_cur_SAIGE(TRUE)
 
                 outList <- run_mainRegionInCPP()
-                res_postprocess <- region_postprocess(
+                res_postprocess <- region_postprocess_parallel(
                   outList,
                   mu,
                   WEIGHT,
@@ -1193,7 +1210,8 @@ SAIGE.Region <- function(mu,
                   # the per-set carry-forward cache; at K = 1 this is
                   # list(resultDF), exactly the legacy carry-over
                   resultDF_carryover = if (exists("resultDFList", inherits = FALSE)) resultDFList else NULL,
-                  weight_sets = weight_sets
+                  weight_sets = weight_sets,
+                  nThreads = nThreadsSKATO
                 )
                 pval.Region <- res_postprocess$pval.Region
                 if ("cctpval" %in% names(res_postprocess)) {

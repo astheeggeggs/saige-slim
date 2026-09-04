@@ -751,8 +751,16 @@ both directions: sharing one `MarkerScratch` across workers fails it, and forcin
 1 thread THROUGH TBB rather than down the serial shortcut passes, which separates
 "TBB is involved" from "markers ran concurrently".
 
-**Two behaviours are deliberate degradations, not oversights.** Group tests warn
-and drop to one thread. A reader that cannot be CLONED also drops to one thread,
+**Two behaviours are deliberate degradations, not oversights.** Group tests keep
+the C++ marker loop on one thread -- but since 2026-09-04 `--nThreads` is not
+DISCARDED there: it drives the SKAT-O post-processing instead (`R/SkatoParallel.R`),
+which `Rprof` puts at 45% of a group run. Measured **1.30x at 4 workers**,
+byte-identical, and 8 buys nothing over 4. Two traps are recorded in
+`harness/bench/NOTES.md` and both cost a full measurement cycle: **a worker
+function must be defined at TOP LEVEL**, because R serializes a closure with its
+environment and one defined inside the driver shipped the whole `outList` per
+task (0.97x, sys CPU 63s -> 30s when fixed); and `mclapply` per region is a net
+slowdown, so the pool is forked ONCE for the scan. A reader that cannot be CLONED also drops to one thread,
 with the reason both printed and raised as an R `warning()`. Degrading rather
 than erroring is the agreed S7 decision: erroring would break anyone scripting
 one `--nThreads` across mixed inputs. **Since S8 there is exactly one such
