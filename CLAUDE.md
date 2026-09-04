@@ -54,7 +54,12 @@ believe an older doc that says it is parked on a branch.
 (`sample`, `1:n`, `rbind` recycling) -- all latent behind a guard -- #45, #46,
 #49 (a restart re-runs the last completed chunk: wasted work, right answer),
 and #54 from the PGEN-for-steps-0/1 work (the unvalidated `.bed` header --
-recorded, not reached by the new path). **#52 is FIXED**: `readPsamFile` keyed
+recorded, not reached by the new path), and **#58/#59 from the 2026-09-04
+silent-failure audit, both reproduced by hand on the bundled fixtures**: #58 the
+mmap `.bed` read that has no bounds check where the pread fallback does (a `.bim`
+claiming one marker more than the `.bed` holds gives BYTE-IDENTICAL output at
+exit 0; three more and R dies with SIGSEGV), and #59 a region results file
+written with data rows and no header when the first counted chunk emits none. **#52 is FIXED**: `readPsamFile` keyed
 the sample map on psam column 0 and called it IID, which is FID in a
 `#FID IID SEX` psam, so step 2 died on any psam with FID != IID and silently
 undercounted on repeated FIDs; it now finds `IID` by name from the header and

@@ -78,6 +78,41 @@ Still open on this path, in rough order of value:
 * per-task overhead still costs the gap between 1.30x and 1.43x; batching cells
   into fewer, larger tasks would narrow it and has not been tried.
 
+## From the 2026-09-04 silent-failure audit
+
+A 26-agent fan-out hunted the bug class this branch keeps finding by accident
+(silent failure that every golden reproduces). 15 raw findings -> 11 unique ->
+10 adversarially verified by two skeptics each, both instructed to default to
+REFUTED. Five survived; five were killed, including a plausible `raw_variant_ct`
+claim and a `dosage_zerod` one.
+
+**Two were then reproduced by hand and are now LEDGER #58 and #59** -- the
+unbounded mmap `.bed` read (a `.bim` claiming one more marker than the `.bed`
+holds gives byte-identical output at exit 0, while the pread path stops), and a
+region results file written with data rows and no header. Both have positive and
+negative controls in the ledger entries.
+
+**Three more survived verification but are NOT independently reproduced.**
+Recorded here rather than in the ledger, because the standard for a ledger entry
+on this branch is evidence, and these have agent citations rather than a run:
+* `src/SAIGE_fitGLMM_fast.cpp:101` (`BedByteSource::fill`) -- `seekg`/`read`
+  status discarded in the GRM ingest, and failbit is sticky, so one short read
+  would silently zero EVERY subsequent marker. Same family as #58; likely the
+  same one-line size check fixes both.
+* `R/SAIGE_Test_main.R:602` -- `maxMAF_in_groupTest` is extended by the
+  MAC-derived cutoffs AFTER `g_cfg.maxMAFLimit` was fixed from the un-extended
+  vector at `:337`, so a bin whose implied MAF exceeds the largest
+  `--maxMAF_in_groupTest` would be emitted with all its markers already
+  discarded. Conditional on `max(maxMAC)/(2N) > max(maxMAF_in_groupTest)`, i.e.
+  small N or large MAC.
+* `R/Util.R:38` (`updateChrStartEndIndexVec`) -- LOCO windows are `[min, max]`
+  of each chromosome's marker indices, and the guard below tests only
+  monotonicity of consecutive starts, so a handful of misplaced markers in an
+  otherwise sorted `.bim` silently depletes a LOCO GRM. Over-exclusion, not
+  contamination: the leave-one-out property survives.
+
+Each needs the same treatment #58 and #59 got -- reproduce it or drop it.
+
 ## Items
 
 **Format step-2 output rows on the workers.**
