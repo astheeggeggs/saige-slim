@@ -812,6 +812,49 @@ run step2_plink_group_fastTest_escalated.log R2 step2_SPAtests.R \
   --maxMAF_in_groupTest=0.0001,0.001,0.01 \
   --is_fastTest=TRUE --pval_cutoff_for_fastTest=1
 
+# P36/P37 (Phase 2 of the upstream-tracker mine): the QUANTITATIVE region path,
+# which had ZERO golden coverage. Every group golden above is binary, so the
+# quantitative arms of region_postprocess and of the C++ region loop -- the
+# `traitType == "quantitative"` branches at src/Main.cpp:2486 (N_Vec instead of
+# the case/control accounting) and R/SAIGE_SPATest_Region.R's quantitative
+# conditional arm -- were gated by nothing at all.
+#
+# P36 is the one LEDGER #72 needs: --r.corr=1 puts the run through the BURDEN
+# Cauchy aggregation at src/Main.cpp:2789-2800, whose `std::stod` is BARE where
+# the single-marker twin at :561 is wrapped. It cannot make that parse throw on
+# this fixture (no bundled region produces a subnormal p; the two Cauchy rows are
+# 0.893901 and 0.472394) -- what it does is put a QUANTITATIVE trait on that
+# line, which matters because the quantitative path has no SPA rescue arm, so an
+# underflowed score p reaches the writer unfiltered. Six goldens already execute
+# the line; all six are binary.
+#
+# NOTE the missing $SG: quant_sparseGRM is a --useSparseGRMtoFitNULL fit, so its
+# variance-ratio file has only null/null_noXadj rows and step 2 must NOT be given
+# --sparseGRMFile for it (see the step1->step2 contract in CLAUDE.md). That is
+# also why these two use $QUANT_MODEL rather than $GRP_MODEL.
+run step2_plink_group_burden_quant.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_burden_quant.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $QUANT_MODEL \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --r.corr=1 --is_fastTest=FALSE
+
+# P37: the same model through the DEFAULT SKAT-O region test, so the
+# quantitative region path is covered on its main arm as well as on BURDEN.
+# is_fastTest=FALSE mirrors P6.
+run step2_plink_group_nofast_quant.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_nofast_quant.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $QUANT_MODEL \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --is_fastTest=FALSE
+
 ############ PGEN-vs-PLINK byte identity, checked in the candidate dir #########
 # The step-0 and step-1 PGEN runs above are NOT committed as separate goldens:
 # each is byte-identical to its PLINK twin, so committing them would double the

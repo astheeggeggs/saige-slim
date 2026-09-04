@@ -135,12 +135,35 @@ Recorded here so nobody re-opens them:
   **LEDGER #39**, which names the unreachable `stop()` explicitly. #39's line
   numbers are stale by ~17 lines (`:405-414` -> `:388-399`).
 
-**Phase 2 (characterization tests) and Phase 3 (fixes) are NOT started.** The
-plan orders Phase 2 by gate gap rather than severity; the two biggest holes it
-names are a **quantitative group/BURDEN golden** (currently zero coverage,
-reaches #72) and a **constructed high-LD conditioning pair** (the only way to
-exercise the conditional SPA at non-negligible conditioning at all -- reaches
-#66 and #84).
+**Phase 2 is STARTED; Phase 3 (fixes) is not.** The plan orders Phase 2 by gate
+gap rather than severity. Item 1 is DONE: goldens **P36/P37**
+(`plink_group_burden_quant.txt`, `plink_group_nofast_quant.txt`) close the
+QUANTITATIVE region-path gap -- every previous group golden is binary -- and
+`tests/testthat/test-step2-group-quant.R` drives them. Both were proved
+byte-reproducible over three independent runs before being accepted.
+
+**That golden immediately paid for itself: LEDGER #86.** P37 reports SKAT-O
+`Pvalue` **exactly 1** on 5 of its 12 cells while their own `Pvalue_Burden` and
+`Pvalue_SKAT` are 0.82-0.99, which the suite's existing invariant
+(`test-invariants-goldens.R:106-110`, SKAT-O lies between its component tests)
+forbids -- it was asserted on one BINARY golden only. Measured on the kernel
+directly: `SKAT:::Met_SKAT_Get_Pvalue` returns exactly 1 for 55 of 400 random
+inputs, all with `min(p.val.each) > 0.777`, and never below 0.763. And it is not
+inert -- both CCT implementations fall back to `min(1, n*min(p))` when any input
+is 1, so one saturated cell silently turns the region's `Cauchy` row into a
+Bonferroni (confirmed to the last digit on GENE2). **This corrects the
+refutation recorded above**: the sweep's SKAT-O finding was dismissed as living
+in the `SKAT` dependency and therefore unlocatable. The integral does live
+there, but the consequence is here and is now pinned.
+
+Remaining Phase 2 items, in the plan's order:
+2. a **constructed high-LD conditioning pair** -- the only way to exercise the
+   conditional SPA at non-negligible conditioning at all; reaches #66 and #84.
+3. (dropped -- the empty ultra-rare collapse was refuted, see above)
+4. a **non-autosomal step-1 fixture**, made by rewriting one `.bim` column (the
+   `.bed` is indexed by row, so no regeneration) -- reaches #75.
+5. an **all-numeric-ID bim** -- reaches #74.
+6. a **phenotype file with a duplicated ID** -- reaches #67.
 
 ## From the 2026-09-04 silent-failure audit
 

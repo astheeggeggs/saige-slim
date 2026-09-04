@@ -57,10 +57,11 @@ believe an older doc that says it is parked on a branch.
 (unverified suspicion), #18-#26, #35-#39 from the type-polymorphic-builtin audit
 (`sample`, `1:n`, `rbind` recycling) -- all latent behind a guard -- #45, #46,
 #49 (a restart re-runs the last completed chunk: wasted work, right answer),
-and **#63-#85, the 23 rows written on 2026-09-04 from the upstream issue
-tracker** -- 38 open of 85 in all. Those 23 are entries only: Phase 2
-(characterization tests) and Phase 3 (fixes) are NOT started, and only #63 has a
-test. Read `docs/state/next.md` before picking one up -- it lists the four
+and **#63-#86, the 24 rows written on 2026-09-04 from the upstream issue
+tracker** -- 39 open of 86 in all. Phase 3 (fixes) is NOT started;
+Phase 2 has done its first item, the QUANTITATIVE group goldens P36/P37, which
+is what found **#86** (SKAT-O's p saturating to exactly 1, which then reroutes
+the region's Cauchy row from ACAT to a Bonferroni). Only #63 and #86 have tests. Read `docs/state/next.md` before picking one up -- it lists the four
 candidates from that mine that were REFUTED and must not be re-opened, and names
 the two coverage holes (a quantitative group/BURDEN golden; a constructed
 high-LD conditioning pair) that most of the untested rows sit behind.
