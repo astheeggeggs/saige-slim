@@ -53,9 +53,26 @@ believe an older doc that says it is parked on a branch.
 (unverified suspicion), #18-#26, #35-#39 from the type-polymorphic-builtin audit
 (`sample`, `1:n`, `rbind` recycling) -- all latent behind a guard -- #45, #46,
 #49 (a restart re-runs the last completed chunk: wasted work, right answer),
-and #52-#54 from the PGEN-for-steps-0/1 work (#52 the psam FID/IID column-0
-keying, #53 an uninitialised `geno2` in the re-packer, #54 the unvalidated
-`.bed` header -- all three recorded, none reached by the new path).
+and #52/#54 from the PGEN-for-steps-0/1 work (#52 the psam FID/IID column-0
+keying, #54 the unvalidated `.bed` header -- both recorded, neither reached by
+the new path).
+**#53 and #56 are FIXED, and they were the same bug.** `unsigned char geno2;`
+in `Get_OneSNP_Geno_atBeginning` was read uninitialised and `setGenotype` is an
+OR, so the first packed byte of EVERY marker -- samples 1-4 -- was built on an
+indeterminate value. It was NOT masked, as #53 had assumed: at unpatched HEAD
+the loaded store disagrees with an independent `readBin` decode of the same
+`.bed` on 23 of the first 50 markers, and at N = 50,000 the byte varies BETWEEN
+runs, which is #56 (six distinct `varianceRatio.txt` over eleven identical runs,
+high-MAC category only). `getAlleleFreqVec()` is computed BEFORE the repack, so
+the frequencies stayed right while the genotypes went wrong -- an internal
+inconsistency, and the cheapest detector; that is what
+`tests/testthat/test-step1-genostore.R` now asserts, alongside the independent
+decode. **The fix moves four committed goldens, which have NOT been
+re-baselined**: both step-0 sparse GRMs and both `binary_denseGRM` step-1 fits,
+so `run_tests.sh standard` has one expected failure
+(`test-step1-pgen.R:132`) in both compare modes until that decision is taken --
+see `docs/state/next.md` and `docs/state/multipheno-handoff.md`. Every step-2
+golden and every sparse-GRM step-1 golden is byte-identical.
 Recently FIXED: #47 (S9, restart duplicated rows), #17 (S10, the uninitialised
 `w0` on the custom-weighted conditional path), #42 (S11, three `log.p=TRUE`
 arms halved a log, i.e. took a square root, inflating SE ~sqrt(2) wherever the
@@ -200,7 +217,12 @@ at runtime by the installed R package.
   (score-test algebra, allele accounting, ACAT recomputation of the Cauchy
   rows), and comparator self-tests (the suite's own null + positive controls
   in `test-meta-comparators.R`).
-- **standard** (~2.5 min, default): fast + the PGEN-for-steps-0/1 checks in
+- **standard** (~2.5 min, default): fast + `test-step1-genostore.R`, which
+  checks the loaded GRM genotype store against an INDEPENDENT `readBin` decode
+  of the same `.bed` and against its own `getAlleleFreqVec()` (the gate LEDGER
+  #53/#56 slipped through: every golden was byte-reproducible while encoding
+  wrong genotypes for samples 1-4, because every golden came from the same
+  packer) + the PGEN-for-steps-0/1 checks in
   `test-step1-pgen.R` (the loaded GRM genotype store compared
   `expect_identical` between the two readers — `M`, `N`, `alleleFreqVec`,
   `MACVec`, `getQCdMarkerIndex`, 50 decoded markers — plus the step-0 golden

@@ -604,7 +604,14 @@ public:
 
 	     altFreq = alleleCount/float(Nnomissing * 2);
 
-	     unsigned char geno2;
+	     // LEDGER #53 / #56: setGenotype() is an OR (`|=`), and geno2 is only
+	     // zeroed AFTER each 4-sample flush, so the first byte of every marker
+	     // used to start from an indeterminate stack slot. HOM_REF is 0b00, so
+	     // a stale bit silently promoted sample 0's genotype. Measured at
+	     // N=50,000: it moved sample 0 on 4 of 30 high-MAC variance-ratio
+	     // markers and gave six distinct varianceRatio.txt files over eleven
+	     // identical runs.
+	     unsigned char geno2 = 0;
 	     passQC = false;
 	     passVarRatio = false;
 	     float maf = std::min(altFreq, 1-altFreq);

@@ -11,6 +11,24 @@ measurement taken for it. Two came out of the S12a / LEDGER #50 work in the same
 session. Nothing here has been profiled at realistic N, which is itself the
 point: see "the gate" below.
 
+## Open decision: four goldens are known-wrong and not re-baselined
+
+[Grounded; LEDGER #53/#56 fix, 2026-09-04] Fixing the uninitialised `geno2` in
+the step-1 re-packer corrects samples 1-4 of every marker in the loaded genotype
+store. That moves exactly four committed goldens -- the two step-0 sparse GRMs
+and the two `binary_denseGRM` step-1 fits -- and they were NOT refreshed, per the
+standing rule that a changed golden is a finding. So `harness/run_tests.sh
+standard` currently has ONE expected failure, `test-step1-pgen.R:132`, in both
+compare modes.
+
+The evidence that the committed versions are wrong rather than merely different
+is in `docs/state/multipheno-handoff.md`: in the committed step-0 matrix samples
+1-4 hold the four smallest GRM diagonals of all 1,000, and the patched store
+matches an independent `readBin` decode of the `.bed` on all 50,000 genotypes
+checked where the unpatched one misses 23. Re-baselining is a one-command job
+(`make_goldens.sh` into a candidate tree, then copy those four across); it is
+left open because it is the user's call, not because it is hard.
+
 ## The gate on all of it: profile at realistic N first
 
 Every step-2 profile so far is N = 1,000, where `harness/bench/NOTES.md:352-359`
