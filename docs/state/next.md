@@ -89,33 +89,38 @@ A 26-agent fan-out hunted the bug class this branch keeps finding by accident
 REFUTED. Five survived; five were killed, including a plausible `raw_variant_ct`
 claim and a `dosage_zerod` one.
 
-**Two were reproduced by hand and are now FIXED (LEDGER #58, #59)** -- the
+**Two were reproduced by hand the same day and are FIXED (LEDGER #58, #59)** -- the
 unbounded mmap `.bed` read (a `.bim` claiming one more marker than the `.bed`
 holds gave byte-identical output at exit 0, while the pread path stopped), and a
 region results file written with data rows and no header. Both have positive and
 negative controls in the ledger entries, and both are gated by
 `tests/testthat/test-step2-file-integrity.R`.
 
-**Three more survived verification but are NOT independently reproduced.**
-Recorded here rather than in the ledger, because the standard for a ledger entry
-on this branch is evidence, and these have agent citations rather than a run:
-* `src/SAIGE_fitGLMM_fast.cpp:101` (`BedByteSource::fill`) -- `seekg`/`read`
-  status discarded in the GRM ingest, and failbit is sticky, so one short read
-  would silently zero EVERY subsequent marker. Same family as #58; likely the
-  same one-line size check fixes both.
-* `R/SAIGE_Test_main.R:602` -- `maxMAF_in_groupTest` is extended by the
-  MAC-derived cutoffs AFTER `g_cfg.maxMAFLimit` was fixed from the un-extended
-  vector at `:337`, so a bin whose implied MAF exceeds the largest
-  `--maxMAF_in_groupTest` would be emitted with all its markers already
-  discarded. Conditional on `max(maxMAC)/(2N) > max(maxMAF_in_groupTest)`, i.e.
-  small N or large MAC.
-* `R/Util.R:38` (`updateChrStartEndIndexVec`) -- LOCO windows are `[min, max]`
-  of each chromosome's marker indices, and the guard below tests only
-  monotonicity of consecutive starts, so a handful of misplaced markers in an
-  otherwise sorted `.bim` silently depletes a LOCO GRM. Over-exclusion, not
-  contamination: the leave-one-out property survives.
+**The other three were reproduced on 2026-09-04 and are now FIXED
+(LEDGER #60, #61, #62).** None was dropped; all three were real, and two were
+worse than the finding had claimed. Each carries a positive and a negative
+control in its ledger entry:
+* **#60**, `src/SAIGE_fitGLMM_fast.cpp` (`BedByteSource::fill`) -- the step-1
+  twin of #58. `.bed` truncated to 60 of 100 markers, `.bim` left at 100: exit
+  0, no warning, GRM from 18 QC-passing markers instead of 33. Truncating
+  MID-record is worse than the finding predicted -- half a real marker plus
+  fabricated homozygotes PASSED QC and entered the GRM, a marker the intact file
+  rejects. Fixed with #58's size check plus a `gcount` check in `fill()`.
+* **#61**, `R/SAIGE_Test_main.R:602` -- and the effect is not "all its markers
+  discarded" as the finding read it, it is that the bin comes out a
+  byte-for-byte DUPLICATE of the bin below, which looks like an answer.
+  `--maxMAC_in_groupTest=100` on the 1,000-sample fixture (implied MAF 0.05
+  against a largest cutoff of 0.01) gives `Number_rare` 3/4/4/1/3/3 where the
+  same bin asked as a MAF gives 4/7/7/2/7/7, and moves a p-value 3x. Fixed by
+  re-issuing `setRegion_GlobalVarsInCPP` with the extended vector.
+* **#62**, `R/Util.R` (`updateChrStartEndIndexVec`) -- confirmed exactly as
+  described: one chr1 marker inside chr2 passes both arms of the guard and
+  chr1's window then spans 16 markers for its 11, dropping five chr2 markers
+  from both LOCO GRMs. Fixed by asserting contiguity, which is the invariant the
+  windows actually need.
 
-Each needs the same treatment #58 and #59 got -- reproduce it or drop it.
+Detection power drill-verified in both directions for all three: the new tests
+are red at unpatched HEAD (1 / 5 / 4 failures) and green after.
 
 ## Outstanding DECISION for the user, not a task to pick up
 

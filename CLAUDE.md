@@ -59,6 +59,26 @@ believe an older doc that says it is parked on a branch.
 #49 (a restart re-runs the last completed chunk: wasted work, right answer),
 and #54 from the PGEN-for-steps-0/1 work (the unvalidated `.bed` header --
 recorded, not reached by the new path), .
+**#60, #61 and #62 are FIXED** -- the three audit findings that had survived
+verification but had never been reproduced. Each was reproduced by hand on a
+bundled fixture, with a positive and a negative control, before any code moved.
+**#60** is the step-1 twin of #58: `BedByteSource::fill` discarded the
+`seekg`/`read` status, and failbit is sticky, so a `.bed` truncated to 60 of its
+100 markers gave exit 0, no warning, and a GRM built from 18 QC-passing markers
+instead of 33 -- while truncating MID-record admitted a HALF-FABRICATED marker
+that the intact file rejects. **#61**: `--maxMAC_in_groupTest` extends the MAF
+cutoff vector at `R/SAIGE_Test_main.R:602`, long after `setRegion_GlobalVarsInCPP`
+at `:337` fixed the C++ per-marker QC gate from the un-extended one -- so a bin
+above the largest `--maxMAF_in_groupTest` came out a byte-for-byte DUPLICATE of
+the bin below it, which looks like an answer rather than like a failure.
+**#62**: LOCO windows are one `[min, max]` per chromosome, and the guard tested
+only monotonicity, so one chr1 marker sitting inside chr2 passed it and chr1's
+window then spanned 16 markers for its 11 -- five chr2 markers dropped from BOTH
+LOCO GRMs. Over-exclusion, never contamination, which is why nothing downstream
+errored. Gates: `test-step2-file-integrity.R` (#60, inputs truncated at run
+time), `test-step2-maxmac-bins.R` (#61, which also asserts the new bin holds
+markers the bin below does not -- without that it passes at unpatched HEAD) and
+`test-unit-util.R` (#62, fast tier).
 **#58 and #59 are FIXED** (found by the 2026-09-04 silent-failure audit,
 reproduced by hand, then fixed): #58 the mmap `.bed` read had no bounds check
 where the pread fallback did -- a `.bim` claiming one marker more than the `.bed`
