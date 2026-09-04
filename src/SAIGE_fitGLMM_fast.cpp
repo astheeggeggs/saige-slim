@@ -93,12 +93,50 @@ public:
                         printf("Error! file open!");
                         return;
                 }
+
+                // LEDGER #60, the step-1 twin of #58. fill() below discarded the
+                // seekg/read status, and the buffer it fills is resize()d from
+                // empty each iteration, so a short read left ZEROS -- which
+                // Get_OneSNP_Geno_atBeginning decodes as genotype 2 for every
+                // sample, hence altFreq 1.0 and a silent drop by the
+                // minMAFtoConstructGRM gate. Measured on genotype_100markers with
+                // the .bed truncated to 60 of its 100 markers: exit 0, no
+                // warning, GRM built from 18 markers instead of 33. Truncating
+                // mid-record was worse -- half a real marker plus fabricated
+                // homozygotes PASSED QC and entered the GRM, a marker the intact
+                // file rejects. The same trio is refused by step 2's #58 check.
+                //
+                // Checked once, up front, so it can name both files and the
+                // shortfall; a longer .bed than expected is fine, as in #58.
+                m_bed.seekg(0, std::ios::end);
+                const std::streamoff bedSize = m_bed.tellg();
+                m_bed.seekg(0, std::ios::beg);
+                const std::streamoff needed = (std::streamoff)3 +
+                        (std::streamoff)m_nbyte * (std::streamoff)m_M;
+                if(bedSize < needed){
+                        Rcpp::stop("The .bed file (" + t_bedfile + ") is too short for the .bim ("
+                                   + t_bimfile + ") and .fam (" + t_famfile + ") that accompany it: "
+                                   + std::to_string(m_M) + " markers x " + std::to_string(m_N)
+                                   + " samples need " + std::to_string((long long)needed)
+                                   + " bytes, but the file is " + std::to_string((long long)bedSize)
+                                   + ". The three files do not describe the same dataset -- check "
+                                   "that the .bed is complete and that the .bim was not regenerated "
+                                   "from a different marker set.");
+                }
         }
         size_t numSamples() const { return m_N; }
         size_t numMarkers() const { return m_M; }
         void fill(size_t t_markerIdx, std::vector<unsigned char> & t_out){
                 m_bed.seekg(3 + m_nbyte*t_markerIdx);
                 m_bed.read((char*)(&t_out[0]), m_nbyte);
+                // The size check above cannot see a mid-scan I/O failure, and
+                // failbit is STICKY: one failed read silently zeros this marker
+                // and every marker after it. Cheap next to the unpack below.
+                if(!m_bed || m_bed.gcount() != (std::streamsize)m_nbyte){
+                        Rcpp::stop("Failed to read marker " + std::to_string(t_markerIdx)
+                                   + " from the .bed file: got " + std::to_string((long long)m_bed.gcount())
+                                   + " of " + std::to_string((long long)m_nbyte) + " bytes.");
+                }
         }
         void close(){ if(m_bed.is_open()) m_bed.close(); }
 };

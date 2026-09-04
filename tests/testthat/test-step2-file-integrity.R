@@ -128,3 +128,81 @@ test_that("a region file gets its header even when the first chunk emits no rows
   expect_identical(length(lines), 2L)
   expect_true(startsWith(lines[2], "GENE_REAL\t"))
 })
+
+# --- LEDGER #60: the same short .bed, through the step-1 GRM ingest ----------
+#
+# #58 fixed step 2's reader. Step 1 has its own .bed reader (BedByteSource in
+# src/SAIGE_fitGLMM_fast.cpp) and it discarded the seekg/read status entirely,
+# so the SAME trio of files that step 2 now refuses was accepted here and the
+# GRM was quietly built from fewer markers. Driven through setgeno directly
+# rather than a step-1 fit: it is the ingest that is under test, it costs
+# seconds instead of minutes, and the marker counts are readable.
+
+# Copy the trio to a temp prefix, truncating the .bed to `nKeep` whole markers
+# (plus `extraBytes` of the next one) while leaving the .bim at 100 rows.
+stage_short_bed <- function(nKeep, extraBytes = 0) {
+  pfx <- tempfile("bedshort_")
+  file.copy(paste0(BED, ".bim"), paste0(pfx, ".bim"))
+  file.copy(paste0(BED, ".fam"), paste0(pfx, ".fam"))
+  nSample <- length(readLines(paste0(BED, ".fam"), warn = FALSE))
+  nbyte <- ceiling(nSample / 4)
+  con <- file(paste0(BED, ".bed"), "rb")
+  on.exit(close(con), add = TRUE)
+  keep <- readBin(con, "raw", 3L + nKeep * nbyte + extraBytes)
+  writeBin(keep, paste0(pfx, ".bed"))
+  pfx
+}
+
+# setgeno populates a C++ global, so it is driven in a child process. Returns
+# the exit status, the log, and the QC-passing marker count when it got one.
+setgeno_run <- function(prefix) {
+  out <- tempfile(fileext = ".rds")
+  script <- tempfile(fileext = ".R")
+  writeLines(c(
+    "suppressPackageStartupMessages(library(SAIGE))",
+    sprintf('base <- "%s"; out <- "%s"', prefix, out),
+    "setminMAFforGRM(0.01); setmaxMissingRateforGRM(0.15)",
+    'ids <- SAIGE:::readGenoSampleIDs("plink", famFile = paste0(base, ".fam"))',
+    "n <- length(ids)",
+    'setgeno(paste0(base, ".bed"), paste0(base, ".bim"), paste0(base, ".fam"),',
+    "        seq_len(n), rep(TRUE, n), 2, FALSE)",
+    "saveRDS(sum(getQCdMarkerIndex()), out)"
+  ), script)
+  log <- tempfile(fileext = ".log")
+  st <- suppressWarnings(system2(file.path(R.home("bin"), "Rscript"), script,
+                                 stdout = log, stderr = log))
+  list(status = as.integer(st), log = readLines(log, warn = FALSE),
+       nQC = if (file.exists(out)) readRDS(out) else NA_integer_)
+}
+
+test_that("the step-1 ingest refuses a .bed shorter than its .bim implies", {
+  skip_unless_level("standard")
+
+  # NEGATIVE CONTROL: the intact fixture, so the check costs a valid run
+  # nothing and the marker count below has a reference.
+  ok <- setgeno_run(stage_short_bed(100))
+  expect_identical(ok$status, 0L)
+  expect_gt(ok$nQC, 0L)
+
+  # 60 of 100 markers present. Before the fix: exit 0, no warning, and a GRM
+  # built from 18 QC-passing markers instead of the intact file's 33 -- the
+  # zero-filled buffer decodes as genotype 2 for every sample, so altFreq is
+  # 1.0 and the minMAF gate drops it.
+  short <- setgeno_run(stage_short_bed(60))
+  expect_false(identical(short$status, 0L))
+  expect_true(any(grepl("is too short for the .bim", short$log, fixed = TRUE)))
+  expect_true(any(grepl("100 markers x 10000 samples", short$log, fixed = TRUE)))
+
+  # Truncating MID-RECORD was the worse case: half a real marker plus
+  # fabricated homozygotes PASSED QC and entered the GRM (19 markers, one of
+  # which the intact file rejects outright). Same refusal.
+  half <- setgeno_run(stage_short_bed(60, extraBytes = 1250))
+  expect_false(identical(half$status, 0L))
+  expect_true(any(grepl("is too short for the .bim", half$log, fixed = TRUE)))
+
+  # POSITIVE CONTROL that the input really is inconsistent and that the two
+  # readers now agree about it: step 2's #58 check refuses the same trio.
+  r2 <- marker_run(stage_short_bed(60), "step1short")
+  expect_false(identical(as.integer(r2$status), 0L))
+  expect_true(any(grepl("is too short for the .bim and .fam", r2$log, fixed = TRUE)))
+})
