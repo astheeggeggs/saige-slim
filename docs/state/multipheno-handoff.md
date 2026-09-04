@@ -313,3 +313,59 @@ assert. **No golden was regenerated and none changed.**
 * Everything in the plan's "deliberately out of scope" list: region tests with
   P > 1, union sample sets, batched multi-RHS PCG, an O(MAC) case/control
   summary, male-X and `--subSampleFile` with P > 1, restart resume-at-min.
+
+---
+
+## Handover (2026-09-04)
+
+**State: all four phases landed and gated; working tree clean; 14 commits on
+`strip` ahead of `slim/strip`, 0 behind (fast-forward).** Three of those 14 are
+the PREVIOUS session's PGEN-for-steps-0/1 work (`fed3ab33`, `a2fb21ab`,
+`5a33f785`), which was also unpushed.
+
+### What is verified, and at which commit
+
+The last full gate ran at `feb86de5`: goldens 58/58 byte-identical, all 20
+step-1 files byte-identical by `cmp`, standard tier
+`[ FAIL 0 | SKIP 4 | PASS 2017 ]` byte and `[ ... | PASS 2192 ]` numeric,
+`tsan.sh clean` 0 races with `plant` 118-546 races.
+
+The two commits after it (`053e9f67`, `48a6059d`) touch **documentation only** --
+`LEDGER.md`, `docs/state/`, `harness/bench/NOTES.md` and comment lines in
+`harness/env.sh`. Verified: `git diff feb86de5..HEAD -- harness/env.sh` has no
+non-comment changes and the three `export` lines are identical. So the green
+result above still describes HEAD, and no re-run is needed before pushing.
+
+### Where to pick up
+
+1. **LEDGER #56** is the open lead and the most interesting one. Step 1's
+   high-MAC variance ratio gives six distinct values over eleven identical runs
+   (spread 1.5e-7) while every `.rda` stays byte-identical. The sharp,
+   falsifiable question is the contradiction recorded in the entry:
+   `setThreadOptions(1)` is called unconditionally
+   (`R/SAIGE_fitGLMM_fast.R:824`) and `nThreads` is forced to 1 (`:802`), so
+   every `parallelReduce` on that path SHOULD be serial and deterministic.
+   Either the pinning is ineffective -- testable by instrumenting the actual
+   thread count inside `parallelCrossProd` -- or the cause is elsewhere, and an
+   uninitialised read fits the evidence equally well (cf. LEDGER #53, an
+   uninitialised `geno2` on a step-1 path, still open). Reproducer:
+   `harness/` is not needed; run the N=50,000 step-1 command in the entry
+   eleven times and `md5` the `varianceRatio.txt` files.
+2. **LEDGER #49** got more expensive with this work: a restart re-runs the last
+   completed chunk, and with a manifest that is one chunk x P models. The
+   off-by-one was preserved deliberately (bug-for-bug); the restart tests in
+   `test-step2-multimodel-chunked.R` are already there to gate a fix.
+3. **LEDGER #51**: `--is_fastTest=TRUE` is inert for group tests and costs
+   +16.3%. Pure measured waste.
+
+### Deliberately not done
+
+* `man/*.Rd` not regenerated -- already stale on this branch (pre-strip;
+  `SPAGMMATtest.Rd` still documents `bgenFile`). The roxygen `@param` blocks for
+  the new options ARE written, so a future `roxygenise` picks them up.
+* Optional golden P35 (`pgen_marker_quantitative.txt`): the multi-model PGEN
+  test reconciles against an in-test single-model run instead, so the gap is
+  covered without a new golden.
+* Everything on the plan's out-of-scope list: region tests with P > 1, union
+  sample sets, batched multi-RHS PCG, an O(MAC) case/control summary, male-X and
+  `--subSampleFile` with P > 1, restart resume-at-min.
