@@ -245,3 +245,57 @@ mode, `.rda` field by field at 1e-5 relative over the ten sample-indexed numeric
 fields (names and sampleID exactly), and `.varianceRatio.txt` with the ratio
 numeric at 1e-5 and the type/category LABELS exact, because a run that put the
 right number in the wrong bin is not an equivalent run.
+
+## Phase 3 -- end-to-end benchmark on the N=50,000 fixture
+
+Five traits, `--nThreads=1`, paired arms back to back in one batch, user CPU.
+Full tables in `harness/bench/NOTES.md`.
+
+| arm | serial | multi | speedup | outputs |
+|---|---|---|---|---|
+| **step 2**, 210,515 markers | 412.28 s | **137.86 s** | **2.99x** | **all five BYTE-IDENTICAL** |
+| **step 1**, sparse GRM + LOCO | 61.60 s | **37.42 s** | **1.65x** | all five `.rda` BYTE-IDENTICAL |
+
+Wall clock for step 2: 481.9 s -> 146.9 s (3.28x). Peak RSS for the five-model
+scan is 2843 MB -- essentially ONE serial run's (2174-2783 MB), not five.
+
+**Phase 0 predicted 2.85x for this 2-binary/3-quantitative mix; measured 2.99x**
+(5% high, the residual being per-process startup the buckets never counted).
+Prediction and measurement agree.
+
+**The one thing that is NOT byte-identical, and why it is not this feature's
+doing.** Step-1 `varianceRatio.txt` differs for phenotypes 2-5 at up to 1.1e-7
+relative, confined to MAC category 2. Measured against its own control: the SAME
+standalone command run in two different batches differs from ITSELF by up to
+1.0e-7, in the same category. Three controls establish it:
+1. three standalone `y_quant` runs in one batch reproduce each other exactly;
+2. the same standalone command in a different batch does NOT reproduce itself
+   (`y_binary` 5.5e-8, `y_null` 1.0e-7);
+3. forcing a fresh ingest per phenotype (shared PROCESS, no shared ingest) does
+   not remove the difference -- it changes WHICH phenotypes differ, which is
+   what noise does and a systematic effect does not.
+
+LEDGER #7's family: this configuration's category-2 ratio goes through
+`createSparseKinParallel`'s TBB float `parallel_reduce`. At N=1,000 with
+`--useSparseGRMforVarRatio=FALSE` (the test suite's fixture) the files ARE
+byte-identical in both phenotype orders, which is what the gated tests assert.
+**No golden was regenerated and none changed.**
+
+## Status: all four phases complete
+
+| phase | state |
+|---|---|
+| Phase 0 (instrument + measure) | **DONE**, gated, `705d469e` |
+| Phase 1 M1-M4 (step 2 multi-model) | **DONE**, gated, `9962dc60` `e2810821` `19ab5097` |
+| Phase 2 N1-N4 (step 1 shared ingest) | **DONE**, gated, `75ce9067` `79dc672d` `999143d3` `c9647f3c` |
+| Phase 3 (end-to-end benchmark) | **DONE** |
+
+### Left undone, deliberately
+
+* `man/*.Rd` not regenerated (already stale on this branch, pre-strip).
+* Optional golden P35 (`pgen_marker_quantitative.txt`) from M3's list: the
+  multi-model PGEN test reconciles against an in-test single-model run instead,
+  so the gap it would fill is covered without adding a golden.
+* Everything in the plan's "deliberately out of scope" list: region tests with
+  P > 1, union sample sets, batched multi-RHS PCG, an O(MAC) case/control
+  summary, male-X and `--subSampleFile` with P > 1, restart resume-at-min.

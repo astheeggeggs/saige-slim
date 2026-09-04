@@ -632,3 +632,93 @@ around `glmmkin.ai_PCG_Rcpp_*`). At N=1,000 on the sparse-GRM golden the ingest
 is `time: 2164 ms` of a ~6.5 s run, so sharing it across P=5 phenotypes predicts
 ~1.4x there; the ingest is O(M x N) against the sparse fit's O(nnz x iter), so
 its share -- and the saving -- grows with the number of GRM markers.
+
+---
+
+## Phase 3: does multi-phenotype scanning deliver what Phase 0 predicted?
+
+**2026-09-04**, N = 50,000 (`SAIGE-sim/harness/work/sim50k`), five traits
+(`y_quant y_binary y_quant_pc y_binary_pc y_null`), `--nThreads=1`, warm cache,
+paired arms run back to back in ONE batch. `/usr/bin/time -l`; **user CPU**, as
+`bench_threads.sh` does.
+
+### Step 2: 5 serial scans vs ONE manifest scan
+
+210,515 markers on chr20, `--minMAC=20`, the fixture's own committed step-1
+models, so both arms test exactly the same five.
+
+| trait | serial user (s) | peak RSS |
+|---|---|---|
+| y_quant | 64.74 | 2761 MB |
+| y_binary | 107.81 | 2174 MB |
+| y_quant_pc | 81.73 | 2782 MB |
+| y_binary_pc | 92.66 | 2779 MB |
+| y_null | 65.34 | 2783 MB |
+| **serial total** | **412.28** | (one at a time) |
+| **one manifest run** | **137.86** | **2843 MB** |
+
+**Speedup 2.99x on user CPU**, 3.28x on wall clock (481.9 s -> 146.9 s), and
+**all five output files BYTE-IDENTICAL to their serial counterparts.**
+
+Peak resident memory for the five-model run (2843 MB) is essentially that of a
+SINGLE serial run (2174-2783 MB): the five null models are small beside the
+reader's buffers, so the whole scan costs one process's memory instead of five.
+
+**Against the Phase 0 prediction.** Phase 0 measured, per marker, shared
+`s ~ 65 s` and per-model `m ~ 29 s` (binary) / `5.9 s` (quantitative) over the
+whole scan. For this 2-binary / 3-quantitative mix that predicts
+`(5s + 2m_bin + 3m_qnt) / (s + 2m_bin + 3m_qnt)` = `400.7 / 140.7` = **2.85x**.
+Measured **2.99x**, 5% above the prediction -- the residual being the per-process
+startup and model load that the serial arm pays five times and the buckets never
+counted. Prediction and measurement agree; nothing here needs explaining away.
+
+### Step 1: 5 serial fits vs ONE `--phenoCol=` run
+
+Sparse GRM (pedigree truth `.mtx`), `--useSparseGRMtoFitNULL=TRUE`,
+`--useSparseGRMforVarRatio=TRUE`, LOCO, VR markers from `data_for_vr`.
+
+| | user CPU | peak RSS |
+|---|---|---|
+| 5 serial fits | 61.60 s (11.7-13.6 each) | ~390-417 MB each |
+| one multi run | **37.42 s** | 440 MB |
+
+**Speedup 1.65x**, one ingest instead of five (asserted from the log's
+`setgeno mark2` count). The plan predicted ~1.4x from the N=1,000 ingest share;
+1.65x here because this fixture's VR marker set is larger relative to the fit.
+**All five `.rda` files are BYTE-IDENTICAL** across the arms.
+
+**The `varianceRatio.txt` files are NOT byte-identical for phenotypes 2-5, and
+that is NOT attributable to this feature.** Measured both magnitudes:
+
+| comparison | max relative difference |
+|---|---|
+| SAME command, two batches, standalone (pre-existing run-to-run noise) | **1.0e-7** |
+| multi vs serial, within ONE batch (the feature) | **1.1e-7** |
+
+Same magnitude, and in BOTH cases confined entirely to **MAC category 2**
+(category 1 is exactly 0.000e+00 everywhere). The controls that establish this:
+
+* three standalone `y_quant` runs in one batch reproduce each other EXACTLY --
+  so the run is self-reproducing within a batch;
+* the SAME standalone command run in a different batch differs from itself for
+  `y_binary` (5.5e-8) and `y_null` (1.0e-7) -- so the baseline itself moves;
+* forcing the multi run to re-ingest per phenotype (shared PROCESS, no shared
+  ingest) does not remove the difference -- it merely moves WHICH phenotypes
+  differ, which is what noise does and a systematic effect does not.
+
+This is LEDGER #7's family: this configuration's category-2 variance ratio goes
+through `createSparseKinParallel`'s TBB float `parallel_reduce`. At N = 1,000
+with `--useSparseGRMforVarRatio=FALSE` -- the test suite's fixture -- the
+variance ratio files ARE byte-identical, in both phenotype orders, which is what
+`tests/testthat/test-step1-multipheno.R` gates.
+
+**What is safe to claim:** the step-1 null MODEL (`.rda`) -- everything step 2
+consumes -- is byte-identical, unconditionally, at both N. The variance ratio is
+byte-identical wherever the configuration is reproducible at all, and otherwise
+agrees to the precision that configuration has.
+
+### Honest bottom line
+
+Step 2 is where the win is: **~3x CPU at P = 5**, one genotype read instead of
+five, one process's memory instead of five, and byte-identical output. Step 1
+gains **1.65x**, because sharing the ingest saves only the ingest.
