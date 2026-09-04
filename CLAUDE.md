@@ -20,6 +20,14 @@ PLINK run on the mirrored fixture — see `docs/state/pgen-step01.md`.** `main` 
 https://saigegit.github.io/SAIGE-doc/). Binary and quantitative traits are
 supported; survival-trait support was removed in Phase 3a of the refactor.
 
+**Do not read `LEDGER.md` whole.** It is 56 rows in two tables (#1-#39, then
+#40 on, split by an audit section) whose rows are single lines of up to ~2,600
+characters -- reading it costs a large slice of context before any work starts.
+Query it instead: `python3 harness/tools/ledger.py open` lists the open entries
+one line each, `ledger.py 56` prints one entry wrapped, `ledger.py grep ingest`
+searches. Read `docs/state/next.md` (120 lines) to CHOOSE work, and pull the one
+ledger entry you are actually working on.
+
 **`LEDGER.md` and `docs/state/` are the authoritative record of where this branch
 is** -- read those first; `docs/state/next.md` is the short list of what is NOT
 done, with provenance marked on each item. There is a plan at
