@@ -87,6 +87,61 @@ must be answered before item 2 below is coded.
   proposes doing **BURDEN only** first -- 93.7% C++, 3.36x at 4 threads, and
   none of the pipelining tension.
 
+## From the 2026-09-04 upstream-issue-tracker mine (LEDGER #63-#85)
+
+The 186-issue upstream tracker was mined for defects live on this branch; the
+plan and the raw-evidence pointers are in
+`~/.claude/plans/can-you-take-a-dreamy-breeze.md` (**do not re-run the sweep** --
+it cost ~160 agents). Phase 1 is DONE: **23 entries, LEDGER #63-#85**, one row
+each, no fixes. Every line number was re-resolved against HEAD and every
+arithmetic claim re-derived before the row was written, which is what the plan's
+Tier 0 retraction was about.
+
+**#63 is the worked example and is the only one with a test**:
+`tests/testthat/test-characterization-ledger63.R` (standard tier), detection
+power drilled BOTH ways -- 20/20 at HEAD, 8 failures with the `- 1` removed and
+the package rebuilt into a scratch library.
+
+**Reproduced by hand this session, not merely traced**: #63 (the dropped GRM
+pair, with the committed `.mtx` reproduced exactly as the positive control),
+#68 (`x1^2` silently dropped from a formula), #72 (the `std::stod` boundary is
+DBL_MIN, i.e. every subnormal -- not the reported 1e-324), #73 (conditioning on
+a monomorphic marker: exit 0, and the `_c` columns identical to the marginal
+ones on 70/70 rows, against 67/70 changed for a real conditioning marker), #74
+(the data.table join-type message reproduced verbatim), #76 (a region run at
+`--chrom=2` writes a ZERO-BYTE results file at exit 0 and says "Analysis
+done!"), #80/#81/#82/#84 (verified against the committed goldens and `git
+blame`). The rest are traced-at-HEAD with the consequence explicitly marked as
+not reproduced -- read each row's PROVENANCE, it says which.
+
+**Four candidates were REFUTED during this pass and deliberately have no row.**
+Recorded here so nobody re-opens them:
+- **empty ultra-rare collapse** (upstream #12/#30/#60/#67) -- the C++ handles it
+  coherently, checked at four points: the pseudo-marker slot keeps its NA/NaN
+  initialisation, `annoMAFIndicatorMat.row(i)` stays all-zero so the cell is
+  excluded from the region test, `i1`/`i1InChunk` are NOT incremented so VarMat
+  stays square and aligned with `mPassCVVec`, and `writeOutfile_singleInGroup`
+  skips any row whose p is `"NA"`. If a defect lives here it is in the
+  `noNAIndices`-vs-`VarMat` alignment in `region_postprocess`, not in the
+  collapse.
+- **sparse-GRM nnz overflow** (upstream #188) -- the proposed half-to-full
+  storage doubling does not happen: in the pinned env (Matrix 1.7.6) a
+  `dsCMatrix` survives `*`, `diag<-` and `[i, i]` with half storage intact
+  (checked). What remains is only that `Matrix:::readMM` is called unguarded at
+  `R/SAIGE_fitGLMM_fast.R:2109` and `:2160`, with no mechanism located.
+- **SKAT-O compact-support p = 1** (upstream #209) -- the outer integral is
+  inside `SKAT:::Met_SKAT_Get_Pvalue`, a dependency, not in this tree.
+- **`null_noXadj` cardinality check in the wrong arm** -- this is already
+  **LEDGER #39**, which names the unreachable `stop()` explicitly. #39's line
+  numbers are stale by ~17 lines (`:405-414` -> `:388-399`).
+
+**Phase 2 (characterization tests) and Phase 3 (fixes) are NOT started.** The
+plan orders Phase 2 by gate gap rather than severity; the two biggest holes it
+names are a **quantitative group/BURDEN golden** (currently zero coverage,
+reaches #72) and a **constructed high-LD conditioning pair** (the only way to
+exercise the conditional SPA at non-negligible conditioning at all -- reaches
+#66 and #84).
+
 ## From the 2026-09-04 silent-failure audit
 
 A 26-agent fan-out hunted the bug class this branch keeps finding by accident

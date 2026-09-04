@@ -57,8 +57,13 @@ believe an older doc that says it is parked on a branch.
 (unverified suspicion), #18-#26, #35-#39 from the type-polymorphic-builtin audit
 (`sample`, `1:n`, `rbind` recycling) -- all latent behind a guard -- #45, #46,
 #49 (a restart re-runs the last completed chunk: wasted work, right answer),
-and #54 from the PGEN-for-steps-0/1 work (the unvalidated `.bed` header --
-recorded, not reached by the new path), .
+and **#63-#85, the 23 rows written on 2026-09-04 from the upstream issue
+tracker** -- 38 open of 85 in all. Those 23 are entries only: Phase 2
+(characterization tests) and Phase 3 (fixes) are NOT started, and only #63 has a
+test. Read `docs/state/next.md` before picking one up -- it lists the four
+candidates from that mine that were REFUTED and must not be re-opened, and names
+the two coverage holes (a quantitative group/BURDEN golden; a constructed
+high-LD conditioning pair) that most of the untested rows sit behind.
 **#60, #61 and #62 are FIXED** -- the three audit findings that had survived
 verification but had never been reproduced. Each was reproduced by hand on a
 bundled fixture, with a positive and a negative control, before any code moved.
