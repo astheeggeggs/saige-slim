@@ -602,6 +602,23 @@ SPAGMMATtest <- function(bedFile = "",
       maxMAF_in_groupTest <- unique(c(maxMAF_in_groupTest, maxMAC_in_groupTest_to_MAF))
       maxMAF_in_groupTest <- maxMAF_in_groupTest[order(maxMAF_in_groupTest)]
       cat("max MAF cutoff ", maxMAF_in_groupTest, "will be applied\n")
+      # LEDGER #61. The vector is only extended HERE, because converting a MAC
+      # cutoff into a MAF one needs `mu`, which is not loaded until :551 -- but
+      # setRegion_GlobalVarsInCPP was already called above with the UN-extended
+      # vector, and it is what fixes g_cfg.maxMAFLimit, the per-marker QC gate in
+      # mainRegionInCPP. So any bin the extension adds above the largest
+      # --maxMAF_in_groupTest had every marker in its new range discarded at
+      # ingest, and its rows came out a byte-for-byte DUPLICATE of the previous
+      # bin, at exit 0, after the log said the cutoff "will be applied".
+      # Re-issued rather than moved: this runs only when the extension actually
+      # happened, so a run without --maxMAC_in_groupTest makes exactly the calls
+      # it always made.
+      setRegion_GlobalVarsInCPP(
+        maxMAF_in_groupTest,
+        markers_per_chunk_in_groupTest,
+        MACCutoff_to_CollapseUltraRare,
+        minGroupMAC_in_BurdenTest
+      )
     }
     # method_to_CollapseUltraRare,
     # DosageCutoff_for_UltraRarePresence,
