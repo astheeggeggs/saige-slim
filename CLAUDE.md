@@ -78,6 +78,21 @@ byte-reproducible first by two independent `make_goldens.sh` runs plus `cmp`.
 Every step-2 golden and every sparse-GRM step-1 golden was byte-identical
 throughout -- the sparse fits read a frozen `.mtx` from `extdata/output`, which
 the harness does not regenerate and which still carries the bug.
+**#57 is FIXED** (2026-09-04): the chunked region path writes `P1Mat`/`P2Mat` to
+`<SAIGEOutputFile>_P1Mat_Chunk_<i>.bin` and reads them back, and every
+`arma::Mat::save`/`.load` return value was discarded -- Armadillo warns at
+`arma_warn(3, ...)` and `ARMA_WARN_LEVEL` defaults to 2, so a failure was silent
+by construction. A failed load skipped a `VarMat` block, SKAT threw for every
+cell, and `get_SKAT_pvalue`'s `try(silent = TRUE)` turned the whole gene into
+`NA` rows at exit 0. It stops now, naming the file and the region.
+**The trap worth remembering: every non-BURDEN group golden ALREADY takes this
+path.** Each bundled region has three or four non-ultra-rare markers, far under
+`markers_per_chunk_in_groupTest`, so it looks like one chunk -- but the
+ultra-rare collapse always appends another, so `nchunks == 2`. Do not reach for
+`--markers_per_chunk_in_groupTest` to "force" chunking here; it changes nothing.
+The FAILURE is what no golden reaches, and
+`tests/testthat/test-step2-region-chunkio.R` injects it by planting a DIRECTORY
+where the first chunk file must go.
 Recently FIXED: #47 (S9, restart duplicated rows), #17 (S10, the uninitialised
 `w0` on the custom-weighted conditional path), #42 (S11, three `log.p=TRUE`
 arms halved a log, i.e. took a square root, inflating SE ~sqrt(2) wherever the

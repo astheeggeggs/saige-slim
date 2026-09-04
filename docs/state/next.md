@@ -80,16 +80,20 @@ them concurrently cannot change a digit -- unlike a float reduction, which is wh
 the byte gate is not in tension here. That is the design worth writing, and it is
 not written.
 
-**A silent all-NA gene, found while profiling.** [Grounded, LEDGER #57;
-2026-09-04] An unchecked `arma::Mat::load()` of a chunked `P1Mat` temporary makes
-`mainRegionInCPP` skip a `VarMat` block, which makes SKAT throw for every cell of
-that gene, which `get_SKAT_pvalue`'s `try(..., silent = TRUE)` turns into 16
-all-`NA` rows -- exit 0, no warning. Seen once in seven N = 50,000 scans; the C++
-arithmetic is provably NOT at fault (four instrumented scans agree bit-for-bit on
-the SKAT inputs for all 2,527 cells). Unreachable by any golden: the bundled
-fixtures never chunk. The `save`/`load` return checks are byte-neutral and worth
-doing; whether a failure should ABORT the scan or warn-and-NA one gene is a
-behaviour choice for the user, which is why neither was done.
+**Resolved: a silent all-NA gene.** [LEDGER #57, FIXED 2026-09-04] An unchecked
+`arma::Mat::load()`/`save()` of a chunked `P1Mat` temporary made
+`mainRegionInCPP` skip a `VarMat` block, SKAT throw for every cell of that gene,
+and `get_SKAT_pvalue`'s `try(silent = TRUE)` turn it into all-`NA` rows -- exit 0,
+no warning. Now stops, naming the file and the region. The entry's first claim
+that no golden could reach the path was WRONG and is corrected there: the
+ultra-rare collapse always appends a chunk, so `nchunks == 2` on every bundled
+non-BURDEN group run and the disk round trip is on the golden path already.
+
+**Still open from #57:** `get_SKAT_pvalue`'s `try(..., silent = TRUE)` swallows a
+genuine SKAT numerical failure into `NA` with an `error.code` that is set and
+never read. The I/O fault it used to hide is gone, but a numerical one would
+still vanish. Surfacing it is a behaviour choice (warn? abort? a summary line?)
+and has not been made.
 
 ## Items
 

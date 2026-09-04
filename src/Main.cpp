@@ -1590,6 +1590,42 @@ Rcpp::List RegionSetUpConditional_binary_InCPP(arma::vec & t_weight_cond){
 }
 
 
+
+// LEDGER #57: the chunked VarMat assembly writes P1Mat/P2Mat to temporary .bin
+// files and reads them back. arma::Mat::save()/.load() both RETURN a bool and
+// every return value here used to be discarded; Armadillo does not cover for
+// that either, because save/load failures warn at arma_warn(3, ...) and
+// ARMA_WARN_LEVEL defaults to 2, so a failure was silent by construction. A
+// failed load left the matrix empty, the assembly skipped that block, SKAT then
+// threw for every cell of the region and get_SKAT_pvalue's try(silent = TRUE)
+// turned the whole gene into NA rows -- exit 0, no warning. Observed once in
+// seven N = 50,000 scans, with the volume at 100%.
+//
+// These stop instead. That is byte-neutral wherever the I/O succeeds, which is
+// every path any golden takes (the bundled fixtures never chunk).
+static void saveChunkMatOrStop(const arma::mat & t_mat, const std::string & t_file,
+                               const std::string & t_region)
+{
+  if(!t_mat.save(t_file)){
+    Rcpp::stop("Failed to WRITE the temporary chunk file '" + t_file + "' while testing region '"
+               + t_region + "'. The set/group test streams the variance-matrix chunks through "
+               "this file; continuing would silently drop or misplace part of the region's "
+               "variance matrix. Check free space and permissions on the output directory.");
+  }
+}
+
+static void loadChunkMatOrStop(arma::mat & t_mat, const std::string & t_file,
+                               const std::string & t_region)
+{
+  if(!t_mat.load(t_file)){
+    Rcpp::stop("Failed to READ the temporary chunk file '" + t_file + "' while testing region '"
+               + t_region + "'. It was written earlier in this run, so it has been removed, "
+               "truncated or made unreadable since. Continuing would silently drop or misplace "
+               "part of the region's variance matrix. Check free space and permissions on the "
+               "output directory, and that no other SAIGE run shares this --SAIGEOutputFile.");
+  }
+}
+
 //////// ---------- Main function for region-level analysis --------- ////////////
 // [[Rcpp::export]]
 Rcpp::List mainRegionInCPP(
@@ -2155,8 +2191,8 @@ Rcpp::List mainRegionInCPP(
     if(i1InChunk == m1 ){
       std::cout << "In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and " << i1 << " markers are not ultra-rare." << std::endl;
       if(t_regionTestType != "BURDEN"){
-        P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
-        P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
+        saveChunkMatOrStop(P1Mat, t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin", regionName);
+        saveChunkMatOrStop(P2Mat, t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin", regionName);
       }
 
       mPassCVVec.push_back(m1);
@@ -2177,8 +2213,8 @@ Rcpp::List mainRegionInCPP(
     if(t_regionTestType != "BURDEN"){	  
       P1Mat = P1Mat.rows(0, i1InChunk - 1);
       P2Mat = P2Mat.cols(0, i1InChunk - 1);
-      P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
-      P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
+      saveChunkMatOrStop(P1Mat, t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin", regionName);
+      saveChunkMatOrStop(P2Mat, t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin", regionName);
     }
     ichunk = ichunk + 1;
     //}
@@ -2484,8 +2520,8 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
       P1Mat = P1Mat.rows(0, i1InChunk - 1);
       P2Mat = P2Mat.cols(0, i1InChunk - 1);
 //if(nchunks != 1){
-      P1Mat.save(t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin");
-      P2Mat.save(t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin");
+      saveChunkMatOrStop(P1Mat, t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin", regionName);
+      saveChunkMatOrStop(P2Mat, t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin", regionName);
     }
       ichunk = ichunk + 1;
 //    }
@@ -2517,25 +2553,41 @@ if(t_regionTestType != "BURDEN"){
       last_row = first_row + mPassCVVec.at(index1) - 1;
       
       std::string P1MatFile = t_outputFile + "_P1Mat_Chunk_" + std::to_string(index1) + ".bin";
-      
-        P1Mat.load(P1MatFile);
-   
+
+      loadChunkMatOrStop(P1Mat, P1MatFile, regionName);
+
        //P1Mat.print("P1Mat");
 
-      if(P1Mat.n_cols == 0) continue;
-      
+      // LEDGER #57: an empty chunk used to `continue` WITHOUT advancing
+      // first_row, so every later chunk's submatrix landed in the wrong rows of
+      // VarMat -- a wrong answer rather than a missing one. The cursor is
+      // advanced on the skip now. With the load checked above this is
+      // unreachable in practice (mPassCVVec never holds 0), but it is the kind
+      // of thing that must not be left armed.
+      if(P1Mat.n_cols == 0){
+        first_row = last_row + 1;
+        first_col = 0;
+        continue;
+      }
+
       // off-diagonal sub-matrix
       for(unsigned int index2 = 0; index2 < index1; index2++)
       {
         std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index2 << "/" << nchunks - 1 << ")........" << std::endl;
-       
-        P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index2) + ".bin");
+
+        loadChunkMatOrStop(P2Mat, t_outputFile + "_P2Mat_Chunk_" + std::to_string(index2) + ".bin", regionName);
        //P2Mat.print("P2Mat");
-        
-        if(P2Mat.n_cols == 0) continue;
-        arma::mat offVarMat = P1Mat * P2Mat;
+
+        // Computed BEFORE the skip below: the column cursor has to advance past
+        // this chunk either way, for the same reason as the row cursor above.
         last_col = first_col + mPassCVVec.at(index2) - 1;
-        
+
+        if(P2Mat.n_cols == 0){
+          first_col = last_col + 1;
+          continue;
+        }
+        arma::mat offVarMat = P1Mat * P2Mat;
+
         VarMat.submat(first_row, first_col, last_row, last_col) = offVarMat;
         VarMat.submat(first_col, first_row, last_col, last_row) = offVarMat.t();
         first_col = last_col + 1;
@@ -2545,8 +2597,8 @@ if(t_regionTestType != "BURDEN"){
       last_col = first_col + mPassCVVec.at(index1) - 1;
       std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index1 << "/" << nchunks - 1 << ")........" << std::endl;
       //std::cout << "P2Mat.n_cols " << P2Mat.n_cols << std::endl;
-      P2Mat.load(t_outputFile + "_P2Mat_Chunk_" + std::to_string(index1) + ".bin");
-      
+      loadChunkMatOrStop(P2Mat, t_outputFile + "_P2Mat_Chunk_" + std::to_string(index1) + ".bin", regionName);
+
       arma::mat diagVarMat = P1Mat * P2Mat;
       
       VarMat.submat(first_row, first_col, last_row, last_col) = diagVarMat;
