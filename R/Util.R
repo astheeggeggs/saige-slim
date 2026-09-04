@@ -38,6 +38,29 @@ updateChrStartEndIndexVec <- function(chrVec) {
     if (length(which(chrVec == i)) > 0) {
       chromosomeStartIndexVec <- c(chromosomeStartIndexVec, min(which(chrVec == i)) - 1)
       chromosomeEndIndexVec <- c(chromosomeEndIndexVec, max(which(chrVec == i)) - 1)
+      # LEDGER #62. Each chromosome is carried downstream as the single window
+      # [min, max] of its marker indices, so the windows are only the
+      # chromosomes if every chromosome's markers are CONTIGUOUS. The check
+      # below tests monotonicity of consecutive starts and ends, which catches
+      # a marker displaced past a whole chromosome but not one displaced INTO
+      # the middle of the next: chrVec = c(rep(1, 10), rep(2, 5), 1, rep(2, 5),
+      # rep(3, 10)) passes it, and chr1's window then spans 16 markers for its
+      # 11, swallowing five chr2 markers. The leave-one-out property survives
+      # -- it is over-exclusion, never contamination -- but those five markers
+      # are silently in neither LOCO GRM. Contiguity is the invariant the
+      # windows actually need, so it is what is asserted.
+      nOnChr <- length(which(chrVec == i))
+      spanOnChr <- max(which(chrVec == i)) - min(which(chrVec == i)) + 1
+      if (spanOnChr != nOnChr) {
+        stop(paste0(
+          "ERROR! the markers on chromosome ", i, " are not contiguous in the bim file: ",
+          nOnChr, " markers span ", spanOnChr, " positions, so ", spanOnChr - nOnChr,
+          " marker(s) from other chromosomes lie between the first and last of them.",
+          " Leave-one-chromosome-out uses one [start, end] window per chromosome, so those",
+          " markers would be dropped from more than one LOCO GRM. Sort the bim file by",
+          " chromosome and position.\n"
+        ))
+      }
       if (i > 1) {
         if (!is.na(chromosomeStartIndexVec[i - 1])) {
           if (chromosomeStartIndexVec[i] <= chromosomeStartIndexVec[i - 1] | chromosomeEndIndexVec[i] <= chromosomeEndIndexVec[i - 1]) {

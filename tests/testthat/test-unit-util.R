@@ -61,6 +61,38 @@ test_that("updateChrStartEndIndexVec computes 0-based per-chromosome bounds", {
   expect_false(updateChrStartEndIndexVec(rep(1, 5))$LOCO)  # single autosome
 })
 
+test_that("updateChrStartEndIndexVec refuses a non-contiguous chromosome", {
+  # LEDGER #62. Each chromosome reaches the LOCO machinery as ONE window, from
+  # its first marker index to its last, so the windows are the chromosomes only
+  # if the markers are contiguous. The monotonicity check catches a marker displaced past a whole
+  # chromosome; it does not catch one displaced INTO the middle of the next.
+
+  # NEGATIVE CONTROL: sorted input is untouched, and the windows are exactly
+  # the blocks.
+  ok <- updateChrStartEndIndexVec(c(rep(1, 10), rep(2, 10), rep(3, 10)))
+  expect_equal(ok$chromosomeStartIndexVec[1:3], c(0, 10, 20))
+  expect_equal(ok$chromosomeEndIndexVec[1:3], c(9, 19, 29))
+
+  # POSITIVE CONTROL: the gross displacement. The old monotonicity check already
+  # caught this one; contiguity subsumes it and now fires first, which is why
+  # the message moved. The ordering check still has its own coverage above
+  # (c(2, 2, 1), where every chromosome IS contiguous).
+  expect_error(
+    updateChrStartEndIndexVec(c(rep(1, 10), rep(2, 10), 1, rep(3, 10))),
+    "markers on chromosome 1 are not contiguous"
+  )
+
+  # THE CASE. One chr1 marker in the middle of chr2 passed both arms of the old
+  # check -- start 0 < 10 and end 15 < 20 -- and chr1's window then spanned 16
+  # markers for its 11, so five chr2 markers sat inside BOTH windows and were
+  # dropped from both LOCO GRMs. Over-exclusion, never contamination, and no
+  # warning.
+  subtle <- c(rep(1, 10), rep(2, 5), 1, rep(2, 5), rep(3, 10))
+  expect_error(updateChrStartEndIndexVec(subtle),
+               "markers on chromosome 1 are not contiguous")
+  expect_error(updateChrStartEndIndexVec(subtle), "11 markers span 16 positions")
+})
+
 test_that("convert_str_to_log handles sub-underflow p-value strings", {
   expect_equal(convert_str_to_log("1.5E-10"), log(1.5e-10))
   expect_equal(convert_str_to_log("1E-400"), -400 * log(10))  # below double underflow
