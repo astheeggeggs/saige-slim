@@ -117,6 +117,21 @@ on this branch is evidence, and these have agent citations rather than a run:
 
 Each needs the same treatment #58 and #59 got -- reproduce it or drop it.
 
+## Outstanding DECISION for the user, not a task to pick up
+
+[LEDGER #57, the part left open] `get_SKAT_pvalue`'s `try(..., silent = TRUE)`
+(`R/SAIGE_SPATest_Region_Func.R:363`) turns any SKAT failure into
+`Pvalue <- c(NA, NA, NA)` with an `error.code <- 2` that is assigned and never
+read, printed or returned. The #57 fix broke the I/O path into it -- a failed
+chunk-file read now stops the run instead of arriving here -- but a genuine
+NUMERICAL failure (a singular or near-singular Phi, say) still turns a whole gene
+into NA rows at exit 0 with no signal.
+
+Three defensible answers and they are materially different operationally: warn
+and keep the NA, abort the scan, or carry a count and print an end-of-run summary
+line. Whichever is chosen changes what a long exome run does when one gene
+misbehaves, so it was NOT defaulted. Ask before implementing.
+
 ## Items
 
 **Format step-2 output rows on the workers.**
