@@ -12,6 +12,20 @@
 # golden-generating platform's outputs being compared elsewhere, so there the
 # `.rda` is compared field by field at a relative tolerance and the variance
 # ratio file column by column.
+#
+# THE TOLERANCES ARE THE HARNESS'S, and this is not a free choice. These first
+# shipped at 1e-5 for everything, which passed on the golden-generating machine
+# and went RED on CI: Linux reported rel err 4.2e-5 in `Y` and 1.3e-5 in others
+# against a macOS-generated golden. Both are well inside what
+# `harness/compare_step1.R` has always allowed for exactly this comparison --
+# 1e-2 for theta and the variance ratios (AI-REML runs at tol=0.02, so tighter
+# is meaningless) and 1e-3 for the other numeric fields (float PCG at
+# tolPCG=1e-5). A test that asserts more precision than the estimator has is
+# measuring the platform's libm, not the code, so these now match the harness
+# rather than undercutting it. Byte mode is unaffected and is still the real
+# gate on the multi-phenotype identity claim.
+TOL_THETA <- 1e-2   # theta/tau and the variance ratios
+TOL_OTHER <- 1e-3   # every other numeric model field
 
 # The step-1 model fields worth comparing: every numeric one that a refit could
 # move. Names are checked first, so a field appearing or disappearing fails.
@@ -25,7 +39,7 @@ load_modglmm <- function(path) {
   get("modglmm", envir = e)
 }
 
-expect_step1_rda_equivalent <- function(golden, candidate, tol = 1e-5) {
+expect_step1_rda_equivalent <- function(golden, candidate, tol = TOL_OTHER) {
   if (saige_compare_mode() == "byte") {
     expect_files_byte_identical(golden, candidate)
     return(invisible(NULL))
@@ -40,12 +54,15 @@ expect_step1_rda_equivalent <- function(golden, candidate, tol = 1e-5) {
     cv <- as.numeric(c_[[f]])
     expect_identical(length(gv), length(cv), label = paste0("length of ", f))
     denom <- pmax(abs(gv), abs(cv), .Machine$double.eps)
-    expect_lt(max(abs(gv - cv) / denom), tol, label = paste0("rel err in ", f))
+    # theta is the AI-REML estimate itself, so it gets the loose bound the
+    # harness gives it; everything else is a fitted quantity at PCG precision.
+    ftol <- if (identical(f, "theta")) TOL_THETA else tol
+    expect_lt(max(abs(gv - cv) / denom), ftol, label = paste0("rel err in ", f))
   }
   invisible(NULL)
 }
 
-expect_step1_vr_equivalent <- function(golden, candidate, tol = 1e-5) {
+expect_step1_vr_equivalent <- function(golden, candidate, tol = TOL_THETA) {
   if (saige_compare_mode() == "byte") {
     expect_files_byte_identical(golden, candidate)
     return(invisible(NULL))

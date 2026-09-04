@@ -322,6 +322,15 @@ Three standing traps when adding tests here:
   not). Compare counts and labels exactly, statistics at ~1e-12 relative.
   Byte-exactness is a claim about ONE code path re-run, which is what the
   goldens test; it is not a claim about two paths agreeing.
+  **The same trap fired a second time, from the other end**: the multi-phenotype
+  step-1 comparators in `helper-step1multi.R` shipped with a 1e-5 numeric
+  tolerance, passed on the golden-generating machine, and went red on CI at rel
+  err 4.2e-5 in `Y`. **Use the harness's tolerances** -- `harness/compare_step1.R`
+  has always allowed 1e-2 for theta and the variance ratios (AI-REML runs at
+  `tol=0.02`) and 1e-3 for other numeric fields (float PCG at `tolPCG=1e-5`). A
+  test that demands more precision than the estimator has is measuring the
+  platform's libm, not the code. Note CI was red for five hours on this and the
+  session that pushed it recorded the tier as green -- locally, in byte mode.
 - **Do not force `--pCutoffforFirth` upward** to make the Firth arm fire.
   Firth is gated behind it because the penalised fit is expensive, and above
   the intended cutoff the fit stops converging and drifts to
