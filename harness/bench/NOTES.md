@@ -648,6 +648,39 @@ returns zeros for every bucket and a tidy, entirely wrong "100% in everything
 else" table. Time spent inside `.Call`/`.C` is attributed to the enclosing R
 frame, which is exactly what makes the C++/R split readable this way.
 
+**Follow-up: where inside the 45% (same day, per-cell trace).** `get_SKAT_pvalue`
+and `SKAT:::SKAT_davies` were shadowed in their namespaces for one run (no
+package edit; the region file and all singleAssoc rows came back byte-identical
+to the uninstrumented run, which is the control that the instrumentation was
+inert). 2,527 SKAT-O cells, **1,123,456 `SKAT_davies` calls** -- 445 per cell,
+~94 us each. So the cost is the NUMBER of integrand evaluations, not the size of
+any one of them.
+
+- **Cost is diffuse, not concentrated.** Top 1% of cells hold 8.9%, top 10% hold
+  48.4%, top 25% hold 75.6%. There is no small hot set to special-case, which
+  means parallelising across cells or regions is the shape that would work, and
+  a targeted fix for "the big genes" is not.
+- **Cost is NOT monotone in cell size.** m = 1 cells are free (0.49 ms, one
+  davies call). The most expensive band is m in (2,5] at 170 ms/cell and 39.9% of
+  all the cost; m in (100,250] is 100 ms/cell and 1.3%. Whatever this is, it is
+  not O(m).
+- **Cost is ANTI-correlated with significance.** Cells with p < 1e-6 cost 11.4 ms
+  and 137 davies calls; p in (0.1, 0.5] cost 54.1 ms and 541 calls. That is the
+  opposite of the obvious guess and it kills it: `SKAT_Optimal_PValue_Davies`
+  passes `abs.tol = 1e-25`, which looks like the culprit until you notice the
+  integral it evaluates is `1 - p`, so `rel.tol * |result|` -- the term that
+  actually binds -- gets TIGHTER as p grows, not as p shrinks. `[The mechanism is
+  consistent with the measured direction; it was not tested by varying the
+  tolerance, and the p > 0.5 band being cheaper again (36.5 ms) does not fit it.]`
+
+**A silent failure found by accident while doing this.** Two runs of the
+identical command disagreed: one reported GENE0002 as 16 all-`NA` rows, exit 0,
+no warning. It is not nondeterministic arithmetic -- four instrumented scans
+agree bit-for-bit on `sum(Score)`, `sum(Phi)` and `sum(Phi*Phi)` for all 2,527
+cells -- it is an unchecked `arma::Mat::load()` of a chunk temporary file. Full
+write-up in **LEDGER #57**; the tell was that the failing log has 716
+`Analyzing chunks (` lines where every other run has 717.
+
 **Two caveats before anyone quotes the 45%.** It is proportional to the size of
 the annotation x max_MAF grid: a 1 x 1 run has one SKAT-O p-value per region
 instead of fifteen, and the C++ fraction would dominate again. And it is

@@ -63,15 +63,33 @@ routine under R adaptive quadrature, and **threading the C++ region loop caps at
 the BURDEN arm is the negative control -- it predicts `SKAT_davies` = 0 and
 measures 0.0%.
 
-**What follows from it.** The ~3,480 SKAT-O p-values in that run (one per
-region x annotation x max_MAF cell, ~30 ms each) are mutually independent 1-D
-integrals that share no state, so they can be computed concurrently without
-changing a digit -- unlike a float reduction, which is why the byte gate is not
-in tension here. Nothing about this is designed yet, and two things should be
-established first: whether the time is spread evenly over cells or concentrated
-in a few large genes (which decides whether to parallelise within or across
-regions), and whether `integrate()`'s tolerance is doing more work than the
-printed precision needs. Both are cheap to measure and neither has been.
+**What follows from it, now measured.** A per-cell trace (2,527 SKAT-O cells,
+1,123,456 `SKAT_davies` calls, ~94 us each) settles both of the questions this
+paragraph used to pose:
+* the cost is **diffuse** -- top 10% of cells hold 48%, top 25% hold 76% -- so
+  parallelising ACROSS cells/regions is the shape that works and there is no hot
+  set to special-case;
+* it is **not** O(cell size) -- m in (2,5] is the most expensive band at 39.9% of
+  all cost, m in (100,250] is 1.3%;
+* it is **anti-correlated with significance** (p < 1e-6: 11.4 ms; p in (0.1,0.5]:
+  54.1 ms), which kills the obvious `abs.tol = 1e-25` theory: the integral is
+  `1 - p`, so the binding `rel.tol * |result|` tightens as p GROWS.
+
+The cells are mutually independent 1-D integrals sharing no state, so computing
+them concurrently cannot change a digit -- unlike a float reduction, which is why
+the byte gate is not in tension here. That is the design worth writing, and it is
+not written.
+
+**A silent all-NA gene, found while profiling.** [Grounded, LEDGER #57;
+2026-09-04] An unchecked `arma::Mat::load()` of a chunked `P1Mat` temporary makes
+`mainRegionInCPP` skip a `VarMat` block, which makes SKAT throw for every cell of
+that gene, which `get_SKAT_pvalue`'s `try(..., silent = TRUE)` turns into 16
+all-`NA` rows -- exit 0, no warning. Seen once in seven N = 50,000 scans; the C++
+arithmetic is provably NOT at fault (four instrumented scans agree bit-for-bit on
+the SKAT inputs for all 2,527 cells). Unreachable by any golden: the bundled
+fixtures never chunk. The `save`/`load` return checks are byte-neutral and worth
+doing; whether a failure should ABORT the scan or warn-and-NA one gene is a
+behaviour choice for the user, which is why neither was done.
 
 ## Items
 
