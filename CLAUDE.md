@@ -29,7 +29,11 @@ searches. Read `docs/state/next.md` (120 lines) to CHOOSE work, and pull the one
 ledger entry you are actually working on.
 
 **`LEDGER.md` and `docs/state/` are the authoritative record of where this branch
-is** -- read those first; `docs/state/next.md` is the short list of what is NOT
+is** -- read those first, starting with `docs/state/handoff-2026-09-04.md` (the
+most recent session handoff: what landed, the gate numbers, and where CI lives --
+`origin` is the UPSTREAM `saigegit/SAIGE`, while CI runs on the `slim` remote,
+`astheeggeggs/saige-slim`, so push there and query it with
+`gh run list --repo astheeggeggs/saige-slim`); `docs/state/next.md` is the short list of what is NOT
 done, with provenance marked on each item. There is a plan at
 `~/.claude/plans/based-on-this-repository-silly-shore.md` (superseding
 `rosy-munching-pudding.md`, which holds the Phase 0-5 history), but it was last

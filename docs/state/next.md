@@ -1,4 +1,7 @@
-# What is worth doing next (2026-09-03)
+# What is worth doing next (2026-09-03, updated 2026-09-04)
+
+**Start with `docs/state/handoff-2026-09-04.md`** -- it says what landed, which
+gates passed with their numbers, where CI lives, and what is a fresh start.
 
 Short list, kept deliberately short. `LEDGER.md` says what is broken;
 `docs/state/*.md` says what was done and why; this file says what is NOT done
