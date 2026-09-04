@@ -21,7 +21,7 @@ proved byte-reproducible first, as CLAUDE.md requires: two independent
 green again. Nothing else moved -- every step-2 golden and every sparse-GRM
 step-1 golden was byte-identical throughout.
 
-## The gate on all of it: profile at realistic N first
+## The gate on all of it: profile at realistic N first -- NOW DONE
 
 Every step-2 profile so far is N = 1,000, where `harness/bench/NOTES.md:352-359`
 shows the serial writer -- not the work -- sets the ~2x ceiling at 4 threads.
@@ -42,14 +42,36 @@ group cost "by up to ~2x". That was wrong as stated** and is corrected here: the
 is ~10%. Still worth reporting the rate alongside any per-gene cost -- it is
 signal-dependent across ~5x -- but it is not the large effect claimed.
 
-**The measurement moved the target.** Swapping the PCG score test for
-`scoreTestFast` across a whole pass saves only **8.3%**, so **~90% of gene-test
-time is NOT the per-marker score test.** A profile that goes looking there will
-find nothing. The unaccounted 90% is some mix of the ultra-rare collapse, the
-P1Mat/P2Mat gene covariance assembly, and the R-side SKAT-O post-processing
-(`R/SAIGE_SPATest_Region_Func.R`) -- and WHICH of those it is decides whether
-threading the C++ region loop is worth anything, because if the time is in R
-then it is not. That is the next measurement.
+**The measurement moved the target, and then the profile moved it again.**
+Swapping the PCG score test for `scoreTestFast` across a whole pass saves only
+**8.3%**, so ~90% of gene-test time is NOT the per-marker score test. That was
+written as an open question -- ultra-rare collapse, P1Mat/P2Mat assembly, or
+R-side SKAT-O post-processing? **Answered 2026-09-04 by `Rprof` at N = 50,000**
+(`harness/bench/NOTES.md`, "Where the OTHER 90% of a gene test goes"):
+
+| bucket | share |
+|---|---|
+| C++ `mainRegionInCPP` | **43.9%** |
+| R `region_postprocess` | **53.8%** |
+| .. of which `SKAT_davies` under `integrate()` | **44.9%** |
+| .. R glue | 5.0% |
+
+So the largest single item in a SKAT-O group run is the SKAT package's Davies
+routine under R adaptive quadrature, and **threading the C++ region loop caps at
+1.49x on 4 threads** for SKAT-O. For BURDEN (`--r.corr=1`) the same fixture is
+93.7% C++ and the same threading would give 3.36x. Replicates agree to 0.3 pp and
+the BURDEN arm is the negative control -- it predicts `SKAT_davies` = 0 and
+measures 0.0%.
+
+**What follows from it.** The ~3,480 SKAT-O p-values in that run (one per
+region x annotation x max_MAF cell, ~30 ms each) are mutually independent 1-D
+integrals that share no state, so they can be computed concurrently without
+changing a digit -- unlike a float reduction, which is why the byte gate is not
+in tension here. Nothing about this is designed yet, and two things should be
+established first: whether the time is spread evenly over cells or concentrated
+in a few large genes (which decides whether to parallelise within or across
+regions), and whether `integrate()`'s tolerance is doing more work than the
+printed precision needs. Both are cheap to measure and neither has been.
 
 ## Items
 

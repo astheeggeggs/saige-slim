@@ -572,6 +572,87 @@ is per escalated gene only.
 
 ---
 
+## Where the OTHER 90% of a gene test goes (2026-09-04)
+
+The section above ended with a question: the per-marker score test is only 8.3%
+of a group run, so what is the rest? It named three candidates -- the ultra-rare
+collapse, the P1Mat/P2Mat assembly, and the R-side SKAT-O post-processing -- and
+said which one it is decides whether threading the C++ region loop is worth
+anything.
+
+**It is the third, and it is not even our code.** `Rprof` over the same `sim50k`
+arm A (210 genes, 5 anno x 3 max_MAF, `y_binary`, `--is_fastTest=TRUE`, 22
+escalations, single-threaded under `harness/env.sh`):
+
+| bucket | rep A | rep B |
+|---|---|---|
+| C++ `mainRegionInCPP` | 95.0 s, **43.9%** | 92.9 s, **43.8%** |
+| R `region_postprocess` | 116.3 s, **53.8%** | 114.8 s, **54.1%** |
+| .. of which `get_SKAT_pvalue` | 105.5 s, 48.8% | 104.4 s, 49.2% |
+| .. of which `SKAT_davies` (`.C`) | 97.0 s, **44.9%** | 96.1 s, **45.3%** |
+| .. R glue (post minus SKAT) | 10.9 s, 5.0% | 10.4 s, 4.9% |
+| everything else | 4.8 s, 2.2% | 4.5 s, 2.1% |
+
+The single largest line item in a SKAT-O group run is
+`SKAT:::Met_SKAT_Get_Pvalue` -> `SKAT_META_Optimal` -> `SKAT_Optimal_PValue_Davies`
+-> `integrate()` -> `SKAT_davies`, i.e. **R adaptive quadrature over the SKAT
+package's Davies routine, 45% of the run**. `region_postprocess`'s own R code is
+5%.
+
+**Three things make this trustworthy rather than a profiler story.**
+- *The profiled run is the same run.* 188.1 s user against NOTES's 187.4 s for
+  arm A, and the same 22 escalations, so `Rprof` at a 0.02 s interval costs
+  nothing measurable and this is comparable to every number above.
+- *Replicates.* A and B agree within 0.3 pp on every bucket. Proportions within a
+  run are far more stable than the 4-6% cross-run spread this file warns about,
+  because both halves are slowed equally by load (which was 3.7-7.4 throughout).
+- *A negative control that predicts a zero and gets one.* The same command with
+  `--r.corr=1` (BURDEN, which never calls SKAT-O) puts `SKAT_davies` at **0.0%**
+  and `region_postprocess` at 0.2%, with C++ at **93.7%**. If the attribution
+  were an artifact of sampling inside `.C`/`.Call`, it would not switch off.
+
+**So: threading the C++ region loop is worth little for SKAT-O and a great deal
+for BURDEN.** Amdahl on the measured C++ fraction, threads on the region loop
+only:
+
+| test type | C++ fraction | 4 threads | 8 threads | infinite |
+|---|---|---|---|---|
+| SKAT-O | 43.9% | **1.49x** | 1.62x | 1.78x |
+| BURDEN | 93.7% | **3.36x** | 5.55x | 15.9x |
+
+That is the answer to the question this file asked, and it inverts the natural
+plan: the C++ region loop is NOT the thing to thread first if users run SKAT-O.
+
+**What the 45% actually is, and why it is attackable.** Each (annotation,
+max_MAF) cell of each region gets its own SKAT-O p-value, and each one is an
+independent 1-D integral. This grid is 5 x 3 = 15 cells, so the run computes
+about 210 x 15 + 22 x 15 = 3,480 of them in ~105 s, i.e. **~30 ms each**
+`[ARITHMETIC from the grid and the escalation count, not a counted call tally]`.
+They share no state, so they are embarrassingly parallel and, unlike a float
+reduction, computing them concurrently cannot change a digit.
+
+**How to reproduce, since it needs no code change.** Put an `Rprof` around the
+CLI script rather than instrumenting the pipeline -- the script's own `optparse`
+reads the same `commandArgs`, so the arguments pass straight through:
+
+```r
+# wrap.R, run with cwd = extdata and the ordinary step2 arguments appended
+Rprof(Sys.getenv("SAIGE_PROF_OUT"), interval = 0.02)
+source("step2_SPAtests.R")
+Rprof(NULL)
+```
+
+Then read it with `summaryRprof()$by.total`, whose rownames are QUOTED
+(`"region_postprocess"`, not `region_postprocess`) -- looking them up unquoted
+returns zeros for every bucket and a tidy, entirely wrong "100% in everything
+else" table. Time spent inside `.Call`/`.C` is attributed to the enclosing R
+frame, which is exactly what makes the C++/R split readable this way.
+
+**Two caveats before anyone quotes the 45%.** It is proportional to the size of
+the annotation x max_MAF grid: a 1 x 1 run has one SKAT-O p-value per region
+instead of fifteen, and the C++ fraction would dominate again. And it is
+SKAT-O-specific -- the BURDEN row above is the same fixture with the same genes.
+
 ## Phase 0 of the multi-phenotype work: how much of a marker's cost is SHARED?
 
 **2026-09-04**, N = 50,000 (`SAIGE-sim/harness/work/sim50k`, 210,515 markers on
