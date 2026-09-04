@@ -787,6 +787,31 @@ run step2_plink_marker_er.log R2 step2_SPAtests.R \
 # fastTest run had byte-stable goldens and the vcf conditional output was
 # verified identical to P4's.
 
+# P35 (added when --pval_cutoff_for_fastTest reached the CLI): P2's command with
+# the escalation cutoff forced to 1, so BOTH bundled regions take the fastTest
+# ESCALATION pass. Until the option existed this path could not be reached by a
+# golden at all, which is exactly why LEDGER #50 survived -- at the default 0.05
+# neither region escalates, so P2 covers only the copy_singleInGroup route to
+# the single-variant-in-group rows and P6 only the unconditional write.
+#
+# READ THIS BEFORE ASSUMING IT IS REDUNDANT. Its bytes are identical to P2's, in
+# both the region file and the .singleAssoc.txt -- that is LEDGER #51: the region
+# path never consults m_isFastTest, so the escalated pass recomputes exactly what
+# the fast pass already had. The golden is NOT the numbers; it is that the OTHER
+# WRITER produces them. Under #50 this run lost all 19 single-variant rows at
+# exit 0 while P2 stayed green. So do not "simplify" it away because it
+# duplicates P2, and do not assert it against P2's file -- it has its own frozen
+# copy, and the equality is a note, not a claim.
+run step2_plink_group_fastTest_escalated.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_fastTest_escalated.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --is_fastTest=TRUE --pval_cutoff_for_fastTest=1
+
 ############ PGEN-vs-PLINK byte identity, checked in the candidate dir #########
 # The step-0 and step-1 PGEN runs above are NOT committed as separate goldens:
 # each is byte-identical to its PLINK twin, so committing them would double the

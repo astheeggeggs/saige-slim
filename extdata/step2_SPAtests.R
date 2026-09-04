@@ -541,6 +541,17 @@ option_list <- list(
     help = "Whether to use the fast mode for tests"
   ),
   make_option(
+    "--pval_cutoff_for_fastTest",
+    type = "numeric",
+    default = 0.05,
+    help = paste0(
+      "Only when --is_fastTest=TRUE and --groupFile is specified: a region whose ",
+      "Cauchy p-value from the fast pass is below this cutoff is re-tested with the ",
+      "sparse GRM, and that second result is the one reported. Has no effect on ",
+      "single-variant runs [default=0.05]"
+    )
+  ),
+  make_option(
     "--is_noadjCov",
     type = "logical",
     default = TRUE,
@@ -702,6 +713,7 @@ fixed_params <- list(
   is_output_weight_column = opt$is_output_weight_column,
   is_output_markerList_in_groupTest = opt$is_output_markerList_in_groupTest,
   is_fastTest = opt$is_fastTest,
+  pval_cutoff_for_fastTest = opt$pval_cutoff_for_fastTest,
   max_MAC_use_ER = opt$max_MAC_for_ER,
   subSampleFile = opt$subSampleFile,
   is_noadjCov = opt$is_noadjCov

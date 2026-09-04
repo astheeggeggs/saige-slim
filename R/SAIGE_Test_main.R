@@ -622,6 +622,26 @@ SPAGMMATtest <- function(bedFile = "",
     }
     # method_to_CollapseUltraRare,
     # DosageCutoff_for_UltraRarePresence,
+    # LEDGER #51. fastTest is a two-stage design -- screen with the cheap
+    # variance ratio, re-run the interesting units accurately -- and the REGION
+    # path only ever had the second stage. All three of its variance-ratio sites
+    # (src/Main.cpp:1435, :1826, :2164) choose from the marker's MAC and never
+    # consult m_isFastTest, so the "screen" runs the IDENTICAL arithmetic as the
+    # confirmation, and an escalated region recomputes numbers it already had.
+    # Measured at N = 50,000 over 210 genes: +16.3% for BYTE-IDENTICAL output.
+    # Inherited verbatim from upstream (reported as saigegit/SAIGE#214), so this
+    # warns rather than implementing the missing half -- doing that would
+    # preserve no golden (a real screen uses a different variance ratio AND a
+    # different score test, so genes near the cutoff could fail to escalate) and
+    # the whole prize is bounded at 8%.
+    if (is_fastTest) {
+      cat("WARNING: --is_fastTest has no computational benefit for group tests.",
+          "The region path does not use the fast variance ratio, so the screening",
+          "pass costs a full extra pass over every escalated region for the same",
+          "answer (+16.3% measured at N = 50,000). The results are unaffected;",
+          "only pval_cutoff_for_fastTest changes which regions pay it.
+")
+    }
     if (r.corr == 0 & is_Firth_beta) {
       print("WARNING: Note that the Firth correction has not been implemented for Burden test effect sizes when SKAT-O test is conducted. If the corrected Burden test effect sizes is needed, please use r.corr=1 to only conduct Burden test.")
       if (is_single_in_groupTest) {
