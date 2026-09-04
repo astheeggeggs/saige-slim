@@ -194,10 +194,39 @@ that predicts a residual of `var * R^2(G ~ covariates)` = 0.117, against 0.259
 reported -- **off by 2.2x, so the mechanism is NOT established.** Worth settling
 before anyone writes it up.
 
+**Item 4 is DONE**: `tests/testthat/test-step1-varratio-cursor.R`. The
+variance-ratio marker loop advances `indexInMarkerList` once unconditionally and
+a SECOND time on each skip branch, so a skipped marker consumes the marker after
+it, which is never read at all -- and because the exhaustion guard tests
+EQUALITY, a double step from the last position jumps over it and the next read is
+an NA.
+
+Reproduced by hand, and the arithmetic reconciles two ways. With a run-time
+fixture of M markers at MAC 40 (all in the single VR pool) over the step-1
+fixture's own 1,000 fam rows:
+- NEGATIVE CONTROL, all autosomal: exit 0, exactly 30 markers read (the
+  `--numRandomMarkerforVarianceRatio` default), a valid ratio file.
+- **All non-autosomal, EVEN pool (M = 40)**: exactly **20 of 40** markers read --
+  the cursor visits 1, 3, 5, ..., which is the arithmetic signature; a
+  single-increment loop reads all 40. Lands exactly on the guard, exits the loop
+  cleanly, then dies downstream in `calCV(NULL)` with no marker accepted.
+- **All non-autosomal, ODD pool (M = 41)**: 22 reads, and the failure MODE
+  changes -- `Error in if (genoInd == 0) { : missing value where TRUE/FALSE
+  needed`, which is #75's predicted abort and upstream #32/#151 verbatim. **One
+  marker of difference flips the outcome**, which no single-increment loop can do.
+- Both leave a 139 KB `.rda` beside a **0-byte** `.varianceRatio.txt` -- the
+  unusable model pair #75 describes.
+- The SILENT case is the partial one: 20 of 40 non-autosomal gives **exit 0**
+  with the ratio estimated from 12 markers instead of 30, and 14 pool markers
+  never examined. Reconciled: 12 accepted + 14 skipped = 26 reads, cursor
+  = 1 + 12 + 2*14 = 41, exactly the guard value for a pool of 40.
+
+DRILL: removing the second increment and rebuilding into a scratch library fails
+5 assertions (read counts become 40 and 41, and the NA abort disappears); the
+negative control correctly stays green. Source reverted and reinstalled.
+
 Remaining Phase 2 items, in the plan's order:
 3. (dropped -- the empty ultra-rare collapse was refuted, see above)
-4. a **non-autosomal step-1 fixture**, made by rewriting one `.bim` column (the
-   `.bed` is indexed by row, so no regeneration) -- reaches #75.
 5. an **all-numeric-ID bim** -- reaches #74.
 6. a **phenotype file with a duplicated ID** -- reaches #67.
 
