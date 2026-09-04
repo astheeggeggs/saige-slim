@@ -225,9 +225,28 @@ DRILL: removing the second increment and rebuilding into a scratch library fails
 5 assertions (read counts become 40 and 41, and the NA abort disappears); the
 negative control correctly stays green. Source reverted and reinstalled.
 
+**Item 5 is DONE**: `tests/testthat/test-step2-numeric-marker-ids.R`. The bim is
+read with no `colClasses`, so data.table INFERS the ID column's type; every
+bundled fixture uses `rs<N>` (character), and an all-numeric ID column infers
+INTEGER. The fixture is derived at run time and reuses the committed `.bed` and
+`.fam` UNCHANGED -- a `.bed` is indexed by row, so rewriting bim column 2 changes
+no genotype, which is what makes the control exact.
+
+- NEGATIVE CONTROL: a plain marker scan is UNAFFECTED -- same row count, and
+  `p.value` identical string-for-string between the two bims. The ID column is
+  not joined on that path.
+- `--condition=13` -> exit 1, `Incompatible join types: x.ID (integer) and
+  i.SNP (character)`, upstream #137's message verbatim.
+- a group file with numeric IDs -> exit 1, the same `bmerge` failure.
+- POSITIVE CONTROL: both commands with the committed rs-spelled bim exit 0.
+
+DRILL: adding `colClasses = list(character = 2)` to the `fread` and rebuilding
+into a scratch library makes both numeric-ID runs SUCCEED, failing 5 assertions;
+the plain-scan control stays green. That one argument is also the Phase 3 fix.
+Source reverted and reinstalled.
+
 Remaining Phase 2 items, in the plan's order:
 3. (dropped -- the empty ultra-rare collapse was refuted, see above)
-5. an **all-numeric-ID bim** -- reaches #74.
 6. a **phenotype file with a duplicated ID** -- reaches #67.
 
 ## From the 2026-09-04 silent-failure audit
