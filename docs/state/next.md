@@ -245,9 +245,35 @@ into a scratch library makes both numeric-ID runs SUCCEED, failing 5 assertions;
 the plain-scan control stays green. That one argument is also the Phase 3 fix.
 Source reverted and reinstalled.
 
-Remaining Phase 2 items, in the plan's order:
-3. (dropped -- the empty ultra-rare collapse was refuted, see above)
-6. a **phenotype file with a duplicated ID** -- reaches #67.
+**Item 6 is DONE**: `tests/testthat/test-step1-duplicate-pheno-id.R`. Nothing in
+the step-1 phenotype path checks for duplicate sample IDs -- the only
+`duplicated()` call in `R/SAIGE_fitGLMM_fast.R` is on `SampleIDIncludeFile` -- so
+a repeated ID multiplies that sample's rows through the merge at `:1012-1014`.
+
+A phenotype file of 1,001 rows with 1,000 distinct IIDs runs to **exit 0** and
+reports "1001 samples will be used for analysis"; the unmodified file reports
+1000 (negative control).
+
+The consequence was DERIVED FROM THE CODE BEFORE IT WAS MEASURED, which is what
+makes it a test rather than a fishing expedition. In `setGenoObjFromSource`,
+`Nnomissing = subSampleInGeno.size()` counts the DUPLICATED list, while the
+allele-count accumulation is gated on `indicatorGenoSamplesWithPheno_in[ind]`
+with `ind` running over the FILE's samples, so each distinct sample is counted at
+most once. `altFreq = alleleCount / float(Nnomissing * 2)`
+(`src/SAIGE_fitGLMM_fast.cpp:677`) therefore puts the duplicated sample in the
+DENOMINATOR but not the NUMERATOR. Predicted gap: exactly that sample's genotype.
+Measured, on a fixture where the duplicated sample carries the ALT allele in half
+the markers: store holds 41 alleles and the frequency implies 40 where it is a
+carrier, 39 vs 39 where it is not -- `store_AC - reported_AC == g_dup` on all 40
+markers to float32 precision. Both arms in one run, so the probe cannot be
+fabricating the signal.
+
+DRILL, two patches in one scratch build because the two tests pin different code:
+deduplicating the merge in R breaks the sample-count assertion, and changing the
+`altFreq` divisor to the indicator count breaks the three frequency-gap
+assertions. 4 failures, exactly the intended ones. Both reverted and reinstalled.
+
+**Phase 2 is COMPLETE.** See the handoff for the gate numbers.
 
 ## From the 2026-09-04 silent-failure audit
 
