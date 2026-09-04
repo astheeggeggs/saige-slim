@@ -178,3 +178,27 @@ so a length-900 vector for a 1000-row `.fam` is read out of bounds in C++. Being
 UB, it read different memory in a fresh process than in one that had already
 ingested -- i.e. it produced a difference between the two arms that was NOT the
 bug under test. The test now builds the full-length indicator.
+
+### N2 -- the shared-ingest state machine, P = 1 only
+
+What: new `R/SAIGE_fitGLMM_multi.R` holds `.step1Geno` (loaded / key /
+nIngests), `step1IngestKey`, `ensureGenoLoaded` and `releaseGeno`. The four
+step-1 ingest call sites in `R/SAIGE_fitGLMM_fast.R` (both fitters, both
+`skipModelFitting` reload paths) now go through `ensureGenoLoaded`, which
+reduces to exactly the old `setgenoFromInput` call whenever nothing is loaded --
+i.e. on every single-phenotype run. `fitNULLGLMM` gained
+`releaseGenoAtEnd = TRUE` and now RETURNS, invisibly, the paths it actually
+wrote (`modelOut` is reassigned under `--isLowMemLOCO`, and `outputPrefix` is
+mutated in place by `--FemaleOnly/--MaleOnly`), which is what the driver needs
+for the manifest. `ingestGates` (minMAF, maxMissingRate, and the VR MAC bounds)
+is part of the ingest's identity, because those setters are pushed BEFORE
+`setgeno` and decide which markers it keeps.
+
+The reuse test is `identical()` on the whole key: anything not provably the same
+ingest gets a fresh one, so reuse can only ever be a saving and never a
+difference.
+
+Gate: **PASSED.** goldens 58/58 byte-identical; **all 20 step-1 files
+byte-identical by `cmp`**; exactly ONE `setgeno mark2` per golden step-1 run
+(the ingest is not being repeated); standard tier
+`[ FAIL 0 | WARN 0 | SKIP 4 | PASS 1971 ]` in BOTH compare modes; lint clean.

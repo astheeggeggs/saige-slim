@@ -76,7 +76,7 @@ Get_Coef_LOCO <- function(y, X, tau, family, alpha0, eta0, offset, maxiterPCG, t
 
 
 # Fits the null glmm for binary traits
-glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovariateOffset, fit0, tau = c(0, 0), fixtau = c(0, 0), maxiter = 20, tol = 0.02, verbose = TRUE, nrun = 30, tolPCG = 1e-5, maxiterPCG = 500, subPheno, indicatorGenoSamplesWithPheno, obj.noK, out.transform, tauInit, memoryChunk, LOCO, chromosomeStartIndexVec, chromosomeEndIndexVec, traceCVcutoff, isCovariateTransform, isDiagofKinSetAsOne, isLowMemLOCO, genoIn = NULL) {
+glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovariateOffset, fit0, tau = c(0, 0), fixtau = c(0, 0), maxiter = 20, tol = 0.02, verbose = TRUE, nrun = 30, tolPCG = 1e-5, maxiterPCG = 500, subPheno, indicatorGenoSamplesWithPheno, obj.noK, out.transform, tauInit, memoryChunk, LOCO, chromosomeStartIndexVec, chromosomeEndIndexVec, traceCVcutoff, isCovariateTransform, isDiagofKinSetAsOne, isLowMemLOCO, genoIn = NULL, ingestGates = NULL) {
   # Fits the null generalized linear mixed model for a binary trait
   # Args:
   #  genofile: string. Plink file for the M1 markers to be used to construct the genetic relationship matrix
@@ -110,11 +110,14 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
 
 
   if (is.null(genoIn)) genoIn <- genoInputPlink(bedFile, bimFile, famFile)
-  re1 <- system.time({
-    setgenoFromInput(genoIn, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne)
-  })
-  cat("genotype ingest (setgeno) took\n")
-  print(re1)
+  # ensureGenoLoaded, not setgenoFromInput: with several phenotypes over the
+  # same complete-case sample set this ingest is done ONCE and reused. It
+  # reduces to exactly the old call whenever nothing is loaded, which is every
+  # single-phenotype run. See R/SAIGE_fitGLMM_multi.R.
+  ensureGenoLoaded(
+    genoIn, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk,
+    isDiagofKinSetAsOne, ingestGates
+  )
   if (verbose) {
     print("Genotype reading is done")
   }
@@ -308,7 +311,7 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
 
 
 # Fits the null glmm for a quantitative trait
-glmmkin.ai_PCG_Rcpp_Quantitative <- function(bedFile, bimFile, famFile, Xorig, isCovariateOffset, fit0, tau = c(0, 0), fixtau = c(0, 0), maxiter = 20, tol = 0.02, verbose = TRUE, nrun = 30, tolPCG = 1e-5, maxiterPCG = 500, subPheno, indicatorGenoSamplesWithPheno, obj.noK, out.transform, tauInit, memoryChunk, LOCO, chromosomeStartIndexVec, chromosomeEndIndexVec, traceCVcutoff, isCovariateTransform, isDiagofKinSetAsOne, isLowMemLOCO, genoIn = NULL) {
+glmmkin.ai_PCG_Rcpp_Quantitative <- function(bedFile, bimFile, famFile, Xorig, isCovariateOffset, fit0, tau = c(0, 0), fixtau = c(0, 0), maxiter = 20, tol = 0.02, verbose = TRUE, nrun = 30, tolPCG = 1e-5, maxiterPCG = 500, subPheno, indicatorGenoSamplesWithPheno, obj.noK, out.transform, tauInit, memoryChunk, LOCO, chromosomeStartIndexVec, chromosomeEndIndexVec, traceCVcutoff, isCovariateTransform, isDiagofKinSetAsOne, isLowMemLOCO, genoIn = NULL, ingestGates = NULL) {
   # Fits the null linear mixed model for a quantitative trait
   # Args:
   #  genofile: string. Plink file for the M1 markers to be used to construct the genetic relationship matrix
@@ -341,11 +344,14 @@ glmmkin.ai_PCG_Rcpp_Quantitative <- function(bedFile, bimFile, famFile, Xorig, i
   }
 
   if (is.null(genoIn)) genoIn <- genoInputPlink(bedFile, bimFile, famFile)
-  re1 <- system.time({
-    setgenoFromInput(genoIn, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne)
-  })
-  cat("genotype ingest (setgeno) took\n")
-  print(re1)
+  # ensureGenoLoaded, not setgenoFromInput: with several phenotypes over the
+  # same complete-case sample set this ingest is done ONCE and reused. It
+  # reduces to exactly the old call whenever nothing is loaded, which is every
+  # single-phenotype run. See R/SAIGE_fitGLMM_multi.R.
+  ensureGenoLoaded(
+    genoIn, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk,
+    isDiagofKinSetAsOne, ingestGates
+  )
   if (verbose) {
     print("Genotype reading is done")
   }
@@ -720,7 +726,12 @@ fitNULLGLMM <- function(plinkFile = "",
                         SampleIDIncludeFile = "",
                         isCovariateOffset = FALSE,
                         skipVarianceRatioEstimation = FALSE,
-                        nrun = 30) {
+                        nrun = 30,
+                        # FALSE keeps the loaded genotype store for the next
+                        # phenotype in the same sample-set group; the multi
+                        # driver is the only caller that passes FALSE, and it
+                        # calls releaseGeno() itself at the end.
+                        releaseGenoAtEnd = TRUE) {
   ## set up output files
   modelOut <- paste0(outputPrefix, ".rda")
 
@@ -1155,6 +1166,19 @@ fitNULLGLMM <- function(plinkFile = "",
   setminMAFforGRM(minMAFforGRM)
   setmaxMissingRateforGRM(maxMissingRateforGRM)
 
+  # The gates that decide WHICH markers the ingest keeps and which it stages for
+  # the variance ratio. They are part of the ingest's identity: two phenotypes
+  # may share a loaded store only if these agree as well as the sample set.
+  ingestGates <- list(
+    minMAFforGRM = minMAFforGRM,
+    maxMissingRateforGRM = maxMissingRateforGRM,
+    vr = if (skipVarianceRatioEstimation) {
+      NULL
+    } else {
+      c(minMAC_varRatio, maxMAC_varRatio)
+    }
+  )
+
 
   if (traitType == "binary") {
     cat(phenoCol, " is a binary trait\n")
@@ -1206,6 +1230,7 @@ fitNULLGLMM <- function(plinkFile = "",
         LOCO = LOCO, chromosomeStartIndexVec = chromosomeStartIndexVec,
         chromosomeEndIndexVec = chromosomeEndIndexVec,
         traceCVcutoff = traceCVcutoff, isCovariateTransform = isCovariateTransform, genoIn = genoIn,
+        ingestGates = ingestGates,
         isDiagofKinSetAsOne = isDiagofKinSetAsOne,
         isLowMemLOCO = isLowMemLOCO
       ))
@@ -1365,9 +1390,9 @@ fitNULLGLMM <- function(plinkFile = "",
       if (is.null(modglmm$LOCO)) {
         modglmm$LOCO <- FALSE
       }
-      setgenoFromInput(
+      ensureGenoLoaded(
         genoIn, dataMerge_sort$IndexGeno, indicatorGenoSamplesWithPheno, memoryChunk,
-        isDiagofKinSetAsOne
+        isDiagofKinSetAsOne, ingestGates
       )
       setisUseSparseSigmaforNullModelFitting(useSparseGRMtoFitNULL)
       if (useSparseGRMtoFitNULL) {
@@ -1415,7 +1440,14 @@ fitNULLGLMM <- function(plinkFile = "",
     } else {
       cat("Skip estimating variance ratios\n")
     }
-    closeGenoFile_plink()
+    if (releaseGenoAtEnd) {
+      releaseGeno()
+    }
+    return(invisible(list(
+      phenoCol = phenoCol, modelOut = modelOut,
+      varRatioFile = if (skipVarianceRatioEstimation) NULL else varRatioFile,
+      nSamples = nrow(dataMerge_sort)
+    )))
   } else if (traitType == "quantitative") {
     cat(phenoCol, " is a quantitative trait\n")
     obj.noK <- NULL
@@ -1455,6 +1487,7 @@ fitNULLGLMM <- function(plinkFile = "",
         LOCO = LOCO, chromosomeStartIndexVec = chromosomeStartIndexVec,
         chromosomeEndIndexVec = chromosomeEndIndexVec,
         traceCVcutoff = traceCVcutoff, isCovariateTransform = isCovariateTransform, genoIn = genoIn,
+        ingestGates = ingestGates,
         isDiagofKinSetAsOne = isDiagofKinSetAsOne,
         isLowMemLOCO = isLowMemLOCO
       ))
@@ -1606,9 +1639,9 @@ fitNULLGLMM <- function(plinkFile = "",
       if (is.null(modglmm$LOCO)) {
         modglmm$LOCO <- FALSE
       }
-      setgenoFromInput(
+      ensureGenoLoaded(
         genoIn, dataMerge_sort$IndexGeno, indicatorGenoSamplesWithPheno, memoryChunk,
-        isDiagofKinSetAsOne
+        isDiagofKinSetAsOne, ingestGates
       )
       setisUseSparseSigmaforNullModelFitting(useSparseGRMtoFitNULL)
       if (useSparseGRMtoFitNULL) {
@@ -1652,7 +1685,17 @@ fitNULLGLMM <- function(plinkFile = "",
     } else {
       cat("Skip estimating variance ratios\n")
     }
-    closeGenoFile_plink()
+    if (releaseGenoAtEnd) {
+      releaseGeno()
+    }
+    # The paths fitNULLGLMM ACTUALLY wrote, which the multi-phenotype driver
+    # needs for the manifest: modelOut is reassigned under --isLowMemLOCO, and
+    # outputPrefix is mutated in place by --FemaleOnly/--MaleOnly.
+    return(invisible(list(
+      phenoCol = phenoCol, modelOut = modelOut,
+      varRatioFile = if (skipVarianceRatioEstimation) NULL else varRatioFile,
+      nSamples = nrow(dataMerge_sort)
+    )))
   } else {
     stop("traitType must be binary or quantitative")
   }
