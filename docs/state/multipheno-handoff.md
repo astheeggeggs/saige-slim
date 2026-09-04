@@ -106,3 +106,43 @@ Gate: **PASSED.**
 * `harness/tsan.sh plant`: races 271/279 (binary), 118/523 (binary_sparse),
   411/546 (quant) and bytes-vs-serial DIFFERS everywhere -- so the clean run
   above is gating something.
+
+### M2 -- the manifest, the R plumbing, the CLI and the tests
+
+What: `--GMMATmodel_varianceRatio_multiTraits_File` (3 columns, no header) on
+`SPAGMMATtest` and on `extdata/step2_SPAtests.R`. New `R/MultiModel.R`:
+`readModelManifest`, `resolveModelSpecs` (mutual exclusivity + the suffix rule
+-- a ONE-ROW manifest writes the unsuffixed file, so golden P1 is a negative
+control for the whole feature), `groupModelsBySampleSet` (`identical()` on the
+sampleID vector), `addGenoReaderForGroup`, `restartChunkForModels`,
+`prepareNullModel` (the per-model half of what `SPAGMMATtest` did inline) and
+`pushNullModelsToCPP`. `SAIGE.Marker` takes vectors of output files and index
+files and still makes exactly ONE `mainMarkerInCPP` call per chunk.
+`R/Geno.R`'s `setGenoInput` now returns the RESOLVED file paths so a second
+group's reader is built from the same inputs.
+
+Three refusals for P > 1, all raised BEFORE any C++ call: `--groupFile`,
+`--is_rewrite_XnonPAR_forMales`, `--subSampleFile`.
+
+Gate: **PASSED.**
+* goldens: 58/58 byte-identical, "all comparisons PASS".
+* standard tier, both compare modes: `[ FAIL 6 | PASS 1953 ]` -- and all six
+  failures are the three `test-unit-step1-reingest.R` cases, which are
+  **Phase 2's** test running against a binary built before Phase 2's C++ fix.
+  That is drill **D1** observed for free: without the `setGenoObjFromSource`
+  reset, the re-ingest probe does not even complete. Every other test passes,
+  including the ten new multi-model ones.
+* Two models over one sample set, run by hand at 100 markers: `_binary`
+  byte-identical to golden P1 and `_quant` to golden P32, from ONE genotype
+  read.
+
+Known-not-done, deliberately: `man/*.Rd` was NOT regenerated. It is already
+stale on this branch (`SPAGMMATtest.Rd` still documents `bgenFile`, stripped
+long ago), so regenerating would produce a large unrelated diff; the roxygen
+`@param` block IS written, so a future regeneration picks it up.
+
+Verification detail worth keeping: the multi-model conditional test first
+"failed" against golden P12 because it used `--condition=rs30,rs79`. P12 is
+`--condition=rs13,rs79`. Not a bug -- but the shape of that mistake (a golden
+compared against a run it does not describe) is exactly what the byte gate is
+for, so it is recorded rather than quietly fixed.

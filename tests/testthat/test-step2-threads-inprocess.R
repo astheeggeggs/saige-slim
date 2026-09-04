@@ -121,7 +121,9 @@ test_that("runMarkerScan validates nThreads rather than trusting it", {
   # that assertion has been replaced rather than kept passing vacuously.
   expect_error(
     SAIGE:::runMarkerScan(
-      traitType = "binary", genoType = "plink", idstoIncludeFile = "",
+      # M2 dropped traitType: with a manifest each model carries its own, and
+      # the C++ marker loop reads it from the model.
+      genoType = "plink", idstoIncludeFile = "",
       rangestoIncludeFile = "", genoIndex = c("0", "1"), CHROM = c("1", "1"),
       OutputFile = tempfile(), nMarkersEachChunk = 10000,
       isMoreOutput = FALSE, isImputation = FALSE, isFirth = FALSE,

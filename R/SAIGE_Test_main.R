@@ -106,6 +106,7 @@ parse_weights_beta <- function(weights.beta) {
 #' @param is_rewrite_XnonPAR_forMales logical. Whether to rewrite gentoypes or dosages of variants in the NON-PAR regions on chromosome X for males (multiply by 2). By default, FALSE. Note, only use is_rewrite_XnonPAR_forMales=TRUE when the specified VCF or Bgen file only has variants on chromosome X. When is_rewrite_XnonPAR_forMales=TRUE, the program does not check the chromosome value by assuming all variants are on chromosome X (Not activated)
 #' @param sampleFile_male character. Path to the file containing one column for IDs of MALE samples in the bgen or vcf file with NO header. Order does not matter
 #' @param nThreads integer. Number of threads for the single-variant marker scan. The C++ marker loop is threaded in place, so there is one process, one copy of the null model and one output file; the result is byte-identical to a one-thread run, which is the gate in tests/testthat/test-step2-threads-inprocess.R. Restarting an interrupted run works exactly as it does serially. Group tests always run on one thread, and a genotype reader that cannot be cloned (PLINK when the .bed could not be memory mapped) falls back to one thread with a warning. PGEN threads too, since S8. By default, 1
+#' @param GMMATmodel_varianceRatio_multiTraits_File character. Path to a manifest of null models to test in ONE marker scan, sharing the genotype read. Three whitespace-separated columns, no header: a name, the step-1 .rda, and that model's variance ratio file. Mutually exclusive with GMMATmodelFile/varianceRatioFile. Output goes to <SAIGEOutputFile>_<name> per model, each with its own .index -- except for a single-row manifest, which writes the unsuffixed <SAIGEOutputFile> and is byte- and name-identical to the equivalent GMMATmodelFile run. Models whose step-1 sample IDs are identical share one genotype reader and one decode per marker; models with different sample sets each get their own. Single-variant tests only: a groupFile with more than one model is an error. By default, ""
 #' @return SAIGEOutputFile
 #' @export
 SPAGMMATtest <- function(bedFile = "",
@@ -165,7 +166,8 @@ SPAGMMATtest <- function(bedFile = "",
                          subSampleFile = "",
                          is_noadjCov = FALSE,
                          is_output_weight_column = FALSE,
-                         nThreads = 1) {
+                         nThreads = 1,
+                         GMMATmodel_varianceRatio_multiTraits_File = "") {
   cat("is_noadjCov ", is_noadjCov, "\n")
   cat("is_fastTest ", is_fastTest, "\n")
 
@@ -174,6 +176,38 @@ SPAGMMATtest <- function(bedFile = "",
   # cat("r.corr is ", r.corr, "\n")
   if (!(impute_method %in% c("best_guess", "mean", "minor"))) {
     stop("impute_method should be 'best_guess', 'mean' or 'minor'.")
+  }
+
+  # Which null models is this run testing? One (the legacy --GMMATmodelFile
+  # path) or a manifest of them. Resolved and validated HERE, before any state
+  # has been pushed into C++, so a rejected run leaves nothing behind.
+  modelSpecs <- resolveModelSpecs(
+    GMMATmodelFile, varianceRatioFile,
+    GMMATmodel_varianceRatio_multiTraits_File
+  )
+  nModels <- length(modelSpecs)
+  if (nModels > 1) {
+    # Three deliberate refusals, each because the feature keeps per-RUN state
+    # that is model-order-dependent (see docs/state/multimodel-step2.md):
+    if (groupFile != "") {
+      stop(
+        "A model manifest with ", nModels, " models is supported for ",
+        "single-variant tests only; --groupFile names a region test. Run the ",
+        "region tests one model at a time.\n"
+      )
+    }
+    if (is_rewrite_XnonPAR_forMales) {
+      stop(
+        "is_rewrite_XnonPAR_forMales keeps ONE set of male sample indices in ",
+        "model order, so it cannot be combined with a model manifest.\n"
+      )
+    }
+    if (subSampleFile != "") {
+      stop(
+        "subSampleFile applies one subsample to one model, so it cannot be ",
+        "combined with a model manifest.\n"
+      )
+    }
   }
 
   nThreads <- as.integer(nThreads)
@@ -217,10 +251,13 @@ SPAGMMATtest <- function(bedFile = "",
   ## check and create the output file
   # Check_OutputFile_Create(SAIGEOutputFile)
   OutputFile <- SAIGEOutputFile
-  OutputFileIndex <- NULL
-  if (is.null(OutputFileIndex)) {
-    OutputFileIndex <- paste0(OutputFile, ".index")
-  }
+  # One output file per model, and one .index each. The suffix is "" for a
+  # single model (and for a one-row manifest), so this is the same single path
+  # it always was in every existing configuration. The region path below keeps
+  # using the scalar OutputFile.
+  OutputFiles <- paste0(SAIGEOutputFile, vapply(modelSpecs, function(x) x$suffix, character(1)))
+  OutputFileIndexes <- paste0(OutputFiles, ".index")
+  OutputFileIndex <- OutputFileIndexes[1]
 
   ## canonicalize weights.beta into the Kb x 2 matrix of beta(a, b) pairs
   ## (design D10). Row 1 keeps the legacy roles below; extra rows become
@@ -240,6 +277,13 @@ SPAGMMATtest <- function(bedFile = "",
     OutputFile,
     max_MAC_use_ER
   )
+
+  # setAssocTest_GlobalVarsInCPP installed exactly one output prefix (the run
+  # prefix). Only a genuine multi-model run needs more, and only it calls this,
+  # so a single-model run's C++ call sequence is unchanged.
+  if (nModels > 1) {
+    setSingleOutputPrefixesInCPP(OutputFiles)
+  }
 
   # time_2 = proc.time()
 
@@ -295,15 +339,44 @@ SPAGMMATtest <- function(bedFile = "",
 
   # time_3 = proc.time()
 
-  if (subSampleFile == "") {
-    obj.model <- ReadModel(GMMATmodelFile, chrom, LOCO, is_Firth_beta) # readInGLMM.R
-  } else {
-    obj.model <- ReadModel_subsample(GMMATmodelFile, chrom, LOCO, is_Firth_beta, subSampleFile) # readInGLMM.R
+  # Every model's null-model preparation, in manifest order. For nModels == 1
+  # this is the same sequence of calls the inline block made, in the same order
+  # -- only the male-X block below has moved after it, and that block reads
+  # nothing the preparation writes (its two setters are C++ globals the marker
+  # loop reads, and its minMAF/minInfo assignments are dead locals).
+  prepared <- lapply(seq_len(nModels), function(k) {
+    prepareNullModel(
+      modelSpecs[[k]], k, chrom, LOCO, is_Firth_beta, subSampleFile,
+      sparseGRMFile, sparseGRMSampleIDFile, relatednessCutoff,
+      cateVarRatioMinMACVecExclude, cateVarRatioMaxMACVecInclude,
+      isGroupTest, is_fastTest, pval_cutoff_for_fastTest,
+      is_noadjCov, max_MAC_use_ER, nThreads
+    )
+  })
+  obj.model <- prepared[[1]]$obj.model
+  # The region path and the group-test setup still read these as scalars, and
+  # they only ever run with one model.
+  isSparseGRM <- prepared[[1]]$isSparseGRM
+  is_fastTest <- prepared[[1]]$is_fastTest
+
+  # Which models can share a genotype reader? Identical sampleID vectors mean
+  # one reader, one decode and one QC pass per marker for all of them.
+  grouping <- groupModelsBySampleSet(lapply(prepared, function(p) p$obj.model$sampleID))
+  groupOf <- grouping$groupOf
+  nGroups <- length(grouping$representatives)
+  cat(
+    "Single-variant tests will run", nModels, "null model(s) in",
+    nGroups, "sample-set group(s)\n"
+  )
+
+  if (obj.model$traitType != "binary") {
+    max_MAC_use_ER <- 0
   }
 
-
-  # time_4 = proc.time()
-
+  if (!LOCO) {
+    # 	LOCO = FALSE
+    print("LOCO = FASLE and leave-one-chromosome-out is not applied")
+  }
 
   if (is_rewrite_XnonPAR_forMales) {
     cat("is_rewrite_XnonPAR_forMales is TRUE, so genotypes/dosages in the non-PAR regions of X chromosome for males will be multiplied by 2\n")
@@ -359,109 +432,6 @@ SPAGMMATtest <- function(bedFile = "",
   # time_5 = proc.time()
 
 
-  if (obj.model$traitType == "binary") {
-    if (max_MAC_use_ER > 0) {
-      cat("P-values of genetic variants with MAC <= ", max_MAC_use_ER, " will be calculated via effecient resampling.\n")
-      if (max_MAC_use_ER > 4) {
-        cat("WARNING: Efficient resampling may not work well for MAC > 4!")
-      }
-    }
-  } else {
-    max_MAC_use_ER <- 0
-  }
-
-  if (!LOCO) {
-    # 	LOCO = FALSE
-    print("LOCO = FASLE and leave-one-chromosome-out is not applied")
-  }
-
-  sparseSigmaRList <- list()
-  isSparseGRM <- TRUE
-  if (sparseGRMFile != "") {
-    # sparseSigmaRList = setSparseSigma(sparseSigmaFile)
-    sparseSigmaRList <- setSparseSigma_new(sparseGRMFile, sparseGRMSampleIDFile, relatednessCutoff, obj.model$sampleID, obj.model$theta, obj.model$mu2, obj.model$traitType)
-    isSparseGRM <- TRUE
-  } else {
-    # if(!is.null(obj.model$useSparseGRMforVarRatio)){
-    # 	if(obj.model$useSparseGRMforVarRatio == TRUE){
-    # 		stop("sparse GRM is not specified but it was used in Step 1.\n")
-    # 	}
-    # }
-    sparseSigmaRList <- list(nSubj = 0, locations = matrix(0, nrow = 2, ncol = 2), values = rep(0, 2))
-    isSparseGRM <- FALSE
-  }
-
-  cat("isSparseGRM is ", isSparseGRM, "\n")
-  ratioVecList <- Get_Variance_Ratio(varianceRatioFile, cateVarRatioMinMACVecExclude, cateVarRatioMaxMACVecInclude, isGroupTest, isSparseGRM) # readInGLMM.R
-
-  # LEDGER #10 fix: single-variant analysis dereferences the null_noXadj
-  # variance ratios (the no-covariate-adjustment fast pass); a file without
-  # such rows used to crash in C++ mid-analysis (Mat index out of bounds).
-  if (!isGroupTest & length(ratioVecList$ratioVec_null_noXadj) == 0) {
-    stop(
-      "varianceRatioFile ", varianceRatioFile, " contains no 'null_noXadj' rows, ",
-      "which single-variant tests require. This file was produced by an older ",
-      "SAIGE version or configuration; please re-run Step 1.\n"
-    )
-  }
-
-  # A gap in the categorical variance-ratio bins means some MAC falls in no
-  # category. This guard was written against LEDGER #32, where such a marker
-  # silently reused the PREVIOUS marker's ratio and so made a parallel run
-  # differ from a serial one; S3 FIXED that -- selectVarianceRatio throws now --
-  # so the divergence is gone and both arms stop at the same marker. It is kept
-  # only because it fires before any marker is read and names the offending
-  # flags, where the C++ throw names a MAC. See R/MarkerScan.R for why it stays
-  # gated on a parallel scan rather than firing always.
-  if (nThreads > 1 & length(ratioVecList$ratioVec_null) > 1 &
-    varianceRatioBinsHaveGap(cateVarRatioMinMACVecExclude, cateVarRatioMaxMACVecInclude)) {
-    stop(
-      "cateVarRatioMinMACVecExclude/cateVarRatioMaxMACVecInclude leave a gap in MAC ",
-      "coverage, so some markers fall in no variance-ratio category at all. ",
-      "Such a marker has no ratio to use and the test will stop when it is ",
-      "reached, whatever --nThreads is. Give contiguous MAC categories.\n"
-    )
-  }
-
-
-  # time_6 = proc.time()
-
-
-  if (is_fastTest) {
-    if (!file.exists(varianceRatioFile)) {
-      is_fastTest <- FALSE
-      cat("No variance ratio file is specified, so is_fastTest is not working.\n")
-    }
-    if (pval_cutoff_for_fastTest == 0) {
-      is_fastTest <- FALSE
-      cat("pval_cutoff_for_fastTest == 0, so is_fastTest is not working.\n")
-    }
-  }
-
-  if (!isSparseGRM & !is_noadjCov) {
-    is_fastTest <- FALSE
-    cat("isSparseGRM is FALSE and is_noadjCov is FALSE,, so is_fastTest is not working.\n")
-  }
-
-
-  if (is_fastTest) {
-    if (isSparseGRM) {
-      cat("is_fastTest is TRUE.\n")
-      if (ratioVecList$ratioVec_null[1] == -1) {
-        stop("Variance ratios estimated without GRM are not found, so the fast tests can't be performed.\n Please set is_fastTest=FALSE or re-run the variance ratio estimation in Step 1 with --skipModelFitting=TRUE using the most recent version of the program.\n")
-      } else {
-        cat("The fast tests will be performed (when p-values >= ", pval_cutoff_for_fastTest, ").\n")
-      }
-    }
-
-    # else{
-    #     is_fastTest = FALSE
-    #  cat("No sparse GRM is specified, so is_fastTest is not working.\n")
-    # }
-  }
-
-  nsample <- length(obj.model$y)
-  cateVarRatioMaxMACVecInclude <- c(cateVarRatioMaxMACVecInclude, nsample)
 
   # time_6 = proc.time()
 
@@ -478,18 +448,33 @@ SPAGMMATtest <- function(bedFile = "",
     rangestoIncludeFile = rangestoIncludeFile,
     chrom = chrom,
     AlleleOrder = AlleleOrder,
-    sampleInModel = obj.model$sampleID
+    sampleInModel = grouping$representatives[[1]]
   )
+
+  # Group 1's reader came from setGenoInput; the rest are appended here, in
+  # group order, so g_readers[g] in C++ is group g. A single-model run has one
+  # group and never enters this loop.
+  if (nGroups > 1) {
+    for (g in 2:nGroups) {
+      addGenoReaderForGroup(objGeno, grouping$representatives[[g]])
+    }
+  }
   # time_7 = proc.time()
 
 
   genoType <- objGeno$genoType
   if (condition != "") {
     isCondition <- TRUE
-    if (is_fastTest) {
-      is_fastTest <- FALSE
+    # Every model, not just the first: the flag is baked into each SAIGEClass at
+    # push time, so disabling it on one and not the others would give the same
+    # marker two different test paths in one scan.
+    if (any(vapply(prepared, function(p) p$is_fastTest, logical(1)))) {
       cat("is_fastTest is not working for conditional analysis.\n")
     }
+    for (k in seq_along(prepared)) {
+      prepared[[k]]$is_fastTest <- FALSE
+    }
+    is_fastTest <- FALSE
   } else {
     isCondition <- FALSE
   }
@@ -498,43 +483,12 @@ SPAGMMATtest <- function(bedFile = "",
   if (isCondition) {
     cat("Conducting conditional analysis. Please specify the conditioning markers in the order as they are store in the genotype/dosage file.\n")
   }
-  # set up the SAIGE object based on the null model results
-  setSAIGEobjInCPP(
-    t_XVX = obj.model$obj.noK$XVX,
-    t_XXVX_inv = obj.model$obj.noK$XXVX_inv,
-    t_XV = obj.model$obj.noK$XV,
-    t_XVX_inv_XV = obj.model$obj.noK$XVX_inv_XV,
-    t_Sigma_iXXSigma_iX = obj.model$Sigma_iXXSigma_iX,
-    t_X = obj.model$X,
-    t_S_a = obj.model$obj.noK$S_a,
-    t_res = obj.model$residuals,
-    t_mu2 = obj.model$mu2,
-    t_mu = obj.model$mu,
-    t_varRatio_sparse = as.vector(ratioVecList$ratioVec_sparse),
-    t_varRatio_null = as.vector(ratioVecList$ratioVec_null),
-    t_varRatio_null_noXadj = as.vector(ratioVecList$ratioVec_null_noXadj),
-    t_cateVarRatioMinMACVecExclude = cateVarRatioMinMACVecExclude,
-    t_cateVarRatioMaxMACVecInclude = cateVarRatioMaxMACVecInclude,
-    t_SPA_Cutoff = SPAcutoff,
-    t_tauvec = obj.model$theta,
-    t_traitType = obj.model$traitType,
-    t_y = obj.model$y,
-    t_impute_method = impute_method,
-    t_flagSparseGRM = isSparseGRM,
-    t_isFastTest = is_fastTest,
-    t_isnoadjCov = is_noadjCov,
-    t_pval_cutoff_for_fastTest = pval_cutoff_for_fastTest,
-    t_locationMat = as.matrix(sparseSigmaRList$locations),
-    t_valueVec = sparseSigmaRList$values,
-    t_dimNum = sparseSigmaRList$nSubj,
-    t_isCondition = isCondition,
-    t_condition_genoIndex = condition_genoIndex,
-    t_is_Firth_beta = is_Firth_beta,
-    t_pCutoffforFirth = pCutoffforFirth,
-    t_offset = obj.model$offset,
-    t_resout = as.integer(obj.model$obj_cc$res.out)
+  # set up the SAIGE objects based on the null model results, one per model
+  pushNullModelsToCPP(
+    prepared, groupOf, SPAcutoff, impute_method, is_noadjCov,
+    pval_cutoff_for_fastTest, isCondition, condition_genoIndex,
+    is_Firth_beta, pCutoffforFirth, cateVarRatioMinMACVecExclude
   )
-  rm(sparseSigmaRList)
   gc()
 
   # time_8 = proc.time()
@@ -558,7 +512,15 @@ SPAGMMATtest <- function(bedFile = "",
     }
 
     condition_genoIndex_a <- as.character(format(condition_genoIndex$cond_genoIndex, scientific = FALSE))
-    assign_conditionMarkers_factors(genoType, condition_genoIndex_a, n, condition_weights, 0L)
+    # Per model: the conditioning markers are read through THAT model's
+    # sample-set group and the factors are written onto THAT model. For one
+    # model this is the single call it always was, with index 0.
+    for (k in seq_len(nModels)) {
+      assign_conditionMarkers_factors(
+        genoType, condition_genoIndex_a,
+        length(prepared[[k]]$obj.model$y), condition_weights, as.integer(k - 1L)
+      )
+    }
     if (obj.model$traitType == "binary" & isGroupTest) {
       outG2cond <- RegionSetUpConditional_binary_InCPP(condition_weights)
 
@@ -575,9 +537,12 @@ SPAGMMATtest <- function(bedFile = "",
     condition_weights <- c(0)
   }
 
+  # Model 1's, for the region path and the group-test setup below; the marker
+  # path takes each model's trait type from the model itself in C++.
   traitType <- obj.model$traitType
   mu <- obj.model$mu
   rm(obj.model)
+  rm(prepared)
   gc()
   # print(gc(v=T))
   # if(file.exists(SAIGEOutputFile)) {print("ok 0 file exist")}
@@ -600,14 +565,13 @@ SPAGMMATtest <- function(bedFile = "",
     }
 
     runMarkerScan(
-      traitType,
       genoType,
       idstoIncludeFile,
       rangestoIncludeFile,
       objGeno$markerInfo$genoIndex,
       objGeno$markerInfo$CHROM,
-      OutputFile,
-      OutputFileIndex,
+      OutputFiles,
+      OutputFileIndexes,
       markers_per_chunk,
       is_output_moreDetails,
       is_imputed_data,

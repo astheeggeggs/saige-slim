@@ -262,7 +262,17 @@ setGenoInput <- function(bedFile = "",
   #   markerInfo[,POS:=NULL]
   # }
 
-  genoList <- list(markerInfo = markerInfo, genoType = dosageFileType, anyInclude = anyInclude)
+  # The RESOLVED paths, so a second sample-set group's reader can be built from
+  # exactly the same inputs without re-deriving the bim/fam (or pvar/psam)
+  # defaults. Nothing existing reads this field.
+  genoList <- list(
+    markerInfo = markerInfo, genoType = dosageFileType, anyInclude = anyInclude,
+    files = list(
+      bedFile = bedFile, bimFile = bimFile, famFile = famFile,
+      pgenFile = pgenFile, pvarFile = pvarFile, psamFile = psamFile,
+      AlleleOrder = AlleleOrder
+    )
+  )
   genoList
 }
 

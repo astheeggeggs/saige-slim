@@ -1,5 +1,13 @@
-SAIGE.Marker <- function(traitType,
-                         genoType,
+# The single-variant marker scan's chunk loop.
+#
+# M1/M2: this drives P >= 1 null models over ONE genotype read. Everything that
+# was a scalar path -- the output file, its .index, the restart check, the C++
+# stream -- is now one per MODEL, and everything that was a per-chunk C++ call
+# is still exactly one per chunk, because the models are tested inside
+# mainMarkerInCPP rather than by calling it P times. For P == 1 this is the
+# same call sequence in the same order as before, which is what makes the
+# marker goldens the gate for the change.
+SAIGE.Marker <- function(genoType, # nolint: object_name_linter.
                          idstoIncludeFile,
                          rangestoIncludeFile,
                          genoIndex,
@@ -24,11 +32,22 @@ SAIGE.Marker <- function(traitType,
   if (is.null(OutputFileIndex)) {
     OutputFileIndex <- paste0(OutputFile, ".index")
   }
+  if (length(OutputFileIndex) != length(OutputFile)) {
+    stop("Each output file needs exactly one progress index file\n")
+  }
+  nModels <- length(OutputFile)
 
-  # genoType = objGeno$genoType
-
-  outCheck <- checkOutputFile(OutputFile, OutputFileIndex, "Marker", format(nMarkersEachChunk, scientific = FALSE), isOverWriteOutput) # this function is in 'Util.R'
-  outIndex <- outCheck$indexChunk
+  # checkOutputFile is in 'Util.R'
+  outChecks <- lapply(seq_len(nModels), function(k) {
+    checkOutputFile(
+      OutputFile[k], OutputFileIndex[k], "Marker",
+      format(nMarkersEachChunk, scientific = FALSE), isOverWriteOutput
+    )
+  })
+  # There is ONE marker loop, so there is one chunk to resume at. If the models
+  # disagree the files were not all written by the same interrupted run, and
+  # picking one is how rows get silently duplicated (LEDGER #47's shape).
+  outIndex <- restartChunkForModels(outChecks, OutputFileIndex)
   isappend <- FALSE
   if (outIndex != 1) {
     cat("Restart the analysis from chunk:\t", outIndex, "\n")
@@ -44,33 +63,34 @@ SAIGE.Marker <- function(traitType,
     # recomputation and, with this truncation in place, produces exactly the
     # file a complete run would. It was found by the #47 regression test, which
     # failed with a whole duplicated chunk when the target was outIndex.
-    truncateOutputToIndex(OutputFile,
-                          outCheck$chunkBytes[as.character(outIndex - 1)])
+    #
+    # Per file, by ITS OWN recorded byte count: two models write different
+    # numbers of bytes per chunk, so one shared count would be wrong for both.
+    for (k in seq_len(nModels)) {
+      truncateOutputToIndex(
+        OutputFile[k],
+        outChecks[[k]]$chunkBytes[as.character(outIndex - 1)]
+      )
+    }
   }
 
-  # M1: the header is derived from the null model in C++ (trait type and the
-  # conditional columns are per model), so the file is named by MODEL INDEX
-  # rather than by trait type. 0L is the only model a single-model run has.
-  isOpenOutFile_single <- openOutfile_single(0L, isImputation, isappend, isMoreOutput)
-
-  if (!isOpenOutFile_single) {
-    stop("Output file ", OutputFile, " can't be opened\n")
+  for (k in seq_len(nModels)) {
+    # The header comes from null model k in C++ (trait type and the conditional
+    # columns are per model), so this is addressed by model index.
+    isOpenOutFile_single <- openOutfile_single(
+      as.integer(k - 1L), isImputation, isappend, isMoreOutput
+    )
+    if (!isOpenOutFile_single) {
+      stop("Output file ", OutputFile[k], " can't be opened\n")
+    }
   }
 
   ## set up an object for genotype
   if (genoType %in% c("plink", "pgen")) {
-    # markerInfo = objGeno$markerInfo
     if (LOCO) {
       genoIndex <- genoIndex[which(CHROM == chrom)]
       CHROM <- CHROM[which(CHROM == chrom)]
-      # markerInfo = markerInfo[which(markerInfo$CHROM == chrom),]
     }
-    # CHROM = markerInfo$CHROM
-    # genoIndex = markerInfo$genoIndex
-    ## only for one chrom
-    # all markers were split into multiple chunks,
-    # print(markerInfo[1:10,])
-    # print(genoIndex[1:10])
 
     genoIndexList <- splitMarker(genoIndex, nMarkersEachChunk, CHROM)
     nChunks <- length(genoIndexList)
@@ -84,96 +104,58 @@ SAIGE.Marker <- function(traitType,
     cat("Number of markers in each chunk:\t", nMarkersEachChunk, "\n")
     cat("Number of chunks for all markers:\t", nChunks, "\n")
     if (outIndex > nChunks) {
-      cat("The analysis has been finished! Please delete ", OutputFileIndex, " if the analysis needs to be run again or set --is_overwrite_output=TRUE\n")
+      cat(
+        "The analysis has been finished! Please delete ", OutputFileIndex[1],
+        " if the analysis needs to be run again or set --is_overwrite_output=TRUE\n"
+      )
       is_marker_test <- FALSE
     } else {
       is_marker_test <- TRUE
       i <- outIndex
     }
   }
-  # chrom = "InitialChunk"
-  # set_flagSparseGRM_cur_SAIGE_org()
   while (is_marker_test) {
-    # for(i in outIndex:nChunks)
-    # {
-    # time_left = system.time({
-
-
     if (genoType %in% c("plink", "pgen")) {
       tempList <- genoIndexList[[i]]
       genoIndex <- as.character(format(tempList$genoIndex, scientific = FALSE))
-      tempChrom <- tempList$chrom
     }
 
-
-    # print("tempList")
-    # print(tempList)
-    # print(tempList$genoIndex)
-    # })
-    # print("time_left")
-    # print(time_left)
-    # print("genoIndex here")
-    # print(genoIndex)
-    # set up objects that do not change for different variants
-    # if(tempChrom != chrom){
-    #  setMarker("SAIGE", objNull, control, chrom, Group, ifOutGroup)
-    #  chrom = tempChrom
-    # }
-    # ptm <- proc.time()
-    # print(ptm)
-    # print("gc()")
-    # print(gc())
-    cat(paste0("(", Sys.time(), ") ---- Analyzing Chunk ", i, "/", nChunks, ": chrom ", chrom, " ---- \n"))
-    # main function to calculate summary statistics for markers in one chunk
-
-    # resMarker = as.data.frame(mainMarkerInCPP(genoType, traitType, genoIndex_prev, genoIndex, isMoreOutput, isImputation))
-    # resMarker = resMarker[which(!is.na(resMarker$BETA)), ]
+    cat(paste0(
+      "(", Sys.time(), ") ---- Analyzing Chunk ", i, "/", nChunks,
+      ": chrom ", chrom, " ---- \n"
+    ))
+    # main function to calculate summary statistics for markers in one chunk.
+    # ONE call however many models: the models are the inner loop, inside the
+    # marker loop, which is the whole point.
 
     mainMarkerInCPP(genoType, genoIndex, isMoreOutput, isImputation, isFirth,
                     as.integer(nThreadsMarker))
 
-    # timeoutput=system.time({writeOutputFile(Output = list(resMarker),
-    # if(nrow(resMarker) > 0){
-
     isEnd_Output <- (i == nChunks)
 
-    # }
-
-    # LEDGER #47. Flush the C++ stream FIRST, then record how big the output is,
-    # then write the index line: that order is what makes the recorded count
-    # mean "everything on disk belongs to chunks <= i". Without the flush the
-    # stream would still be holding this chunk's tail, and the count would be an
-    # underestimate that a restart would use to discard good rows.
+    # LEDGER 47. Flush the C++ streams FIRST, then record how big each output
+    # is, then write the index lines: that order is what makes the recorded
+    # count mean "everything on disk belongs to chunks <= i". Without the flush
+    # a stream would still be holding this chunk's tail, and the count would be
+    # an underestimate that a restart would use to discard good rows.
     flushOutfile_singleInCPP()
-    outputBytes <- if (file.exists(OutputFile)) file.size(OutputFile) else NA_real_
+    for (k in seq_len(nModels)) {
+      outputBytes <- if (file.exists(OutputFile[k])) file.size(OutputFile[k]) else NA_real_
 
-    writeOutputFileIndex(
-      OutputFileIndex = OutputFileIndex,
-      AnalysisType = "Marker",
-      nEachChunk = format(nMarkersEachChunk, scientific = FALSE),
-      indexChunk = i,
-      Start = (i == 1),
-      End = isEnd_Output,
-      outputBytes = outputBytes
-    )
+      writeOutputFileIndex(
+        OutputFileIndex = OutputFileIndex[k],
+        AnalysisType = "Marker",
+        nEachChunk = format(nMarkersEachChunk, scientific = FALSE),
+        indexChunk = i,
+        Start = (i == 1),
+        End = isEnd_Output,
+        outputBytes = outputBytes
+      )
+    }
 
-    # writeOutputFile(Output = list(resMarker),
-    #                  OutputFile = list(OutputFile),
-    #                  OutputFileIndex = OutputFileIndex,
-    #                  AnalysisType = "Marker",
-    #                  nEachChunk = format(nMarkersEachChunk, scientific=F),
-    #                  indexChunk = i,
-    #                  Start = (i==1),
-    #                  End = isEnd_Output)
-
-    # End = (i==nChunks))})
-    # print("timeoutput")
-    # print(timeoutput)
     ptm <- proc.time()
     print(ptm)
     # (per-chunk gc() removed in Phase 4: it was the top frame of the marker-loop profile)
-    # rm(resMarker)
-
 
     i <- i + 1
     if (i > nChunks) {
@@ -181,17 +163,21 @@ SAIGE.Marker <- function(traitType,
     }
   } # while(is_marker_test){
 
-  # Flush and close g_out.single explicitly. This is byte-neutral -- it only
-  # moves the flush that static destruction would have done at exit -- and is
-  # kept now that the forked path is gone, because it makes the stream's
-  # lifetime explicit. It was MANDATORY under fork (experiment E1: mcexit ends a
-  # child with _exit(), no static destructor runs, and the child silently lost
-  # everything past the 192 KiB buffer boundary while still returning success).
-  # That same buffer is the mechanism behind LEDGER #47. See R/MarkerScan.R.
+  # Flush and close every g_out.singles stream explicitly. This is byte-neutral
+  # -- it only moves the flush that static destruction would have done at exit
+  # -- and is kept now that the forked path is gone, because it makes the
+  # streams' lifetime explicit. It was MANDATORY under fork (experiment E1:
+  # mcexit ends a child with _exit(), no static destructor runs, and the child
+  # silently lost everything past the 192 KiB buffer boundary while still
+  # returning success). That same buffer is the mechanism behind LEDGER #47.
+  # See R/MarkerScan.R.
   closeOutfile_single()
 
   # information to users
-  output <- paste0("Analysis done! The results have been saved to '", OutputFile, "'.")
+  output <- paste0(
+    "Analysis done! The results have been saved to '",
+    paste(OutputFile, collapse = "', '"), "'."
+  )
 
   output
 }

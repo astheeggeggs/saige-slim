@@ -77,8 +77,7 @@ varianceRatioBinsHaveGap <- function(minMACExclude, maxMACInclude) {
 # Run the single-variant marker scan. One process either way: nThreads > 1 makes
 # the C++ marker loop run that many in-process threads, and at 1 it runs a
 # literally serial loop that touches no threading machinery at all.
-runMarkerScan <- function(traitType,
-                          genoType,
+runMarkerScan <- function(genoType,
                           idstoIncludeFile,
                           rangestoIncludeFile,
                           genoIndex,
@@ -126,7 +125,7 @@ runMarkerScan <- function(traitType,
   }
 
   SAIGE.Marker(
-    traitType, genoType, idstoIncludeFile, rangestoIncludeFile,
+    genoType, idstoIncludeFile, rangestoIncludeFile,
     genoIndex, CHROM, OutputFile, OutputFileIndex,
     nMarkersEachChunk, isMoreOutput, isImputation, isFirth,
     LOCO, chrom, isCondition, isOverWriteOutput, isAnyInclude,

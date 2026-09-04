@@ -173,6 +173,21 @@ option_list <- list(
     )
   ),
   make_option(
+    "--GMMATmodel_varianceRatio_multiTraits_File",
+    type = "character",
+    default = "",
+    help = paste0(
+      "Path to a manifest of null models to test in ONE marker scan, sharing ",
+      "the genotype read. Three whitespace-separated columns, no header: a ",
+      "name, the step-1 .rda, and that model's variance ratio file. Mutually ",
+      "exclusive with --GMMATmodelFile/--varianceRatioFile. Results go to ",
+      "<SAIGEOutputFile>_<name> per model, each with its own .index; a ",
+      "single-row manifest writes the unsuffixed <SAIGEOutputFile>. Models ",
+      "whose step-1 sample IDs are identical share one genotype reader and one ",
+      "decode per marker. Single-variant tests only"
+    )
+  ),
+  make_option(
     "--SAIGEOutputFile",
     type = "character",
     default = "",
@@ -653,6 +668,7 @@ fixed_params <- list(
   LOCO = opt$LOCO,
   GMMATmodelFile = opt$GMMATmodelFile,
   varianceRatioFile = opt$varianceRatioFile,
+  GMMATmodel_varianceRatio_multiTraits_File = opt$GMMATmodel_varianceRatio_multiTraits_File,
   markers_per_chunk = opt$markers_per_chunk,
   groups_per_chunk = opt$groups_per_chunk,
   markers_per_chunk_in_groupTest = opt$markers_per_chunk_in_groupTest,
