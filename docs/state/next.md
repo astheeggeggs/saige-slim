@@ -156,9 +156,45 @@ refutation recorded above**: the sweep's SKAT-O finding was dismissed as living
 in the `SKAT` dependency and therefore unlocatable. The integral does live
 there, but the consequence is here and is now pinned.
 
+**Item 2 is DONE**: `tests/testthat/test-step2-cond-highld.R` builds a
+conditioning fixture AT RUN TIME (seeded, no golden -- the genotypes come from
+R's RNG, so a golden would pin the RNG rather than the code) over the same
+10,000 fam rows as `genotype_100markers`, so the committed
+`binary_sparseGRM_a` model is reused unchanged. It carries an LD ladder against
+one conditioning marker (r^2 = 1.000 / 0.90 / 0.49 / 0.000, MEASURED on the
+1,000 analysed samples inside the test) plus a marker built to correlate 0.35
+with the null model's own residual, so a large conditional statistic survives
+conditioning.
+
+Both target regimes are reached, and both controls behave: at r^2 ~ 0
+conditioning is a no-op (var/var_c = 1.001), at r^2 ~ 0.5 the variance really
+drops (1.89, against 1/(1-r^2) = 2.0).
+- **#84**: the associated marker gives `stat_c = 91` against a gate of 4 with
+  `var/var_c = 1.51`, and `p.value_c` (2.8e-18) differs from `p.value.NA_c`
+  (1.3e-21) by three decades -- the conditional SPA block executes at real
+  conditioning for the first time on this branch. DRILL: on golden P12, **zero**
+  of 70 rows satisfy both `stat_c > 4` and `var/var_c > 1.3` (its three
+  high-ratio rows are the conditioning markers themselves, `stat_c` ~ 0.003).
+- **#66**: under `--is_noadjCov=FALSE` a perfectly collinear marker gives
+  `var_c = 2.5e-14` -- cancelled, and yet ~294 orders ABOVE the `DBL_MIN` guard,
+  which is exactly the geometry LEDGER #44 had to fix with a relative test.
+  `BETA_c` and `SE_c` are then ratios of two cancelled quantities (SE_c = 6.3e6)
+  and `p.value_c` is forced to 1. DRILL: adding a relative cancellation guard to
+  `src/SAIGE_test.cpp` and rebuilding into a scratch library fails 6 assertions;
+  source reverted and reinstalled.
+
+**Open question this raised, NOT a ledger row because the mechanism does not
+reconcile.** At the CLI default (`--is_noadjCov=TRUE`) the same perfectly
+collinear marker reports `var_c = 0.259444` out of `var = 28.0131` -- 0.93%
+residual variance for a marker IDENTICAL to the conditioning marker, and
+`p.value_c = 0.96` rather than 1. The obvious explanation is that the tested
+marker is not covariate-adjusted while `assign_conditionMarkers_factors`
+hardcodes `ctx.noadjCov = false`, so the subtraction mixes two projections; but
+that predicts a residual of `var * R^2(G ~ covariates)` = 0.117, against 0.259
+reported -- **off by 2.2x, so the mechanism is NOT established.** Worth settling
+before anyone writes it up.
+
 Remaining Phase 2 items, in the plan's order:
-2. a **constructed high-LD conditioning pair** -- the only way to exercise the
-   conditional SPA at non-negligible conditioning at all; reaches #66 and #84.
 3. (dropped -- the empty ultra-rare collapse was refuted, see above)
 4. a **non-autosomal step-1 fixture**, made by rewriting one `.bim` column (the
    `.bed` is indexed by row, so no regeneration) -- reaches #75.
