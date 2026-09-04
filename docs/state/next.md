@@ -97,19 +97,14 @@ which is why LEDGER #50 survived and why its regression test has to call
 Exposing it is additive and would let that path become a golden. Note the
 CLI-option rules in `CLAUDE.md` (lint-clean, `option_list` metadata verified).
 
-**The psam sample map keys on FID, not IID.** [Grounded, LEDGER #52; found
-2026-09-03] `PgenShared::readPsamFile` (`src/PGEN.cpp:158`) does
-`sampleInPgen[line_elements[0]] = idx;  // IID`, but column 0 of a
-`#FID IID SEX` psam is FID. Step 2 would fail outright on any psam with
-FID != IID, and silently undercount samples on one with repeated FIDs. Both
-committed PGEN fixtures have FID == IID, which is the only reason all 13 PGEN
-step-2 goldens pass. The steps-0/1 path added on 2026-09-03 does not go through
-this map (it uses the identity-mapping `PgenShared` overload and counts psam
-rows directly), so the bug is contained but still live for step 2. The fix is a
-header-driven `IID` column lookup plus the `\r` stripping the pvar parser has
-and this one lacks. **The gate is the missing fixture, not the fix**: every
-existing golden will stay byte-identical, so a psam with FID != IID has to be
-added or the fix proves nothing.
+**Resolved: the psam sample map keyed on FID, not IID.** [LEDGER #52, FIXED
+2026-09-04] `readPsamFile` now finds the `IID` column by name from the header,
+strips `\r`, and refuses a duplicate IID instead of overwriting it. All 13 PGEN
+goldens stayed byte-identical, exactly as predicted -- which is why the gate had
+to be a fixture: `tests/testthat/test-step2-pgen-psam.R` derives psams at run
+time (one FID shared by all 10,000 samples; `#IID SEX` with no FID at all; a
+duplicated IID) and drives golden P13 through each. 6 failures at unpatched
+HEAD, 0 after.
 
 **Dosage pgens are hard-called for the GRM, and that is a real limitation, not
 just a warning.** [Grounded, 2026-09-03] `genoClass`'s store is 2 bits per

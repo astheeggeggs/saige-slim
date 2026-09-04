@@ -53,9 +53,14 @@ believe an older doc that says it is parked on a branch.
 (unverified suspicion), #18-#26, #35-#39 from the type-polymorphic-builtin audit
 (`sample`, `1:n`, `rbind` recycling) -- all latent behind a guard -- #45, #46,
 #49 (a restart re-runs the last completed chunk: wasted work, right answer),
-and #52/#54 from the PGEN-for-steps-0/1 work (#52 the psam FID/IID column-0
-keying, #54 the unvalidated `.bed` header -- both recorded, neither reached by
-the new path).
+and #54 from the PGEN-for-steps-0/1 work (the unvalidated `.bed` header --
+recorded, not reached by the new path). **#52 is FIXED**: `readPsamFile` keyed
+the sample map on psam column 0 and called it IID, which is FID in a
+`#FID IID SEX` psam, so step 2 died on any psam with FID != IID and silently
+undercounted on repeated FIDs; it now finds `IID` by name from the header and
+refuses a duplicate. All 13 PGEN goldens stayed byte-identical -- every
+committed PGEN fixture has FID == IID, so no golden could ever have gated it,
+and `tests/testthat/test-step2-pgen-psam.R` derives the psams it needs instead.
 **#53 and #56 are FIXED, and they were the same bug.** `unsigned char geno2;`
 in `Get_OneSNP_Geno_atBeginning` was read uninitialised and `setGenotype` is an
 OR, so the first packed byte of EVERY marker -- samples 1-4 -- was built on an
@@ -657,8 +662,8 @@ long-running `main*InCPP()` loop that writes output files from C++
   rather than a coincidence to be re-checked, and why the pack/unpack round
   trip is worth its cost. `setgeno_pgen` is the Rcpp entry beside `setgeno`.
   Steps 0/1 use the `PgenShared(pgen, psam, pvar)` overload (all file samples,
-  identity mapping) and never touch `posSampleInPgen` — deliberately, see
-  LEDGER #52.
+  identity mapping) and never touch `posSampleInPgen` — deliberately, which is
+  what kept them clear of LEDGER #52 (fixed 2026-09-04) entirely.
   Algorithms exist as near-duplicate families — base, `_LOCO`, `_q`
   (quantitative) — after the `_Surv` variants were removed with survival
   support in Phase 3a.

@@ -191,17 +191,57 @@ void PgenShared::readPvarFile()
     }
 }
 
+// LEDGER #52: this used to key on line_elements[0] with the comment "// IID".
+// Column 0 of a "#FID IID SEX" psam is FID, so step 2 failed outright on any
+// psam with FID != IID, and two samples sharing an FID collapsed into one map
+// entry -- which also undercounts N0, since that is sampleInPgen.size(). Both
+// committed PGEN fixtures have FID == IID, which is the only reason the goldens
+// ever passed. The IID column is now found BY NAME from the header, mirroring
+// R/Geno.R::readGenoSampleIDs, which has always done it correctly.
 void PgenShared::readPsamFile()
 {
-    std::ifstream fam(psamFile);
+    std::ifstream psam(psamFile);
+    if(!psam.is_open()) {
+        Rcpp::stop("Cannot open psam file (" + psamFile + ").");
+    }
 
     std::string line;
+    int col_iid = -1;
     size_t idx = 0;
-    while(getline(fam, line)) {
-        if(line[0] == '#') continue;
+    while(getline(psam, line)) {
+        boost::replace_all(line, "\r", "");
+        if(line.empty()) continue;
+
         std::vector<std::string> line_elements;
         boost::split(line_elements, line, boost::is_any_of("\t "));
-        sampleInPgen[line_elements[0]] = idx;  // IID
+
+        if(line[0] == '#') {
+            // '##' lines are metadata; the single-'#' line is the column header.
+            if(col_iid == -1 && line.rfind("##", 0) != 0) {
+                line_elements[0] = line_elements[0].substr(1);
+                for(size_t i = 0; i < line_elements.size(); i++) {
+                    if(line_elements[i] == "IID") col_iid = i;
+                }
+                if(col_iid == -1) {
+                    Rcpp::stop("psam file does not have an IID column (" + psamFile + ").");
+                }
+            }
+            continue;
+        }
+
+        if(col_iid == -1) {
+            Rcpp::stop("psam file has no '#'-prefixed column header (" + psamFile + ").");
+        }
+        if(static_cast<size_t>(col_iid) >= line_elements.size()) {
+            Rcpp::stop("psam file has a row with fewer columns than the header (" +
+                       psamFile + ").");
+        }
+        const std::string& iid = line_elements[col_iid];
+        // Silently overwriting here is what turned a duplicate into an undercount.
+        if(sampleInPgen.count(iid)) {
+            Rcpp::stop("psam file has a duplicate IID (" + iid + ") in " + psamFile + ".");
+        }
+        sampleInPgen[iid] = idx;
         idx++;
     }
 }
