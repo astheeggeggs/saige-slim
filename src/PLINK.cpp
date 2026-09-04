@@ -51,6 +51,38 @@ void PlinkClass::setPlinkobj(std::string t_bimFile,
   readBimFile();
   readFamFile();
   
+  // LEDGER #58: the .bed must be at least as long as the .bim and .fam imply.
+  // Checked ONCE, here, rather than per read: it fails up front and can name
+  // both files and the shortfall. Without it the default mmap path indexes
+  // `m_map + posSeek` with no bound (m_mapLen is set only to be handed back to
+  // munmap), so a .bim claiming more markers than the .bed holds read as zeros
+  // in the last page's slack -- decoding to genotype 2 for every sample, hence
+  // AF 1.0, MAC 0, and a silent drop by the --minMAC gate -- and SIGSEGV'd
+  // beyond it. Measured on genotype_100markers: one phantom .bim row gave
+  // output BYTE-IDENTICAL to the intact run at exit 0; three gave exit 139.
+  // The pread fallback caught it per read, so the loud path was the one nothing
+  // executes and the silent one was the default.
+  //
+  // A LONGER .bed than expected is allowed: every marker the .bim names is
+  // then present and correctly placed, and trailing bytes are simply unread.
+  {
+    struct stat stCheck;
+    const uint64_t needed = (uint64_t)3 +
+      (uint64_t)m_numBytesofEachMarker0 * (uint64_t)m_M0;
+    if(stat(t_bedFile.c_str(), &stCheck) != 0){
+      Rcpp::stop("Cannot stat the .bed file (" + t_bedFile + ").");
+    }
+    if((uint64_t)stCheck.st_size < needed){
+      Rcpp::stop("The .bed file (" + t_bedFile + ") is too short for the .bim and .fam "
+                 "that accompany it: " + std::to_string(m_M0) + " markers x " +
+                 std::to_string(m_N0) + " samples need " + std::to_string(needed) +
+                 " bytes, but the file is " + std::to_string((uint64_t)stCheck.st_size) +
+                 ". The three files do not describe the same dataset -- check that the "
+                 ".bed is complete and that the .bim was not regenerated from a "
+                 "different marker set.");
+    }
+  }
+
   m_fin = fopen(t_bedFile.c_str(), "rb");
   char magicNumber_2[65536]; 
   fread(magicNumber_2, 2, 1, m_fin);

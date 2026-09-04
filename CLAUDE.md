@@ -54,12 +54,19 @@ believe an older doc that says it is parked on a branch.
 (`sample`, `1:n`, `rbind` recycling) -- all latent behind a guard -- #45, #46,
 #49 (a restart re-runs the last completed chunk: wasted work, right answer),
 and #54 from the PGEN-for-steps-0/1 work (the unvalidated `.bed` header --
-recorded, not reached by the new path), and **#58/#59 from the 2026-09-04
-silent-failure audit, both reproduced by hand on the bundled fixtures**: #58 the
-mmap `.bed` read that has no bounds check where the pread fallback does (a `.bim`
-claiming one marker more than the `.bed` holds gives BYTE-IDENTICAL output at
-exit 0; three more and R dies with SIGSEGV), and #59 a region results file
-written with data rows and no header when the first counted chunk emits none. **#52 is FIXED**: `readPsamFile` keyed
+recorded, not reached by the new path), .
+**#58 and #59 are FIXED** (found by the 2026-09-04 silent-failure audit,
+reproduced by hand, then fixed): #58 the mmap `.bed` read had no bounds check
+where the pread fallback did -- a `.bim` claiming one marker more than the `.bed`
+holds gave BYTE-IDENTICAL output at exit 0, three more killed R with SIGSEGV --
+now one size check in `setPlinkobj` naming both files and the shortfall; #59 a
+region results file could be written with data rows and NO header when the first
+counted chunk emitted none, now an `iswriteRegion` flag, which is what the
+sibling `markerList` writer twenty lines below always had. Both are gated by
+`tests/testthat/test-step2-file-integrity.R`, whose inputs are DERIVED at run
+time -- a phantom `.bim` row, and a group file whose first region is
+monomorphic -- because no committed fixture is internally inconsistent and none
+has a barren first chunk. **#52 is FIXED**: `readPsamFile` keyed
 the sample map on psam column 0 and called it IID, which is FID in a
 `#FID IID SEX` psam, so step 2 died on any psam with FID != IID and silently
 undercounted on repeated FIDs; it now finds `IID` by name from the header and

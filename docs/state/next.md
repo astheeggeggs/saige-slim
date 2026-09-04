@@ -86,11 +86,12 @@ A 26-agent fan-out hunted the bug class this branch keeps finding by accident
 REFUTED. Five survived; five were killed, including a plausible `raw_variant_ct`
 claim and a `dosage_zerod` one.
 
-**Two were then reproduced by hand and are now LEDGER #58 and #59** -- the
+**Two were reproduced by hand and are now FIXED (LEDGER #58, #59)** -- the
 unbounded mmap `.bed` read (a `.bim` claiming one more marker than the `.bed`
-holds gives byte-identical output at exit 0, while the pread path stops), and a
+holds gave byte-identical output at exit 0, while the pread path stopped), and a
 region results file written with data rows and no header. Both have positive and
-negative controls in the ledger entries.
+negative controls in the ledger entries, and both are gated by
+`tests/testthat/test-step2-file-integrity.R`.
 
 **Three more survived verification but are NOT independently reproduced.**
 Recorded here rather than in the ledger, because the standard for a ledger entry

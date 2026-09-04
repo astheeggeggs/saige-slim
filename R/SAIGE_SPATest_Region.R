@@ -963,6 +963,21 @@ SAIGE.Region <- function(mu,
   Output_MarkerList.all <- NULL
   cth_chunk_to_output <- 1
   iswriteMarkerList <- FALSE
+  # LEDGER #59: whether the region file's HEADER is already on disk, which is not
+  # the same question as "is this the first chunk". `cth_chunk_to_output` advances
+  # for every chunk that reaches the output block, including one that produced no
+  # rows, so a barren first chunk used to consume the only chance to emit column
+  # names and the next chunk appended its rows as the first bytes in the file --
+  # data rows, no header, exit 0. Reproduced on the bundled fixture with a first
+  # region of monomorphic markers and --groups_per_chunk=1. This is exactly the
+  # flag `iswriteMarkerList` above already keeps for the sibling writer below;
+  # the region writer simply never had one.
+  #
+  # Seeded from `isappend`, the restart signal taken from checkOutputFile at :727
+  # BEFORE `Start` is reassigned from the chunk counter at :1315: resuming an
+  # existing file means its header was written by the earlier process, so this
+  # must not emit a second one mid-file.
+  iswriteRegion <- isappend
   i <- indexChunk + 1
   nEachChunk <- numberRegionsInChunk
 
@@ -1344,6 +1359,8 @@ SAIGE.Region <- function(mu,
         # cat("n1 is ", n1, "\n")
         # cat("n2 is ", n2, "\n")
         if (regionTestType != "BURDEN") {
+          # The truncate-vs-append decision is untouched; only the HEADER moves,
+          # to the first chunk that actually HAS rows (LEDGER #59).
           if (Start) {
             if (!is.null(pval.Region.all)) {
               fwrite(
@@ -1356,6 +1373,7 @@ SAIGE.Region <- function(mu,
                 row.names = FALSE,
                 na = "NA"
               )
+              iswriteRegion <- TRUE
             }
           } else {
             if (!is.null(pval.Region.all)) {
@@ -1365,10 +1383,14 @@ SAIGE.Region <- function(mu,
                 quote = FALSE,
                 sep = "\t",
                 append = TRUE,
-                col.names = FALSE,
+                # FALSE on every run that already emitted its header, which is
+                # every run that reaches here today; TRUE only when the earlier
+                # chunks produced no rows at all.
+                col.names = !iswriteRegion,
                 row.names = FALSE,
                 na = "NA"
               )
+              iswriteRegion <- TRUE
             }
             # write.table(Output, OutputFile, quote = F, sep = "\t", append = T, col.names = F, row.names = F)
           }
