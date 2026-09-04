@@ -91,6 +91,22 @@ it survived. When a fix leaves every golden byte-identical, that is a statement
 about coverage, not a pass.
 Step 1 now takes `--seed` (default 1).
 
+**Step 1 fits several phenotypes in ONE process** (Phase 2, commits N1-N4;
+`docs/state/step1-multipheno.md`). `--phenoCol=y1,y2` (with `--traitType` and
+`--invNormalize` per phenotype, or one value for all) writes
+`<outputPrefix>_<pheno>.*` plus a manifest `<outputPrefix>.multiTraits.txt` that
+step 2 consumes directly; ONE phenotype keeps the unsuffixed names and writes no
+manifest. Phenotypes are grouped by complete-case sample set and each group does
+ONE `setgeno`; the fits stay sequential. **Each phenotype's `.rda` and
+`.varianceRatio.txt` are byte-identical to a standalone run's**, which rests on
+`set.seed(seed)` before every fit -- the only RNG-dependent ingest input is the
+`randi(1000)` variance-ratio pool. This needed **LEDGER #55** fixed first: a
+second `setgeno` in one process used to APPEND to a dozen accumulators rather
+than replace them (doubled GRM marker count, 2M QC flags, variance-ratio
+sampling into the first ingest's freed arrays). Saving is the ingest only: ~1.4x
+at P=5 on the N=1,000 sparse fixture, approaching (P-1) ingests at biobank M,
+and ~1% on the DENSE-GRM path where the fit is 300-450 GRM passes.
+
 **Step 2 can test several null models in ONE genotype pass** (Phase 1, commits
 M1-M4; `docs/state/multimodel-step2.md`).
 `--GMMATmodel_varianceRatio_multiTraits_File` takes a 3-column manifest (name,
