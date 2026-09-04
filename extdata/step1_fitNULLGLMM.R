@@ -97,22 +97,33 @@ option_list <- list(
     default = "",
     help = paste0(
       "Required. Column name for phenotype to be tested in the phenotype file, ",
-      "e.g CAD"
+      "e.g CAD. A COMMA-SEPARATED LIST fits several phenotypes in one process, ",
+      "sharing the genotype ingest: outputs are named ",
+      "<outputPrefix>_<phenoCol> and a manifest <outputPrefix>.multiTraits.txt ",
+      "is written for step 2's ",
+      "--GMMATmodel_varianceRatio_multiTraits_File. Each phenotype's outputs ",
+      "are identical to a standalone run's"
     )
   ),
   make_option(
     "--traitType",
     type = "character",
     default = "binary",
-    help = "Required. binary or quantitative [default=binary]"
+    help = paste0(
+      "Required. binary or quantitative [default=binary]. With a ",
+      "comma-separated --phenoCol, give one value per phenotype or one for ",
+      "all of them"
+    )
   ),
   make_option(
     "--invNormalize",
-    type = "logical",
-    default = FALSE,
+    type = "character",
+    default = "FALSE",
     help = paste0(
       "Optional. Only for quantitative. Whether to perform the inverse ",
-      "normalization for the phenotype [default='FALSE']"
+      "normalization for the phenotype [default='FALSE']. With a ",
+      "comma-separated --phenoCol, give one value per phenotype or one for ",
+      "all of them"
     )
   ),
   make_option(
@@ -507,11 +518,21 @@ cateVarRatioMaxMACVecInclude <- convertToNumeric(
 
 set.seed(opt$seed)
 
+# --phenoCol, --traitType and --invNormalize may each be a comma-separated list.
+# One phenotype is the legacy path exactly: fitNULLGLMM_multi calls fitNULLGLMM
+# once with the unsuffixed output names and writes no manifest.
+phenoCols <- trimws(unlist(strsplit(opt$phenoCol, ",", fixed = TRUE)))
+traitTypes <- trimws(unlist(strsplit(opt$traitType, ",", fixed = TRUE)))
+invNormalizes <- as.logical(trimws(unlist(strsplit(opt$invNormalize, ",", fixed = TRUE))))
+if (anyNA(invNormalizes)) {
+  stop("--invNormalize must be TRUE or FALSE (comma-separated for several phenotypes)\n")
+}
+
 # The upstream script dispatched on packageVersion("SAIGE") across four
 # near-duplicate fitNULLGLMM calls; the in-tree package version is fixed
 # (DESCRIPTION: 1.5.2), so only the >= 1.4.5 call is live and the dead
 # branches were removed. The argument list below is that branch's, verbatim.
-fitNULLGLMM(
+fitNULLGLMM_multi(
   plinkFile = opt$plinkFile,
   seed = opt$seed,
   bedFile = opt$bedFile,
@@ -526,14 +547,14 @@ fitNULLGLMM(
   sparseGRMFile = opt$sparseGRMFile,
   sparseGRMSampleIDFile = opt$sparseGRMSampleIDFile,
   phenoFile = opt$phenoFile,
-  phenoCol = opt$phenoCol,
+  phenoCol = phenoCols,
   sampleIDColinphenoFile = opt$sampleIDColinphenoFile,
-  traitType = opt$traitType,
+  traitType = traitTypes,
   outputPrefix = opt$outputPrefix,
   isCovariateOffset = opt$isCovariateOffset,
   nThreads = opt$nThreads,
   useSparseGRMforVarRatio = opt$useSparseGRMforVarRatio,
-  invNormalize = opt$invNormalize,
+  invNormalize = invNormalizes,
   covarColList = covars,
   qCovarCol = qcovars,
   tol = opt$tol,

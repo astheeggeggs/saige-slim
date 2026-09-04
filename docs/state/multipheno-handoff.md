@@ -202,3 +202,46 @@ Gate: **PASSED.** goldens 58/58 byte-identical; **all 20 step-1 files
 byte-identical by `cmp`**; exactly ONE `setgeno mark2` per golden step-1 run
 (the ingest is not being repeated); standard tier
 `[ FAIL 0 | WARN 0 | SKIP 4 | PASS 1971 ]` in BOTH compare modes; lint clean.
+
+### N3 -- the driver, the CLI, and the step-1 multi-phenotype tests
+
+What: `fitNULLGLMM_multi(phenoCol, traitType, invNormalize, ...)` in
+`R/SAIGE_fitGLMM_multi.R`. One phenotype IS `fitNULLGLMM` -- legacy names, no
+manifest. Several are grouped by complete-case sample set (`step1PhenoGroups`,
+ORDERING ONLY: correctness rests on `ensureGenoLoaded`'s key), fitted
+sequentially with `set.seed(seed)` before every fit, named
+`<outputPrefix>_<phenoCol>`, and finished with a manifest
+`<outputPrefix>.multiTraits.txt` that step 2 consumes directly.
+`extdata/step1_fitNULLGLMM.R` accepts comma-separated `--phenoCol`,
+`--traitType` and `--invNormalize`.
+
+**The option_list metadata diff is EXACTLY what the plan predicted**, verified
+by `identical()` over the parsed old and new `option_list` objects, all 57
+options: three help strings, plus `--invNormalize` moving from
+`type="logical", default=FALSE` to `type="character", default="FALSE"`. Nothing
+else, including every `action`, which is `store` for all 57 -- so
+`--invNormalize=TRUE` was always the required form and no existing invocation
+changes meaning.
+
+Gate: **PASSED.**
+* goldens 58/58 byte-identical; all 20 step-1 files byte-identical by `cmp`.
+* standard tier: `[ FAIL 0 | SKIP 4 | PASS 2017 ]` byte,
+  `[ FAIL 0 | SKIP 4 | PASS 2192 ]` numeric.
+* Drill **D2** (drop the per-fit `set.seed`): the TWO-GROUP test's
+  `varianceRatio.txt` stops matching its standalone run
+  (`[ FAIL 1 | PASS 14 ]`) while every single-group test stays green
+  (`[ FAIL 0 | PASS 31 ]`) -- which is the point of the drill: the single-group
+  tests could not have caught it.
+* Drill **D4** (force `ensureGenoLoaded` to always re-ingest): every byte
+  comparison still passes and only the two "exactly one `setgeno mark2`"
+  assertions fail (`[ FAIL 2 | PASS 29 ]`), separating "shared ingest" from
+  "correct bytes" -- the LEDGER #30 shape.
+
+One comparator finding: `expect_output_matches_golden` is a step-2 TEXT-table
+comparator, so in numeric mode it fed a binary `.rda` to `read.table`
+("embedded nulls", "invalid UTF-8"). New `tests/testthat/helper-step1multi.R`
+compares step-1 outputs properly -- byte-identical in byte mode; in numeric
+mode, `.rda` field by field at 1e-5 relative over the ten sample-indexed numeric
+fields (names and sampleID exactly), and `.varianceRatio.txt` with the ratio
+numeric at 1e-5 and the type/category LABELS exact, because a run that put the
+right number in the wrong bin is not an equivalent run.
