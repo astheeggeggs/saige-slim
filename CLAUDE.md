@@ -91,6 +91,25 @@ it survived. When a fix leaves every golden byte-identical, that is a statement
 about coverage, not a pass.
 Step 1 now takes `--seed` (default 1).
 
+**Step 2 can test several null models in ONE genotype pass** (Phase 1, commits
+M1-M4; `docs/state/multimodel-step2.md`).
+`--GMMATmodel_varianceRatio_multiTraits_File` takes a 3-column manifest (name,
+`.rda`, variance-ratio file; no header) and writes `<SAIGEOutputFile>_<name>`
+per model, each with its own `.index`. **Each model's file is BYTE-IDENTICAL to
+that model's own single-model run** -- models whose step-1 `sampleID` vectors are
+`identical()` share one reader, one decode and one QC pass per marker, and
+models with different sample sets get their own reader; nothing is unioned and
+nothing is gathered, so the identity is structural rather than a coincidence.
+A **one-row manifest writes the unsuffixed file**, which makes golden P1 the
+negative control for the whole feature. Marker path only: `--groupFile`,
+`--is_rewrite_XnonPAR_forMales` and `--subSampleFile` STOP for more than one
+model, each before any C++ call. In C++, `g_models`/`g_readers`/`g_modelGroup`
+own the state and `g_model`/`g_reader` are non-owning aliases of element 0, so
+the region path is untouched; `testOneMarker` is split into `prepareOneMarker`
+(model-independent) and `testOneModel`. Measured at N=50,000: the shared prepare
+is 67% (binary) to 91% (quantitative) of a marker's cost, so P=5 predicts
+2.2x / 3.8x -- see `harness/bench/NOTES.md`.
+
 ## Rules of this branch
 
 - **Bug-for-bug preservation.** Known bugs are recorded in `LEDGER.md`, NOT

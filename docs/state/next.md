@@ -44,6 +44,10 @@ then it is not. That is the next measurement.
 ## Items
 
 **Format step-2 output rows on the workers.**
+[Now MORE valuable than when this was written: a multi-model scan formats P rows
+per marker on the serial writer, so the Amdahl serial fraction under
+`--nThreads` rises with the number of models -- see
+`docs/state/multimodel-step2.md`.]
 [From the 2026-09-03 assessment; NOT independently measured.] `testOneMarker`
 would build the row into a `std::string` on `Marker::MarkerResult`, leaving
 `writeOutfile_single` (`src/Main.cpp:3072`, called at `:811` after the
