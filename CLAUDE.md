@@ -67,12 +67,12 @@ high-MAC category only). `getAlleleFreqVec()` is computed BEFORE the repack, so
 the frequencies stayed right while the genotypes went wrong -- an internal
 inconsistency, and the cheapest detector; that is what
 `tests/testthat/test-step1-genostore.R` now asserts, alongside the independent
-decode. **The fix moves four committed goldens, which have NOT been
-re-baselined**: both step-0 sparse GRMs and both `binary_denseGRM` step-1 fits,
-so `run_tests.sh standard` has one expected failure
-(`test-step1-pgen.R:132`) in both compare modes until that decision is taken --
-see `docs/state/next.md` and `docs/state/multipheno-handoff.md`. Every step-2
-golden and every sparse-GRM step-1 golden is byte-identical.
+decode. **The fix moved four committed goldens, which WERE re-baselined**
+(both step-0 sparse GRMs and both `binary_denseGRM` step-1 fits), each proved
+byte-reproducible first by two independent `make_goldens.sh` runs plus `cmp`.
+Every step-2 golden and every sparse-GRM step-1 golden was byte-identical
+throughout -- the sparse fits read a frozen `.mtx` from `extdata/output`, which
+the harness does not regenerate and which still carries the bug.
 Recently FIXED: #47 (S9, restart duplicated rows), #17 (S10, the uninitialised
 `w0` on the custom-weighted conditional path), #42 (S11, three `log.p=TRUE`
 arms halved a log, i.e. took a square root, inflating SE ~sqrt(2) wherever the

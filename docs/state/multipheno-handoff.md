@@ -433,3 +433,9 @@ store against an independent `readBin` decode of the `.bed` AND against its own
 have caught this alone, because the allele counts are computed BEFORE the repack
 -- the frequencies stayed right while the packed bytes went wrong.
 Drill-verified: 2 failures at unpatched HEAD, 0 after.
+
+**Re-baselined (2026-09-04, same session).** The four goldens above were
+regenerated and committed after being proved byte-reproducible: two independent
+`make_goldens.sh` runs into separate candidate trees, `cmp` identical on all six
+files. `compare_goldens.sh harness/goldens <candidate>` then reports "all
+comparisons PASS", and the standard tier is green in both compare modes.

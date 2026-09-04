@@ -11,23 +11,15 @@ measurement taken for it. Two came out of the S12a / LEDGER #50 work in the same
 session. Nothing here has been profiled at realistic N, which is itself the
 point: see "the gate" below.
 
-## Open decision: four goldens are known-wrong and not re-baselined
+## Resolved: the four known-wrong goldens WERE re-baselined (2026-09-04)
 
-[Grounded; LEDGER #53/#56 fix, 2026-09-04] Fixing the uninitialised `geno2` in
-the step-1 re-packer corrects samples 1-4 of every marker in the loaded genotype
-store. That moves exactly four committed goldens -- the two step-0 sparse GRMs
-and the two `binary_denseGRM` step-1 fits -- and they were NOT refreshed, per the
-standing rule that a changed golden is a finding. So `harness/run_tests.sh
-standard` currently has ONE expected failure, `test-step1-pgen.R:132`, in both
-compare modes.
-
-The evidence that the committed versions are wrong rather than merely different
-is in `docs/state/multipheno-handoff.md`: in the committed step-0 matrix samples
-1-4 hold the four smallest GRM diagonals of all 1,000, and the patched store
-matches an independent `readBin` decode of the `.bed` on all 50,000 genotypes
-checked where the unpatched one misses 23. Re-baselining is a one-command job
-(`make_goldens.sh` into a candidate tree, then copy those four across); it is
-left open because it is the user's call, not because it is hard.
+[Grounded; LEDGER #53/#56] Both step-0 sparse GRMs and both `binary_denseGRM`
+step-1 fits were regenerated after the `geno2` fix and committed. Each was
+proved byte-reproducible first, as CLAUDE.md requires: two independent
+`make_goldens.sh` runs into separate candidate trees, `cmp` on all six files.
+`compare_goldens.sh` is back to "all comparisons PASS" and the standard tier is
+green again. Nothing else moved -- every step-2 golden and every sparse-GRM
+step-1 golden was byte-identical throughout.
 
 ## The gate on all of it: profile at realistic N first
 
