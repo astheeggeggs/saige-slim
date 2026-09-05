@@ -152,9 +152,20 @@ test_that("LEDGER #75 FIXED: a mixed pool tests every marker it was asked for", 
   # to it, and the one a real run is most likely to meet.
   r <- run_vr_step1(dir, rep(c(23L, 1L), vr_nmarkers), "mix60")
   expect_identical(r$status, 0L)
+  # DERIVED: exactly vr_nmarkers usable markers exist and the loop cannot stop
+  # before it has tested that many, so it must find all of them. This is the
+  # assertion with teeth -- HEAD tested 24.
   expect_identical(r$tested, vr_nmarkers)
-  expect_identical(r$skipped, vr_nmarkers)
-  expect_identical(r$read, 2L * vr_nmarkers)   # the whole list, once each
+  # NOT asserted exactly: how many entries were READ depends on where the
+  # permutation places the last usable marker, which is a property of one
+  # seeded sample() and not of the cursor. (Measured here at 60, i.e. the whole
+  # list, but the CV never triggers a marker-count increase -- 1.2e-04 against
+  # a 1e-03 cutoff -- so that 60 is incidental, not forced.) The derived
+  # bounds are: at least vr_nmarkers reads to test vr_nmarkers, and at most the
+  # length of the list.
+  expect_gte(r$read, vr_nmarkers)
+  expect_lte(r$read, 2L * vr_nmarkers)
+  expect_identical(r$read, r$tested + r$skipped)
   vr <- utils::read.table(paste0(r$prefix, ".varianceRatio.txt"),
                           header = FALSE, stringsAsFactors = FALSE)
   expect_setequal(vr[[2]], c("null", "null_noXadj"))
