@@ -134,7 +134,7 @@ region_postprocess <- function(outList,
                                is_single_in_groupTest,
                                is_rerun,
                                resultDF_carryover = NULL,
-                               weight_sets = NULL,
+                               weight_sets,
                                # The SKAT-O evaluator, injected so the cell loop
                                # can be driven twice by skato_parallel(): once to
                                # COLLECT every (Score, Phi) it would test, once to
@@ -144,15 +144,14 @@ region_postprocess <- function(outList,
                                # nThreadsSKATO = 1 nothing below changes at all.
                                skat_fun = get_SKAT_pvalue) {
   # ---- weight-set layout (jmr decode) --------------------------------------
-  # The composed weight-set list arrives as `weight_sets` (built in
-  # SAIGE.Region; per-set kind/name/params in the same custom -> beta ->
-  # No_Weights order as C++). weight_sets = NULL keeps the pre-composition
-  # contract: every set is a custom (group-file) column of WEIGHT, and K > 1
-  # is signalled by WEIGHT being the q0 x K matrix built in
-  # SAIGE.getRegionList_new. Either way the legacy shapes -- the c(0)
-  # sentinel of an unweighted group file and the collapsed single-set numeric
-  # vector -- are K = 1, and every expression below then reduces to the
-  # literal single-weight code (same objects, same arithmetic, same bytes);
+  # The composed weight-set list arrives as `weight_sets`, a descriptor from
+  # weightSetDescriptor() (R/WeightSets.R; built in SAIGE.Region, per-set
+  # kind/name/params in the same custom -> beta -> No_Weights order as C++).
+  # K > 1 is signalled by WEIGHT being the q0 x K matrix built in
+  # SAIGE.getRegionList_new. The legacy shapes -- the c(0) sentinel of an
+  # unweighted group file and the collapsed single-set numeric vector -- are
+  # K = 1, and every expression below then reduces to the literal
+  # single-weight code (same objects, same arithmetic, same bytes);
   # weight_sets$force (is_output_weight_column) switches a K = 1 run onto the
   # multi-weight SCHEMA while its single set keeps the K = 1 arithmetic.
   # C++ writes every (anno, max_MAF)-indexed vector weight-fastest with the
@@ -161,32 +160,14 @@ region_postprocess <- function(outList,
   #   jm  = (j - 1)*length(maxMAFlist) + m
   #   jmr = (jm - 1)*K + r
   # which at K = 1 (so r = 1) is jmr == jm, the legacy index.
-  if (is.null(weight_sets)) {
-    nWeightSets <- if (is.matrix(WEIGHT)) ncol(WEIGHT) else 1L
-    ws_kind <- rep("custom", nWeightSets)
-    ws_customCol <- seq_len(nWeightSets)
-    ws_betaA <- rep(NA_real_, nWeightSets)
-    ws_betaB <- rep(NA_real_, nWeightSets)
-    ws_force <- FALSE
-    ws_names <- if (nWeightSets > 1) colnames(WEIGHT) else NULL
-  } else {
-    nWeightSets <- length(weight_sets$kind)
-    ws_kind <- weight_sets$kind
-    ws_customCol <- weight_sets$customCol
-    ws_betaA <- weight_sets$betaA
-    ws_betaB <- weight_sets$betaB
-    ws_force <- isTRUE(weight_sets$force)
-    ws_names <- weight_sets$name
-  }
+  nWeightSets <- length(weight_sets$kind)
+  ws_kind <- weight_sets$kind
+  ws_customCol <- weight_sets$customCol
+  ws_betaA <- weight_sets$betaA
+  ws_betaB <- weight_sets$betaB
+  ws_force <- isTRUE(weight_sets$force)
+  ws_names <- weight_sets$name
   isMultiWeight <- nWeightSets > 1 || ws_force
-  # The beta(a, b) pair the legacy single-set path weights with. It is the
-  # first weights.beta pair, carried on the implicit_beta descriptor; the
-  # weight_sets = NULL contract (no descriptor) keeps the historical c(1, 25).
-  implicitBeta <- if (identical(ws_kind[1], "implicit_beta") && !is.na(ws_betaA[1])) {
-    c(ws_betaA[1], ws_betaB[1])
-  } else {
-    c(1, 25)
-  }
   weightNames <- if (isMultiWeight) {
     if (is.null(ws_names)) paste0("W", seq_len(nWeightSets)) else ws_names
   } else {
@@ -221,12 +202,12 @@ region_postprocess <- function(outList,
       #    collapse is unweighted for beta sets, and C++ scaled only its
       #    genoSumMat contribution by pdf(beta_r, MAF_collapsed), so the
       #    pseudo-marker weights like any marker at its collapsed MAF (the
-      #    literal legacy K = 1 flow).
-      #  implicit_beta: dbeta(MAF, a, b) with the FIRST weights.beta pair,
-      #    the same pair C++ used for genoSumMat and the ultra-rare collapse
-      #    (LEDGER #19 FIXED: this used to be the literal dbeta(MAF, 1, 25)
-      #    whatever --weights.beta said, so a non-default single pair gave a
-      #    C++/R hybrid). Only reachable at K = 1 with is_output_weight_column.
+      #    literal legacy K = 1 flow). The implicit single set of an unweighted
+      #    default run is one of these, holding the FIRST weights.beta pair --
+      #    the pair C++ used for genoSumMat and the ultra-rare collapse
+      #    (LEDGER #19 FIXED: it used to be a kind of its own hardcoded to
+      #    dbeta(MAF, 1, 25) whatever --weights.beta said, a C++/R hybrid);
+      #    reachable here only at K = 1 with is_output_weight_column.
       #  noweight: all ones.
       # outList$numofUR is q_anno*q_maf*K, so each vector is q0 + numofUR
       # long -- one entry per row of the marker-level output, as at K = 1
@@ -239,7 +220,6 @@ region_postprocess <- function(outList,
             c(w, rep(1, outList$numofUR))
           },
           beta = dbeta(outList$MAFVec, ws_betaA[r], ws_betaB[r]),
-          implicit_beta = dbeta(outList$MAFVec, ws_betaA[r], ws_betaB[r]),
           noweight = rep(1, length(outList$MAFVec)),
           stop("region_postprocess: unknown weight-set kind '", ws_kind[r], "'\n")
         )
@@ -311,11 +291,12 @@ region_postprocess <- function(outList,
       # AnnoWeights = AnnoWeights[varTestedIndices]
       AnnoWeights <- AnnoWeights[noNAIndices]
     } else {
-      # LEDGER #19 FIXED. On the legacy single-set unweighted path the R-side
-      # weights come from the first weights.beta pair, as C++'s already did;
-      # before the fix this line was beta(1, 25) whatever the flag said. At the
-      # default pair the output bytes are unchanged.
-      AnnoWeights <- dbeta(MAFVec, implicitBeta[1], implicitBeta[2])
+      # LEDGER #19 FIXED. On the legacy single-set unweighted path the one
+      # set is the implicit beta set, whose pair is the first weights.beta pair
+      # (as C++'s already was; this line was beta(1, 25) whatever the flag
+      # said). At the default pair the output bytes are unchanged.
+      stopifnot(identical(ws_kind, "beta"))
+      AnnoWeights <- dbeta(MAFVec, ws_betaA[1], ws_betaB[1])
     }
 
     if (isMultiWeight) {
@@ -924,9 +905,10 @@ SAIGE.Region <- function(mu,
   #                    UR pseudo-markers included (their collapse is
   #                    unweighted, the beta weight of the collapsed MAF
   #                    applies like any marker's)
-  #   implicit_beta -> dbeta(MAFVec, a, b) with the first weights.beta pair
-  #                    (LEDGER #19 FIXED 2026-09-05; it was the literal
-  #                    dbeta(MAFVec, 1, 25) whatever the flag said)
+  #                    The implicit single set of an unweighted default run
+  #                    is a beta set holding the first weights.beta pair
+  #                    (LEDGER #19 FIXED 2026-09-05; it was a kind of its own,
+  #                    hardcoded to dbeta(MAFVec, 1, 25) whatever the flag said)
   #   noweight      -> all ones
   weight_sets_kind <- if (legacyNoWeight) {
     # legacy all-ones vector: enters C++ as a 1-column custom set
@@ -939,27 +921,13 @@ SAIGE.Region <- function(mu,
     )
   }
   if (length(weight_sets_kind) == 0) {
-    weight_sets_kind <- "implicit_beta"
+    # the implicit single beta set of an unweighted default run: the first
+    # (only) weights.beta pair, labeled "Beta"
+    weight_sets_kind <- "beta"
   }
-  weight_sets <- list(
-    kind = weight_sets_kind,
-    name = region_weight_names,
-    # column index into the WEIGHT matrix/vector, valid where kind == "custom"
-    customCol = cumsum(weight_sets_kind == "custom"),
-    betaA = {
-      a <- rep(NA_real_, length(weight_sets_kind))
-      if (useExplicitBeta) a[weight_sets_kind == "beta"] <- weights_beta_mat[, 1]
-      a[weight_sets_kind == "implicit_beta"] <- weights_beta_mat[1, 1]
-      a
-    },
-    betaB = {
-      b <- rep(NA_real_, length(weight_sets_kind))
-      if (useExplicitBeta) b[weight_sets_kind == "beta"] <- weights_beta_mat[, 2]
-      b[weight_sets_kind == "implicit_beta"] <- weights_beta_mat[1, 2]
-      b
-    },
-    force = is_output_weight_column
-  )
+  weight_sets <- weightSetDescriptor(weight_sets_kind, region_weight_names,
+                                     betaPairs = weights_beta_mat,
+                                     force = is_output_weight_column)
   stopifnot(length(weight_sets_kind) == nWeightSetsUsed)
 
   gf <- file(groupFile, "r")

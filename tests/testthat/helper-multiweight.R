@@ -154,11 +154,12 @@ expect_stats_close <- function(a, b, cols = COND_STATS, tol = 1e-12) {
   }
 }
 
-# ---- the implicit_beta set (LEDGER #19) -------------------------------------
+# ---- the implicit beta set (LEDGER #19) -------------------------------------
 # An UNWEIGHTED group file with --is_output_weight_column=TRUE composes no set
-# at all, so region_postprocess falls to kind "implicit_beta": the literal
-# legacy dbeta(MAFVec, 1, 25). This is the only way to observe that arm, and
-# it is where the R/C++ weight asymmetry becomes visible in the output.
+# at all, so the run's one set is the implicit beta set (kind "beta", named
+# "Beta", holding the first weights.beta pair). This is the only way to
+# observe that set in the output, and it is where the R/C++ weight asymmetry
+# of LEDGER #19 was visible.
 implicit_beta_run <- function(beta) {
   skip_unless_level("standard")
   out <- file.path(tempfile("step2_implbeta_"), "region.txt")

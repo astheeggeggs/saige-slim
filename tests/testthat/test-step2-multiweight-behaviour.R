@@ -47,7 +47,7 @@ test_that("an unweighted file with a forced Weight column labels its single set 
 })
 
 test_that("weights.beta moves the C++ statistics AND the R-side ACAT-V (LEDGER #19 FIXED)", {
-  # region_postprocess used to hardcode dbeta(MAF, 1, 25) for the implicit_beta
+  # region_postprocess used to hardcode dbeta(MAF, 1, 25) for the implicit beta
   # set while C++ honoured g_cfg.weights_beta, so changing --weights.beta
   # shifted every C++-computed column and left Pvalue_ACATV exactly where it
   # was (this test pinned that asymmetry until 2026-09-05). The implicit set now

@@ -36,7 +36,9 @@ degenerate_outList <- function(q = 4L, nIndCol = 2L) {
   )
 }
 
-degenerate_run <- function(traitType = "binary", weight_sets = NULL,
+# the default is the unweighted legacy run: one implicit beta set, beta(1, 25)
+degenerate_run <- function(traitType = "binary",
+                           weight_sets = weightSetDescriptor("beta", "Beta", matrix(c(1, 25), 1)),
                            WEIGHT = c(0), nIndCol = 2L) {
   region_postprocess(
     outList = degenerate_outList(nIndCol = nIndCol),

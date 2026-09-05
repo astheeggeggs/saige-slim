@@ -143,7 +143,8 @@ test_that("K=1 with the forced Weight column reproduces the legacy quantitative 
     o <- make_quant_outList(1L, G1w, VarInv_w0, Tw0, baked = baked)
     o
   }
-  legacy <- run_quant_cond(mk(), WEIGHT = w, weight_sets = NULL)$pval.Region
+  legacy <- run_quant_cond(mk(), WEIGHT = w,
+                           weight_sets = weightSetDescriptor("custom", "W1"))$pval.Region
   ws <- list(kind = "custom", name = "W1", customCol = 1L,
              betaA = NA_real_, betaB = NA_real_, force = TRUE)
   forced <- run_quant_cond(mk(), WEIGHT = w, weight_sets = ws)$pval.Region
