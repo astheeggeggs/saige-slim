@@ -329,6 +329,18 @@ control in its ledger entry:
 Detection power drill-verified in both directions for all three: the new tests
 are red at unpatched HEAD (1 / 5 / 4 failures) and green after.
 
+## Outstanding DECISIONS for the owner (2026-09-05, after the Phase 3 sweep)
+
+Eleven rows stay open and every one is a decision rather than a fix; the
+reasons are listed in `docs/state/handoff-2026-09-05-phase3-sweep.md`. In
+one line each: #6 (PCG tolerance, deferred), #19 (R-vs-C++ weights.beta
+asymmetry), #20 (logistf parameters accepted and ignored), #26 (Firth drift
+to +-750), #51 (fastTest inert for group tests), #65 (absolute AI-REML
+guards), #79 (a cost), #80 (Is.SPA's meaning), #82 (opposite CLI/API
+defaults), #84 (conditional SPA against the marginal CGF), #86 (SKAT-O
+saturation and the Cauchy fallback). Also #18's second half: whether to
+align the CLI default of `--is_single_in_groupTest` with the API's TRUE.
+
 ## Resolved DECISION: SKAT kernel failures are counted and summarised
 
 [LEDGER #57, the open half; decided 2026-09-05] `get_SKAT_pvalue`'s

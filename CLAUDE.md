@@ -35,9 +35,11 @@ the count drifted every time it was written by hand.
 refactor -- `GenoReader`, de-globalised step-2 state, `TestContext`; speedup;
 multi-weight region tests; the AF > 0.5 fixes; PGEN for every step) and so is
 the step-2 threading sequence S0-S12 (`docs/design/step2-threading-verdict.md`).
-**Phase 3 of the ledger-fix work is IN PROGRESS**: one commit per ledger row,
-characterization test inverted in the same commit, golden movement predicted
-before the gate runs.
+**Phase 3 of the ledger-fix work swept the fixable rows on 2026-09-05**
+(`docs/state/handoff-2026-09-05-phase3-sweep.md`): one commit per ledger row,
+characterization test inverted in the same commit, red at unpatched HEAD, golden
+movement predicted before the gate runs. What stays open is a list of decisions
+for the owner, in `docs/state/next.md`.
 
 **Step 1 fits several phenotypes in ONE process** (`--phenoCol=y1,y2`, writes
 `<outputPrefix>_<pheno>.*` plus a `.multiTraits.txt` manifest that step 2
