@@ -81,8 +81,8 @@ assign_conditionMarkers_factors_binary_region <- function(scalefactor_G2_cond) {
     invisible(.Call('_SAIGE_assign_conditionMarkers_factors_binary_region', PACKAGE = 'SAIGE', scalefactor_G2_cond))
 }
 
-fast_logistf_fit <- function(x, y, weight, offset, firth, col_fit, init, maxit, maxstep, maxhs, lconv, gconv, xconv, isfirthconverge) {
-    .Call('_SAIGE_fast_logistf_fit', PACKAGE = 'SAIGE', x, y, weight, offset, firth, col_fit, init, maxit, maxstep, maxhs, lconv, gconv, xconv, isfirthconverge)
+fast_logistf_fit <- function(x, y, weight, offset, firth, init, maxit, maxstep, gconv, xconv, isfirthconverge) {
+    .Call('_SAIGE_fast_logistf_fit', PACKAGE = 'SAIGE', x, y, weight, offset, firth, init, maxit, maxstep, gconv, xconv, isfirthconverge)
 }
 
 closeGenoFile <- function(t_genoType) {

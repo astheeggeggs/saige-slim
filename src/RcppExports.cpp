@@ -354,8 +354,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // fast_logistf_fit
-arma::vec fast_logistf_fit(arma::mat& x, arma::vec& y, arma::vec& weight, arma::vec& offset, bool firth, arma::uvec& col_fit, arma::vec init, int maxit, int maxstep, int maxhs, double lconv, double gconv, double xconv, bool& isfirthconverge);
-RcppExport SEXP _SAIGE_fast_logistf_fit(SEXP xSEXP, SEXP ySEXP, SEXP weightSEXP, SEXP offsetSEXP, SEXP firthSEXP, SEXP col_fitSEXP, SEXP initSEXP, SEXP maxitSEXP, SEXP maxstepSEXP, SEXP maxhsSEXP, SEXP lconvSEXP, SEXP gconvSEXP, SEXP xconvSEXP, SEXP isfirthconvergeSEXP) {
+arma::vec fast_logistf_fit(arma::mat& x, arma::vec& y, arma::vec& weight, arma::vec& offset, bool firth, arma::vec init, int maxit, int maxstep, double gconv, double xconv, bool& isfirthconverge);
+RcppExport SEXP _SAIGE_fast_logistf_fit(SEXP xSEXP, SEXP ySEXP, SEXP weightSEXP, SEXP offsetSEXP, SEXP firthSEXP, SEXP initSEXP, SEXP maxitSEXP, SEXP maxstepSEXP, SEXP gconvSEXP, SEXP xconvSEXP, SEXP isfirthconvergeSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -364,16 +364,13 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< arma::vec& >::type weight(weightSEXP);
     Rcpp::traits::input_parameter< arma::vec& >::type offset(offsetSEXP);
     Rcpp::traits::input_parameter< bool >::type firth(firthSEXP);
-    Rcpp::traits::input_parameter< arma::uvec& >::type col_fit(col_fitSEXP);
     Rcpp::traits::input_parameter< arma::vec >::type init(initSEXP);
     Rcpp::traits::input_parameter< int >::type maxit(maxitSEXP);
     Rcpp::traits::input_parameter< int >::type maxstep(maxstepSEXP);
-    Rcpp::traits::input_parameter< int >::type maxhs(maxhsSEXP);
-    Rcpp::traits::input_parameter< double >::type lconv(lconvSEXP);
     Rcpp::traits::input_parameter< double >::type gconv(gconvSEXP);
     Rcpp::traits::input_parameter< double >::type xconv(xconvSEXP);
     Rcpp::traits::input_parameter< bool& >::type isfirthconverge(isfirthconvergeSEXP);
-    rcpp_result_gen = Rcpp::wrap(fast_logistf_fit(x, y, weight, offset, firth, col_fit, init, maxit, maxstep, maxhs, lconv, gconv, xconv, isfirthconverge));
+    rcpp_result_gen = Rcpp::wrap(fast_logistf_fit(x, y, weight, offset, firth, init, maxit, maxstep, gconv, xconv, isfirthconverge));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -2069,7 +2066,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_mainRegionInCPP", (DL_FUNC) &_SAIGE_mainRegionInCPP, 23},
     {"_SAIGE_assign_conditionMarkers_factors", (DL_FUNC) &_SAIGE_assign_conditionMarkers_factors, 5},
     {"_SAIGE_assign_conditionMarkers_factors_binary_region", (DL_FUNC) &_SAIGE_assign_conditionMarkers_factors_binary_region, 1},
-    {"_SAIGE_fast_logistf_fit", (DL_FUNC) &_SAIGE_fast_logistf_fit, 14},
+    {"_SAIGE_fast_logistf_fit", (DL_FUNC) &_SAIGE_fast_logistf_fit, 11},
     {"_SAIGE_closeGenoFile", (DL_FUNC) &_SAIGE_closeGenoFile, 1},
     {"_SAIGE_openOutfile", (DL_FUNC) &_SAIGE_openOutfile, 4},
     {"_SAIGE_openOutfile_singleinGroup", (DL_FUNC) &_SAIGE_openOutfile_singleinGroup, 4},

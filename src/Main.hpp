@@ -182,19 +182,16 @@ void assign_conditionMarkers_factors_binary_region(
                            arma::vec & scalefactor_G2_cond);
 
 arma::vec fast_logistf_fit(arma::mat & x,
-                arma::vec & y,
-                arma::vec & weight,
-                arma::vec & offset,
-                bool firth,
-                arma::uvec & col_fit,
-        arma::vec init,
-        int maxit,
-        int maxstep,
-        int maxhs,
-        double lconv,
-        double gconv,
-        double xconv,
-        bool & isfirthconverge);
+		arma::vec & y,
+		arma::vec & weight,
+		arma::vec & offset,
+		bool firth,
+    	arma::vec init,
+	int maxit,
+	int maxstep,
+	double gconv,
+	double xconv,
+	bool & isfirthconverge);
 
 Rcpp::List RegionSetUpConditional_binary_InCPP(arma::vec & t_weight_cond);
 

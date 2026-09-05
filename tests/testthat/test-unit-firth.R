@@ -14,11 +14,10 @@
 # is bool& in C++, so its mutation is NOT observable from R -- Rcpp materialises
 # a temporary from the SEXP and discards it. Do not assert on it here.
 flf <- function(x, y, firth, init = c(0, 0), maxit = 50L, maxstep = 15L,
-                maxhs = 15L, lconv = 1e-5, gconv = 1e-5, xconv = 1e-5,
-                col_fit = as.integer(seq_len(ncol(x)) - 1L),
+                gconv = 1e-5, xconv = 1e-5,
                 weight = rep(1, nrow(x)), offset = rep(0, nrow(x))) {
-  as.vector(fast_logistf_fit(x, y, weight, offset, firth, col_fit, init,
-                             maxit, maxstep, maxhs, lconv, gconv, xconv, FALSE))
+  as.vector(fast_logistf_fit(x, y, weight, offset, firth, init,
+                             maxit, maxstep, gconv, xconv, FALSE))
 }
 
 # Deterministic well-separated-but-not-separable design.
@@ -60,28 +59,30 @@ test_that("firth = TRUE stays finite under complete separation", {
   expect_lt(abs(fth[2]), abs(unpen[2]))
 })
 
-test_that("col_fit, maxhs and lconv are accepted but ignored", {
+test_that("LEDGER #20 FIXED: the dead logistf parameters are gone from the signature", {
   # The upstream logistf step-halving (maxhs/lconv) and the col_fit column
-  # subsetting were dropped from this port: the parameters remain in the
-  # signature but never appear in the loop body (src/Main.cpp:2377-2437).
-  # LEDGER #20: recorded, not fixed -- callers may reasonably expect col_fit
-  # to restrict which columns are updated, and it does not.
-  set.seed(7)
-  x <- cbind(1, rnorm(80)); y <- rbinom(80, 1, 0.4)
-  base <- flf(x, y, firth = TRUE)
-  expect_identical(flf(x, y, firth = TRUE, col_fit = 0L, maxhs = 99L, lconv = 1e-1),
-                   base)
+  # subsetting were dropped from this port, but the parameters stayed in the
+  # signature and were silently ignored -- a caller copying the logistf
+  # signature got no column restriction and no step-halving. Owner decision
+  # 2026-09-05: drop them rather than implement them.
+  f <- names(formals(fast_logistf_fit))
+  expect_false(any(c("col_fit", "maxhs", "lconv") %in% f))
+  expect_identical(f, c("x", "y", "weight", "offset", "firth", "init", "maxit",
+                        "maxstep", "gconv", "xconv", "isfirthconverge"))
 })
 
-test_that("maxit = 0 still performs one update", {
-  # `while(iter <= maxit)` tests before the increment, so maxit = 0 executes
-  # exactly one Newton step rather than returning `init` untouched.
-  # LEDGER #20: recorded, not fixed.
+test_that("LEDGER #20 FIXED: maxit = 0 returns init untouched", {
+  # `while(iter <= maxit)` used to test before the increment, so maxit = 0
+  # executed one Newton step. The bound is now `iter < maxit`; for maxit >= 1
+  # the iteration count is unchanged (the post-increment `iter == maxit` break
+  # fires at the same step), which the glm reconciliation above keeps honest.
   d <- fixture(n = 80, seed = 3)
   init <- c(0.3, 0.7)
-  out <- flf(d$x, d$y, firth = TRUE, init = init, maxit = 0L)
-  expect_false(isTRUE(all.equal(out, init)))
-  expect_true(all(is.finite(out)))
+  expect_identical(flf(d$x, d$y, firth = TRUE, init = init, maxit = 0L), init)
+  # one iteration really is one Newton step away from init
+  one <- flf(d$x, d$y, firth = TRUE, init = init, maxit = 1L)
+  expect_false(isTRUE(all.equal(one, init)))
+  expect_true(all(is.finite(one)))
 })
 
 test_that("offset and weight enter the fit", {

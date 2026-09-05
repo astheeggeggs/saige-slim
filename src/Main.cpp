@@ -3288,18 +3288,23 @@ void assign_conditionMarkers_factors_binary_region(
 }
 
 
+// LEDGER #20 FIXED (2026-09-05): the logistf-shaped parameters this port never
+// read -- col_fit (column subsetting), maxhs and lconv (step-halving) -- are
+// gone from the signature rather than accepted and ignored. Nothing in the
+// package calls this export; it is public API via exportPattern, characterised
+// in tests/testthat/test-unit-firth.R. The loop bound is `iter < maxit` so
+// that maxit = 0 returns `init` untouched instead of taking one Newton step;
+// for maxit >= 1 the iteration count is unchanged (the post-increment
+// `iter == maxit` break fires at the same step).
 // [[Rcpp::export]]
 arma::vec fast_logistf_fit(arma::mat & x,
 		arma::vec & y,
 		arma::vec & weight,
 		arma::vec & offset,
 		bool firth,
-		arma::uvec & col_fit,
     	arma::vec init, 
 	int maxit, 
 	int maxstep, 
-	int maxhs, 
-	double lconv, 
 	double gconv, 
 	double xconv, 
 	bool & isfirthconverge){
@@ -3315,7 +3320,7 @@ arma::vec fast_logistf_fit(arma::mat & x,
   arma::mat oneVec(k, 1 , arma::fill::ones);
   arma::mat XX_covs(k, k, arma::fill::zeros);
   isfirthconverge = false;
-  while(iter <= maxit){
+  while(iter < maxit){
 	beta_old = beta;
 	arma::vec wpi = weight % pi % (1 - pi);
 	arma::vec wpi_sqrt = arma::sqrt(wpi);
