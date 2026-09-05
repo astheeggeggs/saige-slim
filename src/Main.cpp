@@ -211,7 +211,7 @@ void setRegion_GlobalVarsInCPP(
 
 
 
-static void applyMaleXnonPAR(arma::vec& t_GVec, uint32_t& t_pd, double& t_altCounts, double& t_altFreq);
+static void applyMaleXnonPAR(arma::vec& t_GVec, uint32_t& t_pd, double& t_altCounts, double& t_altFreq, const std::string& t_chr);
 
 // S6: the read, addressed to an EXPLICIT reader rather than to the g_reader
 // singleton. Unified_getOneMarker (the Rcpp export, further down) is now a thin
@@ -245,7 +245,7 @@ static bool getOneMarkerThrough(Geno::GenoReader& t_reader,
    t_missingRate = meta.missingRate; t_imputeInfo = meta.imputeInfo;
   }
 
-  applyMaleXnonPAR(t_GVec, t_pd, t_altCounts, t_altFreq);
+  applyMaleXnonPAR(t_GVec, t_pd, t_altCounts, t_altFreq, t_chr);
 
   return isBoolRead;
 }
@@ -1183,9 +1183,21 @@ void mainMarkerInCPP(
 
 
 
-static void applyMaleXnonPAR(arma::vec& t_GVec, uint32_t& t_pd, double& t_altCounts, double& t_altFreq)
+// LEDGER #69 FIXED: the chromosome is consulted. processMale_XnonPAR decides
+// from the POSITION alone, so with the flag on, every autosomal marker outside
+// the two PAR windows was doubled for males too; the docstring told the user
+// to supply an X-only file instead of the code checking. Only chromosome X
+// qualifies now, under the spellings a variant file uses for it.
+static bool isChromosomeX(const std::string& chr)
 {
-  if(g_cfg.is_rewrite_XnonPAR_forMales){
+  std::string c = chr;
+  if(c.size() > 3 && (c.compare(0, 3, "chr") == 0 || c.compare(0, 3, "Chr") == 0 || c.compare(0, 3, "CHR") == 0)) c = c.substr(3);
+  return c == "X" || c == "x" || c == "23";
+}
+
+static void applyMaleXnonPAR(arma::vec& t_GVec, uint32_t& t_pd, double& t_altCounts, double& t_altFreq, const std::string& t_chr)
+{
+  if(g_cfg.is_rewrite_XnonPAR_forMales && isChromosomeX(t_chr)){
   	processMale_XnonPAR(t_GVec, t_pd, g_cfg.X_PARregion_mat);
 	t_altCounts = arma::sum(t_GVec);
 	t_altFreq = arma::mean(t_GVec)/2.0;	
