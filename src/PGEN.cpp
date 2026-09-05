@@ -162,10 +162,33 @@ static void to_upper_inplace(std::string& str) {
     std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return std::toupper(c); });
 }
 
+// LEDGER #89: a malformed numeric field names the file, line and column instead
+// of aborting through Rcpp's generic path as "stoi: no conversion".
+static uint32_t parsePosField(const std::string& s, const std::string& file, size_t lineNo, const char* col)
+{
+    try {
+        size_t used = 0;
+        long long v = std::stoll(s, &used);
+        if(used != s.size() || v < 0 || v > 0xFFFFFFFFLL) throw std::invalid_argument("range");
+        return static_cast<uint32_t>(v);
+    } catch(const std::exception&) {
+        Rcpp::stop("Cannot parse the " + std::string(col) + " field '" + s + "' on line " +
+                   std::to_string(lineNo) + " of " + file + " as a position.");
+    }
+}
+
 void PgenShared::readPvarFile()
 {
+    // LEDGER #88 FIXED: the same hardening readPsamFile has -- refuse an
+    // unopenable file, strip \r, skip blank lines, refuse a row shorter than
+    // the header needs -- where a blank line used to index a split vector out
+    // of range before failing downstream in std::stoi.
     std::ifstream bim(pvarFile);
+    if(!bim.is_open()) {
+        Rcpp::stop("Cannot open pvar file (" + pvarFile + ").");
+    }
     std::string line;
+    size_t lineNo = 0;
 
     int col_pos = -1;
     int col_id = -1;
@@ -173,9 +196,11 @@ void PgenShared::readPvarFile()
     int col_alt = -1;
 
     while(getline(bim, line)) {
+        lineNo++;
+        boost::replace_all(line, "\r", "");
+        if(line.empty()) continue;
         std::vector<std::string> line_elements;
         boost::split(line_elements, line, boost::is_any_of("\t "));
-        boost::replace_all(line_elements.back(), "\r", "");
 
         if(line[0] == '#') {
             if(line.rfind("#CHROM", 0) == 0) {
@@ -186,15 +211,24 @@ void PgenShared::readPvarFile()
                     if(line_elements[i] == "ALT") col_alt = i;
                 }
                 if(col_pos == -1 || col_id == -1 || col_ref == -1 || col_alt == -1) {
-                    Rcpp::stop("pvar file does not have pos/id/ref/alt columns");
+                    Rcpp::stop("pvar file does not have pos/id/ref/alt columns (" + pvarFile + ").");
                 }
             }
             continue;
         }
+        if(col_pos == -1) {
+            Rcpp::stop("pvar file has a data row before any '#CHROM' header line (" + pvarFile + ", line " +
+                       std::to_string(lineNo) + ").");
+        }
+        const size_t need = static_cast<size_t>(std::max(std::max(col_pos, col_id), std::max(col_ref, col_alt))) + 1;
+        if(line_elements.size() < need) {
+            Rcpp::stop("pvar file line " + std::to_string(lineNo) + " has " + std::to_string(line_elements.size()) +
+                       " fields but the header needs at least " + std::to_string(need) + " (" + pvarFile + ").");
+        }
 
-        chr.push_back(line_elements[0]);
-        variantId.push_back(line_elements[col_id]);
-        position.push_back(std::stoi(line_elements[col_pos]));
+        chr.push_back(line_elements.at(0));
+        variantId.push_back(line_elements.at(col_id));
+        position.push_back(parsePosField(line_elements.at(col_pos), pvarFile, lineNo, "POS"));
         to_upper_inplace(line_elements[col_ref]);
         to_upper_inplace(line_elements[col_alt]);
         ref.push_back(line_elements[col_ref]);
