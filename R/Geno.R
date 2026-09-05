@@ -112,6 +112,12 @@ setGenoInput <- function(bedFile = "",
     markerInfo$genoIndex <- 1:nrow(markerInfo) - 1 # -1 is to convert 'R' to 'C++'
     if (chrom != "") {
       markerInfo <- markerInfo[which(markerInfo[, 1] == chrom), ]
+      # LEDGER #76 FIXED: an empty selection used to fall through. The marker
+      # path caught it downstream; the REGION path wrote a zero-byte results
+      # file at exit 0 and printed "Analysis done!". Stop here, for both.
+      if (nrow(markerInfo) == 0) {
+        stop("No markers on chrom ", chrom, " are found in ", bimFile, "\n")
+      }
     }
     markerInfo[, REF := NULL]
     markerInfo[, ALT := NULL]
@@ -139,6 +145,10 @@ setGenoInput <- function(bedFile = "",
     markerInfo$genoIndex <- 1:nrow(markerInfo) - 1 # -1 is to convert 'R' to 'C++'
     if (chrom != "") {
       markerInfo <- markerInfo[which(markerInfo[, 1] == chrom), ]
+      # LEDGER #76 FIXED (pgen half): see the PLINK reader above.
+      if (nrow(markerInfo) == 0) {
+        stop("No markers on chrom ", chrom, " are found in ", pvarFile, "\n")
+      }
     }
     markerInfo[, REF := NULL]
     markerInfo[, ALT := NULL]
