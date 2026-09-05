@@ -808,8 +808,12 @@ if(!t_isER){
 
     boost::math::normal ns;
     double t_qval;
-
-
+    // LEDGER #64 FIXED: the score-test SE, kept so the rollback below can
+    // restore it. The arm overwrites t_seBeta from the saddlepoint p and then
+    // may discover that p is unusable (exactly 0 on the linear scale, where
+    // R::qnorm returns Inf rather than throwing, so |Beta|/Inf = 0); the
+    // p-value was rolled back to the score p and the SE was left at 0.
+    const double seBeta_score = t_seBeta;
 
     if(t_isSPAConverge){
         try {
@@ -836,6 +840,7 @@ if(!t_isER){
 
     if(!ispvallog && t_SPApval == 0){
           t_isSPAConverge = false;
+          t_seBeta = seBeta_score; // LEDGER #64: the p goes back to the score p; so does the SE
     }
 
 
