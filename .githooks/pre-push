@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Arm once per clone: git config core.hooksPath .githooks
+# Runs harness/prepush.sh before any push to the `slim` remote (the CI remote,
+# astheeggeggs/saige-slim). Pushes to `origin` (upstream saigegit/SAIGE) and any
+# other remote are not gated. SAIGE_SKIP_PREPUSH=1 bypasses it, loudly.
+remote="${1:-}"
+[ "$remote" = "slim" ] || exit 0
+if [ "${SAIGE_SKIP_PREPUSH:-0}" = "1" ]; then
+  echo "pre-push: SAIGE_SKIP_PREPUSH=1 -- gate SKIPPED for push to $remote" >&2
+  exit 0
+fi
+exec bash "$(git rev-parse --show-toplevel)/harness/prepush.sh"
