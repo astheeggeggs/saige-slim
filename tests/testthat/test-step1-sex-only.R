@@ -56,11 +56,10 @@ test_that("--FemaleOnly runs with a sex column that is NOT a covariate, on exact
   r <- sex_run(prefix, c("--FemaleOnly=TRUE", "--sexCol=sex", "--FemaleCode=1"))
   expect_identical(r$status, 0L)
   expect_true(any(grepl("^500  samples will be used for analysis", r$log)))
-  # NOTE (LEDGER #90): the driver appends _FemaleOnly / _MaleOnly to
-  # outputPrefix AFTER the model and variance-ratio file names were built from
-  # it, so the suffix reaches no output. The files are <prefix>.rda as for any
-  # other run. Bug-for-bug: this test pins the name that is actually written.
-  rda <- paste0(prefix, ".rda")
+  # LEDGER #90 FIXED: the driver's _FemaleOnly / _MaleOnly suffix now reaches
+  # the output names (it used to be appended after they were built).
+  rda <- paste0(prefix, "_FemaleOnly.rda")
+  expect_false(file.exists(paste0(prefix, ".rda")))
   expect_true(file.exists(rda))
   expect_setequal(model_ids(rda), expected_ids(1L))
 })
@@ -71,7 +70,8 @@ test_that("--MaleOnly picks the complementary half", {
   r <- sex_run(prefix, c("--MaleOnly=TRUE", "--sexCol=sex", "--MaleCode=2"))
   expect_identical(r$status, 0L)
   expect_true(any(grepl("^500  samples will be used for analysis", r$log)))
-  expect_setequal(model_ids(paste0(prefix, ".rda")), expected_ids(2L))
+  expect_setequal(model_ids(paste0(prefix, "_MaleOnly.rda")), expected_ids(2L))
+  expect_true(file.exists(paste0(prefix, "_MaleOnly.varianceRatio.txt")))
 })
 
 test_that("NEGATIVE CONTROL: a sex column that really is absent is still refused, blaming the file", {

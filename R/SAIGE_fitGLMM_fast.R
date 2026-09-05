@@ -733,6 +733,24 @@ fitNULLGLMM <- function(plinkFile = "",
                         # calls releaseGeno() itself at the end.
                         releaseGenoAtEnd = TRUE) {
   ## set up output files
+  if (FemaleOnly & MaleOnly) {
+    stop("Both FemaleOnly and MaleOnly are TRUE. Please specify only one of them as TRUE to run the sex-specific job\n")
+  }
+
+  if (FemaleOnly) {
+    outputPrefix <- paste0(outputPrefix, "_FemaleOnly")
+    cat(
+      "Female-specific model will be fitted. Samples coded as ",
+      FemaleCode, " in the column ", sexCol, " in the phenotype file will be included\n"
+    )
+  } else if (MaleOnly) {
+    outputPrefix <- paste0(outputPrefix, "_MaleOnly")
+    cat(
+      "Male-specific model will be fitted. Samples coded as ",
+      MaleCode, " in the column ", sexCol, " in the phenotype file will be included\n"
+    )
+  }
+
   modelOut <- paste0(outputPrefix, ".rda")
 
   if (skipModelFitting) {
@@ -824,23 +842,9 @@ fitNULLGLMM <- function(plinkFile = "",
   RcppParallel:::setThreadOptions(numThreads = nThreads)
   cat(nThreads, " threads will be used ", "\n")
 
-  if (FemaleOnly & MaleOnly) {
-    stop("Both FemaleOnly and MaleOnly are TRUE. Please specify only one of them as TRUE to run the sex-specific job\n")
-  }
-
-  if (FemaleOnly) {
-    outputPrefix <- paste0(outputPrefix, "_FemaleOnly")
-    cat(
-      "Female-specific model will be fitted. Samples coded as ",
-      FemaleCode, " in the column ", sexCol, " in the phenotype file will be included\n"
-    )
-  } else if (MaleOnly) {
-    outputPrefix <- paste0(outputPrefix, "_MaleOnly")
-    cat(
-      "Male-specific model will be fitted. Samples coded as ",
-      MaleCode, " in the column ", sexCol, " in the phenotype file will be included\n"
-    )
-  }
+  # (LEDGER #90 FIXED: the sex-specific suffix block moved up, before the output
+  # file names are built from outputPrefix -- it used to run after them and so
+  # reached no file.)
 
   if (!useSparseGRMtoFitNULL | !skipVarianceRatioEstimation) {
     if (genoIn$genoType == "") {

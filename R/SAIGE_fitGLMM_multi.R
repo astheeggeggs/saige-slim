@@ -212,8 +212,12 @@ fitNULLGLMM_multi <- function(phenoCol,
   if (anyNA(invNormalize)) {
     stop("invNormalize must be TRUE or FALSE for every phenotype\n")
   }
+  # LEDGER #90 FIXED: an unspecified variance-ratio prefix stays "" so that
+  # fitNULLGLMM derives it from ITS outputPrefix -- which carries the
+  # _FemaleOnly/_MaleOnly suffix. Pre-filling it here from the bare prefix
+  # is what left the ratio file unsuffixed.
   if (is.null(outputPrefix_varRatio) || !nzchar(outputPrefix_varRatio[1])) {
-    outputPrefix_varRatio <- outputPrefix
+    outputPrefix_varRatio <- ""
   }
 
   dots <- list(...)
@@ -266,7 +270,8 @@ fitNULLGLMM_multi <- function(phenoCol,
     cat("---- step 1 for phenotype", k, phenoCol[k], "----\n")
     results[[k]] <- runOne(
       k, paste0(outputPrefix, "_", phenoCol[k]),
-      paste0(outputPrefix_varRatio, "_", phenoCol[k]), isLastOfGroup
+      if (nzchar(outputPrefix_varRatio)) paste0(outputPrefix_varRatio, "_", phenoCol[k]) else "",
+      isLastOfGroup
     )
   }
   releaseGeno()
