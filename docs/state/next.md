@@ -1,9 +1,10 @@
-# What is worth doing next (2026-09-03, updated 2026-09-04 evening)
+# What is worth doing next (2026-09-03, updated 2026-09-05)
 
-**Start with `docs/state/handoff-2026-09-04-tracker-mine.md`** -- the most recent
-session handoff (upstream-tracker mine, Phases 1 and 2: what landed, the gate
-numbers per commit, what was refuted, what is open). Then
-`docs/state/handoff-2026-09-04.md`, the session before it, for where CI lives.
+**Start with the NEWEST `docs/state/handoff-*.md` by date**
+(`ls docs/state/handoff-* | tail -1`), then this file, then
+`python3 harness/tools/ledger.py open`. Handoffs are dated and never renamed, so
+no file needs to say which one is newest. `docs/state/handoff-2026-09-04.md` is
+where CI lives.
 
 Short list, kept deliberately short. `LEDGER.md` says what is broken;
 `docs/state/*.md` says what was done and why; this file says what is NOT done
@@ -93,7 +94,7 @@ must be answered before item 2 below is coded.
 
 The 186-issue upstream tracker was mined for defects live on this branch; the
 plan and the raw-evidence pointers are in
-`~/.claude/plans/can-you-take-a-dreamy-breeze.md` (**do not re-run the sweep** --
+`docs/state/plan-tracker-mine.md` (**do not re-run the sweep** --
 it cost ~160 agents). Phase 1 is DONE: **23 entries, LEDGER #63-#85**, one row
 each, no fixes. Every line number was re-resolved against HEAD and every
 arithmetic claim re-derived before the row was written, which is what the plan's

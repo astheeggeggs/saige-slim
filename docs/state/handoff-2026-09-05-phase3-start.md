@@ -198,10 +198,12 @@ worse than one that checks less.
 
 ## What is NOT done
 
-- **38 of 86 ledger rows remain open.** Note `ledger.py open` reported 39
-  before this session and 38 after two fixes -- not 37 -- because #66's
-  unparseable row had never been counted. The true before-figure was 40. `python3 harness/tools/ledger.py open`
-  is the list; do not read `LEDGER.md` whole.
+- **`python3 harness/tools/ledger.py open` is the open-row list and count;**
+  do not read `LEDGER.md` whole. This file first said "38 of 86", and the
+  lint added on 2026-09-05 (`ledger.py lint`) then found five more OPEN rows
+  that the tool had never listed because their prose carried bare pipes --
+  #26, #45, #64, #65, #77 -- so the figure at this handoff was 44 of 89.
+  Hand-written counts drift; quote the tool.
 - Of the tracker mine's rows, **#63, #67, #75, #84 and #86 have tests** and the
   rest are traced, not reproduced. `docs/state/next.md` names the two coverage
   holes most of them sit behind, and the four REFUTED candidates that must not
