@@ -1053,37 +1053,42 @@ if(!t_isER){
 
     bool t_isSPAConverge_c;
     if(m_traitType != "quantitative" && stat_c > std::pow(m_SPA_Cutoff,2)){
-        //LEDGER #40: populate the shared SPA context if the marginal block
-        //did not. No-op whenever it did, so that path is untouched.
-        prepSPAContext();
-	double q_c, qinv_c, pval_noadj_c, SPApval_c;    
+        // LEDGER #84 FIXED (2026-09-05, owner decision: residualise). The
+        // conditional score T_c = T - c'T2 with c = (g~'P G2~)(G2~'P G2~)^-1 is
+        // exactly the score of the RESIDUALISED genotype g~_c = g~ - G2~ c, so
+        // its saddlepoint must use g~_c's cumulant generating function -- its
+        // own mean m1_c = sum(mu g~_c) and naive variance var2_c =
+        // sum(mu(1-mu) g~_c^2) -- and not the marginal marker's, which is what
+        // this block used to hand SPA_fast: anti-conservative, and growing with
+        // the LD between the tested and the conditioning markers. g~_c is dense
+        // (G2~ c touches every sample), so SPA_fast's zero-genotype shortcut
+        // does not apply and the full SPA is used; the block runs only when the
+        // conditional statistic clears the cutoff, so the extra n x k product
+        // costs nothing measurable. Under --is_noadjCov=TRUE the marginal T is
+        // the UNADJUSTED score while the conditioning terms are adjusted
+        // (LEDGER #82), so there q_c is the mixture statistic saddlepointed
+        // against g~_c's CGF; under FALSE the identity T_c = g~_c'res is exact.
+        if(!is_gtilde){
+                getadjGFast(t_GVec, t_gtilde, iIndex);
+                is_gtilde = true;
+        }
+        arma::vec coef_c = (t_G1tilde_P_G2tilde * m_VarInvMat_cond).t();
+        arma::vec gtilde_c = t_gtilde - m_G2tilde_cond * coef_c;
+        double m1_c = arma::dot(m_mu, gtilde_c);
+        double var2_c = arma::sum(m_mu % (1 - m_mu) % arma::square(gtilde_c));
+        double tol1_c = std::pow(std::numeric_limits<double>::epsilon(), 0.25);
+	double q_c, qinv_c, SPApval_c;
 	if(m_traitType == "binary"){
-                q_c = t_Tstat_c/sqrt(t_varT_c/t_var2) + m1;
-                if((q_c-m1) > 0){
-                        qinv_c = -1 * std::abs(q_c-m1) + m1;
-                }else if ((q_c-m1) == 0){
-                        qinv_c =  m1;
+                q_c = t_Tstat_c/sqrt(t_varT_c/var2_c) + m1_c;
+                if((q_c-m1_c) > 0){
+                        qinv_c = -1 * std::abs(q_c-m1_c) + m1_c;
+                }else if ((q_c-m1_c) == 0){
+                        qinv_c =  m1_c;
                 }else{
-                        qinv_c = std::abs(q_c-m1) + m1;
+                        qinv_c = std::abs(q_c-m1_c) + m1_c;
                 }
         }
-
-
-        if(p_iIndexComVecSize >= 0.5 && !t_ctx.useSparseGRM){
-		//std::cout << "SPA_fast " << std::endl;
-                // LEDGER #40 fixed: prepSPAContext() above fills these
-                // whenever p_iIndexComVecSize >= 0.5, which is exactly the
-                // condition for reaching SPA_fast, so they are populated on
-                // every path that gets here. C3's set_size calls existed only
-                // to reproduce the pre-lazy sized-but-uninitialised state and
-                // are now removed -- set_size does not preserve contents, so
-                // keeping them would silently wipe the data on any future size
-                // mismatch rather than failing loudly.
-                SPA_fast(m_mu, t_gtilde, q_c, qinv_c, pval_noSPA_c, ispvallog, gNA, gNB, muNA, muNB, NAmu, NAsigma, tol1, m_traitType, SPApval_c, t_isSPAConverge_c);
-        }else{
-		//std::cout << "SPA " << std::endl;
-                SPA(m_mu, t_gtilde, q_c, qinv_c, pval_noSPA_c, tol1, ispvallog, m_traitType, SPApval_c, t_isSPAConverge_c);
-        }
+        SPA(m_mu, gtilde_c, q_c, qinv_c, pval_noSPA_c, tol1_c, ispvallog, m_traitType, SPApval_c, t_isSPAConverge_c);
 
 	
         boost::math::normal ns;
@@ -1267,6 +1272,7 @@ double SAIGEClass::selectSingleVarianceRatio(bool issparseforVR, bool isnoXadj) 
 
 void SAIGEClass::assignConditionFactors(
       arma::mat & t_P2Mat_cond,
+      arma::mat & t_G2tilde_cond,
       arma::mat & t_VarInvMat_cond,
       arma::mat & t_VarMat_cond,
       arma::vec & t_Tstat_cond,
@@ -1277,6 +1283,7 @@ void SAIGEClass::assignConditionFactors(
       std::vector<std::string> & t_p_cond
       ){
 	m_P2Mat_cond = t_P2Mat_cond;
+	m_G2tilde_cond = t_G2tilde_cond;
 	m_VarInvMat_cond = t_VarInvMat_cond;
 	m_VarMat_cond = t_VarMat_cond;
 	m_Tstat_cond = t_Tstat_cond;

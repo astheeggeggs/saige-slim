@@ -75,12 +75,14 @@ build_ld_fixture <- function(dir) {
   }
   gs <- lapply(mk, function(g) g[inmodel])
   list(prefix = prefix,
+       # the genotypes on the ANALYSED samples, in the model's sample order
+       geno = gs,
        r2_cond = vapply(gs, function(g) stats::cor(gs$cond, g)^2, numeric(1)),
        r2_sig = vapply(gs, function(g) stats::cor(gs$sig, g)^2, numeric(1)),
        cor_res = vapply(gs, function(g) stats::cor(g, res), numeric(1)))
 }
 
-run_cond <- function(prefix, out, noadjcov) {
+run_cond <- function(prefix, out, noadjcov, condition = "sigpart,cond") {
   m <- ld_model_prefix
   args <- c(paste0("--bedFile=", prefix, ".bed"),
             paste0("--bimFile=", prefix, ".bim"),
@@ -90,7 +92,7 @@ run_cond <- function(prefix, out, noadjcov) {
             "--chrom=1", "--minMAF=0", "--minMAC=1", "--LOCO=FALSE",
             paste0("--GMMATmodelFile=", m, ".rda"),
             paste0("--varianceRatioFile=", m, ".varianceRatio.txt"),
-            "--is_output_moreDetails=TRUE", "--condition=sigpart,cond",
+            "--is_output_moreDetails=TRUE", paste0("--condition=", condition),
             paste0("--is_noadjCov=", ifelse(noadjcov, "TRUE", "FALSE")))
   st <- cli_run("step2_SPAtests.R", args)
   cli_ok(st)
@@ -120,6 +122,7 @@ test_that("the constructed LD fixture is what it claims to be", {
 })
 
 test_that("LEDGER #84: the conditional SPA runs at non-negligible conditioning", {
+  # (characterization kept from Phase 2; the FIX is gated by the block below)
   skip_unless_level("standard")
   skip_if_no_goldens()
   dir <- tempfile()
@@ -245,4 +248,67 @@ test_that("LEDGER #66 FIXED: collinear conditioning reports NA, not cancelled no
     # is small (~1%) but the identity is exact only with both ratios in it
     expect_gt(abs(num(def[r, "var_c"]) / (num(def[r, "var"]) - num(adj[r, "var"])) - 1), 0.5)
   }
+})
+
+# ---- LEDGER #84 FIXED: the conditional saddlepoint uses the residualised genotype
+# The conditional score T_c = T - c T2 (one conditioning marker, so c is a
+# scalar) is the score of g~_c = g~ - c g~2, and its saddlepoint must use g~_c's
+# cumulant generating function. Before the fix the block handed SPA_fast the
+# MARGINAL marker's CGF. One statistic two ways: the C++ p.value_c must equal
+# the saddlepoint p recomputed in R, from the fixture's own genotypes, the
+# model's mu and covariate adjustment, and c read off the output (c = (T -
+# T_c) / T2, exact under --is_noadjCov=FALSE where T is the adjusted score),
+# through SAIGE's exported SPA_pval kernel. At unpatched HEAD the two differ by
+# the marginal-vs-residualised CGF gap, well above the 1e-6 tolerance.
+
+# covariate adjustment exactly as C++ getadjGFast: g - XXVX_inv (XV g)
+adj_g <- function(g, noK) as.vector(g - noK$XXVX_inv %*% (noK$XV %*% g))
+
+spa_pval_r <- function(mu, g, tstat, var_grm, pval_noadj) {
+  m1 <- sum(mu * g)
+  var2 <- sum(mu * (1 - mu) * g^2)
+  q <- tstat / sqrt(var_grm / var2) + m1
+  qinv <- 2 * m1 - q
+  SPA_pval(mu, g, q, qinv, pval_noadj, .Machine$double.eps^0.25, FALSE, "binary", FALSE)
+}
+
+test_that("LEDGER #84 FIXED: p.value_c is the saddlepoint of the residualised genotype", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  dir <- tempfile()
+  dir.create(dir)
+  f <- build_ld_fixture(dir)
+  # is_noadjCov = FALSE: T is the adjusted score, so T_c = g~_c' res exactly and
+  # c = (T - T_c) / T2 is read off the output; one conditioning marker so c is
+  # a scalar
+  d <- run_cond(f$prefix, tempfile(fileext = ".txt"), noadjcov = FALSE, condition = "sigpart")
+  e <- new.env()
+  load(paste0(ld_model_prefix, ".rda"), envir = e)
+  mu <- as.vector(e$modglmm$fitted.values)
+  noK <- e$modglmm$obj.noK
+
+  g2 <- adj_g(f$geno$sigpart, noK)
+  t2 <- num(d["sigpart", "Tstat"])
+  # the adjustment is C++'s; Tstat is PRINTED to 6-7 significant digits, hence 1e-5
+  expect_lt(rel_err(sum(g2 * (e$modglmm$y - mu)), t2), 1e-5)
+
+  for (mk in c("sig", "ld000")) {
+    g1 <- adj_g(f$geno[[mk]], noK)
+    tc <- num(d[mk, "Tstat_c"])
+    cc <- (num(d[mk, "Tstat"]) - tc) / t2
+    g_c <- g1 - cc * g2
+    # the identity T_c = g~_c' res holds, so g_c really is the conditional score's genotype
+    expect_lt(rel_err(sum(g_c * (e$modglmm$y - mu)), tc), 1e-5)
+    if (tc^2 / num(d[mk, "var_c"]) > 4) {
+      # the SPA gate (SPAcutoff = 2) was cleared: recompute the saddlepoint
+      p_r <- spa_pval_r(mu, g_c, tc, num(d[mk, "var_c"]), num(d[mk, "p.value.NA_c"]))
+      expect_lt(rel_err(p_r, num(d[mk, "p.value_c"])), 1e-6, label = paste("SPA p", mk))
+      expect_false(identical(d[mk, "p.value_c"], d[mk, "p.value.NA_c"]))
+    } else {
+      expect_identical(d[mk, "p.value_c"], d[mk, "p.value.NA_c"])
+    }
+  }
+  # the marker the fix is for: real conditioning AND the gate cleared
+  expect_gt(num(d["sig", "var"]) / num(d["sig", "var_c"]), 1.3)
+  expect_gt(num(d["sig", "Tstat_c"])^2 / num(d["sig", "var_c"]), 4)
 })

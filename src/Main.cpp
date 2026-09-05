@@ -3096,6 +3096,7 @@ void assign_conditionMarkers_factors(
   unsigned int q = t_genoIndex.size();
   arma::mat P1Mat(q, t_n);
   arma::mat P2Mat(t_n, q);
+  arma::mat G2tildeMat(t_n, q); // LEDGER #84: the adjusted genotypes themselves, unscaled
   arma::mat VarInvMat(q, q);
   arma::vec TstatVec(q);
   //arma::vec pVec(q);
@@ -3239,6 +3240,7 @@ void assign_conditionMarkers_factors(
   }
       P1Mat.row(i) = sqrt(ctx.varRatioVal)*gtildeVec.t();
       P2Mat.col(i) = sqrt(ctx.varRatioVal)*P2Vec;
+      G2tildeMat.col(i) = gtildeVec;
       //P1Mat.row(i) = gtildeVec.t();
       //P2Mat.col(i) = P2Vec;
       MAFVec(i) = MAF;
@@ -3269,6 +3271,7 @@ void assign_conditionMarkers_factors(
   model.getadjG(gsumVec, gsumtildeVec);
   model.assignConditionFactors(
 		   			P2Mat,
+					G2tildeMat,
 					VarInvMat,
 					VarMat,
 					TstatVec,

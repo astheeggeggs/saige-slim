@@ -87,6 +87,10 @@ class SAIGEClass
       arma::vec m_cateVarRatioMinMACVecExclude; 
       arma::vec m_cateVarRatioMaxMACVecInclude;
       arma::mat m_P2Mat_cond;
+      // LEDGER #84: the covariate-adjusted genotypes of the conditioning
+      // markers, n x k, one column each, so the conditional saddlepoint can
+      // form the residualised genotype g~ - G2~ c.
+      arma::mat m_G2tilde_cond;
       int m_numMarker_cond;
       arma::mat m_VarInvMat_cond;
       arma::mat m_VarMat_cond;
@@ -255,6 +259,7 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
 
     void assignConditionFactors(
       arma::mat & t_P2Mat_cond,
+      arma::mat & t_G2tilde_cond,
       arma::mat & t_VarInvMat_cond,
       arma::mat & t_VarMat_cond,
       arma::vec & t_Tstat_cond,
