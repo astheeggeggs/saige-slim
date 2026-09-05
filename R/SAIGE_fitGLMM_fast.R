@@ -1078,7 +1078,7 @@ fitNULLGLMM <- function(plinkFile = "",
 
   if (isCovariateTransform & hasCovariate) {
     cat("qr transformation has been performed on covariates\n")
-    out.transform <- Covariate_Transform(formula.null, data = dataMerge_sort, traitType)
+    out.transform <- Covariate_Transform(formula.null, data = dataMerge_sort)
     formulaNewList <- c(phenoCol, " ~ ", out.transform$Param.transform$X_name[1])
     if (length(out.transform$Param.transform$X_name) > 1) {
       for (i in c(2:length(out.transform$Param.transform$X_name))) {
@@ -1711,7 +1711,10 @@ fitNULLGLMM <- function(plinkFile = "",
 
 
 ## suggested by Shawn 01-19-2018
-Covariate_Transform <- function(formula, data, traitType) {
+# LEDGER #85 FIXED: the `traitType` formal was declared and never read (survival,
+# which forced it, left in Phase 3a), and extractNglmm called without it -- legal
+# only because the promise was never forced. Dropped from the signature.
+Covariate_Transform <- function(formula, data) {
   X1 <- model.matrix(formula, data = data)
   #  X1=X1[,c(2:ncol(X1))] #remove intercept
   formula.frame <- model.frame(formula, data = data)
