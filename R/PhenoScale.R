@@ -89,11 +89,13 @@ scaleQuantFit <- function(m, factor, X, theta_fixed = FALSE) {
   m
 }
 
-# Rescale every saved quantitative model of a step-1 run in place: the main
-# model file and, under --isLowMemLOCO, each per-chromosome file.
+# Rescale the saved quantitative model files of a step-1 run in place: exactly
+# the files it wrote (the main model file and, under --isLowMemLOCO, the
+# _noLOCO file and each per-chromosome file). A file the run says it wrote and
+# cannot find is an error, not a skip (LEDGER #98).
 rescaleSavedQuantModels <- function(files, factor) {
   for (f in files) {
-    if (!file.exists(f)) next
+    if (!file.exists(f)) stop("rescaleSavedQuantModels: ", f, " was written by this run but is missing\n")
     e <- new.env()
     load(f, envir = e)
     modglmm <- scaleQuantModel(e$modglmm, factor)

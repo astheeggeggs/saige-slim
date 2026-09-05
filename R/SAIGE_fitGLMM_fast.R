@@ -1100,6 +1100,7 @@ fitNULLGLMM <- function(plinkFile = "",
   # scaled back to phenotype units at the end (R/PhenoScale.R). tauInit is
   # given in phenotype units and converted here.
   yScale <- 1
+  savedModelFiles <- character() # every .rda this run writes (LEDGER #98)
   if (traitType == "quantitative") {
     yScale <- quantPhenoScale(formula.null, dataMerge_sort, phenoCol)
     cat(
@@ -1494,14 +1495,10 @@ fitNULLGLMM <- function(plinkFile = "",
       }
       cat("Start estimating variance ratios\n")
       load(modelOut)
-      if (skipModelFitting && traitType == "quantitative") {
-        # the file is in phenotype units (LEDGER #65); the estimation runs standardised
-        modglmm <- scaleQuantModel(modglmm, 1 / yScale)
-      }
       extractVarianceRatio(
         obj.glmm.null = modglmm,
         seed = seed,
-        obj.glm.null = fit0, maxiterPCG = maxiterPCG, varRatioScale = 1 / yScale^2,
+        obj.glm.null = fit0, maxiterPCG = maxiterPCG,
         tolPCG = tolPCG, numMarkers = numMarkersForVarRatio, varRatioOutFile = varRatioFile,
         ratioCVcutoff = ratioCVcutoff, testOut = SPAGMMATOut,
         bedFile = bedFile, bimFile = bimFile, famFile = famFile, genoIn = genoIn, chromosomeStartIndexVec = chromosomeStartIndexVec,
@@ -1640,6 +1637,7 @@ fitNULLGLMM <- function(plinkFile = "",
         modglmm$chromosomeEndIndexVec <- NULL
         modelOut <- paste(c(outputPrefix, "_noLOCO.rda"), collapse = "")
         save(modglmm, file = modelOut)
+        savedModelFiles <- c(savedModelFiles, modelOut)
         modglmm$LOCO <- TRUE
         modglmm$Y <- NULL
         eta0 <- modglmm$linear.predictor
@@ -1697,6 +1695,7 @@ fitNULLGLMM <- function(plinkFile = "",
               }
             }
             save(modglmm, file = modelOutbychr)
+            savedModelFiles <- c(savedModelFiles, modelOutbychr)
             modglmm$LOCOResult[[j]] <- list(NULL)
             gc()
           } else {
@@ -1707,6 +1706,7 @@ fitNULLGLMM <- function(plinkFile = "",
         # modelOut_nonauto = paste(c(outputPrefix,"_noLOCO.rda"), collapse="")
       } else {
         save(modglmm, file = modelOut)
+        savedModelFiles <- c(savedModelFiles, modelOut)
       }
 
 
@@ -1752,7 +1752,7 @@ fitNULLGLMM <- function(plinkFile = "",
       }
       cat("Start estimating variance ratios\n")
       load(modelOut)
-      if (skipModelFitting && traitType == "quantitative") {
+      if (skipModelFitting) {
         # the file is in phenotype units (LEDGER #65); the estimation runs standardised
         modglmm <- scaleQuantModel(modglmm, 1 / yScale)
       }
@@ -1780,13 +1780,15 @@ fitNULLGLMM <- function(plinkFile = "",
     if (releaseGenoAtEnd) {
       releaseGeno()
     }
-    if (!skipModelFitting && traitType == "quantitative") {
+    if (!skipModelFitting) {
       # LEDGER #65 FIXED: everything above ran on the standardised phenotype;
       # the saved model(s) go back to phenotype units. The variance-ratio file
-      # was already written in phenotype units (varRatioScale above).
-      savedModels <- c(modelOut, paste0(outputPrefix, "_chr", 1:22, ".rda"))
-      rescaleSavedQuantModels(savedModels[file.exists(savedModels)], yScale)
-      cat("Saved model(s) scaled back to phenotype units (factor ", format(yScale), ")\n", sep = "")
+      # was already written in phenotype units (varRatioScale above). Exactly
+      # the files THIS run wrote (LEDGER #98: a glob over _chr1..22 used to
+      # rescale a previous run's leftovers under the same prefix).
+      rescaleSavedQuantModels(savedModelFiles, yScale)
+      cat("Saved model(s) scaled back to phenotype units (factor ", format(yScale), "): ",
+          paste(basename(savedModelFiles), collapse = ", "), "\n", sep = "")
     }
     # The paths fitNULLGLMM ACTUALLY wrote, which the multi-phenotype driver
     # needs for the manifest: modelOut is reassigned under --isLowMemLOCO, and
