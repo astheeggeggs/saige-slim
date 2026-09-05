@@ -30,10 +30,13 @@ ledger entry you are actually working on.
 
 **`LEDGER.md` and `docs/state/` are the authoritative record of where this branch
 is** -- read those first, starting with
-`docs/state/handoff-2026-09-04-tracker-mine.md` (the MOST RECENT session handoff:
-the upstream-tracker mine, Phases 1 and 2, with the gate numbers per commit, the
-refuted candidates and the one open question). Then
-`docs/state/handoff-2026-09-04.md`, the session before it, which is where CI
+`docs/state/handoff-2026-09-05-phase3-start.md` (the MOST RECENT session
+handoff: Phase 3 begins, #74 and #66 fixed with their tests inverted, the
+gate numbers per commit, and the trick that predicted "no golden moves" from
+the goldens themselves). Then
+`docs/state/handoff-2026-09-04-tracker-mine.md` (the upstream-tracker mine,
+Phases 1 and 2, the refuted candidates and the one open question), and
+`docs/state/handoff-2026-09-04.md` before it, which is where CI
 lives --
 `origin` is the UPSTREAM `saigegit/SAIGE`, while CI runs on the `slim` remote,
 `astheeggeggs/saige-slim`, so push there and query it with
@@ -62,13 +65,21 @@ believe an older doc that says it is parked on a branch.
 (`sample`, `1:n`, `rbind` recycling) -- all latent behind a guard -- #45, #46,
 #49 (a restart re-runs the last completed chunk: wasted work, right answer),
 and **#63-#86, the 24 rows written on 2026-09-04 from the upstream issue
-tracker** -- 39 open of 86 in all. Phase 3 (fixes) is NOT started;
+tracker** -- 37 open of 86 in all. **Phase 3 (fixes) has STARTED**: #74 (the
+bim/pvar `fread` had no `colClasses`, so an all-numeric ID column inferred
+INTEGER and every join against it failed -- no golden could move, every
+committed variant file spells its IDs `rs<N>`) and #66 (the conditional
+variance's guard was ABSOLUTE where LEDGER #44 had already shown it must be
+RELATIVE; the fix reuses #44's helper and threshold, and closes a gap #44 left
+in `writeOutfile_singleInGroup`/`writeOutfile_BURDEN`, which printed effect
+sizes with a raw `<<` rather than `writeNumOrNA`). Both had characterization
+tests, and both tests were INVERTED in the same commit as the fix;
 **Phase 2 is COMPLETE** -- five items, one commit each: the QUANTITATIVE group
 goldens P36/P37 (which found **#86**, SKAT-O's p saturating to exactly 1 and
 rerouting the region's Cauchy row from ACAT to a Bonferroni), a constructed
 high-LD conditioning fixture, the variance-ratio cursor, all-numeric marker IDs
-and a duplicated phenotype ID. **#63, #66, #67, #74, #75, #84 and #86 have
-tests; the other seventeen rows are entries whose consequence is traced, not
+and a duplicated phenotype ID. **#63, #67, #75, #84 and #86 have tests, and
+#66/#74 now have INVERTED ones; the other seventeen rows are entries whose consequence is traced, not
 reproduced.** Read `docs/state/next.md` before picking one up -- it lists the four
 candidates from that mine that were REFUTED and must not be re-opened, and names
 the two coverage holes (a quantitative group/BURDEN golden; a constructed

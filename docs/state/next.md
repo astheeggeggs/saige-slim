@@ -137,7 +137,9 @@ Recorded here so nobody re-opens them:
   **LEDGER #39**, which names the unreachable `stop()` explicitly. #39's line
   numbers are stale by ~17 lines (`:405-414` -> `:388-399`).
 
-**Phase 2 is STARTED; Phase 3 (fixes) is not.** The plan orders Phase 2 by gate
+**Phase 2 is COMPLETE; Phase 3 (fixes) has STARTED** -- #74 and #66 are done
+(`22be2a69`, `c9f7e9ae`), each with its characterization test INVERTED in the
+same commit. The plan orders Phase 2 by gate
 gap rather than severity. Item 1 is DONE: goldens **P36/P37**
 (`plink_group_burden_quant.txt`, `plink_group_nofast_quant.txt`) close the
 QUANTITATIVE region-path gap -- every previous group golden is binary -- and
@@ -177,7 +179,9 @@ drops (1.89, against 1/(1-r^2) = 2.0).
   conditioning for the first time on this branch. DRILL: on golden P12, **zero**
   of 70 rows satisfy both `stat_c > 4` and `var/var_c > 1.3` (its three
   high-ratio rows are the conditioning markers themselves, `stat_c` ~ 0.003).
-- **#66**: under `--is_noadjCov=FALSE` a perfectly collinear marker gives
+- **#66 -- FIXED in Phase 3 (2026-09-05, `c9f7e9ae`); what follows is the
+  measurement that located it.** Under `--is_noadjCov=FALSE` a perfectly
+  collinear marker gives
   `var_c = 2.5e-14` -- cancelled, and yet ~294 orders ABOVE the `DBL_MIN` guard,
   which is exactly the geometry LEDGER #44 had to fix with a relative test.
   `BETA_c` and `SE_c` are then ratios of two cancelled quantities (SE_c = 6.3e6)
@@ -227,7 +231,10 @@ DRILL: removing the second increment and rebuilding into a scratch library fails
 5 assertions (read counts become 40 and 41, and the NA abort disappears); the
 negative control correctly stays green. Source reverted and reinstalled.
 
-**Item 5 is DONE**: `tests/testthat/test-step2-numeric-marker-ids.R`. The bim is
+**Item 5 is DONE**, and **#74 is now FIXED** (Phase 3, `22be2a69`; the test
+below was inverted with it, and a pgen arm added because the pvar half of the
+fix was otherwise ungated). What follows is the characterization as first
+written. The bim WAS
 read with no `colClasses`, so data.table INFERS the ID column's type; every
 bundled fixture uses `rs<N>` (character), and an all-numeric ID column infers
 INTEGER. The fixture is derived at run time and reuses the committed `.bed` and
@@ -245,7 +252,10 @@ no genotype, which is what makes the control exact.
 DRILL: adding `colClasses = list(character = 2)` to the `fread` and rebuilding
 into a scratch library makes both numeric-ID runs SUCCEED, failing 5 assertions;
 the plain-scan control stays green. That one argument is also the Phase 3 fix.
-Source reverted and reinstalled.
+Source reverted and reinstalled. **Phase 3 then took exactly that argument**,
+plus `list(character = 3)` on the pvar, and strengthened the positive control:
+the numeric-ID and rs-spelled runs must now agree on EVERY column but
+`MarkerID`, which they do.
 
 **Item 6 is DONE**: `tests/testthat/test-step1-duplicate-pheno-id.R`. Nothing in
 the step-1 phenotype path checks for duplicate sample IDs -- the only
