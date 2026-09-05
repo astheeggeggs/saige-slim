@@ -110,7 +110,7 @@ SPARoot getroot_K1_Binom_core(double init, const arma::vec & mu, const arma::vec
 		while(rep <= maxiter){
 			K2_eval = K2_Binom(t,mu,g);
 			tnew = t-K1_eval/K2_eval;
-			if(tnew == NA_REAL){
+			if(std::isnan(tnew)){ // LEDGER #45: NA_REAL is a NaN and == NaN is always false; ISNAN was meant
 				conv = false;
 				break;
 
@@ -388,7 +388,7 @@ SPARoot getroot_K1_fast_Binom_core(double init, const arma::vec & mu, const arma
 		while(rep <= maxiter){
 			K2_eval = K2_fast_Binom(t,mu,g, gNA,gNB,muNA,muNB,NAmu, NAsigma);
 			tnew = t-K1_eval/K2_eval;
-			if(tnew == NA_REAL){
+			if(std::isnan(tnew)){ // LEDGER #45: NA_REAL is a NaN and == NaN is always false; ISNAN was meant
 				conv = false;
 				break;
 
