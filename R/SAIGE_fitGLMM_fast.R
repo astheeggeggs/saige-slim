@@ -930,6 +930,13 @@ fitNULLGLMM <- function(plinkFile = "",
         cat(length(sampleIDInclude), " non-duplicated sample IDs were found in SampleIDIncludeFile\n")
         data <- data[which(as.vector(data[, which(colnames(data) == sampleIDColinphenoFile)]) %in% sampleIDInclude), , drop = FALSE]
         cat(nrow(data), " samples in sampleIDInclude have non-missing phenotypes and covariates\n")
+        # LEDGER #37 FIXED: say so HERE. Downstream, model.matrix on a 0-row
+        # frame with factor covariates died in `contrasts<-` and the seq()
+        # before the intended stop() errored with "wrong sign in 'by'".
+        if (nrow(data) == 0) {
+          stop("No individuals left in the analysis. Exiting... (no sample in ", SampleIDIncludeFile,
+               " has non-missing phenotypes and covariates)\n")
+        }
       }
     }
 
@@ -1018,9 +1025,7 @@ fitNULLGLMM <- function(plinkFile = "",
 
     mmat$IID <- data[, which(sampleIDColinphenoFile == colnames(data))]
     mmat_nomissing <- mmat[complete.cases(mmat), , drop = FALSE]
-    mmat_nomissing$IndexPheno <- seq(1, nrow(mmat_nomissing),
-      by = 1
-    )
+    mmat_nomissing$IndexPheno <- seq_len(nrow(mmat_nomissing)) # LEDGER #37 FIXED: seq(1, 0, by = 1) errored before the stop() below could
     cat(nrow(mmat_nomissing), " samples have non-missing phenotypes\n")
     if (nrow(mmat_nomissing) == 0) {
       stop("No individuals left in the analysis. Exiting...\n")

@@ -385,9 +385,7 @@ getNeff <- function(plinkFile = "",
     mmat <- model.frame(formula.null, data, na.action = NULL)
     mmat$IID <- data[, which(sampleIDColinphenoFile == colnames(data))]
     mmat_nomissing <- mmat[complete.cases(mmat), ]
-    mmat_nomissing$IndexPheno <- seq(1, nrow(mmat_nomissing),
-      by = 1
-    )
+    mmat_nomissing$IndexPheno <- seq_len(nrow(mmat_nomissing)) # LEDGER #37: seq(1, 0, by = 1) errored first
     cat(nrow(mmat_nomissing), " samples have non-missing phenotypes\n")
     dataMerge <- merge(mmat_nomissing, sampleListwithGeno,
       by.x = "IID", by.y = "IIDgeno"
