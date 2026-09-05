@@ -32,7 +32,12 @@ RSCRIPT="$REPO/.pixi/envs/default/lib/R/bin/Rscript"
 # workers cannot oversubscribe each other.
 export TESTTHAT_CPUS="${TESTTHAT_CPUS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
 
+# The ledger must parse before anything else runs: a bare `|` in a row's prose
+# once hid a row from `ledger.py open` for a day (LEDGER #66), and the open
+# count quoted in CLAUDE.md drifted from the tool's. Every tier, and CI, gates it.
+python3 "$REPO/harness/tools/ledger.py" lint || exit 1
+
 # package/load_package are REQUIRED for the parallel path: test_dir defaults to
 # load_package="none", which hands each callr worker an empty package name and
 # fails with "attempt to use zero-length variable name" before any test runs.
-"$RSCRIPT" -e 'res <- testthat::test_dir("tests/testthat", package = "SAIGE", load_package = "installed", stop_on_failure = TRUE)'
+"$RSCRIPT" -e 'res <- testthat::test_dir("tests/testthat", package = "SAIGE", load_package = "installed", stop_on_failure = TRUE)' || exit 1
