@@ -425,9 +425,17 @@ SPAGMMATtest <- function(bedFile = "",
     X_PARregion_mat <- NULL
     if (length(X_PARregion_list) > 0) {
       for (lxp in 1:length(X_PARregion_list)) {
-        X_PARregion_list_sub <- as.numeric(unlist(strsplit(X_PARregion_list[lxp],
+        X_PARregion_list_sub <- suppressWarnings(as.numeric(unlist(strsplit(X_PARregion_list[lxp],
           split = "-"
-        )))
+        ))))
+        # LEDGER #38 FIXED: a token that is not "<start>-<end>" used to be
+        # recycled by rbind into a row (a lone "5" became c(5, 5)) and handed to
+        # C++ as a PAR boundary with no warning. Refuse it by name.
+        if (length(X_PARregion_list_sub) != 2 || anyNA(X_PARregion_list_sub) ||
+              X_PARregion_list_sub[1] > X_PARregion_list_sub[2]) {
+          stop("X_PARregion token '", X_PARregion_list[lxp], "' is not of the form start-end ",
+               "with start <= end (the option is a comma-separated list of such ranges)\n")
+        }
         X_PARregion_mat <- rbind(X_PARregion_mat, X_PARregion_list_sub)
       }
       setAssocTest_GlobalVarsInCPP_X_PARregion_mat(X_PARregion_mat)
