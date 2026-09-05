@@ -14,8 +14,9 @@ interface (`docs/state/pgen-step01.md`, `docs/state/s8-pgen-clone.md`).
 `main` holds the full upstream fork (docs: https://saigegit.github.io/SAIGE-doc/).
 Binary and quantitative traits are supported.
 
-**Where to start.** Read the NEWEST `docs/state/handoff-*.md` by date
-(`ls docs/state/handoff-* | tail -1`), then `docs/state/next.md` (what is NOT
+**Where to start.** Read the handoff that `docs/state/next.md` names in its
+first line (several handoffs can share a date, and `ls | tail -1` sorts by
+name), then `docs/state/next.md` (what is NOT
 done, provenance marked on each item -- including the REFUTED candidates that
 must not be re-opened), then `python3 harness/tools/ledger.py open`. Handoffs
 are dated and never renamed. Plan files under `~/.claude/plans` are

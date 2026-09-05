@@ -1,10 +1,10 @@
 # What is worth doing next (2026-09-03, updated 2026-09-05)
 
-**Start with the NEWEST `docs/state/handoff-*.md` by date**
-(`ls docs/state/handoff-* | tail -1`), then this file, then
-`python3 harness/tools/ledger.py open`. Handoffs are dated and never renamed, so
-no file needs to say which one is newest. `docs/state/handoff-2026-09-04.md` is
-where CI lives.
+**Current handoff: `docs/state/handoff-2026-09-05-review.md`** (then this
+file, then `python3 harness/tools/ledger.py open`). Handoffs are dated and
+never renamed; when several share the newest date `ls | tail -1` sorts them by
+name, not by time, so this line is the pointer and is updated with every new
+handoff. `docs/state/handoff-2026-09-04.md` is where CI lives.
 
 Short list, kept deliberately short. `LEDGER.md` says what is broken;
 `docs/state/*.md` says what was done and why; this file says what is NOT done
@@ -401,6 +401,14 @@ deliberately did NOT change:
   `tol.coef = 0.1`. Both mirror what each trait's fitter does in its own LOCO
   loop, so the layouts agree per trait; whether the quantitative offset is
   double-counted is a derivation nobody has done. Marked "by trait" in the code.
+- **The N = 50,000 own-model quantitative tables are a mixture and want one
+  re-run.** The review's gates refitted the strip own models (sparse rows now
+  1.00, the #97 fix) but did not re-run own-model step 2, so
+  `harness/sim/upstream_compare/RESULTS.md`'s own-model `y_quant` section
+  describes outputs from the pre-#97 models. From
+  `harness/sim/upstream_compare/`: `MODELS=own bash run_arm.sh strip s2single
+  y_quant 1`, the same for `s2group`, then `bash compare_all.sh 1 1`; ~10 min.
+  Expected: the own `gene y_quant` tags lose their `VR`/`VR-mix` mass.
 - **`#65`'s save-then-rescale is a design the owner may still change** (review
   finding 1, second half): the run saves the standardised quantitative model,
   reloads it for the ratio estimation, and rescales the files it wrote at the
