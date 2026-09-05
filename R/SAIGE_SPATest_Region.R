@@ -378,6 +378,13 @@ region_postprocess <- function(outList,
                 Phi <- re_phi$val
               }
               groupOutList <- skat_fun(Score, Phi, r.corr, regionTestType)
+              if (!is.null(groupOutList$error)) {
+                # LEDGER #57: the kernel failed and this cell's three p-values
+                # are NA. Count it here, where the labels are in scope.
+                skatFailureRecord(regionName, AnnoName, maxMAFName,
+                                  if (isMultiWeight) weightNames[r] else NA_character_,
+                                  "marginal", groupOutList$error)
+              }
               if (isMultiWeight) {
                 # additive schema (design D3): Pvalue keeps its SKAT-O meaning,
                 # the Weight label sits right after max_MAF, and the two omnibus
@@ -488,6 +495,11 @@ region_postprocess <- function(outList,
                   r.corr,
                   regionTestType
                 )
+                if (!is.null(groupOutList_cond$error)) {
+                  skatFailureRecord(regionName, AnnoName, maxMAFName,
+                                    if (isMultiWeight) weightNames[r] else NA_character_,
+                                    "conditional", groupOutList_cond$error)
+                }
 
 
                 resultDF$Pvalue_cond <- groupOutList_cond$Pvalue_SKATO
@@ -702,6 +714,7 @@ SAIGE.Region <- function(mu,
 
   # The worker pool outlives individual regions but must not outlive the scan.
   on.exit(stopSkatoCluster(), add = TRUE)
+  skatFailureReset() # LEDGER #57: per-run accounting, R/SkatFailures.R
 
   outList <- checkOutputFile(OutputFile, OutputFileIndex, "Region", 1, isOverWriteOutput) # Check 'Util.R'
 
@@ -1503,6 +1516,10 @@ SAIGE.Region <- function(mu,
     paste0(OutputFile, ".markerInfo"),
     "'."
   )
+
+  # LEDGER #57: how many cells the SKAT kernel failed on (their rows are NA),
+  # and a sidecar naming each with its message when that count is not zero.
+  skatFailureSummary(OutputFile)
 
   message <- "Analysis done!"
   message <- paste0(

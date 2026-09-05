@@ -383,11 +383,19 @@ get_SKAT_pvalue <- function(Score, Phi, r.corr, regionTestType) {
   # changes, from garbage to the value itself.
   varSum_Phi <- if (is.matrix(Phi)) sum(diag(Phi)) else sum(Phi)
   BETA_Burden <- sum(Score) / varSum_Phi
+  # LEDGER #57 (the open half): the kernel's message used to die here -- the
+  # error.code below is set and never read. It now rides out on the result
+  # list as `error` (absent on success) and region_postprocess records it; see
+  # R/SkatFailures.R. The NA rows themselves are unchanged.
+  skat_error <- NULL
   if (inherits(out_SKAT_List, "try-error")) {
     Pvalue <- c(NA, NA, NA)
     error.code <- 2
     BETA_Burden <- NA
     SE_Burden <- NA
+    cond <- attr(out_SKAT_List, "condition")
+    skat_error <- if (is.null(cond)) trimws(as.character(out_SKAT_List)) else conditionMessage(cond)
+    skat_error <- gsub("[\r\n]+", " ", trimws(skat_error))
   } else if (!any(c(0, 1) %in% out_SKAT_List$param$rho & !is.null(out_SKAT_List$p.value))) {
     # Pvalue = c(NA, NA, NA)
     Pvalue <- c(out_SKAT_List$p.value, out_SKAT_List$p.value, out_SKAT_List$p.value)
@@ -407,7 +415,9 @@ get_SKAT_pvalue <- function(Score, Phi, r.corr, regionTestType) {
     error.code <- 0
     SE_Burden <- abs(BETA_Burden / qnorm((out_SKAT_List$param$p.val.each[pos01]) / 2))
   }
-  list(Pvalue_SKATO = Pvalue[1], Pvalue_Burden = Pvalue[3], Pvalue_SKAT = Pvalue[2], BETA_Burden = BETA_Burden, SE_Burden = SE_Burden)
+  out <- list(Pvalue_SKATO = Pvalue[1], Pvalue_Burden = Pvalue[3], Pvalue_SKAT = Pvalue[2], BETA_Burden = BETA_Burden, SE_Burden = SE_Burden)
+  if (!is.null(skat_error)) out$error <- skat_error
+  out
 }
 
 # ACAT-V for one (annotation, max_MAF, weight set) cell: the Cauchy

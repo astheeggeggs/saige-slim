@@ -325,6 +325,11 @@ silently leaves stale values. `Main.hpp` declarations are stale (LEDGER #5).
   `std::vector<bool>` (bit packing makes two markers' writes one word).
 - One dataset per R process; no reentrancy. TBB also drives the step-1 GRM
   kernels (source of LEDGER #7).
+- **A SKAT kernel failure is counted, not hidden** (LEDGER #57): the cell's
+  rows stay NA, the run prints `SKAT failures: N ...` before `Analysis done!`,
+  and `<SAIGEOutputFile>.skatFailures.txt` names each failed cell with the
+  kernel's message when N > 0 (`R/SkatFailures.R`). No bundled input makes SKAT
+  fail; `test-step2-skat-failures.R` plants one by patching `SKAT` in a child.
 
 ### Step-2 marker parallelism: `--nThreads`, one mechanism
 

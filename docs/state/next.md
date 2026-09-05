@@ -329,20 +329,16 @@ control in its ledger entry:
 Detection power drill-verified in both directions for all three: the new tests
 are red at unpatched HEAD (1 / 5 / 4 failures) and green after.
 
-## Outstanding DECISION for the user, not a task to pick up
+## Resolved DECISION: SKAT kernel failures are counted and summarised
 
-[LEDGER #57, the part left open] `get_SKAT_pvalue`'s `try(..., silent = TRUE)`
-(`R/SAIGE_SPATest_Region_Func.R:363`) turns any SKAT failure into
-`Pvalue <- c(NA, NA, NA)` with an `error.code <- 2` that is assigned and never
-read, printed or returned. The #57 fix broke the I/O path into it -- a failed
-chunk-file read now stops the run instead of arriving here -- but a genuine
-NUMERICAL failure (a singular or near-singular Phi, say) still turns a whole gene
-into NA rows at exit 0 with no signal.
-
-Three defensible answers and they are materially different operationally: warn
-and keep the NA, abort the scan, or carry a count and print an end-of-run summary
-line. Whichever is chosen changes what a long exome run does when one gene
-misbehaves, so it was NOT defaulted. Ask before implementing.
+[LEDGER #57, the open half; decided 2026-09-05] `get_SKAT_pvalue`'s
+`try(..., silent = TRUE)` still turns a kernel error into NA rows, by choice: the
+user picked count-and-summarise over warn-and-NA and abort, so that what drives
+the NAs can be determined. The run now prints `SKAT failures: N ...` with a
+by-message tally before `Analysis done!` and writes
+`<SAIGEOutputFile>.skatFailures.txt` naming each failed cell when N > 0. Result
+files are byte-identical. Tests: `test-unit-skat-failures.R`,
+`test-step2-skat-failures.R` (planted kernel failure in a child process).
 
 ## Items
 

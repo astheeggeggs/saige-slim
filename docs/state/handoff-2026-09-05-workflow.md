@@ -47,4 +47,7 @@ gated) and on `slim` with `SAIGE_SKIP_PREPUSH=1` (skips, loudly).
   now, not narrative; further cuts are judgement calls left to the owner.
 - `docs/state/next.md` still carries per-item narrative that overlaps the
   handoffs; it was not restructured, only re-pointed.
+- LATER THE SAME DAY: the `var_c` open question was settled (LEDGER #82,
+  `cc113e57`) and the #57 decision was taken -- count and summarise -- and
+  implemented (`R/SkatFailures.R`, two tests, red at unpatched HEAD).
 - Phase 3 fixes continue from `python3 harness/tools/ledger.py open`.
