@@ -390,10 +390,7 @@ getNeff(
   FemaleOnly = opt$FemaleOnly,
   MaleCode = opt$MaleCode,
   MaleOnly = opt$MaleOnly,
-  # NOTE: --noEstFixedEff is parsed but NOT forwarded -- the hardcoded FALSE
-  # below is upstream behaviour, preserved deliberately (see CLAUDE.md
-  # "bug-for-bug preservation"; getNeff's own default is FALSE too, so the flag
-  # is simply inert rather than mis-set).
-  noEstFixedEff = FALSE,
+  # LEDGER #43 FIXED: forwarded like every other option (it was a hardcoded FALSE).
+  noEstFixedEff = opt$noEstFixedEff,
   useSparseGRMtoFitNULL = opt$useSparseGRMtoFitNULL
 )
