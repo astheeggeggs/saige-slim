@@ -213,6 +213,20 @@ void setRegion_GlobalVarsInCPP(
 
 static void applyMaleXnonPAR(arma::vec& t_GVec, uint32_t& t_pd, double& t_altCounts, double& t_altFreq, const std::string& t_chr);
 
+// A printed p-value back to a double, tolerating what the writer can print
+// and std::stod cannot read: a subnormal (out_of_range) reads as 0, and a
+// string that is not a number at all reads as 0 with a note (LEDGER #72).
+static double parsePrintedPval(const std::string& s){
+  try {
+    return std::stod(s);
+  } catch (const std::out_of_range&) {
+    return 0.0;
+  } catch (const std::invalid_argument&) {
+    std::cerr << "Cannot parse the printed p-value '" << s << "'; taking 0\n";
+    return 0.0;
+  }
+}
+
 // S6: the read, addressed to an EXPLICIT reader rather than to the g_reader
 // singleton. Unified_getOneMarker (the Rcpp export, further down) is now a thin
 // wrapper that passes *g_reader; a worker thread passes its own clone. Nothing
@@ -2802,10 +2816,15 @@ if(t_regionTestType == "BURDEN"){
 	  double burden_p, burden_p_cond;
 	  for(unsigned int i = 0; i < BURDEN_pval_Vec.size(); i++){
 		if(BURDEN_pval_Vec.at(i) != "NA"){
-	  		burden_p = std::stod(BURDEN_pval_Vec.at(i));
+	  		// LEDGER #72 FIXED: the same guarded parse the marker path has had
+	  		// (Main.cpp, the fastTest re-test): a subnormal printed p (below
+	  		// DBL_MIN, which std::stod refuses as out_of_range) used to abort the
+	  		// whole run from inside mainRegionInCPP. It is taken as 0, the value
+	  		// the marker path uses and the limit the Cauchy combination wants.
+	  		burden_p = parsePrintedPval(BURDEN_pval_Vec.at(i));
 			nonMissingPvalVec_std.push_back(burden_p);
 			if(isCondition){
-				burden_p_cond = std::stod(BURDEN_pval_cVec.at(i));
+				burden_p_cond = parsePrintedPval(BURDEN_pval_cVec.at(i));
 				nonMissingPvalVec_c_std.push_back(burden_p_cond);
 			}
 		}	
