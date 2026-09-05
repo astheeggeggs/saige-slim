@@ -429,9 +429,6 @@ reason and an R `warning()` — deliberately a degradation rather than an error,
 one `--nThreads` can be scripted across mixed inputs. The only remaining such case
 is PLINK when the `.bed` could not be memory mapped; **PGEN threads**.
 
-Note: the `--nThreads` help text in `extdata/step2_SPAtests.R` is stale on both
-points. The behaviour described here is what the code does.
-
 ### Restart and append
 
 Step 2 writes a `<SAIGEOutputFile>.index` alongside the results, recording the

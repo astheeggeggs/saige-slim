@@ -597,13 +597,16 @@ option_list <- list(
     type = "integer",
     default = 1L,
     help = paste0(
-      "Optional. Number of threads for single-variant tests. The marker loop ",
-      "is threaded in place -- one process, one copy of the null model, one ",
-      "output file -- and the result is byte-identical to a one-thread run. ",
-      "Restarting an interrupted run works as it does serially. Ignored for ",
-      "group tests, and falls back to one thread with a warning if the ",
-      "genotype reader cannot be cloned (PGEN, or PLINK without mmap). ",
-      "[default=1]"
+      "Optional. Number of threads. For single-variant tests the C++ marker ",
+      "loop is threaded in place -- one process, one copy of the null model, ",
+      "one output file -- and the result is byte-identical to a one-thread ",
+      "run; restarting an interrupted run works as it does serially. For ",
+      "group tests the marker loop stays on one thread and the threads drive ",
+      "the SKAT-O post-processing instead (about half of a group run at ",
+      "N = 50,000; 1.3x at 4 workers, byte-identical; Unix only, elsewhere a ",
+      "group run stays serial). Falls back to one thread with a warning if the ",
+      "genotype reader cannot be cloned, which is now only PLINK when the .bed ",
+      "could not be memory-mapped; PGEN threads. [default=1]"
     )
   ),
   make_option(
