@@ -63,14 +63,28 @@ void PlinkClass::setPlinkobj(std::string t_bimFile,
   // The pread fallback caught it per read, so the loud path was the one nothing
   // executes and the silent one was the default.
   //
-  // A LONGER .bed than expected is allowed: every marker the .bim names is
-  // then present and correctly placed, and trailing bytes are simply unread.
+  // LEDGER #87 FIXED: the check is now an EQUALITY. #58 allowed a longer .bed
+  // on the argument that every marker the .bim names is then present and
+  // correctly placed; that holds only when the .bim is a PREFIX of the true
+  // marker set. A .bim missing an INTERIOR row gives exactly the same length
+  // and relabels every marker after the gap -- measured: rs5 deleted, 70 rows
+  // at exit 0, 68 of them carrying the statistics of the marker before them.
+  // plink itself refuses a size mismatch in either direction; so do we.
   {
     struct stat stCheck;
     const uint64_t needed = (uint64_t)3 +
       (uint64_t)m_numBytesofEachMarker0 * (uint64_t)m_M0;
     if(stat(t_bedFile.c_str(), &stCheck) != 0){
       Rcpp::stop("Cannot stat the .bed file (" + t_bedFile + ").");
+    }
+    if((uint64_t)stCheck.st_size > needed){
+      Rcpp::stop("The .bed file (" + t_bedFile + ") is LONGER than the .bim and .fam "
+                 "that accompany it imply: " + std::to_string(m_M0) + " markers x " +
+                 std::to_string(m_N0) + " samples need " + std::to_string(needed) +
+                 " bytes, but the file is " + std::to_string((uint64_t)stCheck.st_size) +
+                 ". The .bim describes fewer markers than the .bed holds -- a row missing "
+                 "from the .bim would relabel every marker after it -- so the three files "
+                 "do not describe the same dataset.");
     }
     if((uint64_t)stCheck.st_size < needed){
       Rcpp::stop("The .bed file (" + t_bedFile + ") is too short for the .bim and .fam "

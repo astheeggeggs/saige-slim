@@ -97,6 +97,17 @@ void PgenShared::loadPgfi()
         Rcpp::stop(&(errstr_buf[7]));
     }
     const uint32_t raw_variant_ct = _info_ptr->raw_variant_ct;
+    // LEDGER #87 FIXED. The pgen header carries its own variant count and it was
+    // never compared with the pvar's row count, so a .pvar missing an interior
+    // row relabelled every marker after it at exit 0 (measured: rs5 deleted, 68
+    // of 70 rows carrying the previous marker's statistics). Too LONG a .pvar
+    // was caught by the per-read bound; too short by nothing. Now both.
+    if(raw_variant_ct != M) {
+        Rcpp::stop("The .pgen file (" + pgenFile + ") holds " + std::to_string(raw_variant_ct) +
+                   " variants but the .pvar (" + pvarFile + ") describes " + std::to_string(M) +
+                   ". The two files do not describe the same dataset -- a .pvar row missing or "
+                   "added anywhere would relabel every marker after it.");
+    }
     if(header_ctrl & 0x30) {
         _allele_idx_offsetsp = plink2::CreateRefcountedWptr(cur_variant_ct + 1);
         _info_ptr->allele_idx_offsets = _allele_idx_offsetsp->p;

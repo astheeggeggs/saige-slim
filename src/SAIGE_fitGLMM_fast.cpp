@@ -141,12 +141,25 @@ public:
                 // file rejects. The same trio is refused by step 2's #58 check.
                 //
                 // Checked once, up front, so it can name both files and the
-                // shortfall; a longer .bed than expected is fine, as in #58.
+                // shortfall. LEDGER #87: a longer .bed is refused too (see below).
                 m_bed.seekg(0, std::ios::end);
                 const std::streamoff bedSize = m_bed.tellg();
                 m_bed.seekg(0, std::ios::beg);
                 const std::streamoff needed = (std::streamoff)3 +
                         (std::streamoff)m_nbyte * (std::streamoff)m_M;
+                // LEDGER #87 FIXED: equality, for the same reason as step 2's check
+                // in src/PLINK.cpp -- a .bim missing an interior row is the same
+                // length as a .bim that is a prefix, and relabels every marker
+                // (and its chromosome, which LOCO windows are built from) after it.
+                if(bedSize > needed){
+                        Rcpp::stop("The .bed file (" + t_bedfile + ") is LONGER than the .bim ("
+                                   + t_bimfile + ") and .fam (" + t_famfile + ") that accompany it imply: "
+                                   + std::to_string(m_M) + " markers x " + std::to_string(m_N)
+                                   + " samples need " + std::to_string((long long)needed)
+                                   + " bytes, but the file is " + std::to_string((long long)bedSize)
+                                   + ". The .bim describes fewer markers than the .bed holds, so the "
+                                   "three files do not describe the same dataset.");
+                }
                 if(bedSize < needed){
                         Rcpp::stop("The .bed file (" + t_bedfile + ") is too short for the .bim ("
                                    + t_bimfile + ") and .fam (" + t_famfile + ") that accompany it: "
