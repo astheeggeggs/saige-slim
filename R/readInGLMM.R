@@ -246,7 +246,10 @@ ReadModel_subsample <- function(GMMATmodelFile = "", chrom = "", LOCO = TRUE, is
         chromList <- chromList[which(chromList != chrom_v3)]
         modglmm <- removeLOCOResult(chromList, modglmm)
         if (!is.null(modglmm$LOCOResult[[chrom_v3]])) {
-          modglmm$fitted.values <- modglmm$LOCOResult[[chrom_v3]]$fitted.values
+          # LEDGER #14 FIXED: the LOCO replacement is subset here, like the
+          # non-LOCO values were at load, so mu below is built from a vector
+          # that is ALREADY the subset in both branches.
+          modglmm$fitted.values <- modglmm$LOCOResult[[chrom_v3]]$fitted.values[includeIndex]
           modglmm$residuals <- modglmm$LOCOResult[[chrom_v3]]$residuals
           modglmm$residuals <- modglmm$residuals[includeIndex]
           modglmm$obj.noK <- modglmm$LOCOResult[[chrom_v3]]$obj.noK
@@ -271,8 +274,10 @@ ReadModel_subsample <- function(GMMATmodelFile = "", chrom = "", LOCO = TRUE, is
     gc()
   }
 
+  # LEDGER #14 FIXED: fitted.values is already the subset (at load for the
+  # non-LOCO path, above for LOCO), so it was being indexed TWICE here -- a
+  # no-op for a prefix subset, NAs and wrong elements for any other.
   modglmm$mu <- as.vector(modglmm$fitted.values)
-  modglmm$mu <- modglmm$mu[includeIndex]
 
 
   tau <- modglmm$theta

@@ -125,3 +125,35 @@ test_that("ReadModel_subsample validation and prefix-subset happy path", {
   expect_identical(nrow(m$X), as.integer(k))
   expect_identical(m$Sigma_iXXSigma_iX, matrix(0, nrow = 1, ncol = 1))
 })
+
+test_that("LEDGER #14 FIXED: a NON-prefix subsample keeps the right fitted values", {
+  # fitted.values was subset at load and mu, built from it, was subset AGAIN
+  # by the same indices -- idempotent for a prefix subset (the only one the
+  # suite used), NAs and wrong elements for any other. Both branches now
+  # subset once. The verification the row asked for, in both LOCO states.
+  set.seed(14)
+  n <- 8
+  ids <- paste0("S", seq_len(n))
+  fv <- rnorm(n); rs <- rnorm(n)
+  fixture <- function(loco) {
+    modglmm <- list(LOCO = loco, traitType = "quantitative", theta = c(2, 1),
+                    y = rnorm(n), X = matrix(1, n, 1),
+                    fitted.values = fv, residuals = rs, res = rs,
+                    sampleID = ids, LOCOResult = vector("list", 22))
+    if (loco) {
+      modglmm$LOCOResult[[3]] <- list(fitted.values = fv + 100, residuals = rs + 100,
+                                     obj.noK = list(marker = "chr3"))
+    }
+    f <- tempfile(fileext = ".rda"); save(modglmm, file = f); f
+  }
+  keep <- 4:8                         # not a prefix
+  ss <- tempfile(); writeLines(ids[keep], ss)
+  m <- ReadModel_subsample(fixture(FALSE), chrom = "", LOCO = FALSE, subSampleFile = ss)
+  expect_identical(m$mu, fv[keep])
+  expect_false(anyNA(m$mu))
+  expect_identical(m$sampleID, ids[keep])
+  m3 <- ReadModel_subsample(fixture(TRUE), chrom = "3", LOCO = TRUE, subSampleFile = ss)
+  expect_identical(m3$mu, fv[keep] + 100)
+  expect_identical(m3$residuals, rs[keep] + 100)
+  expect_false(anyNA(m3$mu))
+})
