@@ -365,17 +365,51 @@ built beside `strip` in its own pixi env pinned to the same R 4.4.3 / OpenBLAS
   allocations: `SAIGE_PLINK_NO_MMAP=1` gives 312 MB with byte-identical output.
   Worth a sentence in the user docs, not a fix.
 
-## Outstanding DECISIONS for the owner (2026-09-05, after the Phase 3 sweep)
+## DECISIONS for the owner (2026-09-05): all twelve answered
 
-Eleven rows stay open and every one is a decision rather than a fix; the
-reasons are listed in `docs/state/handoff-2026-09-05-phase3-sweep.md`. In
-one line each: #6 (PCG tolerance, deferred), #19 (R-vs-C++ weights.beta
-asymmetry), #20 (logistf parameters accepted and ignored), #26 (Firth drift
-to +-750), #51 (fastTest inert for group tests), #65 (absolute AI-REML
-guards), #79 (a cost), #80 (Is.SPA's meaning), #82 (opposite CLI/API
-defaults), #84 (conditional SPA against the marginal CGF), #86 (SKAT-O
-saturation and the Cauchy fallback). Also #18's second half: whether to
-align the CLI default of `--is_single_in_groupTest` with the API's TRUE.
+The eleven rows the Phase 3 sweep left open, plus #18's second half, were
+each decided and implemented the same day
+(`docs/state/handoff-2026-09-05-decisions.md`). `python3 harness/tools/ledger.py
+open` lists what is still open (documentation rot, #92/#93/#95/#96, and the
+Sigma floors #91); `ledger.py decided` the four left-as-is rows.
+
+## From the 2026-09-05 code-quality review of the Phase 3 sweep
+
+[`docs/state/handoff-2026-09-05-review.md`; measured on the two-chromosome
+dense-GRM fixture that `tests/testthat/helper-pheno-scale.R` derives at run time]
+The review's refactors landed (LEDGER #97-#100 fixed on the way; the fold of
+`fitNULLGLMM`'s binary/quantitative halves proved byte-identical by `cmp` of
+every model file against the pre-fold build). Three things it made visible and
+deliberately did NOT change:
+
+- **Binary LOCO refits are start-dependent, and the two layouts start
+  differently.** `glmmkin.ai_PCG_Rcpp_Binary`'s LOCO loop passes `alpha`/`eta`
+  that it overwrites with each chromosome's result, so chromosome j warm-starts
+  from chromosome j-1's refit; `fitNULLGLMM`'s `--isLowMemLOCO` loop starts every
+  chromosome from the full model's `alpha0`/`eta0`. At `tol.coef = 0.02` they stop
+  at different points: chr1 agrees to 1e-10, chr2 to ~1e-5 (coefficients 8.5e-6,
+  fitted values 2.4e-5, cov 7.7e-6) and the LOCO entry's `obj.noK$S_a`, the score
+  at the refit, not at all. The quantitative refit is one linear step and agrees
+  to 1e-10 on both. Pinned as found in `test-step1-lowmem-loco.R`; which start
+  upstream intends is not known, and either choice moves every binary LOCO model.
+  [ASSUMPTION: the warm start is the whole cause -- derived from the code, and the
+  chr1-exact/chr2-loose pattern matches it; not isolated by forcing the start.]
+- **Two by-trait asymmetries in the low-memory refit, preserved.** The binary
+  refit passes the glm's offset (none unless `isCovariateOffset`) and
+  `tol.coef = tol`; the quantitative refit passes the model's covariate offset
+  (`X[, -1] %*% coef[-1]`, alongside the same X and alpha) and the default
+  `tol.coef = 0.1`. Both mirror what each trait's fitter does in its own LOCO
+  loop, so the layouts agree per trait; whether the quantitative offset is
+  double-counted is a derivation nobody has done. Marked "by trait" in the code.
+- **`#65`'s save-then-rescale is a design the owner may still change** (review
+  finding 1, second half): the run saves the standardised quantitative model,
+  reloads it for the ratio estimation, and rescales the files it wrote at the
+  end (`savedModelFiles`, #98). The alternative -- save in phenotype units at the
+  three save sites, standardise on the reload -- deletes `rescaleSavedQuantModels`
+  and the CLAUDE.md sentence about standardised files, at the cost that the ratio
+  estimation reads a `x s x 1/s` round-tripped model (ULP level), so P4, P16, P32,
+  P36, P37 (+`singleAssoc`) and the quantitative step-1 goldens would need a
+  second rounding-level re-baseline. Not done; owner's call.
 
 ## Resolved DECISION: SKAT kernel failures are counted and summarised
 

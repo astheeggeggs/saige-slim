@@ -301,6 +301,13 @@ silently leaves stale values. `Main.hpp` declarations are stale (LEDGER #5).
   handle (~130 bytes per sample each). `PgenReader::isForkSafe()` is `false`
   as a live hazard (a `FILE*` it fseeks). The `.bed` `pread` fallback runs only
   when mmap fails; force it with `SAIGE_PLINK_NO_MMAP=1` (it refuses to clone).
+- `R/SAIGE_fitGLMM_fast.R::fitNULLGLMM` is ONE body for both traits (the
+  glm family and the fitter are chosen by trait; the four lines that differ
+  in arithmetic are marked "by trait"); its phenotype preparation is
+  `preparePhenotypeFrame` in `R/PhenoPrep.R`, shared with `getNeff`
+  (`R/SAIGE_extractNeff.R`, LEDGER #100). Region weight sets are described by
+  `weightSetDescriptor` in `R/WeightSets.R`, the only constructor
+  `region_postprocess` accepts (no NULL descriptor).
 - `src/SAIGE_fitGLMM_fast.cpp` (~7400 lines) -- step-1 engine over a single
   global `genoClass geno`. PGEN enters by RE-ENCODING: `MarkerByteSource` has
   `BedByteSource` and `PgenByteSource` (pgenlib decode, then re-encode as a
