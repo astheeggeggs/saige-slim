@@ -148,6 +148,19 @@ void PlinkClass::setPlinkobj(std::string t_bimFile,
     Rcpp::stop("The third magic number of the plink bed file is not 00000001. Please use SNP-major plink (plink version >= 1.9) files.");
 }
 
+static uint32_t parseBimPosField(const std::string& s, const std::string& file, size_t lineNo)
+{
+  try {
+    size_t used = 0;
+    long long v = std::stoll(s, &used);
+    if(used != s.size() || v < 0 || v > 0xFFFFFFFFLL) throw std::invalid_argument("range");
+    return static_cast<uint32_t>(v);
+  } catch(const std::exception&) {
+    Rcpp::stop("Cannot parse the position field '" + s + "' on line " + std::to_string(lineNo) +
+               " of " + file + " (column 4 of a .bim).");
+  }
+}
+
 void PlinkClass::readBimFile()
 {
   std::cout << "Reading bim file...." << std::endl;
@@ -160,11 +173,18 @@ void PlinkClass::readBimFile()
     std::vector<std::string> line_elements;
     boost::split(line_elements, line, boost::is_any_of("\t "));
     boost::replace_all(line_elements[line_elements.size() - 1], "\r", "");
-    
+    // LEDGER #89 FIXED. A .bim row has six fields; a shorter one used to index
+    // the split vector out of range. Column 3 (centimorgans) was parsed with a
+    // bare std::stof into m_gd, which nothing in the tree ever read -- so a
+    // '.' there refused a usable dataset -- and is no longer parsed at all.
+    // Column 4 (position) is parsed with a message naming file, line, column.
+    if(line_elements.size() < 6){
+      Rcpp::stop("bim file line " + std::to_string(m_M0) + " has " + std::to_string(line_elements.size()) +
+                 " fields; a .bim row needs 6 (" + m_bimFile + ").");
+    }
     m_chr.push_back(line_elements[0]);
     m_MarkerInPlink.push_back(line_elements[1]);
-    m_gd.push_back(std::stof(line_elements[2]));
-    m_pd.push_back(std::stoi(line_elements[3]));
+    m_pd.push_back(parseBimPosField(line_elements[3], m_bimFile, m_M0));
     std::transform(line_elements[4].begin(), line_elements[4].end(), line_elements[4].begin(), toupper);
     std::transform(line_elements[5].begin(), line_elements[5].end(), line_elements[5].begin(), toupper);
     m_alt.push_back(line_elements[4]);  // allele 1, usually minor allele, alt-first

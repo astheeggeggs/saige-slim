@@ -19,7 +19,7 @@ private:
   uint32_t m_M0, m_M;
   std::vector<std::string> m_chr;               // Chromosome code (either an integer, or 'X'/'Y'/'XY'/'MT'; '0' indicates unknown) or name
   std::vector<std::string> m_MarkerInPlink;     // Variant identifier
-  std::vector<float> m_gd;                      // Position in morgans or centimorgans (safe to use dummy value of '0')
+  // m_gd (centimorgans, bim column 3) was declared here and read nowhere; LEDGER #89 removed it.
   std::vector<uint32_t> m_pd;                   // Base-pair coordinate (1-based; limited to 2^31-2)
   std::vector<std::string> m_alt;               // Allele 1 (corresponding to clear bits in .bed; usually minor)
   std::vector<std::string> m_ref;               // Allele 2 (corresponding to set bits in .bed; usually major)
