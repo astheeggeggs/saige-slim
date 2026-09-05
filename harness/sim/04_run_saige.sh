@@ -8,7 +8,9 @@ export D="${SIMDIR:-${D:-$REPO/harness/work/sim}}"
 # absolute, via 00_env.sh -- see the note in 03_plink_prep.sh
 RS=${RS:-$REPO/.pixi/envs/default/lib/R/bin/Rscript}
 D=${D:-harness/work/sim}
-E=extdata
+# Overrides used by harness/sim/upstream_compare to point one command at another
+# build (its extdata/) and at model/output prefixes outside the fixture dir.
+E=${SAIGE_EXTDATA:-extdata}
 NT="${NTHREADS:-6}"
 
 CUT="${RELCUT:-0.05}"
@@ -51,7 +53,7 @@ step1() {
     --isCateVarianceRatio=TRUE \
     --relatednessCutoff=$CUT \
     --IsOverwriteVarianceRatioFile=TRUE \
-    --outputPrefix=$D/step1_$col
+    --outputPrefix=${S1OUTPREFIX:-$D/step1_$col}
 }
 
 # step2_group <phenoCol>
@@ -65,8 +67,8 @@ step2_group() {
     --chrom=20 \
     --minMAF=0 \
     --minMAC=0.5 \
-    --GMMATmodelFile=$D/step1_$col.rda \
-    --varianceRatioFile=$D/step1_$col.varianceRatio.txt \
+    --GMMATmodelFile=${MODELPREFIX:-$D/step1_$col}.rda \
+    --varianceRatioFile=${MODELPREFIX:-$D/step1_$col}.varianceRatio.txt \
     --sparseGRMFile=$GRM \
     --sparseGRMSampleIDFile=$IDS \
     --LOCO=FALSE \
@@ -79,7 +81,8 @@ step2_group() {
     --maxMAF_in_groupTest=0.0001,0.001,0.01 \
     --groupFile=$D/groupFile.txt \
     --annotation_in_groupTest="high,medium,low,high:medium,high:medium:low" \
-    --SAIGEOutputFile=$D/step2_group_$col.txt
+    ${GROUP_NT:+--nThreads=$GROUP_NT} \
+    --SAIGEOutputFile=${S2OUT:-$D/step2_group_$col.txt}
 }
 
 # step2_single <phenoCol>
@@ -93,8 +96,8 @@ step2_single() {
     --chrom=20 \
     --minMAF=0 \
     --minMAC=20 \
-    --GMMATmodelFile=$D/step1_$col.rda \
-    --varianceRatioFile=$D/step1_$col.varianceRatio.txt \
+    --GMMATmodelFile=${MODELPREFIX:-$D/step1_$col}.rda \
+    --varianceRatioFile=${MODELPREFIX:-$D/step1_$col}.varianceRatio.txt \
     --sparseGRMFile=$GRM \
     --sparseGRMSampleIDFile=$IDS \
     --LOCO=FALSE \
@@ -102,7 +105,7 @@ step2_single() {
     --pCutoffforFirth=0.1 \
     --is_fastTest=TRUE \
     --nThreads=$NT \
-    --SAIGEOutputFile=$D/step2_single_$col.txt
+    --SAIGEOutputFile=${S2OUT:-$D/step2_single_$col.txt}
 }
 
 "$@"

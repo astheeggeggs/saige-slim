@@ -1,0 +1,445 @@
+# build=strip workload=s2single trait=y_binary rep=1 nthreads=4 models=frozen
+# lib=/Users/dpalmer/Repositories/SAIGE/.pixi/envs/default/lib/R/library/SAIGE so_md5=41a20d16152d6635f0e11bb84d5a94fc MODELPREFIX=/Users/dpalmer/Repositories/SAIGE-sim/harness/work/sim50k/step1_y_binary
+# start 2026-09-05 19:10:05 19:10  up 8 days,  3:46, 2 users, load averages: 2.84 4.03 4.28  CPU_Speed_Limit = 100
+=== step 2 (SAIGE-variant, all variants MAC>=20): y_binary ===
+Loading required package: RhpcBLASctl
+R version 4.4.3 (2025-02-28)
+Platform: x86_64-apple-darwin13.4.0
+Running under: macOS 26.6.2
+
+Matrix products: default
+BLAS/LAPACK: /Users/dpalmer/Repositories/SAIGE/.pixi/envs/default/lib/libopenblasp-r0.3.30.dylib;  LAPACK version 3.12.0
+
+locale:
+[1] C.UTF-8/C.UTF-8/C.UTF-8/C/C.UTF-8/C.UTF-8
+
+time zone: Europe/London
+tzcode source: system (macOS)
+
+attached base packages:
+[1] parallel  stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+[1] data.table_1.18.4   optparse_1.8.2      RhpcBLASctl_0.23-42
+[4] SAIGE_1.5.2        
+
+loaded via a namespace (and not attached):
+[1] compiler_4.4.3        Matrix_1.7-6          tools_4.4.3          
+[4] Rcpp_1.1.2            grid_4.4.3            RcppParallel_5.1.11-2
+[7] lattice_0.23-1       
+$bedFile
+[1] "/Users/dpalmer/Repositories/SAIGE-sim/harness/work/sim50k/chr20_sim.bed"
+
+$bimFile
+[1] "/Users/dpalmer/Repositories/SAIGE-sim/harness/work/sim50k/chr20_sim.bim"
+
+$famFile
+[1] "/Users/dpalmer/Repositories/SAIGE-sim/harness/work/sim50k/chr20_sim.fam"
+
+$pgenFile
+[1] ""
+
+$pvarFile
+[1] ""
+
+$psamFile
+[1] ""
+
+$AlleleOrder
+[1] "alt-first"
+
+$idstoIncludeFile
+[1] ""
+
+$rangestoIncludeFile
+[1] ""
+
+$chrom
+[1] "20"
+
+$is_imputed_data
+[1] FALSE
+
+$minMAF
+[1] 0
+
+$minMAC
+[1] 20
+
+$minGroupMAC_in_BurdenTest
+[1] 5
+
+$minInfo
+[1] 0
+
+$maxMissing
+[1] 0.15
+
+$impute_method
+[1] "best_guess"
+
+$LOCO
+[1] FALSE
+
+$GMMATmodelFile
+[1] "/Users/dpalmer/Repositories/SAIGE-sim/harness/work/sim50k/step1_y_binary.rda"
+
+$varianceRatioFile
+[1] "/Users/dpalmer/Repositories/SAIGE-sim/harness/work/sim50k/step1_y_binary.varianceRatio.txt"
+
+$GMMATmodel_varianceRatio_multiTraits_File
+[1] ""
+
+$SAIGEOutputFile
+[1] "/Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/strip/out/s2single_y_binary_r1_nt4_frozen.txt"
+
+$markers_per_chunk
+[1] 10000
+
+$groups_per_chunk
+[1] 100
+
+$is_output_moreDetails
+[1] FALSE
+
+$is_overwrite_output
+[1] TRUE
+
+$maxMAF_in_groupTest
+[1] "0.0001,0.001,0.01"
+
+$maxMAC_in_groupTest
+[1] "0"
+
+$annotation_in_groupTest
+[1] "lof,missense;lof,missense;lof;synonymous"
+
+$groupFile
+[1] ""
+
+$sparseGRMFile
+[1] "/Users/dpalmer/Repositories/SAIGE-sim/harness/work/sim50k/pedigree_truth.sparseGRM.mtx"
+
+$sparseGRMSampleIDFile
+[1] "/Users/dpalmer/Repositories/SAIGE-sim/harness/work/sim50k/pedigree_truth.sparseGRM.mtx.sampleIDs.txt"
+
+$relatednessCutoff
+[1] 0
+
+$sampleFile_male
+[1] ""
+
+$X_PARregion
+[1] ""
+
+$is_rewrite_XnonPAR_forMales
+[1] FALSE
+
+$MACCutoff_to_CollapseUltraRare
+[1] 10
+
+$cateVarRatioMinMACVecExclude
+[1] "10,20.5"
+
+$cateVarRatioMaxMACVecInclude
+[1] "20.5"
+
+$weights.beta
+[1] "1,25"
+
+$r.corr
+[1] 0
+
+$markers_per_chunk_in_groupTest
+[1] 100
+
+$condition
+[1] ""
+
+$SPAcutoff
+[1] 2
+
+$dosage_zerod_cutoff
+[1] 0.2
+
+$dosage_zerod_MAC_cutoff
+[1] 10
+
+$is_single_in_groupTest
+[1] FALSE
+
+$is_no_weight_in_groupTest
+[1] FALSE
+
+$is_output_weight_column
+[1] FALSE
+
+$is_output_markerList_in_groupTest
+[1] FALSE
+
+$is_Firth_beta
+[1] TRUE
+
+$pCutoffforFirth
+[1] 0.1
+
+$is_fastTest
+[1] TRUE
+
+$pval_cutoff_for_fastTest
+[1] 0.05
+
+$is_noadjCov
+[1] TRUE
+
+$max_MAC_for_ER
+[1] 4
+
+$nThreads
+[1] 4
+
+$subSampleFile
+[1] ""
+
+$help
+[1] FALSE
+
+[1] "opt$r.corr"
+[1] 0
+is_noadjCov  TRUE 
+is_fastTest  TRUE 
+dosage_zerod_cutoff  0.2 
+Any dosages <=  0.2  for genetic variants with MAC <=  10  are set to be 0.
+single-variant association test will be performed
+---- null model 1 ----
+[1] "Leave-one-chromosome-out is not applied"
+P-values of genetic variants with MAC <=  4  will be calculated via effecient resampling.
+length(sparseGRMSampleID$IndexGRM):  50000 
+nrow(sparseGRMSampleID):  50000 
+50000  samples have been used to fit the glmm null model
+[1] 50000     3
+      IID IndexInModel IndexGRM
+1 S000001            1        1
+2 S000002            2        2
+3 S000003            3        3
+4 S000004            4        4
+5 S000005            5        5
+6 S000006            6        6
+[1] "Subsetting GRM"
+isSparseGRM is  TRUE 
+variance Ratio null is  0.9856437 0.9856362 
+variance Ratio null_noXadj is  0.9854362 0.9842349 
+[1] "ratioVec_sparse"
+[1] 0.9999999 0.9999999
+[1] "ratioVec_null"
+[1] 0.9856437 0.9856362
+[1] "ratioVec_null_noXadj"
+[1] 0.9854362 0.9842349
+is_fastTest is TRUE.
+The fast tests will be performed (when p-values >=  0.05 ).
+Single-variant tests will run 1 null model(s) in 1 sample-set group(s)
+[1] "LOCO = FASLE and leave-one-chromosome-out is not applied"
+dosageFile type is  plink 
+allele order in the plink file is  alt-first .
+Reading bim file....
+Reading fam file....
+Setting position of samples in PLINK files....
+Number of all markers to test:	 210515 
+Number of markers in each chunk:	 10000 
+Number of chunks for all markers:	 22 
+(2026-09-05 19:10:09.53224) ---- Analyzing Chunk 1/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3299 markers were tested.
+Firth approx was applied to 315 markers. 315 sucessfully converged.
+write to output
+   user  system elapsed 
+ 17.552   2.494   7.960 
+(2026-09-05 19:10:13.90737) ---- Analyzing Chunk 2/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3745 markers were tested.
+Firth approx was applied to 571 markers. 571 sucessfully converged.
+write to output
+   user  system elapsed 
+ 39.749   5.652  14.558 
+(2026-09-05 19:10:20.504899) ---- Analyzing Chunk 3/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3593 markers were tested.
+Firth approx was applied to 273 markers. 273 sucessfully converged.
+write to output
+   user  system elapsed 
+ 52.928   7.426  18.665 
+(2026-09-05 19:10:24.61187) ---- Analyzing Chunk 4/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3642 markers were tested.
+Firth approx was applied to 432 markers. 432 sucessfully converged.
+write to output
+   user  system elapsed 
+ 75.817  10.769  25.586 
+(2026-09-05 19:10:31.53105) ---- Analyzing Chunk 5/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3084 markers were tested.
+Firth approx was applied to 242 markers. 242 sucessfully converged.
+write to output
+   user  system elapsed 
+ 91.597  12.833  30.216 
+(2026-09-05 19:10:36.161486) ---- Analyzing Chunk 6/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+2852 markers were tested.
+Firth approx was applied to 387 markers. 387 sucessfully converged.
+write to output
+   user  system elapsed 
+109.294  15.362  35.645 
+(2026-09-05 19:10:41.590831) ---- Analyzing Chunk 7/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3556 markers were tested.
+Firth approx was applied to 422 markers. 422 sucessfully converged.
+write to output
+   user  system elapsed 
+128.026  18.178  41.234 
+(2026-09-05 19:10:47.179224) ---- Analyzing Chunk 8/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3179 markers were tested.
+Firth approx was applied to 380 markers. 380 sucessfully converged.
+write to output
+   user  system elapsed 
+147.192  20.986  47.443 
+(2026-09-05 19:10:53.388868) ---- Analyzing Chunk 9/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3446 markers were tested.
+Firth approx was applied to 247 markers. 247 sucessfully converged.
+write to output
+   user  system elapsed 
+159.477  22.732  51.179 
+(2026-09-05 19:10:57.124582) ---- Analyzing Chunk 10/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3282 markers were tested.
+Firth approx was applied to 449 markers. 449 sucessfully converged.
+write to output
+   user  system elapsed 
+183.458  26.238  58.406 
+(2026-09-05 19:11:04.351805) ---- Analyzing Chunk 11/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3154 markers were tested.
+Firth approx was applied to 249 markers. 249 sucessfully converged.
+write to output
+   user  system elapsed 
+195.489  27.870  62.163 
+(2026-09-05 19:11:08.107721) ---- Analyzing Chunk 12/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3494 markers were tested.
+Firth approx was applied to 415 markers. 415 sucessfully converged.
+write to output
+   user  system elapsed 
+212.797  30.411  67.515 
+(2026-09-05 19:11:13.460934) ---- Analyzing Chunk 13/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3353 markers were tested.
+Firth approx was applied to 882 markers. 882 sucessfully converged.
+write to output
+   user  system elapsed 
+259.876  37.485  81.787 
+(2026-09-05 19:11:27.732646) ---- Analyzing Chunk 14/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3348 markers were tested.
+Firth approx was applied to 423 markers. 423 sucessfully converged.
+write to output
+   user  system elapsed 
+280.254  40.440  87.879 
+(2026-09-05 19:11:33.8252) ---- Analyzing Chunk 15/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3221 markers were tested.
+Firth approx was applied to 306 markers. 306 sucessfully converged.
+write to output
+   user  system elapsed 
+294.388  42.458  92.006 
+(2026-09-05 19:11:37.953485) ---- Analyzing Chunk 16/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3517 markers were tested.
+Firth approx was applied to 360 markers. 360 sucessfully converged.
+write to output
+   user  system elapsed 
+310.202  44.776  96.800 
+(2026-09-05 19:11:42.746395) ---- Analyzing Chunk 17/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3568 markers were tested.
+Firth approx was applied to 396 markers. 396 sucessfully converged.
+write to output
+   user  system elapsed 
+328.660  47.564 102.209 
+(2026-09-05 19:11:48.155095) ---- Analyzing Chunk 18/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3505 markers were tested.
+Firth approx was applied to 318 markers. 318 sucessfully converged.
+write to output
+   user  system elapsed 
+342.937  49.652 106.439 
+(2026-09-05 19:11:52.384566) ---- Analyzing Chunk 19/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3364 markers were tested.
+Firth approx was applied to 284 markers. 284 sucessfully converged.
+write to output
+   user  system elapsed 
+355.928  51.477 110.291 
+(2026-09-05 19:11:56.237771) ---- Analyzing Chunk 20/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3189 markers were tested.
+Firth approx was applied to 329 markers. 329 sucessfully converged.
+write to output
+   user  system elapsed 
+370.983  53.508 114.995 
+(2026-09-05 19:12:00.941709) ---- Analyzing Chunk 21/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+Completed 10000/10000 markers in the chunk.
+3131 markers were tested.
+Firth approx was applied to 202 markers. 202 sucessfully converged.
+write to output
+   user  system elapsed 
+381.231  54.939 118.068 
+(2026-09-05 19:12:04.008174) ---- Analyzing Chunk 22/22: chrom 20 ---- 
+Marker scan will use 4 in-process threads.
+187 markers were tested.
+Firth approx was applied to 9 markers. 9 sucessfully converged.
+write to output
+   user  system elapsed 
+381.636  54.991 118.237 
+[1] "Analysis done! The results have been saved to '/Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/strip/out/s2single_y_binary_r1_nt4_frozen.txt'."
+      118.39 real       381.65 user        55.07 sys
+          2885611520  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+            20099390  page reclaims
+               11146  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   2  signals received
+                 270  voluntary context switches
+              540141  involuntary context switches
+            20337669  instructions retired
+            20374379  cycles elapsed
+              557056  peak memory footprint
+# end 2026-09-05 19:12:04 19:12  up 8 days,  3:48, 2 users, load averages: 6.31 5.13 4.70

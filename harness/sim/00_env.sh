@@ -16,7 +16,8 @@
 REPO=${SIM_ENV_REPO:-/Users/dpalmer/Repositories/SAIGE}
 PY=/Users/dpalmer/miniconda3/bin/python3
 P2=$REPO/.pixi/envs/default/bin/plink2
-RS=$REPO/.pixi/envs/default/lib/R/bin/Rscript
+# RS may be pre-set by a caller that drives another build (harness/sim/upstream_compare).
+RS=${RS:-$REPO/.pixi/envs/default/lib/R/bin/Rscript}
 D=${D:-$REPO/harness/work/sim50k}
 
 # Determinism for any SAIGE run (see harness/env.sh).

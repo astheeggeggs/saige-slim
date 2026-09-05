@@ -975,3 +975,68 @@ agrees to the precision that configuration has.
 Step 2 is where the win is: **~3x CPU at P = 5**, one genotype read instead of
 five, one process's memory instead of five, and byte-identical output. Step 1
 gains **1.65x**, because sharing the ingest saves only the ingest.
+
+---
+
+## strip vs upstream at N = 50,000, whole pipeline, paired (2026-09-05)
+
+Full write-up: `harness/sim/upstream_compare/RESULTS.md` (drivers, plots and every
+run log beside it). Upstream `main` 365deeff built in `SAIGE-main` with its own pixi
+env pinned to the SAME conda builds as strip's (R 4.4.3 `h46d4a84_2`, OpenBLAS 0.3.30
+`openmp_h30af337_0`, same clang) -- unpinned it resolved R 4.5.2 / OpenBLAS 0.3.34,
+which would have been a confounder and which also fails to link (`-lheapt_w`).
+Both arms on `sim50k`, frozen step-1 models, `--nThreads=1`, 3 paired reps with the
+arm order alternated per rep, `CPU_Speed_Limit = 100`; every log records the library
+loaded and the `SAIGE.so` md5; every arm reproduces itself byte for byte over the reps.
+
+**User CPU, upstream / strip** (paired t on 3 reps):
+
+| workload | upstream | strip | ratio | 95% CI on diff |
+|---|---|---|---|---|
+| step 1 sparse fit + VR, binary / quant | 9.03 / 8.95 s | 6.58 / 6.68 s | **1.37x / 1.34x** | [2.4, 2.5] / [2.2, 2.4] s |
+| single-variant scan, binary | 236.3 | 252.1 ± 14.2 | **0.94x** (n.s., p = 0.15) | [-45.7, +14.1] s |
+| single-variant scan, quant | 80.2 | 62.5 | **1.28x** | [15.0, 20.5] s |
+| gene tests (SKAT-O, 15 cells/gene), binary | 222.5 | 167.5 | **1.33x** | [30.7, 79.3] s |
+| gene tests, quant | 201.7 | 147.3 | **1.37x** | [13.2, 95.6] s |
+
+The quant scan reproduces the 09-01 reader comparison (1.37x bed then, 1.27x on
+`work_s` now; different day, so not a regression claim). **The binary scan is the
+new fact: strip is not faster there, and its rep spread is 4x upstream's.** Nothing
+in Phase 4 measured a binary scan at this N. The binary path adds SPA, ER, Firth on
+10% of markers (`--pCutoffforFirth=0.1`) and the O(N) case/control gather; at 4
+threads its user CPU rises 48% against the quant scan's 27%, so the extra is in the
+per-marker kernels, not the writer. Profile it before touching anything else.
+
+Strip only, `--nThreads=4`, wall clock vs its own 1-thread mean, all outputs
+byte-identical to 1 thread: single-variant **2.35x** (binary) / **2.72x** (quant);
+gene tests 1.21x / 1.59x (threads go to SKAT-O post-processing; NOTES above measured
+1.30x on this fixture at 4 workers). Against upstream on wall clock: 2.2x / 3.5x
+single, 1.6x / 2.2x gene.
+
+**maxRSS: strip 2.3-2.8 GB vs upstream 0.35-0.38 GB on the scan is the mmap'd 2.6 GB
+`.bed`'s resident pages**, not allocation -- `SAIGE_PLINK_NO_MMAP=1` peaks at 312 MB
+with byte-identical output. Group runs: 1.0 GB vs 0.62 GB.
+
+**P-values.** With the same frozen model, strip's step 2 is bit-identical to upstream's
+on every gene-test cell (3,338 x 2 traits), every single-in-group row both print, and
+every single-variant row with `AF_Allele2 <= 0.5`; it differs on every AF > 0.5 row
+(LEDGER #28, upstream's), tests 8 more markers (#29), and prints 965 / 305 single-in-
+group rows upstream loses in its 22 / 7 escalated regions (#50). #28 is not small:
+hand recomputation from the raw `.bed` reproduces strip's `var` = sum((g-gbar)^2) x VR
+on both allele sides and shows upstream's AF > 0.5 `var` 2-7x too large; on `y_null`
+upstream reports 0.7% of AF > 0.5 markers below p = 0.05 (5% expected; strip 4.0%).
+Flip invariance checked directly (alt-first vs ref-first, 667 markers, 124 AF > 0.5:
+`var` and p bit-identical, `BETA` sign-flipped). Causal-gene ranks identical between
+arms on both binary traits.
+
+With each arm's OWN step-1 model the remaining movement is all step 1 and all
+reconciled row by row (a chi-square rescale by the arms' reported `var`, or a match to
+the arms' variance-ratio rows): #53 moves upstream's category-1 ratio 0.14%, and, on
+quantitative traits, **LEDGER #97, found here**: the #65 rescale multiplies the
+`sparse` variance-ratio rows by 1/s^2 although that ratio is scale-free (both sides go
+through Sigma^-1), so every HEAD quantitative model fitted with
+`--useSparseGRMforVarRatio=TRUE` has `sparse` rows 11-12% high. It reaches the region
+path and the escalated sparse re-test: quantitative gene-test `Pvalue` moves by up to
+0.6 in -log10 on this fixture, `SE_Burden^2` strip/upstream = s^2 exactly on the cells
+that use the row. No committed quantitative golden has `sparse` rows, which is why
+the tier stayed green. One-line fix, test named in the row.

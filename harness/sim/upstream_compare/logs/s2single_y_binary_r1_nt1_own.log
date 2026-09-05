@@ -1,0 +1,442 @@
+# build=main workload=s2single trait=y_binary rep=1 nthreads=1 models=own
+# lib=/Users/dpalmer/Repositories/SAIGE-main/Rlib/SAIGE so_md5=2ec37f643aaae331b2df20206e495779 MODELPREFIX=/Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/main/models/step1_y_binary
+# start 2026-09-05 17:11:16 17:11  up 8 days,  1:47, 2 users, load averages: 6.31 9.62 13.56  CPU_Speed_Limit = 100
+=== step 2 (SAIGE-variant, all variants MAC>=20): y_binary ===
+Warning messages:
+1: replacing previous import ‘data.table::first’ by ‘dplyr::first’ when loading ‘SAIGE’ 
+2: replacing previous import ‘data.table::between’ by ‘dplyr::between’ when loading ‘SAIGE’ 
+3: replacing previous import ‘data.table::last’ by ‘dplyr::last’ when loading ‘SAIGE’ 
+Loading required package: RhpcBLASctl
+R version 4.4.3 (2025-02-28)
+Platform: x86_64-apple-darwin13.4.0
+Running under: macOS 26.6.2
+
+Matrix products: default
+BLAS/LAPACK: /Users/dpalmer/Repositories/SAIGE-main/.pixi/envs/default/lib/libopenblasp-r0.3.30.dylib;  LAPACK version 3.12.0
+
+locale:
+[1] C.UTF-8/C.UTF-8/C.UTF-8/C/C.UTF-8/C.UTF-8
+
+time zone: Europe/London
+tzcode source: system (macOS)
+
+attached base packages:
+[1] parallel  stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+[1] data.table_1.18.6.1 optparse_1.8.2      RhpcBLASctl_0.23-42
+[4] SAIGE_1.5.2        
+
+loaded via a namespace (and not attached):
+ [1] R6_2.6.1              tidyselect_1.2.1      Matrix_1.7-6         
+ [4] lattice_0.23-1        magrittr_2.0.5        splines_4.4.3        
+ [7] glue_1.8.1            tibble_3.3.1          pkgconfig_2.0.3      
+[10] RcppParallel_5.1.11-2 dplyr_1.2.1           generics_0.1.4       
+[13] lifecycle_1.0.5       cli_3.6.6             grid_4.4.3           
+[16] vctrs_0.7.3           compiler_4.4.3        tools_4.4.3          
+[19] pillar_1.11.1         survival_3.8-11       Rcpp_1.1.2           
+[22] rlang_1.3.0          
+$vcfFile
+[1] ""
+
+$vcfFileIndex
+[1] ""
+
+$vcfField
+[1] "DS"
+
+$vcfFilters
+[1] ""
+
+$savFile
+[1] ""
+
+$savFileIndex
+[1] ""
+
+$bgenFile
+[1] ""
+
+$bgenFileIndex
+[1] ""
+
+$sampleFile
+[1] ""
+
+$bedFile
+[1] "/Users/dpalmer/Repositories/SAIGE-sim/harness/work/sim50k/chr20_sim.bed"
+
+$bimFile
+[1] "/Users/dpalmer/Repositories/SAIGE-sim/harness/work/sim50k/chr20_sim.bim"
+
+$famFile
+[1] "/Users/dpalmer/Repositories/SAIGE-sim/harness/work/sim50k/chr20_sim.fam"
+
+$pgenPrefix
+[1] ""
+
+$AlleleOrder
+[1] "alt-first"
+
+$idstoIncludeFile
+[1] ""
+
+$rangestoIncludeFile
+[1] ""
+
+$chrom
+[1] "20"
+
+$is_imputed_data
+[1] FALSE
+
+$minMAF
+[1] 0
+
+$minMAC
+[1] 20
+
+$minGroupMAC_in_BurdenTest
+[1] 5
+
+$minInfo
+[1] 0
+
+$maxMissing
+[1] 0.15
+
+$impute_method
+[1] "best_guess"
+
+$LOCO
+[1] FALSE
+
+$GMMATmodelFile
+[1] "/Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/main/models/step1_y_binary.rda"
+
+$varianceRatioFile
+[1] "/Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/main/models/step1_y_binary.varianceRatio.txt"
+
+$SAIGEOutputFile
+[1] "/Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/main/out/s2single_y_binary_r1_nt1_own.txt"
+
+$markers_per_chunk
+[1] 10000
+
+$groups_per_chunk
+[1] 100
+
+$is_output_moreDetails
+[1] FALSE
+
+$is_overwrite_output
+[1] TRUE
+
+$maxMAF_in_groupTest
+[1] "0.0001,0.001,0.01"
+
+$maxMAC_in_groupTest
+[1] "0"
+
+$annotation_in_groupTest
+[1] "lof,missense;lof,missense;lof;synonymous"
+
+$groupFile
+[1] ""
+
+$sparseGRMFile
+[1] "/Users/dpalmer/Repositories/SAIGE-sim/harness/work/sim50k/pedigree_truth.sparseGRM.mtx"
+
+$sparseGRMSampleIDFile
+[1] "/Users/dpalmer/Repositories/SAIGE-sim/harness/work/sim50k/pedigree_truth.sparseGRM.mtx.sampleIDs.txt"
+
+$relatednessCutoff
+[1] 0
+
+$sampleFile_male
+[1] ""
+
+$X_PARregion
+[1] ""
+
+$is_rewrite_XnonPAR_forMales
+[1] FALSE
+
+$MACCutoff_to_CollapseUltraRare
+[1] 10
+
+$cateVarRatioMinMACVecExclude
+[1] "10,20.5"
+
+$cateVarRatioMaxMACVecInclude
+[1] "20.5"
+
+$weights.beta
+[1] "1,25"
+
+$r.corr
+[1] 0
+
+$markers_per_chunk_in_groupTest
+[1] 100
+
+$condition
+[1] ""
+
+$SPAcutoff
+[1] 2
+
+$dosage_zerod_cutoff
+[1] 0.2
+
+$dosage_zerod_MAC_cutoff
+[1] 10
+
+$is_single_in_groupTest
+[1] FALSE
+
+$is_no_weight_in_groupTest
+[1] FALSE
+
+$is_output_markerList_in_groupTest
+[1] FALSE
+
+$is_Firth_beta
+[1] TRUE
+
+$pCutoffforFirth
+[1] 0.1
+
+$is_fastTest
+[1] TRUE
+
+$is_noadjCov
+[1] TRUE
+
+$max_MAC_for_ER
+[1] 4
+
+$nThreads
+[1] 1
+
+$subSampleFile
+[1] ""
+
+$help
+[1] FALSE
+
+[1] "opt$r.corr"
+[1] 0
+is_noadjCov  TRUE 
+is_fastTest  TRUE 
+dosage_zerod_cutoff  0.2 
+Any dosages <=  0.2  for genetic variants with MAC <=  10  are set to be 0.
+single-variant association test will be performed
+[1] "Leave-one-chromosome-out is not applied"
+P-values of genetic variants with MAC <=  4  will be calculated via effecient resampling.
+[1] "LOCO = FASLE and leave-one-chromosome-out is not applied"
+length(sparseGRMSampleID$IndexGRM):  50000 
+nrow(sparseGRMSampleID):  50000 
+50000  samples have been used to fit the glmm null model
+[1] 50000     3
+      IID IndexInModel IndexGRM
+1 S000001            1        1
+2 S000002            2        2
+3 S000003            3        3
+4 S000004            4        4
+5 S000005            5        5
+6 S000006            6        6
+[1] "Subsetting GRM"
+isSparseGRM is  TRUE 
+variance Ratio null is  0.9870362 0.9855829 
+variance Ratio null_noXadj is provided
+[1] "ratioVec_sparse"
+[1] 1.0000000 0.9999999
+[1] "ratioVec_null"
+[1] 0.9870362 0.9855829
+[1] "ratioVec_null_noXadj"
+[1] 0.9867776 0.9840163
+is_fastTest is TRUE.
+The fast tests will be performed (when p-values >=  0.05 ).
+dosageFile type is  plink 
+allele order in the plink file is  alt-first .
+Reading bim file....
+Reading fam file....
+Setting position of samples in PLINK files....
+Number of all markers to test:	 210515 
+Number of markers in each chunk:	 10000 
+Number of chunks for all markers:	 22 
+(2026-09-05 17:11:20.374491) ---- Analyzing Chunk 1/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3299 markers were tested.
+Firth approx was applied to 298 markers. 298 sucessfully converged.
+write to output
+   user  system elapsed 
+ 13.353   1.099  14.759 
+(2026-09-05 17:11:31.219206) ---- Analyzing Chunk 2/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3745 markers were tested.
+Firth approx was applied to 377 markers. 377 sucessfully converged.
+write to output
+   user  system elapsed 
+ 26.044   1.963  28.575 
+(2026-09-05 17:11:45.05151) ---- Analyzing Chunk 3/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3593 markers were tested.
+Firth approx was applied to 264 markers. 264 sucessfully converged.
+write to output
+   user  system elapsed 
+ 36.040   2.694  39.580 
+(2026-09-05 17:11:56.04805) ---- Analyzing Chunk 4/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3642 markers were tested.
+Firth approx was applied to 392 markers. 392 sucessfully converged.
+write to output
+   user  system elapsed 
+ 50.962   3.743  55.850 
+(2026-09-05 17:12:12.307782) ---- Analyzing Chunk 5/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3084 markers were tested.
+Firth approx was applied to 219 markers. 219 sucessfully converged.
+write to output
+   user  system elapsed 
+ 62.337   4.505  68.135 
+(2026-09-05 17:12:24.60396) ---- Analyzing Chunk 6/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+2849 markers were tested.
+Firth approx was applied to 326 markers. 326 sucessfully converged.
+write to output
+   user  system elapsed 
+ 74.660   5.337  81.394 
+(2026-09-05 17:12:37.875285) ---- Analyzing Chunk 7/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3556 markers were tested.
+Firth approx was applied to 332 markers. 332 sucessfully converged.
+write to output
+   user  system elapsed 
+ 87.497   6.279  95.341 
+(2026-09-05 17:12:51.809577) ---- Analyzing Chunk 8/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3179 markers were tested.
+Firth approx was applied to 327 markers. 327 sucessfully converged.
+write to output
+   user  system elapsed 
+100.541   7.157 109.563 
+(2026-09-05 17:13:06.033415) ---- Analyzing Chunk 9/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3446 markers were tested.
+Firth approx was applied to 217 markers. 217 sucessfully converged.
+write to output
+   user  system elapsed 
+110.834   7.901 120.798 
+(2026-09-05 17:13:17.275791) ---- Analyzing Chunk 10/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3282 markers were tested.
+Firth approx was applied to 428 markers. 428 sucessfully converged.
+write to output
+   user  system elapsed 
+129.198   9.334 140.898 
+(2026-09-05 17:13:37.373587) ---- Analyzing Chunk 11/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3154 markers were tested.
+Firth approx was applied to 221 markers. 221 sucessfully converged.
+write to output
+   user  system elapsed 
+138.526  10.000 151.027 
+(2026-09-05 17:13:47.494519) ---- Analyzing Chunk 12/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3489 markers were tested.
+Firth approx was applied to 335 markers. 335 sucessfully converged.
+write to output
+   user  system elapsed 
+150.347  10.885 164.000 
+(2026-09-05 17:14:00.472142) ---- Analyzing Chunk 13/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3353 markers were tested.
+Firth approx was applied to 759 markers. 759 sucessfully converged.
+write to output
+   user  system elapsed 
+181.403  13.098 198.175 
+(2026-09-05 17:14:34.645276) ---- Analyzing Chunk 14/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3348 markers were tested.
+Firth approx was applied to 392 markers. 392 sucessfully converged.
+write to output
+   user  system elapsed 
+197.187  14.335 215.589 
+(2026-09-05 17:14:52.059878) ---- Analyzing Chunk 15/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3221 markers were tested.
+Firth approx was applied to 276 markers. 276 sucessfully converged.
+write to output
+   user  system elapsed 
+208.314  15.142 227.732 
+(2026-09-05 17:15:04.2135) ---- Analyzing Chunk 16/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3517 markers were tested.
+Firth approx was applied to 316 markers. 316 sucessfully converged.
+write to output
+   user  system elapsed 
+219.294  15.885 239.721 
+(2026-09-05 17:15:16.194586) ---- Analyzing Chunk 17/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3568 markers were tested.
+Firth approx was applied to 330 markers. 330 sucessfully converged.
+write to output
+   user  system elapsed 
+231.978  16.777 253.398 
+(2026-09-05 17:15:29.863798) ---- Analyzing Chunk 18/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3505 markers were tested.
+Firth approx was applied to 273 markers. 273 sucessfully converged.
+write to output
+   user  system elapsed 
+242.634  17.572 264.928 
+(2026-09-05 17:15:41.391357) ---- Analyzing Chunk 19/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3364 markers were tested.
+Firth approx was applied to 260 markers. 260 sucessfully converged.
+write to output
+   user  system elapsed 
+252.703  18.269 275.723 
+(2026-09-05 17:15:52.185958) ---- Analyzing Chunk 20/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3189 markers were tested.
+Firth approx was applied to 295 markers. 295 sucessfully converged.
+write to output
+   user  system elapsed 
+264.353  19.063 288.204 
+(2026-09-05 17:16:04.667922) ---- Analyzing Chunk 21/22: chrom 20 ---- 
+Completed 10000/10000 markers in the chunk.
+3131 markers were tested.
+Firth approx was applied to 186 markers. 186 sucessfully converged.
+write to output
+   user  system elapsed 
+272.746  19.654 297.215 
+(2026-09-05 17:16:13.671554) ---- Analyzing Chunk 22/22: chrom 20 ---- 
+187 markers were tested.
+Firth approx was applied to 9 markers. 9 sucessfully converged.
+write to output
+   user  system elapsed 
+273.245  19.689 297.751 
+[1] "Analysis done! The results have been saved to '/Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/main/out/s2single_y_binary_r1_nt1_own.txt'."
+      297.98 real       273.36 user        19.73 sys
+           396713984  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             8226044  page reclaims
+                1786  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   2  signals received
+                 295  voluntary context switches
+              236848  involuntary context switches
+            19856814  instructions retired
+            22700829  cycles elapsed
+              569344  peak memory footprint
+# end 2026-09-05 17:16:14 17:16  up 8 days,  1:52, 2 users, load averages: 4.57 6.82 11.14

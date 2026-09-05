@@ -337,6 +337,34 @@ control in its ledger entry:
 Detection power drill-verified in both directions for all three: the new tests
 are red at unpatched HEAD (1 / 5 / 4 failures) and green after.
 
+## From the strip-vs-upstream comparison at N = 50,000 (2026-09-05)
+
+[Measured; `harness/sim/upstream_compare/RESULTS.md`] Upstream `main` (365deeff)
+built beside `strip` in its own pixi env pinned to the same R 4.4.3 / OpenBLAS
+0.3.30 builds, both arms on `sim50k`, paired and alternated.
+
+- **LEDGER #97 -- fix it.** The #65 rescale multiplies the `sparse` variance-ratio
+  rows by 1/s^2, but that ratio is scale-free. Every quantitative model fitted with
+  `--useSparseGRMforVarRatio=TRUE` at HEAD carries `sparse` rows 11-12% high; the
+  region path and the escalated sparse score test consume them, so quantitative
+  gene tests on HEAD models are conservative by that factor on the variance
+  (`Pvalue` moves by up to 0.6 in -log10 on the fixture). One-line fix in
+  `R/SAIGE_fitGLMM_fast.R:2662`/`:2675`; the test to add is a quantitative step-1
+  with `--useSparseGRMforVarRatio=TRUE` whose `sparse` rows are invariant to y * 100
+  while its `null` rows scale by 1e-4. No committed golden has quantitative `sparse`
+  rows, which is why nothing caught it.
+- **The binary single-variant scan is NOT faster than upstream** (0.94x user CPU,
+  n = 3 paired, p = 0.15, not significant) while the quantitative scan is 1.28x,
+  step 1 is 1.34-1.37x and the gene tests 1.33-1.37x. Nothing in Phase 4 was
+  measured on a binary scan at N = 50,000 (the 09-01 comparison was `y_quant`).
+  Profile it before optimising anything else: the binary path adds SPA, ER and
+  Firth (10% of markers at `--pCutoffforFirth=0.1`) and the O(N) case/control
+  summary gather, and one of those got slower or none got faster.
+- Strip's step-2 peak RSS at N = 50,000 reads 2.3-2.8 GB against upstream's
+  0.35-0.38 GB. Measured to be resident pages of the mmap'd 2.6 GB `.bed`, not
+  allocations: `SAIGE_PLINK_NO_MMAP=1` gives 312 MB with byte-identical output.
+  Worth a sentence in the user docs, not a fix.
+
 ## Outstanding DECISIONS for the owner (2026-09-05, after the Phase 3 sweep)
 
 Eleven rows stay open and every one is a decision rather than a fix; the
