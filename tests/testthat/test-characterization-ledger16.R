@@ -3,6 +3,11 @@
 # sat on (conditioning on rs80 made monomorphic rs1 appear carrying rs81's
 # AC=314). The reader now seeks unconditionally: rs1 must be absent from BOTH
 # runs (it is truly monomorphic and filtered).
+#
+# The conditioning marker is rs79 now, not rs80: rs80 is itself monomorphic in
+# the analysed samples and LEDGER #73 (FIXED 2026-09-05) refuses such a
+# conditioning marker by name. Any marker read before the loop puts the cursor
+# mid-stream, which is all the original construction needed.
 
 test_that("LEDGER #16 fixed: mid-stream bim-row-0 reads return the true record", {
   skip_unless_level("standard")
@@ -26,7 +31,7 @@ test_that("LEDGER #16 fixed: mid-stream bim-row-0 reads return the true record",
 
   out2 <- tempfile(fileext = ".txt")
   expect_cli_ok(run_saige_cli("step2_SPAtests.R",
-                              c(base_args, "--condition=rs80",
+                              c(base_args, "--condition=rs79",
                                 paste0("--SAIGEOutputFile=", out2))))
   cond <- read_saige_table(out2)
   expect_false("rs1" %in% cond$MarkerID)  # no phantom: true (monomorphic) rs1 is filtered

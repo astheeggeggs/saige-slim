@@ -68,8 +68,11 @@ test_that("setGenoInput builds the pgen markerInfo contract, matching plink", {
 })
 
 test_that("chrom filter and include-file plumbing", {
-  obj <- setGenoInput(bedFile = bed100(), sampleInModel = fam_ids(), chrom = "2")
-  expect_identical(nrow(obj$markerInfo), 0L)  # all markers are on chrom 1
+  # LEDGER #76 FIXED: an empty chromosome selection stops in the reader now
+  # (it used to hand an empty markerInfo on, and the region path wrote a
+  # zero-byte results file from it).
+  expect_error(setGenoInput(bedFile = bed100(), sampleInModel = fam_ids(), chrom = "2"),
+               "No markers on chrom 2 are found")
 
   ids <- tempfile(); writeLines(c("rs13", "rs79"), ids)
   obj <- setGenoInput(bedFile = bed100(), sampleInModel = fam_ids(),
