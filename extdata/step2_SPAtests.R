@@ -447,7 +447,12 @@ option_list <- list(
     help = paste0(
       " If the test statistic lies within the standard deviation cutoff of the\n",
       "mean, p-value based on traditional score test is returned. Default value ",
-      "is 2."
+      "is 2. The output column Is.SPA is true whenever the reported SE was ",
+      "back-derived from the reported p-value rather than from 1/sqrt(var): ",
+      "after the saddlepoint approximation AND after the exact resampling test ",
+      "on MAC <= max_MAC_for_ER markers, which has no saddlepoint. Read it as ",
+      "'p.value is not the score-test p', not as 'SPA ran' (LEDGER #80, ",
+      "decided: left as is)."
     )
   ),
   make_option(
@@ -569,7 +574,8 @@ option_list <- list(
     default = 4,
     help = paste0(
       "p-values of genetic variants with MAC <= max_MAC_for_ER will be ",
-      "calculated via efficient resampling. [default=4]"
+      "calculated via efficient resampling. [default=4]. Such markers report ",
+      "Is.SPA = true (their SE is back-derived from the exact p; see --SPAcutoff)."
     )
   ),
   make_option(
