@@ -401,7 +401,13 @@ option_list <- list(
     help = paste0(
       "If r.corr = 1, only Burden tests will be performed. If r.corr = 0, SKAT-O ",
       "tests will be performed and results for Burden tests and SKAT tests will ",
-      "be output too. [default = 0]"
+      "be output too. [default = 0]. Each region's Cauchy row combines its ",
+      "cells' SKAT-O Pvalue by ACAT, EXCEPT when any cell's Pvalue is exactly 1: ",
+      "the SKAT package's SKAT-O integral saturates to exactly 1 whenever the ",
+      "smallest per-rho p is above ~0.78, and the combiner then reports ",
+      "min(1, n_cells * min(Pvalue)), a Bonferroni, under the same Cauchy label. ",
+      "A saturated cell is harmless on its own (nothing there); read the Cauchy ",
+      "row beside its cells' Pvalue column (LEDGER #86, decided: left as is)."
     )
   ),
   make_option(
