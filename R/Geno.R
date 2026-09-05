@@ -89,7 +89,18 @@ setGenoInput <- function(bedFile = "",
     if (famFile == "") {
       famFile <- gsub("bed$", "fam", bedFile)
     }
-    markerInfo <- data.table::fread(bimFile, header = FALSE, select = c(1, 2, 4, 5, 6))
+    # LEDGER #74 FIXED: colClasses pins the ID column (bim column 2) to
+    # character. Without it data.table INFERS the type, and a bim whose IDs are
+    # all numeric infers integer -- while group-file IDs and --condition IDs
+    # come from strsplit and are always character. `setkeyv(markerInfo, "ID")`
+    # below and the merges in extract_genoIndex_condition then compare an
+    # integer key with a character one, which data.table refuses outright
+    # ("Incompatible join types: x.ID (integer) and i.SNP (character)").
+    # The number indexes the FILE's columns, not the selected ones.
+    markerInfo <- data.table::fread(bimFile,
+      header = FALSE, select = c(1, 2, 4, 5, 6),
+      colClasses = list(character = 2)
+    )
     # markerInfo = as.data.frame(markerInfo)
     # markerInfo is a data.table
     if (AlleleOrder == "alt-first") {
@@ -119,7 +130,11 @@ setGenoInput <- function(bedFile = "",
     }
     # pvar is always REF/ALT-ordered -- unlike bim, there is no
     # AlleleOrder-dependent column swap to apply here.
-    markerInfo <- data.table::fread(pvarFile, header = TRUE, skip = "#CHROM")
+    # LEDGER #74 FIXED, pgen half: same inference hazard, ID is pvar column 3.
+    markerInfo <- data.table::fread(pvarFile,
+      header = TRUE, skip = "#CHROM",
+      colClasses = list(character = 3)
+    )
     names(markerInfo)[1:5] <- c("CHROM", "POS", "ID", "REF", "ALT")
     markerInfo$genoIndex <- 1:nrow(markerInfo) - 1 # -1 is to convert 'R' to 'C++'
     if (chrom != "") {
