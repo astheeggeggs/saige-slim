@@ -1061,9 +1061,20 @@ fitNULLGLMM <- function(plinkFile = "",
   )
 
 
-  if (traitType == "binary") {
+  # ---- the fit, the save and the variance ratios: ONE body for both traits.
+  # The two traits used to be two 270-line copies of this block differing in
+  # the glm family, the fitter, and the four lines marked "by trait" below
+  # (the LOCO refit's mu2, offset and tol.coef, and the quantitative
+  # rescaling); every other line was the same text (finding 2 of the
+  # 2026-09-05 code-quality review).
+  if (!traitType %in% c("binary", "quantitative")) {
+    stop("traitType must be binary or quantitative")
+  }
+  isBinary <- traitType == "binary"
+  family <- if (isBinary) binomial else gaussian(link = "identity")
+  fitter <- if (isBinary) glmmkin.ai_PCG_Rcpp_Binary else glmmkin.ai_PCG_Rcpp_Quantitative
+  if (isBinary) {
     cat(phenoCol, " is a binary trait\n")
-
     uniqPheno <- sort(unique(dataMerge_sort[, which(colnames(dataMerge_sort) == phenoCol)]))
     if (uniqPheno[1] != 0 | uniqPheno[2] != 1) {
       stop("ERROR! phenotype value needs to be 0 or 1 \n")
@@ -1072,24 +1083,28 @@ fitNULLGLMM <- function(plinkFile = "",
     print(formula.new)
     print("head(data.new)")
     print(head(data.new))
+  } else {
+    cat(phenoCol, " is a quantitative trait\n")
+  }
+  {
     if (!isCovariateOffset) {
-      fit0 <- glm(formula.new, data = data.new, family = binomial)
+      fit0 <- glm(formula.new, data = data.new, family = family)
       Xorig <- NULL
     } else {
-      fit0orig <- glm(formula.new.withCov, data = data.new, family = binomial)
+      fit0orig <- glm(formula.new.withCov, data = data.new, family = family)
       Xorig <- model.matrix(fit0orig)
       rm(fit0orig)
       gc()
       fit0 <- glm(formula.new,
         data = data.new, offset = covoffset,
-        family = binomial
+        family = family
       )
     }
 
 
     cat("glm:\n")
     print(fit0)
-    print(summary(fit0))
+    if (isBinary) print(summary(fit0))
 
     obj.noK <- NULL
     if (!skipModelFitting) {
@@ -1102,7 +1117,7 @@ fitNULLGLMM <- function(plinkFile = "",
       cat("Start fitting the NULL GLMM\n")
       t_begin <- proc.time()
       print(t_begin)
-      re_fit <- system.time(modglmm <- glmmkin.ai_PCG_Rcpp_Binary(bedFile, bimFile, famFile, Xorig, isCovariateOffset,
+      re_fit <- system.time(modglmm <- fitter(bedFile, bimFile, famFile, Xorig, isCovariateOffset,
         fit0,
         tau = c(0, 0), fixtau = c(0, 0), maxiter = maxiter,
         tol = tol, verbose = TRUE, nrun = nrun, tolPCG = tolPCG,
@@ -1184,6 +1199,7 @@ fitNULLGLMM <- function(plinkFile = "",
         modglmm$chromosomeEndIndexVec <- NULL
         modelOut <- paste(c(outputPrefix, "_noLOCO.rda"), collapse = "")
         save(modglmm, file = modelOut)
+        savedModelFiles <- c(savedModelFiles, modelOut)
         modglmm$LOCO <- TRUE
         modglmm$Y <- NULL
         eta0 <- modglmm$linear.predictors
@@ -1194,7 +1210,10 @@ fitNULLGLMM <- function(plinkFile = "",
         modglmm$residuals <- NULL
         modglmm$obj.noK <- NULL
         y <- fit0$y
-        offset0 <- fit0$offset
+        # by trait: the binary refit used the glm's offset (none unless
+        # isCovariateOffset), the quantitative refit the model's covariate
+        # offset built above. Preserved as found; see next.md.
+        offset0 <- if (isBinary) fit0$offset else modglmm$offset
         if (is.null(offset0)) {
           offset0 <- rep(0, length(y))
         }
@@ -1213,14 +1232,15 @@ fitNULLGLMM <- function(plinkFile = "",
           if (!is.na(startIndex) && !is.na(endIndex)) {
             cat("leave chromosome ", j, " out\n")
             setStartEndIndex(startIndex, endIndex, j - 1)
-            re.coef_LOCO <- Get_Coef_LOCO(y, X = model.matrix(fit0), tau, family = fit0$family, alpha = alpha0, eta = eta0, offset = offset0, verbose = TRUE, maxiterPCG = maxiterPCG, tolPCG = tolPCG, maxiter = maxiter, tol.coef = tol)
+                        # by trait: the quantitative refit never passed tol.coef (default 0.1)
+            re.coef_LOCO <- Get_Coef_LOCO(y, X = model.matrix(fit0), tau, family = fit0$family, alpha = alpha0, eta = eta0, offset = offset0, verbose = TRUE, maxiterPCG = maxiterPCG, tolPCG = tolPCG, maxiter = maxiter, tol.coef = if (isBinary) tol else 0.1)
             cov <- re.coef_LOCO$cov
             alpha <- re.coef_LOCO$alpha
             eta <- re.coef_LOCO$eta
             Y <- re.coef_LOCO$Y
             mu <- re.coef_LOCO$mu
-            mu2 <- mu * (1 - mu)
             res <- y - mu
+            mu2 <- if (isBinary) mu * (1 - mu) else rep((1 / (tau[1])), length(res)) # by trait
 
             if (!is.null(out.transform) & is.null(fit0$offset)) {
               coef.alpha <- Covariate_Transform_Back(alpha, out.transform$Param.transform)
@@ -1248,6 +1268,7 @@ fitNULLGLMM <- function(plinkFile = "",
               }
             }
             save(modglmm, file = modelOutbychr)
+            savedModelFiles <- c(savedModelFiles, modelOutbychr)
             modglmm$LOCOResult[[j]] <- list(NULL)
             gc()
           } else {
@@ -1258,6 +1279,7 @@ fitNULLGLMM <- function(plinkFile = "",
         # modelOut_nonauto = paste(c(outputPrefix,"_noLOCO.rda"), collapse="")
       } else {
         save(modglmm, file = modelOut)
+        savedModelFiles <- c(savedModelFiles, modelOut)
       }
 
       gc()
@@ -1305,10 +1327,14 @@ fitNULLGLMM <- function(plinkFile = "",
       }
       cat("Start estimating variance ratios\n")
       load(modelOut)
+      if (skipModelFitting && !isBinary) {
+        # the file is in phenotype units (LEDGER #65); the estimation runs standardised
+        modglmm <- scaleQuantModel(modglmm, 1 / yScale)
+      }
       extractVarianceRatio(
         obj.glmm.null = modglmm,
         seed = seed,
-        obj.glm.null = fit0, maxiterPCG = maxiterPCG,
+        obj.glm.null = fit0, maxiterPCG = maxiterPCG, varRatioScale = 1 / yScale^2,
         tolPCG = tolPCG, numMarkers = numMarkersForVarRatio, varRatioOutFile = varRatioFile,
         ratioCVcutoff = ratioCVcutoff, testOut = SPAGMMATOut,
         bedFile = bedFile, bimFile = bimFile, famFile = famFile, genoIn = genoIn, chromosomeStartIndexVec = chromosomeStartIndexVec,
@@ -1332,265 +1358,7 @@ fitNULLGLMM <- function(plinkFile = "",
     if (releaseGenoAtEnd) {
       releaseGeno()
     }
-    return(invisible(list(
-      phenoCol = phenoCol, modelOut = modelOut,
-      varRatioFile = if (skipVarianceRatioEstimation) NULL else varRatioFile,
-      nSamples = nrow(dataMerge_sort)
-    )))
-  } else if (traitType == "quantitative") {
-    cat(phenoCol, " is a quantitative trait\n")
-    obj.noK <- NULL
-
-    if (!isCovariateOffset) {
-      fit0 <- glm(formula.new, data = data.new, family = gaussian(link = "identity"))
-      Xorig <- NULL
-    } else {
-      fit0orig <- glm(formula.new.withCov, data = data.new, family = gaussian(link = "identity"))
-      Xorig <- model.matrix(fit0orig)
-      rm(fit0orig)
-      gc()
-      fit0 <- glm(formula.new,
-        data = data.new, offset = covoffset,
-        family = gaussian(link = "identity")
-      )
-    }
-
-    cat("glm:\n")
-    print(fit0)
-
-    if (!skipModelFitting) {
-      t_begin <- proc.time()
-      print(t_begin)
-      setisUseSparseSigmaforNullModelFitting(useSparseGRMtoFitNULL)
-      if (useSparseGRMtoFitNULL) {
-        setisUsePCGwithSparseSigma(usePCGwithSparseGRM)
-        resetSigmaFactoriser() # LEDGER #79: per-fit factorisation counters
-      }
-      cat("Start fitting the NULL GLMM\n")
-      re_fit <- system.time(modglmm <- glmmkin.ai_PCG_Rcpp_Quantitative(bedFile, bimFile, famFile, Xorig, isCovariateOffset,
-        fit0,
-        tau = c(0, 0), fixtau = c(0, 0), maxiter = maxiter,
-        tol = tol, verbose = TRUE, nrun = nrun, tolPCG = tolPCG,
-        maxiterPCG = maxiterPCG, subPheno = dataMerge_sort, indicatorGenoSamplesWithPheno = indicatorGenoSamplesWithPheno,
-        obj.noK = obj.noK, out.transform = out.transform,
-        tauInit = tauInit, memoryChunk = memoryChunk,
-        LOCO = LOCO, chromosomeStartIndexVec = chromosomeStartIndexVec,
-        chromosomeEndIndexVec = chromosomeEndIndexVec,
-        traceCVcutoff = traceCVcutoff, isCovariateTransform = isCovariateTransform, genoIn = genoIn,
-        ingestGates = ingestGates,
-        isDiagofKinSetAsOne = isDiagofKinSetAsOne,
-        isLowMemLOCO = isLowMemLOCO
-      ))
-      if (useSparseGRMtoFitNULL) {
-        cnt <- getSigmaSolveCounts() # LEDGER #79 FIXED, as on the binary path
-        cat("Sparse Sigma direct solves: ", cnt[2], " solves with ", cnt[1],
-            " factorisations\n", sep = "")
-      }
-      modglmm$obj.glm.null$model <- data.frame(modglmm$obj.glm.null$model)
-      for (x in names(modglmm$obj.glm.null)) {
-        attr(modglmm$obj.glm.null[[x]], ".Environment") <- c()
-      }
-
-
-      if (isCovariateOffset) {
-        modglmm$offset <- covoffset
-      } else {
-        if (hasCovariate) {
-          # modglmm$offset = covoffset
-          # data.new = data.new[,-c(1,2), drop=F]
-          # data.new = as.matrix(data.new[,-ncol(data.new), drop=F])
-          data.new.X <- model.matrix(fit0)[, -1, drop = FALSE]
-          modglmm$offset <- data.new.X %*% (as.vector(modglmm$coefficients[-1]))
-          if (LOCO & !isLowMemLOCO) {
-            for (j in 1:22) {
-              if (modglmm$LOCOResult[[j]]$isLOCO) {
-                modglmm$LOCOResult[[j]]$offset <- data.new.X %*% (as.vector(modglmm$LOCOResult[[j]]$alpha0[-1]))
-              }
-            }
-          }
-        } else {
-          modglmm$offset <- covoffset
-        }
-      }
-
-
-      # modglmm$offset = covoffset
-
-      if (skipVarianceRatioEstimation & useSparseGRMtoFitNULL) {
-        family <- fit0$family
-        eta <- modglmm$linear.predictors
-        mu <- modglmm$fitted.values
-        mu.eta <- family$mu.eta(eta)
-        sqrtW <- mu.eta / sqrt(family$variance(mu))
-        W <- sqrtW^2
-        tauVecNew <- modglmm$theta
-        Sigma_iX <- getSigma_X(W, tauVecNew, modglmm$X, maxiterPCG, tolPCG)
-        Sigma_iXXSigma_iX <- Sigma_iX %*% (solve(t(modglmm$X) %*% Sigma_iX))
-        modglmm$Sigma_iXXSigma_iX <- Sigma_iXXSigma_iX
-      }
-
-
-      modglmm$useSparseGRMtoFitNULL <- useSparseGRMtoFitNULL
-      tau <- modglmm$theta
-      alpha0 <- modglmm$coefficients
-      if (!is.null(out.transform) & is.null(fit0$offset)) {
-        coef.alpha <- Covariate_Transform_Back(alpha0, out.transform$Param.transform)
-        modglmm$coefficients <- coef.alpha
-      }
-
-      if (LOCO & isLowMemLOCO) {
-        modglmm$LOCOResult <- NULL
-        modglmm$LOCO <- FALSE
-        chromosomeStartIndexVec <- modglmm$chromosomeStartIndexVec
-        chromosomeEndIndexVec <- modglmm$chromosomeEndIndexVec
-        modglmm$chromosomeStartIndexVec <- NULL
-        modglmm$chromosomeEndIndexVec <- NULL
-        modelOut <- paste(c(outputPrefix, "_noLOCO.rda"), collapse = "")
-        save(modglmm, file = modelOut)
-        savedModelFiles <- c(savedModelFiles, modelOut)
-        modglmm$LOCO <- TRUE
-        modglmm$Y <- NULL
-        eta0 <- modglmm$linear.predictor
-        modglmm$linear.predictors <- NULL
-        modglmm$coefficients <- NULL
-        modglmm$cov <- NULL
-        modglmm$fitted.values <- NULL
-        modglmm$residuals <- NULL
-        modglmm$obj.noK <- NULL
-        offset0 <- modglmm$offset
-        modglmm$offset <- NULL
-        y <- fit0$y
-        gc()
-
-
-        # save(modglmm, file = modelOut)
-        set_Diagof_StdGeno_LOCO()
-        modglmm$LOCOResult <- list()
-        for (j in 1:22) {
-          startIndex <- chromosomeStartIndexVec[j]
-          endIndex <- chromosomeEndIndexVec[j]
-          if (!is.na(startIndex) && !is.na(endIndex)) {
-            cat("leave chromosome ", j, " out\n")
-            setStartEndIndex(startIndex, endIndex, j - 1)
-            re.coef_LOCO <- Get_Coef_LOCO(y, X = model.matrix(fit0), tau, family = fit0$family, alpha = alpha0, eta = eta0, offset = offset0, verbose = TRUE, maxiterPCG = maxiterPCG, tolPCG = tolPCG, maxiter = maxiter)
-
-            cov <- re.coef_LOCO$cov
-            alpha <- re.coef_LOCO$alpha
-            eta <- re.coef_LOCO$eta
-            Y <- re.coef_LOCO$Y
-            mu <- re.coef_LOCO$mu
-            res <- y - mu
-            mu2 <- rep((1 / (tau[1])), length(res))
-            if (!is.null(out.transform) & is.null(fit0$offset)) {
-              coef.alpha <- Covariate_Transform_Back(alpha, out.transform$Param.transform)
-            } else {
-              coef.alpha <- alpha
-            }
-            if (!isCovariateOffset) {
-              obj.noK <- ScoreTest_NULL_Model(mu, mu2, y, X = model.matrix(fit0))
-            } else {
-              obj.noK <- ScoreTest_NULL_Model(mu, mu2, y, Xorig)
-            }
-            modglmm$LOCOResult[[j]] <- list(isLOCO = TRUE, coefficients = coef.alpha, linear.predictors = eta, fitted.values = mu, Y = Y, residuals = res, cov = cov, obj.noK = obj.noK)
-
-            if (!isCovariateOffset & hasCovariate) {
-              data.new.X <- model.matrix(fit0)[, -1, drop = FALSE]
-              modglmm$LOCOResult[[j]]$offset <- data.new.X %*% (as.vector(alpha[-1]))
-            }
-
-            modelOutbychr <- paste(c(outputPrefix, "_chr", j, ".rda"), collapse = "")
-            if (j != 22) {
-              for (j1 in (j + 1):22) {
-                modglmm$LOCOResult[[j1]] <- list(NULL)
-              }
-            }
-            save(modglmm, file = modelOutbychr)
-            savedModelFiles <- c(savedModelFiles, modelOutbychr)
-            modglmm$LOCOResult[[j]] <- list(NULL)
-            gc()
-          } else {
-            modglmm$LOCOResult[[j]] <- list(isLOCO = FALSE)
-          }
-        }
-        gc()
-        # modelOut_nonauto = paste(c(outputPrefix,"_noLOCO.rda"), collapse="")
-      } else {
-        save(modglmm, file = modelOut)
-        savedModelFiles <- c(savedModelFiles, modelOut)
-      }
-
-
-      gc()
-      t_end <- proc.time()
-      print(t_end)
-      cat("t_end - t_begin, fitting the NULL model took\n")
-      print(t_end - t_begin)
-      cat("of which the null-model fit itself (glmmkin.ai_PCG_Rcpp) took\n")
-      print(re_fit)
-    } else {
-      cat("Skip fitting the NULL GLMM\n")
-      if (!file.exists(modelOut)) {
-        stop("skipModelFitting=TRUE but ", modelOut, " does not exist\n")
-      }
-
-      load(modelOut)
-      if (is.null(modglmm$LOCO)) {
-        modglmm$LOCO <- FALSE
-      }
-      ensureGenoLoaded(
-        genoIn, dataMerge_sort$IndexGeno, indicatorGenoSamplesWithPheno, memoryChunk,
-        isDiagofKinSetAsOne, ingestGates
-      )
-      setisUseSparseSigmaforNullModelFitting(useSparseGRMtoFitNULL)
-      if (useSparseGRMtoFitNULL) {
-        setisUsePCGwithSparseSigma(usePCGwithSparseGRM)
-      }
-    }
-    if (!skipVarianceRatioEstimation) {
-      if (LOCO) {
-        MsubIndVec <- getQCdMarkerIndex()
-        # cat("MsubIndVec", MsubIndVec, "\n")
-        print(length(MsubIndVec))
-        chrVec <- readVariantChromFromInput(genoIn)
-        print(length(chrVec))
-        chrVec <- chrVec[which(MsubIndVec == TRUE)]
-        updatechrList <- updateChrStartEndIndexVec(chrVec)
-        LOCO <- updatechrList$LOCO
-        chromosomeStartIndexVec <- updatechrList$chromosomeStartIndexVec
-        chromosomeEndIndexVec <- updatechrList$chromosomeEndIndexVec
-        set_Diagof_StdGeno_LOCO()
-      }
-      cat("Start estimating variance ratios\n")
-      load(modelOut)
-      if (skipModelFitting) {
-        # the file is in phenotype units (LEDGER #65); the estimation runs standardised
-        modglmm <- scaleQuantModel(modglmm, 1 / yScale)
-      }
-      extractVarianceRatio(
-        obj.glmm.null = modglmm,
-        seed = seed,
-        obj.glm.null = fit0, maxiterPCG = maxiterPCG, varRatioScale = 1 / yScale^2,
-        tolPCG = tolPCG, numMarkers = numMarkersForVarRatio, varRatioOutFile = varRatioFile,
-        ratioCVcutoff = ratioCVcutoff, testOut = SPAGMMATOut,
-        bedFile = bedFile, bimFile = bimFile, famFile = famFile, genoIn = genoIn, chromosomeStartIndexVec = chromosomeStartIndexVec,
-        chromosomeEndIndexVec = chromosomeEndIndexVec,
-        isCateVarianceRatio = isCateVarianceRatio, cateVarRatioIndexVec = cateVarRatioIndexVec,
-        useSparseGRMforVarRatio = useSparseGRMforVarRatio, sparseGRMFile = sparseGRMFile,
-        sparseGRMSampleIDFile = sparseGRMSampleIDFile,
-        numRandomMarkerforSparseKin = numRandomMarkerforSparseKin,
-        relatednessCutoff = relatednessCutoff, useSparseGRMtoFitNULL = useSparseGRMtoFitNULL,
-        nThreads = nThreads, cateVarRatioMinMACVecExclude = cateVarRatioMinMACVecExclude,
-        cateVarRatioMaxMACVecInclude = cateVarRatioMaxMACVecInclude,
-        minMAFforGRM = minMAFforGRM, isDiagofKinSetAsOne = isDiagofKinSetAsOne,
-        includeNonautoMarkersforVarRatio = includeNonautoMarkersforVarRatio
-      )
-    } else {
-      cat("Skip estimating variance ratios\n")
-    }
-    if (releaseGenoAtEnd) {
-      releaseGeno()
-    }
-    if (!skipModelFitting) {
+    if (!skipModelFitting && !isBinary) {
       # LEDGER #65 FIXED: everything above ran on the standardised phenotype;
       # the saved model(s) go back to phenotype units. The variance-ratio file
       # was already written in phenotype units (varRatioScale above). Exactly
@@ -1608,8 +1376,6 @@ fitNULLGLMM <- function(plinkFile = "",
       varRatioFile = if (skipVarianceRatioEstimation) NULL else varRatioFile,
       nSamples = nrow(dataMerge_sort)
     )))
-  } else {
-    stop("traitType must be binary or quantitative")
   }
 }
 
