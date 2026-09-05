@@ -6,8 +6,11 @@
 # bundled fixture is monomorphic in the analysed samples, and --condition=rs1
 # ran to exit 0 with the conditional columns IDENTICAL to the marginal ones on
 # 70/70 rows -- a conditional analysis that did nothing while labelled as if
-# it had (the only notice was a std::cerr line). It is refused now, naming the
-# marker and the thresholds. Tier: standard (three marker runs).
+# it had (the only notice was a std::cerr line). A monomorphic marker is
+# refused now, by name. One that merely fails the SCAN's thresholds is used
+# with a warning: golden P4 conditions on rs13 (MAC 2) under --minMAC=20, and
+# a first draft that refused it was caught by the pre-push gate.
+# Tier: standard (three marker runs).
 
 cond_run <- function(condition, minMAC) {
   out <- tempfile(fileext = ".txt")
@@ -28,25 +31,29 @@ test_that("a monomorphic conditioning marker is refused, by name", {
   skip_if_no_goldens()
   r <- cond_run("rs1", 1)
   expect_false(identical(r$status, 0L))
-  expect_true(any(grepl("conditioning marker rs1 .*fails the marker QC", r$log)))
-  expect_true(any(grepl("it is monomorphic", r$log, fixed = TRUE)))
+  expect_true(any(grepl("conditioning marker rs1 .*is monomorphic in the analysed samples", r$log)))
+  expect_true(any(grepl("It cannot be conditioned on", r$log, fixed = TRUE)))
   expect_false(any(grepl("Analysis done", r$log, fixed = TRUE)))
 })
 
-test_that("the gate is the scan's own: a MAC-1 marker is refused at --minMAC=5 and accepted at 1", {
+test_that("a marker below the scan's own threshold is used with a WARNING, and silently above it", {
   skip_unless_level("standard")
   skip_if_no_goldens()
-  # rs28 has MAC 1 in the analysed samples (golden P1: AC_Allele2 / AF_Allele2)
-  refused <- cond_run("rs28", 5)
-  expect_false(identical(refused$status, 0L))
-  expect_true(any(grepl("conditioning marker rs28 .*fails the marker QC.*MAC 1", refused$log)))
-  expect_false(any(grepl("monomorphic", refused$log, fixed = TRUE)))
+  # rs28 has MAC 1 in the analysed samples (golden P1: AC_Allele2 / AF_Allele2).
+  # Conditioning on a marker rarer than the scan's --minMAC is legitimate --
+  # golden P4 conditions on rs13 (MAC 2) under --minMAC=20 -- so it is NOT
+  # refused; the scan's thresholds are reported and the marker is used.
+  warned <- cond_run("rs28", 5)
+  expect_identical(warned$status, 0L)
+  expect_true(any(grepl("conditioning marker rs28 .*would be dropped by the scan's own QC.*MAC 1", warned$log)))
+  expect_true(any(grepl("^Warning message", warned$log)))
+  d5 <- read_saige_table(warned$out)
+  expect_true("p.value_c" %in% names(d5))
+  expect_true(any(d5$var_c != d5$var))          # the conditioning did something
 
-  # POSITIVE CONTROL: the same marker at the threshold the scan uses in P1
-  ok <- cond_run("rs28", 1)
-  expect_identical(ok$status, 0L)
-  d <- read_saige_table(ok$out)
-  expect_true("p.value_c" %in% names(d))
-  # and the conditioning did something: conditional variance moved somewhere
-  expect_true(any(d$var_c != d$var))
+  # at the threshold P1 uses, the same marker passes without a word
+  quiet <- cond_run("rs28", 1)
+  expect_identical(quiet$status, 0L)
+  expect_false(any(grepl("would be dropped by the scan", quiet$log, fixed = TRUE)))
+  expect_false(any(grepl("^Warning message", quiet$log)))
 })

@@ -3155,24 +3155,34 @@ void assign_conditionMarkers_factors(
   MAF = std::min(altFreq, 1 - altFreq);
   MAC = std::min(altCounts, 2*t_n-altCounts);
 
-  // LEDGER #73 FIXED. Every other getMarkerPval call site sits behind the
-  // marker QC gate; this one had none, so a marker the scan itself drops --
-  // rs1 of the bundled fixture, monomorphic in the analysed samples -- was
-  // conditioned on anyway, and the conditional columns came out IDENTICAL to
-  // the marginal ones on 70/70 rows at exit 0. The only degeneracy noticed was
-  // MAF == 0, written to std::cerr and then ignored. A conditioning marker is
-  // named by the user, so silently dropping it would be the same no-op with a
-  // different label: refuse, naming the marker and the thresholds it failed.
-  if(MAC == 0 || (missingRate > g_cfg.missingRate_cutoff) || (MAF < g_cfg.marker_minMAF_cutoff) ||
+  // LEDGER #73 FIXED. A conditioning marker is named by the user and bypassed
+  // every check, so a marker MONOMORPHIC in the analysed samples -- rs1 of the
+  // bundled fixture -- was conditioned on anyway and the conditional columns
+  // came out IDENTICAL to the marginal ones on 70/70 rows at exit 0, with only
+  // a std::cerr line for MAF == 0 and then on. That case is a silent no-op
+  // labelled as an adjustment, and it STOPS now, by name.
+  //
+  // A marker that merely fails the SCAN's thresholds is a different matter:
+  // golden P4 conditions on rs13 (MAC 2) under --minMAC=20, and conditioning on
+  // a marker rarer than the markers being scanned is a legitimate design (the
+  // pre-push gate is what caught a first draft that refused it). So the scan's
+  // --minMAC/--minMAF/--maxMissing/--minInfo are reported as an R warning, and
+  // the marker is used as before.
+  if(MAC == 0){
+    Rcpp::stop("conditioning marker " + marker + " (" + info + ") is monomorphic in the analysed samples"
+               " (MAC 0): conditioning on it would change nothing while the _c columns claim otherwise."
+               " It cannot be conditioned on.\n");
+  }
+  if((missingRate > g_cfg.missingRate_cutoff) || (MAF < g_cfg.marker_minMAF_cutoff) ||
      (MAC < g_cfg.marker_minMAC_cutoff) || (imputeInfo < g_cfg.marker_minINFO_cutoff)){
-    Rcpp::stop("conditioning marker " + marker + " (" + info + ") fails the marker QC in the analysed samples"
-               " -- MAC " + std::to_string(MAC) + ", MAF " + std::to_string(MAF) +
-               ", missing rate " + std::to_string(missingRate) + ", imputation info " + std::to_string(imputeInfo) +
-               " against --minMAC " + std::to_string(g_cfg.marker_minMAC_cutoff) +
-               ", --minMAF " + std::to_string(g_cfg.marker_minMAF_cutoff) +
-               ", --maxMissing " + std::to_string(g_cfg.missingRate_cutoff) +
-               ", --minInfo " + std::to_string(g_cfg.marker_minINFO_cutoff) +
-               (MAC == 0 ? "; it is monomorphic" : "") + ". It cannot be conditioned on.\n");
+    Rcpp::warning("conditioning marker " + marker + " (" + info + ") would be dropped by the scan's own QC"
+                  " -- MAC " + std::to_string(MAC) + ", MAF " + std::to_string(MAF) +
+                  ", missing rate " + std::to_string(missingRate) + ", imputation info " + std::to_string(imputeInfo) +
+                  " against --minMAC " + std::to_string(g_cfg.marker_minMAC_cutoff) +
+                  ", --minMAF " + std::to_string(g_cfg.marker_minMAF_cutoff) +
+                  ", --maxMissing " + std::to_string(g_cfg.missingRate_cutoff) +
+                  ", --minInfo " + std::to_string(g_cfg.marker_minINFO_cutoff) +
+                  " -- and is conditioned on anyway.");
   }
   arma::vec gtildeVec;
 
