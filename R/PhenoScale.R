@@ -53,38 +53,43 @@ scaleQuantModel <- function(modglmm, factor) {
   if (!identical(modglmm$traitType, "quantitative")) {
     stop("scaleQuantModel: the model is not a quantitative null model\n")
   }
-  modglmm <- scaleQuantFit(modglmm, factor, modglmm$X)
+  modglmm <- scaleQuantFit(modglmm, factor, X = modglmm$X)
   if (isTRUE(modglmm$LOCO) && !is.null(modglmm$LOCOResult)) {
     for (j in seq_along(modglmm$LOCOResult)) {
       r <- modglmm$LOCOResult[[j]]
       if (is.list(r) && isTRUE(r$isLOCO)) {
-        r$y <- modglmm$y
-        r$theta <- modglmm$theta # already rescaled: LOCO refits share tau
-        r <- scaleQuantFit(r, factor, modglmm$X, theta_fixed = TRUE)
-        r$y <- NULL
-        r$theta <- NULL
-        modglmm$LOCOResult[[j]] <- r
+        # a LOCO entry has no y or theta of its own: its obj.noK is rebuilt
+        # from the model's, which the call above has already put in the
+        # target units (LEDGER #99: these used to be copied INTO the entry and
+        # then scaled a second time with the entry's own fields)
+        modglmm$LOCOResult[[j]] <- scaleQuantFit(r, factor, X = modglmm$X,
+                                                 y = modglmm$y, theta = modglmm$theta)
       }
     }
   }
   modglmm
 }
 
-# One fit's fields (the top-level model or one LOCOResult entry). `X` is the
-# design the score-test pieces were built on (modglmm$X: X or Xorig, whichever
-# the fitter used). With theta_fixed the theta is taken as already in the
-# target units, which is the LOCO case.
-scaleQuantFit <- function(m, factor, X, theta_fixed = FALSE) {
-  if (!theta_fixed && !is.null(m$theta)) m$theta <- m$theta * factor^2
+# One fit's fields (the top-level model or one LOCOResult entry): the variance
+# terms by factor^2, everything linear in y by factor, and obj.noK rebuilt from
+# the rescaled pieces. `X` is the design the score-test pieces were built on
+# (modglmm$X: X or Xorig, whichever the fitter used). `y` and `theta` are what
+# obj.noK is rebuilt from, ALREADY in the target units; left NULL they are the
+# fit's own after scaling (the top-level model), and a LOCO entry, which
+# carries neither, is handed the model's.
+scaleQuantFit <- function(m, factor, X, y = NULL, theta = NULL) {
+  if (!is.null(m$theta)) m$theta <- m$theta * factor^2
   if (!is.null(m$cov)) m$cov <- m$cov * factor^2
   for (k in c("coefficients", "linear.predictors", "fitted.values", "Y",
               "residuals", "y", "offset", "alpha0")) {
     if (!is.null(m[[k]])) m[[k]] <- m[[k]] * factor
   }
-  if (!is.null(m$obj.noK) && !is.null(m$fitted.values) && !is.null(m$y) &&
-        !is.null(m$theta) && !is.null(X)) {
-    mu2 <- rep(1 / m$theta[1], length(m$fitted.values))
-    m$obj.noK <- ScoreTest_NULL_Model(m$fitted.values, mu2, m$y, X)
+  if (is.null(y)) y <- m$y
+  if (is.null(theta)) theta <- m$theta
+  if (!is.null(m$obj.noK) && !is.null(m$fitted.values) && !is.null(y) &&
+        !is.null(theta) && !is.null(X)) {
+    mu2 <- rep(1 / theta[1], length(m$fitted.values))
+    m$obj.noK <- ScoreTest_NULL_Model(m$fitted.values, mu2, y, X)
   }
   m
 }
@@ -95,7 +100,9 @@ scaleQuantFit <- function(m, factor, X, theta_fixed = FALSE) {
 # cannot find is an error, not a skip (LEDGER #98).
 rescaleSavedQuantModels <- function(files, factor) {
   for (f in files) {
-    if (!file.exists(f)) stop("rescaleSavedQuantModels: ", f, " was written by this run but is missing\n")
+    if (!file.exists(f)) {
+      stop("rescaleSavedQuantModels: ", f, " was written by this run but is missing\n")
+    }
     e <- new.env()
     load(f, envir = e)
     modglmm <- scaleQuantModel(e$modglmm, factor)

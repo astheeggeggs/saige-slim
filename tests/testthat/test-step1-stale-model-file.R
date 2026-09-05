@@ -145,5 +145,18 @@ test_that("LEDGER #98: the low-memory LOCO files are still rescaled (tracked, no
     expect_lt(rel_err(r1$coefficients, r0$coefficients * 100), 1e-8)
     expect_lt(rel_err(r1$fitted.values, r0$fitted.values * 100), 1e-8)
     expect_lt(rel_err(r1$cov, r0$cov * 100^2), 1e-8)
+    # LEDGER #99 FIXED: the LOCO entry's obj.noK is rebuilt from the model's y
+    # and theta in phenotype units, ONCE. Closed form within each file --
+    # S_a = X'(y - mu_LOCO) and V = 1/theta[1] -- and across the two scales
+    # (S_a by 100, V by 1e-4). At unpatched HEAD y was scaled a second time on
+    # its way into the entry, so S_a was X'(s y - mu) instead of X'(y - mu).
+    for (m in list(base$chr[[nm]], x100$chr[[nm]])) {
+      r <- m$LOCOResult[[j]]
+      res <- as.vector(m$y - r$fitted.values) # y is stored as a one-column matrix
+      expect_lt(rel_err(r$obj.noK$S_a, colSums(m$X * res)), 1e-8)
+      expect_lt(rel_err(r$obj.noK$V, rep(1 / m$theta[1], length(m$y))), 1e-10)
+    }
+    expect_lt(rel_err(r1$obj.noK$S_a, r0$obj.noK$S_a * 100), 1e-8)
+    expect_lt(rel_err(r1$obj.noK$V, r0$obj.noK$V / 100^2), 1e-8)
   }
 })
