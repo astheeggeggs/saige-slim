@@ -221,6 +221,15 @@ checkOutputFile <- function(OutputFile,
           End <- FALSE
           indexChunk <- parseIndexChunkLine(lastMessage)$chunk
           cat("Based on 'OutputFile' and 'OutputFileIndex', we restart the analysis from the", indexChunk + 1, "chunk.\n")
+          # LEDGER #49 FIXED. For a MARKER run indexChunk is "the chunk to start
+          # at" (a fresh run returns 1), so on a restart it is the completed
+          # chunk PLUS ONE, as the message above has always said. It used to
+          # return the completed chunk itself, and SAIGE.Marker resumed AT it,
+          # recomputing one whole chunk per restart (correct output, wasted
+          # work). The region path keeps its own convention (LEDGER #81/#25).
+          if (AnalysisType == "Marker") {
+            indexChunk <- indexChunk + 1
+          }
         }
       }
       Start <- FALSE

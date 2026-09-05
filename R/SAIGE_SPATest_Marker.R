@@ -56,13 +56,13 @@ SAIGE.Marker <- function(genoType, # nolint: object_name_linter.
     # the index never recorded; appending would write them twice. Drop them
     # before the output is reopened (truncateOutputToIndex is in 'Util.R').
     #
-    # The target is the size at the end of chunk outIndex - 1, NOT outIndex,
-    # because the loop below RESUMES AT outIndex and re-runs it. That off-by-one
-    # is pre-existing and contradicts checkOutputFile's own message ("we restart
-    # the analysis from the indexChunk + 1 chunk"); it costs one chunk of
-    # recomputation and, with this truncation in place, produces exactly the
-    # file a complete run would. It was found by the #47 regression test, which
-    # failed with a whole duplicated chunk when the target was outIndex.
+    # outIndex is the chunk the loop below STARTS AT (LEDGER #49 FIXED: on a
+    # restart checkOutputFile now returns the completed chunk plus one, as its
+    # message always said), so the target is the size at the end of the chunk
+    # before it -- the last one the index recorded as complete. Before #49 the
+    # loop resumed AT the completed chunk and recomputed it; the target was the
+    # chunk before THAT, so the output was right and one chunk of work was
+    # repeated per restart. The #47 regression test is what pins this.
     #
     # Per file, by ITS OWN recorded byte count: two models write different
     # numbers of bytes per chunk, so one shared count would be wrong for both.

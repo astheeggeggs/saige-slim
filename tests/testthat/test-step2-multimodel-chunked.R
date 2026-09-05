@@ -110,11 +110,23 @@ test_that("a restart with BOTH files mid-chunk reproduces the complete run", {
                paste0(restarted, sfx, ".index"))
   }
 
-  mmc_run(restarted, "--is_overwrite_output=FALSE")
+  st <- mmc_run(restarted, "--is_overwrite_output=FALSE")
   for (sfx in c("_binary", "_quant")) {
     expect_identical(readLines(paste0(restarted, sfx)),
                      readLines(paste0(complete, sfx)))
   }
+  # LEDGER #49 FIXED: the restart resumes AFTER the last completed chunk, as
+  # checkOutputFile's message always claimed ("we restart the analysis from
+  # the N + 1 chunk"). It used to resume AT chunk N and recompute it -- the
+  # output was right (the truncation target was chunk N - 1 to match), but a
+  # chunk of work was repeated on every restart.
+  lg <- readLines(attr(st, "log"), warn = FALSE)
+  analysed <- as.integer(sub("^.*Analyzing Chunk ([0-9]+)/.*$", "\\1",
+                             grep("Analyzing Chunk [0-9]+/", lg, value = TRUE)))
+  nChunks <- length(grep("^Have completed the analysis of chunk ",
+                         readLines(paste0(complete, "_binary.index"), warn = FALSE)))
+  expect_identical(analysed, seq.int(keep + 1L, nChunks))
+  expect_true(any(grepl(paste0("restart the analysis from the ", keep + 1L, " chunk"), lg)))
 })
 
 test_that("index files that disagree about the restart chunk stop the run", {
