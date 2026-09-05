@@ -905,7 +905,19 @@ fitNULLGLMM <- function(plinkFile = "",
     }
 
 
-    data <- data[, which(colnames(data) %in% c(phenoCol, covarColList, sampleIDColinphenoFile)), drop = FALSE]
+    # LEDGER #77 FIXED: the sex column is kept through this subset when a
+    # sex-specific run asks for it, and its existence is checked against the
+    # FILE here, before the subset -- the check below used to test the subset,
+    # so --FemaleOnly/--MaleOnly failed unless the sex column happened to be a
+    # covariate, blaming a phenotype file that was correct.
+    keepCols <- c(phenoCol, covarColList, sampleIDColinphenoFile)
+    if (FemaleOnly | MaleOnly) {
+      if (!sexCol %in% colnames(data)) {
+        stop("ERROR! column for sex ", sexCol, " does not exist in the phenoFile \n")
+      }
+      keepCols <- c(keepCols, sexCol)
+    }
+    data <- data[, which(colnames(data) %in% keepCols), drop = FALSE]
 
     data <- data[complete.cases(data), , drop = FALSE]
 
