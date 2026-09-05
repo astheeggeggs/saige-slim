@@ -76,7 +76,7 @@ test_that("multi-weight reuses the same degenerate row, not one row per set", {
   expect_identical(unname(r$pval.Region[1, 1:2]), c("GENE1", "Cauchy"))
 })
 
-test_that("convert_str_to_log parses only the C++ 'mEe' form", {
+test_that("convert_str_to_log parses the C++ 'mEe' form", {
   # Pinning the coupling the fixture above depends on. The helper splits on a
   # literal "E" and recombines mantissa and exponent in log space, which is
   # what lets C++ hand over p-values far below double precision as text.
@@ -91,8 +91,11 @@ test_that("convert_str_to_log degrades silently on input it was not written for"
   # A plain decimal has no "E", so the exponent is NA and the result is NA
   # with no warning -- a p-value that would then read as missing. Reachable
   # only if a caller builds pvalVec itself; C++ always writes the E form.
-  # LEDGER #23: recorded, not fixed.
-  expect_identical(convert_str_to_log("0.5"), NA_real_)
-  # R's NA_character_ (as opposed to the string "NA") errors outright
-  expect_error(convert_str_to_log(NA_character_), "missing value where TRUE/FALSE needed")
+  # LEDGER #23 FIXED: a plain decimal is log()'d, R's NA is NA, the E form is
+  # unchanged (kept on the log scale, which is the point of the function).
+  expect_identical(convert_str_to_log("0.5"), log(0.5))
+  expect_identical(convert_str_to_log(NA_character_), NA)
+  expect_identical(convert_str_to_log("NA"), NA)
+  expect_equal(convert_str_to_log("2.5E-3"), log(2.5e-3), tolerance = 1e-12)
+  expect_equal(convert_str_to_log("1.0E-400"), -400 * log(10), tolerance = 1e-9)
 })

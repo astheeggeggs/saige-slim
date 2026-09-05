@@ -348,14 +348,21 @@ writeOutputFileIndex <- function(OutputFileIndex,
 }
 
 
+# LEDGER #23 FIXED. Reads every form a p-value reaches R in: the C++ writer's
+# "<mantissa>E<exponent>" (kept on the log scale, which is the point -- the
+# exponent can be far below what a double holds), a plain decimal, the string
+# "NA", and R's own NA. It used to split on "E" only, so "0.5" became
+# NA + log10(0.5) = NA with no warning, and NA_character_ errored in the if.
 convert_str_to_log <- function(a) {
-  if (a != "NA") {
+  if (is.na(a) || a == "NA") {
+    return(NA) # the plain NA the original returned for "NA"; callers test is.na
+  }
+  if (grepl("E", a, fixed = TRUE)) {
     b <- as.numeric(unlist(strsplit(a, split = "E")))
     b1 <- b[2] + log10(b[1])
-    d <- b1 * log(10)
-  } else {
-    d <- NA
+    return(b1 * log(10))
   }
+  log(as.numeric(a))
 }
 
 

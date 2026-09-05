@@ -98,7 +98,7 @@ test_that("convert_str_to_log handles sub-underflow p-value strings", {
   expect_equal(convert_str_to_log("1E-400"), -400 * log(10))  # below double underflow
   expect_true(is.na(convert_str_to_log("NA")))
   # characterization: strings without a capital E silently return NA
-  expect_true(is.na(suppressWarnings(convert_str_to_log("0.5"))))
+  expect_identical(convert_str_to_log("0.5"), log(0.5))   # LEDGER #23 FIXED: a plain decimal parses
 })
 
 test_that("small pure helpers", {
