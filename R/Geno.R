@@ -202,15 +202,12 @@ setGenoInput <- function(bedFile = "",
     # so the "three columns" message below is what a malformed file gets,
     # instead of data.table's colClasses diagnostic that used to fire first.
     RangesToInclude <- data.table::fread(rangestoIncludeFile, header = FALSE, colClasses = "character", data.table = FALSE)
-    if (ncol(RangesToInclude) == 3) {
-      RangesToInclude[, 2] <- as.numeric(RangesToInclude[, 2])
-      RangesToInclude[, 3] <- as.numeric(RangesToInclude[, 3])
-    }
     if (ncol(RangesToInclude) != 3) {
       stop("rangestoIncludeFile should only include three columns.")
-    } else {
-      cat(nrow(RangesToInclude), " ranges are in rangestoIncludeFile\n")
     }
+    RangesToInclude[, 2] <- as.numeric(RangesToInclude[, 2])
+    RangesToInclude[, 3] <- as.numeric(RangesToInclude[, 3])
+    cat(nrow(RangesToInclude), " ranges are in rangestoIncludeFile\n")
 
     colnames(RangesToInclude) <- c("CHROM", "START", "END")
     # LEDGER #11 fix: the ranges were previously never applied on the PLINK

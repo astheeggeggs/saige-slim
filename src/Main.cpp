@@ -569,17 +569,7 @@ static void testOneModel(const SAIGE::SAIGEClass & t_model,
                         altFreq, Tstat, gy, varT, isSPAConverge, t_scratch.gtildeVec, is_gtilde, is_region, t_scratch.P2Vec, t_isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, t_scratch.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
   }
 
-  double pval_num;
-
-  try {
-      pval_num = std::stod(pval);
-  } catch (const std::invalid_argument&) {
-      std::cerr << "Argument is invalid\n";
-      pval_num = 0;
-  } catch (const std::out_of_range&) {
-      std::cerr << "Argument is out of range for a double\n";
-      pval_num = 0;
-  }
+  const double pval_num = parsePrintedPval(pval); // the one guarded parse (LEDGER #72)
 
   if((t_traitType == "binary" && MAC > g_cfg.MACCutoffforER) || t_traitType != "binary"){
     if(t_model.m_isFastTest && pval_num < (t_model.m_pval_cutoff_for_fastTest)){

@@ -2527,7 +2527,6 @@ extractVarianceRatio <- function(obj.glmm.null,
     varRatio_sparseGRM_vec <- NULL
     if (cateVarRatioIndexVec[k] == 1) {
       numMarkers0 <- numMarkers
-      varRatio_sparseGRM_vec <- NULL
       varRatio_NULL_vec <- NULL
       varRatio_NULL_noXadj_vec <- NULL
       indexInMarkerList <- 1

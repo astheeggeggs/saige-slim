@@ -125,16 +125,11 @@ def main(argv):
     if not argv:
         for c in all_rows:
             print(one_line(c))
-    elif argv[0] == "open":
-        hits = [c for c in all_rows if status_of(c[4]) == "OPEN"]
+    elif argv[0] in ("open", "decided"):
+        hits = [c for c in all_rows if status_of(c[4]) == argv[0].upper()]
         for c in hits:
             print(one_line(c))
-        print(f"\n{len(hits)} open of {len(all_rows)}")
-    elif argv[0] == "decided":
-        hits = [c for c in all_rows if status_of(c[4]) == "DECIDED"]
-        for c in hits:
-            print(one_line(c))
-        print(f"\n{len(hits)} decided of {len(all_rows)}")
+        print(f"\n{len(hits)} {argv[0]} of {len(all_rows)}")
     elif argv[0] == "grep":
         pat = " ".join(argv[1:]).lower()
         for c in all_rows:

@@ -50,6 +50,18 @@ parse_weights_beta <- function(weights.beta) {
   mat
 }
 
+# One "<start>-<end>" token of X_PARregion as c(start, end). LEDGER #38 FIXED:
+# a token that is not of that form used to be recycled by rbind into a row (a
+# lone "5" became c(5, 5)) and handed to C++ as a PAR boundary with no warning.
+parse_X_PARregion_token <- function(token) {
+  bounds <- suppressWarnings(as.numeric(unlist(strsplit(token, split = "-"))))
+  if (length(bounds) != 2 || anyNA(bounds) || bounds[1] > bounds[2]) {
+    stop("X_PARregion token '", token, "' is not of the form start-end ",
+         "with start <= end (the option is a comma-separated list of such ranges)\n")
+  }
+  bounds
+}
+
 
 #' Run single variant or gene- or region-based score tests with SPA based on the linear/logistic mixed model.
 #'
@@ -425,20 +437,7 @@ SPAGMMATtest <- function(bedFile = "",
     X_PARregion_list <- unlist(strsplit(X_PARregion, split = ","))
     X_PARregion_mat <- NULL
     if (length(X_PARregion_list) > 0) {
-      for (lxp in 1:length(X_PARregion_list)) {
-        X_PARregion_list_sub <- suppressWarnings(as.numeric(unlist(strsplit(X_PARregion_list[lxp],
-          split = "-"
-        ))))
-        # LEDGER #38 FIXED: a token that is not "<start>-<end>" used to be
-        # recycled by rbind into a row (a lone "5" became c(5, 5)) and handed to
-        # C++ as a PAR boundary with no warning. Refuse it by name.
-        if (length(X_PARregion_list_sub) != 2 || anyNA(X_PARregion_list_sub) ||
-              X_PARregion_list_sub[1] > X_PARregion_list_sub[2]) {
-          stop("X_PARregion token '", X_PARregion_list[lxp], "' is not of the form start-end ",
-               "with start <= end (the option is a comma-separated list of such ranges)\n")
-        }
-        X_PARregion_mat <- rbind(X_PARregion_mat, X_PARregion_list_sub)
-      }
+      X_PARregion_mat <- do.call(rbind, lapply(X_PARregion_list, parse_X_PARregion_token))
       setAssocTest_GlobalVarsInCPP_X_PARregion_mat(X_PARregion_mat)
     } else {
       cat("PAR region on X chromosome is not specified\n")

@@ -1358,7 +1358,6 @@ SAIGE.Region <- function(mu,
           # on a restart too (unreachable before #25, so never seen).
           Start <- (cth_chunk_to_output == 1) && !isappend
           End <- (indexChunk == nRegions)
-          # nEachChunk = 1
 
           if (regionTestType != "BURDEN") {
             pval.Region.all <- rbind(pval.Region.all, pval.Region)
