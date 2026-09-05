@@ -305,6 +305,14 @@ gen_spsolve_v3 <- function(yvec) {
     .Call('_SAIGE_gen_spsolve_v3', PACKAGE = 'SAIGE', yvec)
 }
 
+getSigmaSolveCounts <- function() {
+    .Call('_SAIGE_getSigmaSolveCounts', PACKAGE = 'SAIGE')
+}
+
+resetSigmaFactoriser <- function() {
+    invisible(.Call('_SAIGE_resetSigmaFactoriser', PACKAGE = 'SAIGE'))
+}
+
 gen_spsolve_v4 <- function(wVec, tauVec, yvec) {
     .Call('_SAIGE_gen_spsolve_v4', PACKAGE = 'SAIGE', wVec, tauVec, yvec)
 }

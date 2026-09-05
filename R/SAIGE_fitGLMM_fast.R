@@ -1261,6 +1261,7 @@ fitNULLGLMM <- function(plinkFile = "",
       if (useSparseGRMtoFitNULL) {
         cat("usePCGwithSparseGRM: ", usePCGwithSparseGRM, "\n")
         setisUsePCGwithSparseSigma(usePCGwithSparseGRM)
+        resetSigmaFactoriser() # LEDGER #79: per-fit factorisation counters
       }
       cat("Start fitting the NULL GLMM\n")
       t_begin <- proc.time()
@@ -1279,6 +1280,13 @@ fitNULLGLMM <- function(plinkFile = "",
         isDiagofKinSetAsOne = isDiagofKinSetAsOne,
         isLowMemLOCO = isLowMemLOCO
       ))
+      if (useSparseGRMtoFitNULL) {
+        # LEDGER #79 FIXED: the sparse Sigma factorisation is reused across
+        # right-hand sides, so the fit does far fewer factorisations than solves.
+        cnt <- getSigmaSolveCounts()
+        cat("Sparse Sigma direct solves: ", cnt[2], " solves with ", cnt[1],
+            " factorisations\n", sep = "")
+      }
       modglmm$obj.glm.null$model <- data.frame(modglmm$obj.glm.null$model)
 
       for (x in names(modglmm$obj.glm.null)) {
@@ -1520,6 +1528,7 @@ fitNULLGLMM <- function(plinkFile = "",
       setisUseSparseSigmaforNullModelFitting(useSparseGRMtoFitNULL)
       if (useSparseGRMtoFitNULL) {
         setisUsePCGwithSparseSigma(usePCGwithSparseGRM)
+        resetSigmaFactoriser() # LEDGER #79: per-fit factorisation counters
       }
       cat("Start fitting the NULL GLMM\n")
       re_fit <- system.time(modglmm <- glmmkin.ai_PCG_Rcpp_Quantitative(bedFile, bimFile, famFile, Xorig, isCovariateOffset,
@@ -1536,6 +1545,11 @@ fitNULLGLMM <- function(plinkFile = "",
         isDiagofKinSetAsOne = isDiagofKinSetAsOne,
         isLowMemLOCO = isLowMemLOCO
       ))
+      if (useSparseGRMtoFitNULL) {
+        cnt <- getSigmaSolveCounts() # LEDGER #79 FIXED, as on the binary path
+        cat("Sparse Sigma direct solves: ", cnt[2], " solves with ", cnt[1],
+            " factorisations\n", sep = "")
+      }
       modglmm$obj.glm.null$model <- data.frame(modglmm$obj.glm.null$model)
       for (x in names(modglmm$obj.glm.null)) {
         attr(modglmm$obj.glm.null[[x]], ".Environment") <- c()

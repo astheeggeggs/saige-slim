@@ -2733,45 +2733,73 @@ arma::vec gen_spsolve_v3(arma::vec & yvec){
     return x;
 }
 
+// LEDGER #79 FIXED (2026-09-05, owner decision: batch). The direct-solve
+// branch used to rebuild Sigma = tau0/W + tau1*GRM from locationMat/valueVec
+// and run a full SuperLU factorisation on EVERY call, although (wVec, tauVec)
+// -- the only inputs Sigma depends on, the GRM being fixed after load -- are
+// constant across the right-hand sides of one getCoefficients call (the
+// working vector, then each covariate column), across the trace estimator's
+// random vectors, and across every iteration of the preconditioned loop that
+// uses this as its preconditioner. One factorisation is now kept alive and
+// reused while (wVec, tauVec) are bit-identical to the ones it was built from;
+// any change rebuilds it. The arithmetic is unchanged: arma::spsolve at the
+// default options (refine = REF_NONE) is superlu::gssv, which is exactly
+// get_perm_c + sp_preorder + gstrf + gstrs, and spsolve_factoriser runs the
+// same four calls with the same options, so every step-1 golden must stay
+// byte-identical (the gate). Not thread-safe by design: getPCG1ofSigmaAndVector
+// is never called from a TBB worker (the parallelFor sites in this file are the
+// GRM kernels). Counters are exported so a test can see the saving.
+static arma::spsolve_factoriser g_sigmaFact;
+static arma::fvec g_sigmaFactW;
+static arma::fvec g_sigmaFactTau;
+static bool g_sigmaFactValid = false;
+static long long g_sigmaFactoriseCount = 0;
+static long long g_sigmaSolveCount = 0;
+
+static bool sameFloatVec(const arma::fvec& a, const arma::fvec& b){
+  return a.n_elem == b.n_elem &&
+    (a.n_elem == 0 || std::memcmp(a.memptr(), b.memptr(), sizeof(float) * a.n_elem) == 0);
+}
+
+// [[Rcpp::export]]
+arma::vec getSigmaSolveCounts(){
+  arma::vec out(2);
+  out(0) = double(g_sigmaFactoriseCount);
+  out(1) = double(g_sigmaSolveCount);
+  return out;
+}
+
+// [[Rcpp::export]]
+void resetSigmaFactoriser(){
+  g_sigmaFact.reset();
+  g_sigmaFactValid = false;
+  g_sigmaFactW.reset();
+  g_sigmaFactTau.reset();
+  g_sigmaFactoriseCount = 0;
+  g_sigmaSolveCount = 0;
+}
+
 // [[Rcpp::export]]
 arma::fvec gen_spsolve_v4(arma::fvec& wVec,  arma::fvec& tauVec, arma::fvec & yvec){
-
-//    double wall0in = get_wall_time();
-// double cpu0in  = get_cpu_time();
-
     arma::vec yvec2 = arma::conv_to<arma::vec>::from(yvec);
-//double wall1in = get_wall_time();
-// double cpu1in  = get_cpu_time();
-// cout << "Wall Time in gen_spsolve_v4 = " << wall1in - wall0in << endl;
-// cout << "CPU Time  in gen_spsolve_v4 = " << cpu1in - cpu0in  << endl;
-
-    arma::sp_mat result = gen_sp_Sigma(wVec, tauVec);
-
-//double wall2in = get_wall_time();
-// double cpu2in  = get_cpu_time();
-// cout << "Wall Time in gen_spsolve_v4 = " << wall2in - wall1in << endl;
-// cout << "CPU Time  in gen_spsolve_v4 = " << cpu2in - cpu1in  << endl;
-
-//    std::cout << "yvec.n_elem: " << yvec.n_elem << std::endl;
-//    std::cout << "yvec2.n_elem: " << yvec2.n_elem << std::endl;
-//    std::cout << "result.n_rows: " << result.n_rows << std::endl;
-//    std::cout << "result.n_cols: " << result.n_cols << std::endl;
-    arma::vec x = arma::spsolve(result, yvec2);
-
-//double wall3in = get_wall_time();
-// double cpu3in  = get_cpu_time();
-// cout << "Wall Time in gen_spsolve_v4 = " << wall3in - wall2in << endl;
-// cout << "CPU Time  in gen_spsolve_v4 = " << cpu3in - cpu2in  << endl;
-
-
+    if(!(g_sigmaFactValid && sameFloatVec(g_sigmaFactW, wVec) && sameFloatVec(g_sigmaFactTau, tauVec))){
+        arma::sp_mat result = gen_sp_Sigma(wVec, tauVec);
+        g_sigmaFactValid = g_sigmaFact.factorise(result);
+        g_sigmaFactoriseCount++;
+        if(!g_sigmaFactValid){
+            // the same failure arma::spsolve() reported for a singular Sigma
+            throw std::runtime_error("spsolve(): solution not found");
+        }
+        g_sigmaFactW = wVec;
+        g_sigmaFactTau = tauVec;
+    }
+    arma::vec x;
+    const bool ok = g_sigmaFact.solve(x, yvec2);
+    g_sigmaSolveCount++;
+    if(!ok){
+        throw std::runtime_error("spsolve(): solution not found");
+    }
     arma::fvec z = arma::conv_to<arma::fvec>::from(x);
-
-//double wall4in = get_wall_time();
-// double cpu4in  = get_cpu_time();
-// cout << "Wall Time in gen_spsolve_v4 = " << wall4in - wall3in << endl;
-// cout << "CPU Time  in gen_spsolve_v4 = " << cpu4in - cpu3in  << endl;
-
-
     return z;
 }
 

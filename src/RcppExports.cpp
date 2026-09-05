@@ -974,6 +974,25 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// getSigmaSolveCounts
+arma::vec getSigmaSolveCounts();
+RcppExport SEXP _SAIGE_getSigmaSolveCounts() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(getSigmaSolveCounts());
+    return rcpp_result_gen;
+END_RCPP
+}
+// resetSigmaFactoriser
+void resetSigmaFactoriser();
+RcppExport SEXP _SAIGE_resetSigmaFactoriser() {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    resetSigmaFactoriser();
+    return R_NilValue;
+END_RCPP
+}
 // gen_spsolve_v4
 arma::fvec gen_spsolve_v4(arma::fvec& wVec, arma::fvec& tauVec, arma::fvec& yvec);
 RcppExport SEXP _SAIGE_gen_spsolve_v4(SEXP wVecSEXP, SEXP tauVecSEXP, SEXP yvecSEXP) {
@@ -2122,6 +2141,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_gen_sp_GRM", (DL_FUNC) &_SAIGE_gen_sp_GRM, 0},
     {"_SAIGE_gen_sp_Sigma", (DL_FUNC) &_SAIGE_gen_sp_Sigma, 2},
     {"_SAIGE_gen_spsolve_v3", (DL_FUNC) &_SAIGE_gen_spsolve_v3, 1},
+    {"_SAIGE_getSigmaSolveCounts", (DL_FUNC) &_SAIGE_getSigmaSolveCounts, 0},
+    {"_SAIGE_resetSigmaFactoriser", (DL_FUNC) &_SAIGE_resetSigmaFactoriser, 0},
     {"_SAIGE_gen_spsolve_v4", (DL_FUNC) &_SAIGE_gen_spsolve_v4, 3},
     {"_SAIGE_setisUsePrecondM", (DL_FUNC) &_SAIGE_setisUsePrecondM, 1},
     {"_SAIGE_setisUseSparseSigmaforInitTau", (DL_FUNC) &_SAIGE_setisUseSparseSigmaforInitTau, 1},
