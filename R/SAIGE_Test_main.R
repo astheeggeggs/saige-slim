@@ -86,7 +86,7 @@ parse_weights_beta <- function(weights.beta) {
 #' @param sparseGRMSampleIDFile character. Path to the sample ID file for the pre-calculated sparse GRM. No header is included. The order of sample IDs is corresponding to sample IDs in the sparse GRM
 #' @param relatednessCutoff float. The threshold for coefficient of relatedness to treat two samples as unrelated in the sparse GRM. By default, 0
 #' @param MACCutoff_to_CollapseUltraRare numeric. MAC cutoff to collpase the ultra rare variants (<= MACCutoff_to_CollapseUltraRare) in the set-based association tests. By default, 10.
-#' @param cateVarRatioMinMACVecExclude vector of float. Lower bound of MAC for MAC categories. The length equals to the number of MAC categories for variance ratio estimation. By default, c(10.5,20.5). If groupFile="", only one variance ratio corresponding to MAC >= 20 is used
+#' @param cateVarRatioMinMACVecExclude vector of float. Exclusive lower bound of MAC for MAC categories (a marker with MAC equal to the bound is in the category BELOW it). The length equals to the number of MAC categories for variance ratio estimation. By default, c(10,20.5), the same as step 1 and as both CLI drivers. If groupFile="", only one variance ratio corresponding to MAC >= 20 is used
 #' @param cateVarRatioMaxMACVecInclude vector of float. Higher bound of MAC for MAC categories. The length equals to the number of MAC categories for variance ratio estimation minus 1. By default, c(20.5). If groupFile="", only one variance ratio corresponding to MAC >= 20 is used
 #' @param weights.beta parameters for the beta distribution(s) to weight genetic markers in gene-based tests: a numeric vector with two elements c(a, b), a Kb x 2 numeric matrix with one (a, b) pair per row, or a string "a1,b1;a2,b2;..." (semicolon-separated pairs, comma within a pair). By default, c(1,25). The first pair keeps the legacy roles (single-variant weighting and the conditioning-weight default). When more than one pair is given, each pair becomes one beta(MAF; a, b) weight set in the group test, named "Beta_a_b" (e.g. "Beta_1_25"), appended after any group-file weight sets; results are then output per weight set with a Weight column. With a single pair, group-file weights (if present) take precedence, exactly as before.
 #' @param r.corr numeric. bewteen 0 and 1. parameters for gene-based tests. If r.corr = 1, only Burden tests will be performed. If r.corr = 0, SKAT-O tests will be performed and results for Burden tests and SKAT tests will be output too.  By default, 0.
@@ -128,7 +128,7 @@ SPAGMMATtest <- function(bedFile = "",
                          GMMATmodelFile = "",
                          LOCO = TRUE,
                          varianceRatioFile = "",
-                         cateVarRatioMinMACVecExclude = c(10.5, 20.5),
+                         cateVarRatioMinMACVecExclude = c(10, 20.5), # LEDGER #71: was c(10.5, 20.5); step 1 and both CLIs use 10
                          cateVarRatioMaxMACVecInclude = c(20.5),
                          SPAcutoff = 2,
                          SAIGEOutputFile = "",
