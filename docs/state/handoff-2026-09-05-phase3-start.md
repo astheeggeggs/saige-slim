@@ -30,8 +30,21 @@ lives.
 | `c9f7e9ae` (#66) | 2253 | 2428 |
 | `d95168c2` (#75) | 2260 | 2435 |
 
+| `d74057f6` (#63) | 2262 | 2437 |
+
 **NO GOLDEN MOVED for any of the four fixes**, predicted in advance each time
-rather than discovered afterwards -- see below. No golden was re-baselined, so
+rather than discovered afterwards -- see below.
+
+**The FULL tier was run at the end of the session and is green: 2289 pass, 0
+fail, 0 skip.** `SKIP 0` is the load-bearing part -- `make_goldens.sh` +
+`compare_goldens.sh` is gated on `skip_if_not(compare_mode == "byte")`, so a
+run in numeric mode would have skipped the regeneration silently. It did not:
+everything was regenerated and compared, step-0/step-2 byte-exact and step-1
+toleranced, plus the determinism double-run and the permuted-phenotype control.
+**CI on `slim/strip` is green too** (ubuntu, numeric mode) at `d49aac8e`, which
+is the check that matters most for #66 -- it moved two region writers from a
+raw `<<` to `writeNumOrNA`, and NaN spelling is exactly the platform split that
+cost two red CI runs before. No golden was re-baselined, so
 the "prove byte-reproducible twice first" rule did not have to be exercised.
 
 ## #74 -- the fix, and why no golden could gate it
@@ -166,6 +179,22 @@ is for. The commented-out OpenMP block carries the `- 1` too and is dead.
   row written from now on must avoid a bare `|` in its prose. Its PROVENANCE
   also still said "not reproduced" when Phase 2 item 2 had reproduced it; both
   corrected.
+
+## One assertion was walked back before pushing
+
+Worth reading if you are about to write a count-based assertion here. #75's
+mixed-pool test first asserted `read == 60` and `skipped == 30`. Both are true
+on this machine and both are reproducible -- but neither is DERIVED: they
+depend on where the seeded `sample()` permutation happens to place the last
+usable marker. An intermediate note claimed the CV check forced the loop to
+exhaust the list, which is simply wrong -- the CV is 1.2e-04 against a 1e-03
+cutoff, so it never triggers a marker-count increase.
+
+They were replaced with the derived bounds, leaving `tested == 30` as the
+assertion with teeth (HEAD tested 24). The file's own header claims every
+assertion is order-independent, and the point is that the header and the
+assertions have to agree: a test whose comment overstates what it checks is
+worse than one that checks less.
 
 ## What is NOT done
 
