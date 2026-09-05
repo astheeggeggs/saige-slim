@@ -1384,8 +1384,18 @@ void SAIGEClass::fast_logistf_fit_simple(arma::mat & x,
         pi_0 = -x * beta - offset;
         pi_0 = arma::exp(pi_0) + 1;
         pi = 1/pi_0;
-        if((iter == maxit) || ( (arma::max(arma::abs(delta)) <= xconv) & (abs(U_star).is_zero(gconv)))){
+        // LEDGER #26 FIXED (2026-09-05, owner decision: flag it). Reaching
+        // maxit used to be reported as convergence, so the "N sucessfully
+        // converged" line counted the markers that had drifted at maxstep
+        // for every iteration (|BETA| = maxstep*maxit = 750 on the bundled
+        // fixture's null markers). The flag is now true only when the step
+        // and gradient criteria are met; at the cap the loop exits with it
+        // false. BETA/SE are unchanged either way.
+        if((arma::max(arma::abs(delta)) <= xconv) & (abs(U_star).is_zero(gconv))){
 		isfirthconverge = true;
+                break;
+        }
+        if(iter == maxit){
                 break;
         }
   }

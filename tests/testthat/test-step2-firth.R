@@ -122,3 +122,41 @@ test_that("in-regime Firth estimates agree with the score-based effect and the r
   expect_true(all(pnum(firth$SE)[i] / pnum(base$SE)[i] > 0.5))
   expect_true(all(pnum(firth$SE)[i] / pnum(base$SE)[i] < 2))
 })
+
+# ---- LEDGER #26 FIXED: the cap is reported as NOT converged --------------------
+# The one place the fixture reaches the drifting regime is by forcing the cutoff
+# to 1, which the header above says never to do for a FIXTURE claim. It is done
+# here on purpose, for the convergence FLAG only: fast_logistf_fit_simple used
+# to set isfirthconverge = true when it hit maxit, so the run's
+# "Firth approx was applied to N markers. M sucessfully converged." line counted
+# the markers that had drifted at maxstep for 50 iterations (|BETA| = 750) as
+# converged. Owner decision 2026-09-05: flag it. BETA and SE are unchanged.
+
+firth_forced_log <- function() {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  out <- file.path(tempfile("step2_firth_cap_"), "marker.txt")
+  dir.create(dirname(out), recursive = TRUE)
+  st <- run_saige_cli("step2_SPAtests.R",
+                      FIRTH_ARGS(out, c("--is_Firth_beta=TRUE", "--pCutoffforFirth=1")))
+  expect_cli_ok(st)
+  list(table = read_saige_table(out), log = readLines(attr(st, "log"), warn = FALSE))
+}
+
+test_that("LEDGER #26 FIXED: markers that hit the Firth iteration cap are not converged", {
+  res <- firth_forced_log()
+  line <- grep("^Firth approx was applied to ", res$log, value = TRUE)
+  expect_length(line, 1L)
+  pat <- "applied to ([0-9]+) markers\\. ([0-9]+) sucessfully converged"
+  m <- regmatches(line, regexec(pat, line))[[1]]
+  expect_length(m, 3L)
+  applied <- as.integer(m[2])
+  converged <- as.integer(m[3])
+  expect_identical(applied, nrow(res$table))
+  # the drifters: |BETA| at maxstep * maxit = 750 on this fixture's null markers
+  drifted <- abs(pnum(res$table$BETA)) > 100
+  expect_gt(sum(drifted), 0L)
+  # every drifter hit the cap, so the converged count excludes at least them
+  expect_lte(converged, applied - sum(drifted))
+  expect_lt(converged, applied)
+})
