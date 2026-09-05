@@ -8,6 +8,7 @@ or one entry in full, wrapped.
 
   ledger.py                 every entry, one line each
   ledger.py open            only the OPEN ones
+  ledger.py decided         the DECIDED ones: owner chose to leave, documented
   ledger.py 56              entry #56 in full, wrapped
   ledger.py grep ingest     entries whose text matches (case-insensitive)
   ledger.py lint            check every row parses; exit 1 and name the row if not
@@ -57,6 +58,8 @@ def status_of(cell):
         return "OPEN"
     if s.startswith("REMOVED"):
         return "REMOVED"
+    if s.startswith("DECIDED"):
+        return "DECIDED"
     return "FIXED" if s.startswith("FIXED") else "?"
 
 
@@ -86,7 +89,7 @@ def lint():
                             f"(a bare '|' in the prose? write it '\\|')")
             continue
         if status_of(c[4]) == "?":
-            problems.append(f"LEDGER.md:{n} row #{rid}: STATUS does not start with OPEN, FIXED or REMOVED: "
+            problems.append(f"LEDGER.md:{n} row #{rid}: STATUS does not start with OPEN, FIXED, REMOVED or DECIDED: "
                             f"{c[4][:60]!r}")
         ids.append(int(rid))
     expected = list(range(1, len(ids) + 1))
@@ -110,7 +113,8 @@ def lint():
     if problems:
         return 1
     n_open = sum(1 for c in rows() if status_of(c[4]) == "OPEN")
-    print(f"ledger lint OK: {len(ids)} rows, {n_open} open")
+    n_dec = sum(1 for c in rows() if status_of(c[4]) == "DECIDED")
+    print(f"ledger lint OK: {len(ids)} rows, {n_open} open, {n_dec} decided")
     return 0
 
 
@@ -126,6 +130,11 @@ def main(argv):
         for c in hits:
             print(one_line(c))
         print(f"\n{len(hits)} open of {len(all_rows)}")
+    elif argv[0] == "decided":
+        hits = [c for c in all_rows if status_of(c[4]) == "DECIDED"]
+        for c in hits:
+            print(one_line(c))
+        print(f"\n{len(hits)} decided of {len(all_rows)}")
     elif argv[0] == "grep":
         pat = " ".join(argv[1:]).lower()
         for c in all_rows:
