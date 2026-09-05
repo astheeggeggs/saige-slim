@@ -402,8 +402,14 @@ glmmkin.ai_PCG_Rcpp_Quantitative <- function(bedFile, bimFile, famFile, Xorig, i
     # tau[fixtau == 0] = var(Y)/(q+1)
     tau[1] <- 1
     tau[2] <- 0
-    if (abs(var(Y)) < 0.1) {
-      stop("WARNING: variance of the phenotype is much smaller than 1. Please consider invNormalize=T\n")
+    # LEDGER #65 FIXED. The guard here used to stop when the variance of Y was
+    # below 0.1, with a message that said WARNING, and depended only on the
+    # phenotype's unit. fitNULLGLMM
+    # now hands this function a phenotype standardised to var(Y) = 1, so the
+    # (1, 0) start is always in scale; a direct caller is stopped only when
+    # nothing can be fitted at all.
+    if (!is.finite(var(Y)) || var(Y) <= 0) {
+      stop("The phenotype has zero variance after covariate adjustment; nothing can be fitted\n")
     }
   } else {
     tau[fixtau == 0] <- tauInit[fixtau == 0]
@@ -638,7 +644,7 @@ solveSpMatrixUsingArma <- function(sparseGRMtest) {
 #' @param numMarkersForVarRatio integer (>0). Minimum number of markers to be used for estimating the variance ratio. By default, 30
 #' @param skipModelFitting logical.  Whether to skip fitting the null model and only calculating the variance ratio, By default, FALSE. If TURE, the model file ".rda" is needed
 #' @param memoryChunk integer or float. The size (Gb) for each memory chunk. By default, 2
-#' @param tauInit vector of numbers. e.g. c(1,1), Initial values for tau. For binary traits, the first element will be always be set to 1. If the tauInit is 0,0, the second element will be 0.5 for binary traits and the initial tau vector for quantitative traits is 1,0
+#' @param tauInit vector of numbers. e.g. c(1,1), Initial values for tau. For binary traits, the first element will be always be set to 1. If the tauInit is 0,0, the second element will be 0.5 for binary traits and the initial tau vector for quantitative traits is 1,0. For quantitative traits the whole of step 1 runs on the phenotype divided by the sd of its covariate-adjusted values and the saved model and variance ratios are scaled back (LEDGER #65), so tauInit is given in phenotype units, the convergence and divergence rules are scale-free, and the old stop() on a phenotype variance below 0.1 is gone; only a constant phenotype stops
 #' @param LOCO logical. Whether to apply the leave-one-chromosome-out (LOCO) option. By default, TRUE
 #' @param traceCVcutoff numeric. The threshold for coefficient of variation (CV) for the trace estimator to increase nrun. By default, 0.0025
 #' @param ratioCVcutoff numeric. The threshold for coefficient of variation (CV) for the variance ratio estimate. If ratioCV > ratioCVcutoff. numMarkersForVarRatio will be increased by 10. By default, 0.001
@@ -1088,6 +1094,25 @@ fitNULLGLMM <- function(plinkFile = "",
     ])))
     dataMerge_sort[, which(colnames(dataMerge_sort) == phenoCol)] <- invPheno
   }
+  # LEDGER #65 FIXED: a quantitative trait is fitted -- glm, mixed model and
+  # variance ratios alike -- on the phenotype divided by the sd of its
+  # covariate-adjusted values, and the saved model and variance-ratio file are
+  # scaled back to phenotype units at the end (R/PhenoScale.R). tauInit is
+  # given in phenotype units and converted here.
+  yScale <- 1
+  if (traitType == "quantitative") {
+    yScale <- quantPhenoScale(formula.null, dataMerge_sort, phenoCol)
+    cat(
+      "Quantitative trait: the null model and the variance ratios are estimated ",
+      "on ", phenoCol, " divided by the sd of its covariate-adjusted values (",
+      format(yScale), ") and scaled back to phenotype units before saving; ",
+      "tau and coefficients printed during the fit are in the standardised ",
+      "units (LEDGER #65)\n", sep = ""
+    )
+    dataMerge_sort[, which(colnames(dataMerge_sort) == phenoCol)] <-
+      dataMerge_sort[, which(colnames(dataMerge_sort) == phenoCol)] / yScale
+    tauInit <- tauInit / yScale^2
+  }
   print(head(dataMerge_sort))
   if (traitType == "binary" & (length(covarColList) > 0)) {
     out_checksep <- checkPerfectSep(formula.null,
@@ -1469,10 +1494,14 @@ fitNULLGLMM <- function(plinkFile = "",
       }
       cat("Start estimating variance ratios\n")
       load(modelOut)
+      if (skipModelFitting && traitType == "quantitative") {
+        # the file is in phenotype units (LEDGER #65); the estimation runs standardised
+        modglmm <- scaleQuantModel(modglmm, 1 / yScale)
+      }
       extractVarianceRatio(
         obj.glmm.null = modglmm,
         seed = seed,
-        obj.glm.null = fit0, maxiterPCG = maxiterPCG,
+        obj.glm.null = fit0, maxiterPCG = maxiterPCG, varRatioScale = 1 / yScale^2,
         tolPCG = tolPCG, numMarkers = numMarkersForVarRatio, varRatioOutFile = varRatioFile,
         ratioCVcutoff = ratioCVcutoff, testOut = SPAGMMATOut,
         bedFile = bedFile, bimFile = bimFile, famFile = famFile, genoIn = genoIn, chromosomeStartIndexVec = chromosomeStartIndexVec,
@@ -1723,10 +1752,14 @@ fitNULLGLMM <- function(plinkFile = "",
       }
       cat("Start estimating variance ratios\n")
       load(modelOut)
+      if (skipModelFitting && traitType == "quantitative") {
+        # the file is in phenotype units (LEDGER #65); the estimation runs standardised
+        modglmm <- scaleQuantModel(modglmm, 1 / yScale)
+      }
       extractVarianceRatio(
         obj.glmm.null = modglmm,
         seed = seed,
-        obj.glm.null = fit0, maxiterPCG = maxiterPCG,
+        obj.glm.null = fit0, maxiterPCG = maxiterPCG, varRatioScale = 1 / yScale^2,
         tolPCG = tolPCG, numMarkers = numMarkersForVarRatio, varRatioOutFile = varRatioFile,
         ratioCVcutoff = ratioCVcutoff, testOut = SPAGMMATOut,
         bedFile = bedFile, bimFile = bimFile, famFile = famFile, genoIn = genoIn, chromosomeStartIndexVec = chromosomeStartIndexVec,
@@ -1746,6 +1779,14 @@ fitNULLGLMM <- function(plinkFile = "",
     }
     if (releaseGenoAtEnd) {
       releaseGeno()
+    }
+    if (!skipModelFitting && traitType == "quantitative") {
+      # LEDGER #65 FIXED: everything above ran on the standardised phenotype;
+      # the saved model(s) go back to phenotype units. The variance-ratio file
+      # was already written in phenotype units (varRatioScale above).
+      savedModels <- c(modelOut, paste0(outputPrefix, "_chr", 1:22, ".rda"))
+      rescaleSavedQuantModels(savedModels[file.exists(savedModels)], yScale)
+      cat("Saved model(s) scaled back to phenotype units (factor ", format(yScale), ")\n", sep = "")
     }
     # The paths fitNULLGLMM ACTUALLY wrote, which the multi-phenotype driver
     # needs for the manifest: modelOut is reassigned under --isLowMemLOCO, and
@@ -2345,7 +2386,13 @@ extractVarianceRatio <- function(obj.glmm.null,
                                  minMAFforGRM,
                                  isDiagofKinSetAsOne,
                                  includeNonautoMarkersforVarRatio,
-                                 genoIn = NULL) {
+                                 genoIn = NULL,
+                                 # LEDGER #65: multiplies every ratio before it is
+                                 # written. The estimation runs on the standardised
+                                 # phenotype; a ratio's numerator variance is in
+                                 # 1/y^2 units, so 1/yScale^2 returns it to
+                                 # phenotype units. 1 for binary traits.
+                                 varRatioScale = 1) {
   obj.noK <- obj.glmm.null$obj.noK
   if (is.null(genoIn)) genoIn <- genoInputPlink(bedFile, bimFile, famFile)
   if (file.exists(testOut)) {
@@ -2612,19 +2659,20 @@ extractVarianceRatio <- function(obj.glmm.null,
       if (length(varRatio_sparseGRM_vec) > 0) {
         varRatio_sparse <- mean(varRatio_sparseGRM_vec)
         cat("varRatio_sparse", varRatio_sparse, "\n")
-        varRatioTable <- rbind(varRatioTable, c(varRatio_sparse, "sparse", k))
+        varRatioTable <- rbind(varRatioTable, c(varRatio_sparse * varRatioScale, "sparse", k))
       }
       varRatio_null <- mean(varRatio_NULL_vec)
       varRatio_null_noXadj <- mean(varRatio_NULL_noXadj_vec)
       cat("varRatio_null", varRatio_null, "\n")
       cat("varRatio_null_noXadj", varRatio_null_noXadj, "\n")
-      varRatioTable <- rbind(varRatioTable, c(varRatio_null, "null", k))
-      varRatioTable <- rbind(varRatioTable, c(varRatio_null_noXadj, "null_noXadj", k))
+      varRatioTable <- rbind(varRatioTable, c(varRatio_null * varRatioScale, "null", k))
+      varRatioTable <- rbind(varRatioTable,
+                             c(varRatio_null_noXadj * varRatioScale, "null_noXadj", k))
     } else { # if(cateVarRatioVec[k] == 1)
-      varRatioTable <- rbind(varRatioTable, c(1, "null", k))
-      varRatioTable <- rbind(varRatioTable, c(1, "null_noXadj", k))
+      varRatioTable <- rbind(varRatioTable, c(1 * varRatioScale, "null", k))
+      varRatioTable <- rbind(varRatioTable, c(1 * varRatioScale, "null_noXadj", k))
       if (emitSparseRow) {
-        varRatioTable <- rbind(varRatioTable, c(1, "sparse", k))
+        varRatioTable <- rbind(varRatioTable, c(1 * varRatioScale, "sparse", k))
       }
     }
   } # for(k in 1:length(listOfMarkersForVarRatio)){

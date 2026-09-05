@@ -123,7 +123,9 @@ option_list <- list(
       "Optional. Only for quantitative. Whether to perform the inverse ",
       "normalization for the phenotype [default='FALSE']. With a ",
       "comma-separated --phenoCol, give one value per phenotype or one for ",
-      "all of them"
+      "all of them. Not needed for scale: the null model is fitted on the ",
+      "phenotype standardised by the sd of its covariate-adjusted values and ",
+      "scaled back, so a trait in any unit fits the same way (LEDGER #65)"
     )
   ),
   make_option(
@@ -225,7 +227,11 @@ option_list <- list(
     "--tauInit",
     type = "character",
     default = "0,0",
-    help = "Optional. Initial values for tau. [default=0,0]"
+    help = paste0(
+      "Optional. Initial values for tau, in phenotype units for a quantitative ",
+      "trait (the fit itself runs on the phenotype standardised by the sd of its ",
+      "covariate-adjusted values and is scaled back; LEDGER #65). [default=0,0]"
+    )
   ),
   make_option(
     "--LOCO",
