@@ -29,8 +29,12 @@ searches. Read `docs/state/next.md` (120 lines) to CHOOSE work, and pull the one
 ledger entry you are actually working on.
 
 **`LEDGER.md` and `docs/state/` are the authoritative record of where this branch
-is** -- read those first, starting with `docs/state/handoff-2026-09-04.md` (the
-most recent session handoff: what landed, the gate numbers, and where CI lives --
+is** -- read those first, starting with
+`docs/state/handoff-2026-09-04-tracker-mine.md` (the MOST RECENT session handoff:
+the upstream-tracker mine, Phases 1 and 2, with the gate numbers per commit, the
+refuted candidates and the one open question). Then
+`docs/state/handoff-2026-09-04.md`, the session before it, which is where CI
+lives --
 `origin` is the UPSTREAM `saigegit/SAIGE`, while CI runs on the `slim` remote,
 `astheeggeggs/saige-slim`, so push there and query it with
 `gh run list --repo astheeggeggs/saige-slim`); `docs/state/next.md` is the short list of what is NOT
@@ -59,9 +63,13 @@ believe an older doc that says it is parked on a branch.
 #49 (a restart re-runs the last completed chunk: wasted work, right answer),
 and **#63-#86, the 24 rows written on 2026-09-04 from the upstream issue
 tracker** -- 39 open of 86 in all. Phase 3 (fixes) is NOT started;
-Phase 2 has done its first item, the QUANTITATIVE group goldens P36/P37, which
-is what found **#86** (SKAT-O's p saturating to exactly 1, which then reroutes
-the region's Cauchy row from ACAT to a Bonferroni). Only #63 and #86 have tests. Read `docs/state/next.md` before picking one up -- it lists the four
+**Phase 2 is COMPLETE** -- five items, one commit each: the QUANTITATIVE group
+goldens P36/P37 (which found **#86**, SKAT-O's p saturating to exactly 1 and
+rerouting the region's Cauchy row from ACAT to a Bonferroni), a constructed
+high-LD conditioning fixture, the variance-ratio cursor, all-numeric marker IDs
+and a duplicated phenotype ID. **#63, #66, #67, #74, #75, #84 and #86 have
+tests; the other seventeen rows are entries whose consequence is traced, not
+reproduced.** Read `docs/state/next.md` before picking one up -- it lists the four
 candidates from that mine that were REFUTED and must not be re-opened, and names
 the two coverage holes (a quantitative group/BURDEN golden; a constructed
 high-LD conditioning pair) that most of the untested rows sit behind.

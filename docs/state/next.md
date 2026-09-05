@@ -1,7 +1,9 @@
-# What is worth doing next (2026-09-03, updated 2026-09-04)
+# What is worth doing next (2026-09-03, updated 2026-09-04 evening)
 
-**Start with `docs/state/handoff-2026-09-04.md`** -- it says what landed, which
-gates passed with their numbers, where CI lives, and what is a fresh start.
+**Start with `docs/state/handoff-2026-09-04-tracker-mine.md`** -- the most recent
+session handoff (upstream-tracker mine, Phases 1 and 2: what landed, the gate
+numbers per commit, what was refuted, what is open). Then
+`docs/state/handoff-2026-09-04.md`, the session before it, for where CI lives.
 
 Short list, kept deliberately short. `LEDGER.md` says what is broken;
 `docs/state/*.md` says what was done and why; this file says what is NOT done
