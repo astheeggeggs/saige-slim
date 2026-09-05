@@ -2414,9 +2414,14 @@ extractVarianceRatio <- function(obj.glmm.null,
 
   Nnomissing <- length(mu)
   varRatioTable <- NULL
-
-
+  # LEDGER #83 FIXED. Whether a `sparse` row is emitted is a property of the
+  # RUN (are sparse-GRM ratios being estimated at all?), not of whatever the
+  # previous category left in varRatio_sparseGRM_vec -- which was NULL-ed only
+  # inside the estimated arm, so a skipped category read the category before
+  # it, or an unbound symbol at k = 1.
+  emitSparseRow <- isTRUE(useSparseGRMforVarRatio)
   for (k in 1:length(listOfMarkersForVarRatio)) {
+    varRatio_sparseGRM_vec <- NULL
     if (cateVarRatioIndexVec[k] == 1) {
       numMarkers0 <- numMarkers
       varRatio_sparseGRM_vec <- NULL
@@ -2567,7 +2572,7 @@ extractVarianceRatio <- function(obj.glmm.null,
     } else { # if(cateVarRatioVec[k] == 1)
       varRatioTable <- rbind(varRatioTable, c(1, "null", k))
       varRatioTable <- rbind(varRatioTable, c(1, "null_noXadj", k))
-      if (length(varRatio_sparseGRM_vec) > 0) {
+      if (emitSparseRow) {
         varRatioTable <- rbind(varRatioTable, c(1, "sparse", k))
       }
     }
