@@ -20,7 +20,7 @@
 #' @param traitType character. e.g. "binary" or "quantitative". By default, "binary"
 #' @param invNormalize logical. Whether to perform the inverse normalization for the phentoype or not. e.g. TRUE or FALSE. By default, FALSE
 #' @param covarColList vector of characters. Covariates to be used in the null GLM model e.g c("Sex", "Age")
-#' @param qCovarCol vector of characters. Categorical covariates to be used in the glm model (NOT work yet)
+#' @param qCovarCol vector of characters. Categorical covariates to be used in the glm model; each must also be in covarColList (LEDGER #100: honoured since 2026-09-05, as in fitNULLGLMM)
 #' @param sampleIDColinphenoFile character. Column name for the sample IDs in the phenotype file e.g. "IID".
 #' @param tol numeric. The tolerance for fitting the null GLMMM to converge. By default, 0.02.
 #' @param maxiter integer. The maximum number of iterations used to fit the null GLMMM. By default, 20.
@@ -324,93 +324,21 @@ getNeff <- function(plinkFile = "",
     )
     cat(nrow(sampleListwithGeno), " samples have genotypes\n")
   }
-  if (!file.exists(phenoFile)) {
-    stop("ERROR! phenoFile ", phenoFile, " does not exsit\n")
-  } else {
-    if (grepl(".gz$", phenoFile) | grepl(".bgz$", phenoFile)) {
-      ydat <- data.table:::fread(
-        cmd = paste0(
-          "gunzip -c ",
-          phenoFile
-        ), header = TRUE, stringsAsFactors = FALSE,
-        colClasses = list(character = sampleIDColinphenoFile)
-      )
-    } else {
-      ydat <- data.table:::fread(phenoFile,
-        header = TRUE,
-        stringsAsFactors = FALSE, colClasses = list(character = sampleIDColinphenoFile)
-      )
-    }
-    data <- data.frame(ydat)
-    for (i in c(phenoCol, covarColList, qCovarCol, sampleIDColinphenoFile)) {
-      if (!(i %in% colnames(data))) {
-        stop("ERROR! column for ", i, " does not exist in the phenoFile \n")
-      }
-    }
-    if (FemaleOnly | MaleOnly) {
-      if (!sexCol %in% colnames(data)) {
-        stop("ERROR! column for sex ", sexCol, " does not exist in the phenoFile \n")
-      } else {
-        if (FemaleOnly) {
-          data <- data[which(data[, which(colnames(data) ==
-            sexCol)] == FemaleCode), ]
-          if (nrow(data) == 0) {
-            stop(
-              "ERROR! no samples in the phenotype are coded as ",
-              FemaleCode, " in the column ", sexCol,
-              "\n"
-            )
-          }
-        } else if (MaleOnly) {
-          data <- data[which(data[, which(colnames(data) ==
-            sexCol)] == MaleCode), ]
-          if (nrow(data) == 0) {
-            stop(
-              "ERROR! no samples in the phenotype are coded as ",
-              MaleCode, " in the column ", sexCol, "\n"
-            )
-          }
-        }
-      }
-    }
-    if (length(covarColList) > 0) {
-      formula <- paste0(phenoCol, "~", paste0(quoteCovarNames(covarColList), collapse = "+"))
-      hasCovariate <- TRUE
-    } else {
-      formula <- paste0(phenoCol, "~ 1")
-      hasCovariate <- FALSE
-    }
-    cat("formula is ", formula, "\n")
-    formula.null <- as.formula(formula)
-    mmat <- model.frame(formula.null, data, na.action = NULL)
-    mmat$IID <- data[, which(sampleIDColinphenoFile == colnames(data))]
-    mmat_nomissing <- mmat[complete.cases(mmat), ]
-    mmat_nomissing$IndexPheno <- seq_len(nrow(mmat_nomissing)) # LEDGER #37: seq(1, 0, by = 1) errored first
-    cat(nrow(mmat_nomissing), " samples have non-missing phenotypes\n")
-    dataMerge <- merge(mmat_nomissing, sampleListwithGeno,
-      by.x = "IID", by.y = "IIDgeno"
-    )
-    dataMerge_sort <- dataMerge[with(dataMerge, order(IndexGeno)), ]
-    if (nrow(dataMerge_sort) < nrow(sampleListwithGeno)) {
-      cat(
-        nrow(sampleListwithGeno) - nrow(dataMerge_sort),
-        " samples in geno file do not have phenotypes\n"
-      )
-    }
-    cat(nrow(dataMerge_sort), " samples will be used for analysis\n")
-  }
-  if (traitType == "quantitative" & invNormalize) {
-    cat(
-      "Perform the inverse nomalization for ", phenoCol,
-      "\n"
-    )
-    invPheno <- qnorm((rank(dataMerge_sort[, which(colnames(dataMerge_sort) ==
-      phenoCol)], na.last = "keep") - 0.5) / sum(!is.na(dataMerge_sort[
-      ,
-      which(colnames(dataMerge_sort) == phenoCol)
-    ])))
-    dataMerge_sort[, which(colnames(dataMerge_sort) == phenoCol)] <- invPheno
-  }
+  # LEDGER #100 FIXED: the phenotype frame comes from the same function as
+  # fitNULLGLMM's (R/PhenoPrep.R); this used to be an older copy of that block
+  # with no duplicate-ID refusal and no categorical covariates.
+  pheno <- preparePhenotypeFrame(
+    phenoFile, phenoCol, covarColList, qCovarCol, sampleIDColinphenoFile,
+    sampleListwithGeno, traitType, invNormalize,
+    sexCol = sexCol, FemaleOnly = FemaleOnly, FemaleCode = FemaleCode,
+    MaleOnly = MaleOnly, MaleCode = MaleCode,
+    restrictToSparseGRM = useSparseGRMtoFitNULL & !skipVarianceRatioEstimation,
+    sparseGRMSampleIDFile = sparseGRMSampleIDFile
+  )
+  dataMerge_sort <- pheno$data
+  formula.null <- pheno$formula.null
+  covarColList <- pheno$covarColList
+  hasCovariate <- pheno$hasCovariate
   if (traitType == "binary" & (length(covarColList) > 0)) {
     out_checksep <- checkPerfectSep(formula.null,
       data = dataMerge_sort,
