@@ -132,7 +132,7 @@ SPARoot getroot_K1_Binom_core(double init, const arma::vec & mu, const arma::vec
                         }
 
 			newK1 = K1_adj_Binom(tnew,mu,g,q);
-                        if(arma::sign(K1_eval) != arma::sign(newK1))
+                        if((K1_eval * newK1) < 0) // LEDGER #46 FIXED: the fast kernel's test; sign(0) made an exact root look like a sign change
                         {
                                 if(std::abs(tnew-t) > (prevJump-tol))
                                 {
