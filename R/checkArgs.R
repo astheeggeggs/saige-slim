@@ -1,5 +1,7 @@
+# LEDGER #21 FIXED (a, b): a real single logical, not anything %in% coerces to,
+# and a vector fails with the intended message rather than R's own.
 checkArgBool <- function(arg0, arg0name) {
-  if (!arg0 %in% c(TRUE, FALSE)) {
+  if (!(is.logical(arg0) && length(arg0) == 1L && !is.na(arg0))) {
     stop(arg0name, " should be TRUE or FALSE.")
   }
 }
@@ -7,6 +9,11 @@ checkArgBool <- function(arg0, arg0name) {
 checkArgNumeric <- function(arg0, arg0name, minVal = NULL, maxVal = NULL, incMin = TRUE, incMax = TRUE) {
   if (!is.numeric(arg0)) {
     stop(arg0name, " should be a numeric value.")
+  }
+  # LEDGER #21 FIXED (d): an NA or a vector used to reach the comparisons and die
+  # in `if` with no argument name.
+  if (length(arg0) != 1L || is.na(arg0)) {
+    stop(arg0name, " should be a single non-missing numeric value.")
   }
 
   if (!is.null(minVal)) {
@@ -16,7 +23,7 @@ checkArgNumeric <- function(arg0, arg0name, minVal = NULL, maxVal = NULL, incMin
       }
     } else {
       if (arg0 <= minVal) {
-        stop(arg0name, " should be a numeric value greater than", minVal, "\n")
+        stop(arg0name, " should be a numeric value greater than ", minVal, "\n") # LEDGER #21 (c): the space
       }
     }
   }
@@ -28,7 +35,7 @@ checkArgNumeric <- function(arg0, arg0name, minVal = NULL, maxVal = NULL, incMin
       }
     } else {
       if (arg0 >= maxVal) {
-        stop(arg0name, " should be a numeric value less than", maxVal, "\n")
+        stop(arg0name, " should be a numeric value less than ", maxVal, "\n")
       }
     }
   }

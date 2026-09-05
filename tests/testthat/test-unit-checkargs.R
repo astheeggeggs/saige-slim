@@ -15,21 +15,16 @@ test_that("checkArgBool accepts logicals and rejects non-logicals", {
   expect_error(checkArgBool("yes", "isLOCO"), "isLOCO should be TRUE or FALSE.", fixed = TRUE)
 })
 
-test_that("checkArgBool accepts anything %in% c(TRUE, FALSE) coerces to", {
-  # `arg0 %in% c(TRUE, FALSE)` coerces both sides, so 1/0 and the STRINGS
-  # "TRUE"/"FALSE" pass the gate that is meant to reject non-logicals.
-  # LEDGER #21: recorded, not fixed -- the CLI's optparse layer already
-  # supplies real logicals, so this only bites direct R API callers.
-  expect_silent(checkArgBool(1, "isLOCO"))
-  expect_silent(checkArgBool(0, "isLOCO"))
-  expect_silent(checkArgBool("TRUE", "isLOCO"))
+test_that("checkArgBool rejects what %in% used to coerce (LEDGER #21 FIXED, a)", {
+  expect_error(checkArgBool(1, "isLOCO"), "isLOCO should be TRUE or FALSE.", fixed = TRUE)
+  expect_error(checkArgBool(0, "isLOCO"), "isLOCO should be TRUE or FALSE.", fixed = TRUE)
+  expect_error(checkArgBool("TRUE", "isLOCO"), "isLOCO should be TRUE or FALSE.", fixed = TRUE)
+  expect_error(checkArgBool(NA, "isLOCO"), "isLOCO should be TRUE or FALSE.", fixed = TRUE)
+  expect_silent(checkArgBool(TRUE, "isLOCO"))
 })
 
-test_that("checkArgBool on a vector raises R's condition-length error", {
-  # `if(!arg0 %in% ...)` gets a length-2 condition; since R 4.2 that is an
-  # error from the language, not the intended "should be TRUE or FALSE".
-  # LEDGER #21: recorded, not fixed.
-  expect_error(checkArgBool(c(TRUE, TRUE), "isLOCO"), "condition has length > 1")
+test_that("checkArgBool on a vector gives the intended message (LEDGER #21 FIXED, b)", {
+  expect_error(checkArgBool(c(TRUE, TRUE), "isLOCO"), "isLOCO should be TRUE or FALSE.", fixed = TRUE)
 })
 
 test_that("checkArgNumeric rejects non-numerics by name", {
@@ -58,23 +53,18 @@ test_that("checkArgNumeric maxVal boundary honours incMax", {
   expect_silent(checkArgNumeric(1 - 1e-12, "maxMAF", maxVal = 1, incMax = FALSE))
 })
 
-test_that("checkArgNumeric exclusive-bound messages lose the space before the bound", {
-  # "greater than" / "less than" have no trailing space, so the exclusive
-  # messages render as "greater than0" / "less than1" (the inclusive forms are
-  # spaced correctly). LEDGER #21: recorded, not fixed -- cosmetic, but pinned
-  # so a future edit does not change user-visible text unnoticed.
-  expect_error(checkArgNumeric(0, "p", minVal = 0, incMin = FALSE), "greater than0", fixed = TRUE)
-  expect_error(checkArgNumeric(1, "p", maxVal = 1, incMax = FALSE), "less than1", fixed = TRUE)
+test_that("checkArgNumeric exclusive-bound messages are spaced (LEDGER #21 FIXED, c)", {
+  expect_error(checkArgNumeric(0, "p", minVal = 0, incMin = FALSE), "greater than 0", fixed = TRUE)
+  expect_error(checkArgNumeric(1, "p", maxVal = 1, incMax = FALSE), "less than 1", fixed = TRUE)
 })
 
-test_that("checkArgNumeric on NA fails with R's condition error, not its own message", {
-  # is.numeric(NA_real_) is TRUE, so the guard passes and `NA < minVal` yields
-  # NA, which `if` rejects. The user sees "missing value where TRUE/FALSE
-  # needed" with no argument name. LEDGER #21: recorded, not fixed.
+test_that("checkArgNumeric on NA or a vector names the argument (LEDGER #21 FIXED, d)", {
   expect_error(checkArgNumeric(NA_real_, "minMAF", minVal = 0),
-               "missing value where TRUE/FALSE needed")
-  # with no bounds to compare against, NA passes silently
-  expect_silent(checkArgNumeric(NA_real_, "minMAF"))
+               "minMAF should be a single non-missing numeric value.", fixed = TRUE)
+  expect_error(checkArgNumeric(NA_real_, "minMAF"),
+               "minMAF should be a single non-missing numeric value.", fixed = TRUE)
+  expect_error(checkArgNumeric(c(1, 2), "minMAF"),
+               "minMAF should be a single non-missing numeric value.", fixed = TRUE)
 })
 
 test_that("checkArgNumeric applies both bounds when given", {
