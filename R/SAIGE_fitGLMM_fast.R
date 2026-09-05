@@ -1745,7 +1745,7 @@ Covariate_Transform <- function(formula, data) {
   idx.na <- which(is.na(out.lm$coef))
   if (length(idx.na) > 0) {
     print(head(X1))
-    X1 <- X1[, -idx.na]
+    X1 <- X1[, -idx.na, drop = FALSE] # LEDGER #36 FIXED: one surviving column stayed a matrix
     print(head(X1))
     cat("Warning: multi collinearity is detected in covariates! ", X_name[idx.na], " will be excluded in the model\n")
     X_name <- X_name[-idx.na]
