@@ -2500,15 +2500,27 @@ extractVarianceRatio <- function(obj.glmm.null,
               varRatio_NULL_noXadj_vec <- c(varRatio_NULL_noXadj_vec, var1 / var2null_noXadj)
               # indexInMarkerList = indexInMarkerList + 1
               numTestedMarker <- numTestedMarker + 1
-            } else {
-              indexInMarkerList <- indexInMarkerList + 1
             }
-          } else { # if(!is.na(CHR)){
-            indexInMarkerList <- indexInMarkerList + 1
+            # LEDGER #75 FIXED: this `else` used to advance indexInMarkerList a
+            # SECOND time, on top of the unconditional increment above. The
+            # commented-out increment inside the accepted branch is the record of
+            # what happened: the increment was hoisted out to the top of the
+            # iteration and these two copies were left behind. A skipped marker
+            # therefore consumed the marker AFTER it, which was never read at
+            # all, and a double step from the last position jumped straight over
+            # the exhaustion guard below.
           }
+          # LEDGER #75 FIXED: the same second increment sat in the branch taken
+          # when the chromosome does not parse; it is gone for the same reason.
 
 
-          if (indexInMarkerList - 1 == length(listOfMarkersForVarRatio[[k]])) {
+          # LEDGER #75: the exhaustion guard below is now an inequality rather
+          # than an equality. With the two double increments gone
+          # the cursor advances by exactly one per iteration, so equality is
+          # sufficient and this changes nothing today -- it is here so that any
+          # future path that advances by more than one stops at the end of the
+          # list instead of reading an NA off it.
+          if (indexInMarkerList - 1 >= length(listOfMarkersForVarRatio[[k]])) {
             numTestedMarker <- numMarkers0
           }
         } # end of while(numTestedMarker < numMarkers)
@@ -2523,7 +2535,7 @@ extractVarianceRatio <- function(obj.glmm.null,
           cat("CV for variance ratio estimate using ", numMarkers0, " markers is ", ratioCV, " < ", ratioCVcutoff, "\n")
         }
 
-        if (indexInMarkerList - 1 == length(listOfMarkersForVarRatio[[k]])) {
+        if (indexInMarkerList - 1 >= length(listOfMarkersForVarRatio[[k]])) {
           ratioCV <- ratioCVcutoff
           cat("no more markers are available in the MAC category ", k, "\n")
           print(indexInMarkerList - 1)
