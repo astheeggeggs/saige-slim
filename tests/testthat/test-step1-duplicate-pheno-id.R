@@ -79,61 +79,20 @@ test_that("LEDGER #67: a duplicated phenotype ID inflates the analysed sample co
     lg <- readLines(attr(st, "log"), warn = FALSE)
     n <- sub("^\\s*([0-9]+).*", "\\1",
              grep("samples will be used for analysis", lg, value = TRUE)[1])
-    list(status = as.integer(st), n = as.integer(n))
+    list(status = as.integer(st), n = as.integer(n), log = lg)
   })
   # NEGATIVE CONTROL: the unmodified file reports the true count
   expect_identical(runs[[1]]$status, 0L)
   expect_identical(runs[[1]]$n, 1000L)
-  # and the duplicated one carries the repeated individual as a second sample,
-  # at EXIT 0 and with no warning
-  expect_identical(runs[[2]]$status, 0L)
-  expect_identical(runs[[2]]$n, 1001L)
+  # LEDGER #67 FIXED: the duplicated file is refused by name before any fit
+  # (it used to carry the repeated individual as a second sample at exit 0)
+  expect_false(identical(runs[[2]]$status, 0L))
+  expect_true(any(grepl("1 sample ID(s) appear more than once in the phenoFile column IID: 1a1", runs[[2]]$log, fixed = TRUE)))
+  expect_true(is.na(runs[[2]]$n))
 })
 
-test_that("LEDGER #67: the duplicate lands in the frequency denominator, not the numerator", {
-  skip_unless_level("standard")
-  d <- tempfile()
-  dir.create(d)
-  fx <- build_carrier_fixture(file.path(d, "carrier"))
-
-  # setgeno writes C++ globals, so it is driven in a child process. The two
-  # arguments are exactly what the R side passes after a merge with one
-  # duplicated ID: the index vector gains a repeat, the indicator keeps one
-  # entry per FILE sample.
-  out <- tempfile(fileext = ".rds")
-  script <- tempfile(fileext = ".R")
-  writeLines(c(
-    "suppressPackageStartupMessages(library(SAIGE))",
-    sprintf('pre <- "%s"; out <- "%s"; n <- %dL; m <- %dL', fx$prefix, out, fx$n, fx$m),
-    "setminMAFforGRM(0); setmaxMissingRateforGRM(1)",
-    "sub <- c(seq_len(n), 1L)",
-    "ind <- rep(TRUE, n)",
-    'setgeno(paste0(pre, ".bed"), paste0(pre, ".bim"), paste0(pre, ".fam"),',
-    "        sub, ind, 2, FALSE)",
-    "N <- getNnomissingOut()",
-    "saveRDS(list(N = N, freq = getAlleleFreqVec(),",
-    "             store = vapply(seq_len(m) - 1L, function(i) Get_OneSNP_Geno(i),",
-    "                            numeric(N))), out)"
-  ), script)
-  st <- suppressWarnings(system2(file.path(R.home("bin"), "Rscript"), script,
-                                 stdout = FALSE, stderr = FALSE))
-  expect_identical(as.integer(st), 0L)
-  s <- readRDS(out)
-
-  # the store is sized by the DUPLICATED list, not by the file
-  expect_identical(s$N, fx$n + 1L)
-
-  # getAlleleFreqVec() comes back as a one-column matrix (arma::fvec)
-  reported_ac <- as.vector(s$freq) * 2 * s$N  # the numerator the frequency implies
-  store_ac <- colSums(s$store)           # what the store actually holds
-  # THE POINT: the gap is exactly the duplicated sample's genotype -- 1 where it
-  # carries the ALT allele, 0 where it does not. Compared at float32 tolerance
-  # because altFreq is a float.
-  expect_equal(store_ac - reported_ac, as.numeric(fx$g_dup), tolerance = 1e-5)
-  # both arms are present, so this is not vacuous
-  expect_gt(sum(fx$g_dup == 1L), 0L)
-  expect_gt(sum(fx$g_dup == 0L), 0L)
-  # and stated as the two arms: carriers disagree by one allele, non-carriers agree
-  expect_true(all(abs((store_ac - reported_ac)[fx$g_dup == 1L] - 1) < 1e-4))
-  expect_true(all(abs((store_ac - reported_ac)[fx$g_dup == 0L]) < 1e-4))
-})
+# The block that characterized the CONSEQUENCE (the duplicate in the
+# allele-frequency denominator but not the numerator, reconciled to the
+# duplicated sample's genotype on 40 markers) is retired with the mechanism:
+# a duplicated ID no longer reaches the merge. Its derivation is in the
+# ledger row's provenance.

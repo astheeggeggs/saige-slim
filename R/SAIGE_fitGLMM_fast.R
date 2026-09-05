@@ -903,6 +903,16 @@ fitNULLGLMM <- function(plinkFile = "",
         stop("ERROR! column for ", i, " does not exist in the phenoFile \n")
       }
     }
+    # LEDGER #67 FIXED: a repeated sample ID multiplied that sample's rows
+    # through the genotype merge (model matrix, phenotype vector and the
+    # genotype index all doubled; counted in the allele-frequency denominator
+    # but not the numerator) and "N+1 samples will be used" was printed.
+    dupIDs <- unique(data[[sampleIDColinphenoFile]][duplicated(data[[sampleIDColinphenoFile]])])
+    if (length(dupIDs) > 0) {
+      stop("ERROR! ", length(dupIDs), " sample ID(s) appear more than once in the phenoFile column ",
+           sampleIDColinphenoFile, ": ", paste(head(dupIDs, 10), collapse = ", "),
+           if (length(dupIDs) > 10) ", ..." else "", ". Each sample must have exactly one row.\n")
+    }
 
 
     # LEDGER #77 FIXED: the sex column is kept through this subset when a
