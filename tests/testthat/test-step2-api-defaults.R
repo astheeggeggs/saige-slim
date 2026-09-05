@@ -23,7 +23,8 @@ api_run <- function(out, args_r, extra_r = "") {
     "sink()"
   ), script)
   log <- tempfile(fileext = ".log")
-  owd <- setwd(saige_extdata); on.exit(setwd(owd), add = TRUE)
+  owd <- setwd(saige_extdata)
+  on.exit(setwd(owd), add = TRUE)
   st <- suppressWarnings(system2(file.path(R.home("bin"), "Rscript"), script,
                                  stdout = log, stderr = log))
   if (!identical(as.integer(st), 0L)) {
@@ -39,13 +40,6 @@ PLINK_R <- c(
   'famFile = "./input/genotype_100markers.fam"',
   'AlleleOrder = "alt-first"'
 )
-PLINK_CLI <- c(
-  "--bedFile=./input/genotype_100markers.bed",
-  "--bimFile=./input/genotype_100markers.bim",
-  "--famFile=./input/genotype_100markers.fam",
-  "--AlleleOrder=alt-first"
-)
-
 # ---- LEDGER #18, second half: is_single_in_groupTest -------------------------
 # Golden P5 (plink_group_burden.txt) is a BURDEN-only group run at the CLI
 # default, which writes NO .singleAssoc.txt. The API default used to be TRUE, so
@@ -55,8 +49,10 @@ GRP_R <- c(
   PLINK_R,
   'GMMATmodelFile = "./output/example_binary_sparseGRM.rda"',
   'varianceRatioFile = "./output/example_binary_sparseGRM.varianceRatio.txt"',
-  'sparseGRMFile = "output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx"',
-  'sparseGRMSampleIDFile = "output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt"',
+  paste0('sparseGRMFile = "output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed',
+         '.sparseGRM.mtx"'),
+  paste0('sparseGRMSampleIDFile = "output/sparseGRM_relatednessCutoff_0.125_1000_',
+         'randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt"'),
   'chrom = "1"', "min_MAF = 0", "min_MAC = 0.5", "LOCO = FALSE",
   'groupFile = "./input/group_new_snpid.txt"',
   'annotation_in_groupTest = c("lof", "missense;lof", "missense;lof;synonymous")',
@@ -64,13 +60,48 @@ GRP_R <- c(
   "r.corr = 1", "is_fastTest = FALSE"
 )
 
-test_that("LEDGER #18 FIXED: the API's BURDEN-only default writes no single-variant file, like the CLI", {
+test_that("LEDGER #18 FIXED: the API's BURDEN-only default writes no single-variant file", {
   out <- file.path(tempfile("api18_"), "burden.txt")
   dir.create(dirname(out), recursive = TRUE)
   api_run(out, GRP_R)
   # the region file is the golden's, so this IS P5's run through the other door
   expect_output_matches_golden(file.path(saige_goldens, "step2", "plink_group_burden.txt"), out)
   expect_false(file.exists(paste0(out, ".singleAssoc.txt")))
+})
+
+# ---- LEDGER #82: is_noadjCov -------------------------------------------------
+# Golden P1 (plink_marker_binary.txt) is the CLI default, is_noadjCov = TRUE,
+# the unadjusted score test with the null_noXadj variance ratio. The API used
+# to default to FALSE, the covariate-adjusted test, which is golden P30
+# (plink_marker_noadjCov.txt): 68 of P1's 70 p-values differ from P30's. So the
+# API called with P1's arguments must reproduce P1, and with is_noadjCov =
+# FALSE it must reproduce P30 (positive control, true before and after).
+
+MARKER_R <- c(
+  PLINK_R,
+  sprintf('GMMATmodelFile = "%s"', file.path(saige_goldens, "step1", "binary_sparseGRM_a.rda")),
+  sprintf('varianceRatioFile = "%s"',
+          file.path(saige_goldens, "step1", "binary_sparseGRM_a.varianceRatio.txt")),
+  'chrom = "1"', "min_MAF = 0", "min_MAC = 1", "LOCO = FALSE",
+  "is_output_moreDetails = TRUE"
+)
+
+test_that("LEDGER #82 FIXED: the API's is_noadjCov default reproduces golden P1", {
+  out <- file.path(tempfile("api82_"), "marker.txt")
+  dir.create(dirname(out), recursive = TRUE)
+  api_run(out, MARKER_R)
+  expect_output_matches_golden(file.path(saige_goldens, "step2", "plink_marker_binary.txt"), out)
+})
+
+test_that("LEDGER #82: is_noadjCov = FALSE from the API reproduces golden P30 (control)", {
+  out <- file.path(tempfile("api82adj_"), "marker.txt")
+  dir.create(dirname(out), recursive = TRUE)
+  api_run(out, MARKER_R, "call$is_noadjCov <- FALSE")
+  expect_output_matches_golden(file.path(saige_goldens, "step2", "plink_marker_noadjCov.txt"), out)
+  # and the two goldens really are different tests, so the pair above has power
+  p1 <- read_saige_table(file.path(saige_goldens, "step2", "plink_marker_binary.txt"))
+  p30 <- read_saige_table(file.path(saige_goldens, "step2", "plink_marker_noadjCov.txt"))
+  expect_gt(sum(p1$p.value != p30$p.value), 60)
 })
 
 test_that("LEDGER #18: is_single_in_groupTest = TRUE still writes the file (positive control)", {

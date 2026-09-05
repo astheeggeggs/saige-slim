@@ -566,7 +566,15 @@ option_list <- list(
     "--is_noadjCov",
     type = "logical",
     default = TRUE,
-    help = "Whether to regress out covariates from genotype"
+    help = paste0(
+      "Whether to SKIP the covariate adjustment of the tested genotype in the ",
+      "single-variant score test. TRUE uses the unadjusted, allele-frequency-",
+      "centred genotype with the null_noXadj variance ratio; FALSE regresses ",
+      "the covariates out of the genotype first and uses the null variance ",
+      "ratio. Different score tests, different p-values. Ignored for group ",
+      "tests and for the sparse-GRM marker test, which always adjust ",
+      "[default=TRUE, on the command line and in the R API (LEDGER #82)]"
+    )
   ),
   make_option(
     "--max_MAC_for_ER",
