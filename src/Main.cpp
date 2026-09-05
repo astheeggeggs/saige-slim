@@ -3155,6 +3155,25 @@ void assign_conditionMarkers_factors(
   MAF = std::min(altFreq, 1 - altFreq);
   MAC = std::min(altCounts, 2*t_n-altCounts);
 
+  // LEDGER #73 FIXED. Every other getMarkerPval call site sits behind the
+  // marker QC gate; this one had none, so a marker the scan itself drops --
+  // rs1 of the bundled fixture, monomorphic in the analysed samples -- was
+  // conditioned on anyway, and the conditional columns came out IDENTICAL to
+  // the marginal ones on 70/70 rows at exit 0. The only degeneracy noticed was
+  // MAF == 0, written to std::cerr and then ignored. A conditioning marker is
+  // named by the user, so silently dropping it would be the same no-op with a
+  // different label: refuse, naming the marker and the thresholds it failed.
+  if(MAC == 0 || (missingRate > g_cfg.missingRate_cutoff) || (MAF < g_cfg.marker_minMAF_cutoff) ||
+     (MAC < g_cfg.marker_minMAC_cutoff) || (imputeInfo < g_cfg.marker_minINFO_cutoff)){
+    Rcpp::stop("conditioning marker " + marker + " (" + info + ") fails the marker QC in the analysed samples"
+               " -- MAC " + std::to_string(MAC) + ", MAF " + std::to_string(MAF) +
+               ", missing rate " + std::to_string(missingRate) + ", imputation info " + std::to_string(imputeInfo) +
+               " against --minMAC " + std::to_string(g_cfg.marker_minMAC_cutoff) +
+               ", --minMAF " + std::to_string(g_cfg.marker_minMAF_cutoff) +
+               ", --maxMissing " + std::to_string(g_cfg.missingRate_cutoff) +
+               ", --minInfo " + std::to_string(g_cfg.marker_minINFO_cutoff) +
+               (MAC == 0 ? "; it is monomorphic" : "") + ". It cannot be conditioned on.\n");
+  }
   arma::vec gtildeVec;
 
   if(MAC <=  g_cfg.MACCutoffforER && model.m_traitType == "binary"){
@@ -3184,11 +3203,8 @@ void assign_conditionMarkers_factors(
       MAFVec(i) = MAF;
       //w0G2_cond = boost::math::pdf(beta_dist, MAF);
       //t_weight_cond.print();
-      if(MAF == 0.0){
-	std::cerr << "ERROR: Conditioning marker is monomorphic\n";
-      }	      
-
-
+      // (the former std::cerr "Conditioning marker is monomorphic" notice is
+      // subsumed by the LEDGER #73 stop above)
      if(!t_weight_cond.is_zero()){
 	 w0G2_cond = t_weight_cond(i);
     }else{
