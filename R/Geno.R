@@ -198,7 +198,14 @@ setGenoInput <- function(bedFile = "",
   }
 
   if (rangestoIncludeFile != "") {
-    RangesToInclude <- data.table::fread(rangestoIncludeFile, header = FALSE, colClasses = c("character", "numeric", "numeric"), data.table = FALSE)
+    # LEDGER #24 FIXED: read the column count before imposing three classes,
+    # so the "three columns" message below is what a malformed file gets,
+    # instead of data.table's colClasses diagnostic that used to fire first.
+    RangesToInclude <- data.table::fread(rangestoIncludeFile, header = FALSE, colClasses = "character", data.table = FALSE)
+    if (ncol(RangesToInclude) == 3) {
+      RangesToInclude[, 2] <- as.numeric(RangesToInclude[, 2])
+      RangesToInclude[, 3] <- as.numeric(RangesToInclude[, 3])
+    }
     if (ncol(RangesToInclude) != 3) {
       stop("rangestoIncludeFile should only include three columns.")
     } else {

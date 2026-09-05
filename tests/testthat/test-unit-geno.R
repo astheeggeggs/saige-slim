@@ -103,11 +103,12 @@ test_that("a malformed rangestoIncludeFile fails in fread, before its own guard"
   # Geno.R:127 checks ncol(RangesToInclude) != 3, but fread is called with a
   # length-3 colClasses, so any other column count errors inside fread first
   # and that stop() cannot be reached. Pinned as the message the user actually
-  # sees. LEDGER #24: recorded, not fixed.
+  # sees. LEDGER #24: FIXED, the pin below is inverted.
+  # LEDGER #24 FIXED: the intended message is reachable now.
   rng <- tempfile(); writeLines("1\t10", rng)
   expect_error(setGenoInput(bedFile = bed100(), sampleInModel = fam_ids(),
                             rangestoIncludeFile = rng),
-               "colClasses")
+               "should only include three columns")
 })
 
 test_that("include files that match nothing leave an empty markerInfo", {
