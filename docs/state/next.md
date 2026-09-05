@@ -410,6 +410,18 @@ time (one FID shared by all 10,000 samples; `#IID SEX` with no FID at all; a
 duplicated IID) and drives golden P13 through each. 6 failures at unpatched
 HEAD, 0 after.
 
+**PCG stops on an absolute residual, and that is a recorded hazard, not a
+fix.** [DECIDED 2026-09-05, LEDGER #6] All eight PCG loops in
+`src/SAIGE_fitGLMM_fast.cpp` stop on `sum(r^2) > tolPCG` with no right-hand-side
+normalisation, so `--tolPCG=1e-5` is a different relative tolerance at every N
+and for every phenotype scale. On the bundled fixtures it only constrains the
+harness's step-1 tolerances (theta/VR 1e-2). At biobank N with a DENSE GRM the
+stop is relatively looser than at N = 1,000, which is where it could bite; the
+sparse-GRM fits never enter a PCG loop at the default flags (direct `spsolve`),
+so a normalised rule would move only `binary_denseGRM` and its pgen mirror
+[ASSUMPTION: traced, not instrumented]. If revisited: perturb `tolPCG` first to
+see which goldens actually move, then normalise by `dot(b, b)` and re-baseline.
+
 **Dosage pgens are hard-called for the GRM, and that is a real limitation, not
 just a warning.** [Grounded, 2026-09-03] `genoClass`'s store is 2 bits per
 sample, so `PgenByteSource` rounds any dosage to the nearest of {0,1,2} and
