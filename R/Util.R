@@ -348,3 +348,15 @@ convert_str_to_log <- function(a) {
     d <- NA
   }
 }
+
+
+# LEDGER #68 FIXED. Covariate names were pasted into a formula bare, so a name
+# containing formula syntax was silently REINTERPRETED: `x1^2` vanished from
+# y ~ x1 + x2 + x1^2 (term labels x1, x2 -- checked), `x1*x2` became an
+# interaction, and the --covarColList membership check had already confirmed
+# the column present. Backtick-quoting makes every name a single term. For an
+# ordinary name the model-matrix column names are unchanged, so nothing moves.
+quoteCovarNames <- function(x) {
+  if (length(x) == 0) return(x)
+  paste0("`", gsub("`", "\\`", x), "`")
+}

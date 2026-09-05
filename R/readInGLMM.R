@@ -136,10 +136,10 @@ ReadModel <- function(GMMATmodelFile = "", chrom = "", LOCO = TRUE, is_Firth_bet
         if (ncol(modglmm$X) == 1) {
           covoffset <- rep(0, nrow(modglmm$X))
         } else {
-          formulastr <- paste0("y ~ ", paste(colnames(modglmm$X)[-1], collapse = "+"))
+          formulastr <- paste0("y ~ ", paste(quoteCovarNames(colnames(modglmm$X)[-1]), collapse = "+"))
           modglmm$X <- cbind(modglmm$X, as.vector(modglmm$y))
           colnames(modglmm$X)[ncol(modglmm$X)] <- "y"
-          modglmm$X <- as.data.frame(modglmm$X)
+          modglmm$X <- as.data.frame(modglmm$X, check.names = FALSE) # LEDGER #68: keep names the quoted formula can find
           formula.new <- as.formula(formulastr)
           modwitcov <- glm(formula.new, data = modglmm$X, family = binomial)
           modglmm$X <- modglmm$X[, -ncol(modglmm$X)]
@@ -302,10 +302,10 @@ ReadModel_subsample <- function(GMMATmodelFile = "", chrom = "", LOCO = TRUE, is
         if (ncol(modglmm$X) == 1) {
           covoffset <- rep(0, nrow(modglmm$X))
         } else {
-          formulastr <- paste0("y ~ ", paste(colnames(modglmm$X)[-1], collapse = "+"))
+          formulastr <- paste0("y ~ ", paste(quoteCovarNames(colnames(modglmm$X)[-1]), collapse = "+"))
           modglmm$X <- cbind(modglmm$X, as.vector(modglmm$y))
           colnames(modglmm$X)[ncol(modglmm$X)] <- "y"
-          modglmm$X <- as.data.frame(modglmm$X)
+          modglmm$X <- as.data.frame(modglmm$X, check.names = FALSE) # LEDGER #68: keep names the quoted formula can find
           formula.new <- as.formula(formulastr)
           modwitcov <- glm(formula.new, data = modglmm$X, family = binomial)
           modglmm$X <- modglmm$X[, -ncol(modglmm$X)]

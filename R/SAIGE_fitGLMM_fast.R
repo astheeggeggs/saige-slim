@@ -975,9 +975,7 @@ fitNULLGLMM <- function(plinkFile = "",
 
 
     if (length(covarColList) > 0) {
-      formula <- paste0(phenoCol, "~", paste0(covarColList,
-        collapse = "+"
-      ))
+      formula <- paste0(phenoCol, "~", paste0(quoteCovarNames(covarColList), collapse = "+"))
       hasCovariate <- TRUE
     } else {
       formula <- paste0(phenoCol, "~ 1")
@@ -995,7 +993,7 @@ fitNULLGLMM <- function(plinkFile = "",
     if (length(covarColList) > 0) {
       if (length(qCovarCol) > 0) {
         covarColList <- colnames(mmat)[2:(ncol(mmat) - 1)]
-        formula <- paste0(phenoCol, "~", paste0(covarColList, collapse = "+"))
+        formula <- paste0(phenoCol, "~", paste0(quoteCovarNames(covarColList), collapse = "+"))
         formula.null <- as.formula(formula)
       }
     }
@@ -1060,9 +1058,7 @@ fitNULLGLMM <- function(plinkFile = "",
       minCovariateCount
     )
     covarColList <- covarColList[!(covarColList %in% out_checksep)]
-    formula <- paste0(phenoCol, "~", paste0(covarColList,
-      collapse = "+"
-    ))
+    formula <- paste0(phenoCol, "~", paste0(quoteCovarNames(covarColList), collapse = "+"))
     formula.null <- as.formula(formula)
 
 

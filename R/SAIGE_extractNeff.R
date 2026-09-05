@@ -374,9 +374,7 @@ getNeff <- function(plinkFile = "",
       }
     }
     if (length(covarColList) > 0) {
-      formula <- paste0(phenoCol, "~", paste0(covarColList,
-        collapse = "+"
-      ))
+      formula <- paste0(phenoCol, "~", paste0(quoteCovarNames(covarColList), collapse = "+"))
       hasCovariate <- TRUE
     } else {
       formula <- paste0(phenoCol, "~ 1")
@@ -421,9 +419,7 @@ getNeff <- function(plinkFile = "",
       minCovariateCount
     )
     covarColList <- covarColList[!(covarColList %in% out_checksep)]
-    formula <- paste0(phenoCol, "~", paste0(covarColList,
-      collapse = "+"
-    ))
+    formula <- paste0(phenoCol, "~", paste0(quoteCovarNames(covarColList), collapse = "+"))
     formula.null <- as.formula(formula)
     if (length(covarColList) == 1) {
       hasCovariate <- FALSE
