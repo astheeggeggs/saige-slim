@@ -110,7 +110,9 @@ discriminating ones. That is the right shape for an inverted test.
 
 ## What is NOT done
 
-- **37 of 86 ledger rows remain open.** `python3 harness/tools/ledger.py open`
+- **38 of 86 ledger rows remain open.** Note `ledger.py open` reported 39
+  before this session and 38 after two fixes -- not 37 -- because #66's
+  unparseable row had never been counted. The true before-figure was 40. `python3 harness/tools/ledger.py open`
   is the list; do not read `LEDGER.md` whole.
 - Of the tracker mine's rows, **#63, #67, #75, #84 and #86 have tests** and the
   rest are traced, not reproduced. `docs/state/next.md` names the two coverage

@@ -65,7 +65,9 @@ believe an older doc that says it is parked on a branch.
 (`sample`, `1:n`, `rbind` recycling) -- all latent behind a guard -- #45, #46,
 #49 (a restart re-runs the last completed chunk: wasted work, right answer),
 and **#63-#86, the 24 rows written on 2026-09-04 from the upstream issue
-tracker** -- 37 open of 86 in all. **Phase 3 (fixes) has STARTED**: #74 (the
+tracker** -- 38 open of 86 in all (`ledger.py open` said 39 before this
+session, but that UNDERCOUNTED: #66's row was unparseable and invisible to the
+tool, so the true figure was 40). **Phase 3 (fixes) has STARTED**: #74 (the
 bim/pvar `fread` had no `colClasses`, so an all-numeric ID column inferred
 INTEGER and every join against it failed -- no golden could move, every
 committed variant file spells its IDs `rs<N>`) and #66 (the conditional
