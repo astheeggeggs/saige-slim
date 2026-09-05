@@ -155,11 +155,15 @@ test_that("LEDGER #84: the conditional SPA runs at non-negligible conditioning",
   expect_gt(decades, 1)
 })
 
-# --- LEDGER #66, characterization: asserts what the code does TODAY ----------
-# When #66 is fixed this test changes with the ledger row: the degenerate cell
-# should report BETA_c/SE_c as NA rather than as a ratio of two cancelled
-# noise terms.
-test_that("LEDGER #66: collinear conditioning cancels the variance past the DBL_MIN guard", {
+# --- LEDGER #66, FIXED: the conditional variance's relative cancellation guard -
+# The conditional variance is a DIFFERENCE, var1 - G1'PG2 VarInv G2'PG1, so a
+# marker collinear with the conditioning set cancels it to float noise. The only
+# guard used to be `varT_c <= DBL_MIN`, which is ~294 orders of magnitude below
+# where that cancellation actually lands -- the same geometry LEDGER #44 had to
+# fix in the two "fast" score tests. It now uses #44's relative test, with #44's
+# threshold and #44's helper, so a degenerate cell says NA instead of publishing
+# a ratio of two cancelled noise terms.
+test_that("LEDGER #66 FIXED: collinear conditioning reports NA, not cancelled noise", {
   skip_unless_level("standard")
   skip_if_no_goldens()
   dir <- tempfile()
@@ -168,21 +172,42 @@ test_that("LEDGER #66: collinear conditioning cancels the variance past the DBL_
   adj <- run_cond(f$prefix, tempfile(fileext = ".txt"), noadjcov = FALSE)
   def <- run_cond(f$prefix, tempfile(fileext = ".txt"), noadjcov = TRUE)
 
+  # varT_c = var1 - varT_ctemp, so the guard's term scale is
+  # |var1| + |varT_ctemp| = 2*var - var_c, computable from the printed columns
+  # alone -- no instrumented build needed.
+  ratio <- function(d, r) {
+    v <- num(d[r, "var"])
+    vc <- num(d[r, "var_c"])
+    vc / (2 * v - vc)
+  }
+  # n*eps at the model's 1,000 samples, which is the threshold the C++ uses
+  thr <- 1000 * .Machine$double.eps
+
   # ld100 is byte-identical to the conditioning marker `cond`, so the true
   # conditional variance is 0.
   for (r in c("cond", "ld100", "sigpart")) {
     vc <- num(adj[r, "var_c"])
-    # cancelled to float noise ...
+    # still cancelled to float noise -- the fix does not change the arithmetic
     expect_lt(vc, 1e-10)
-    # ... and yet ~294 orders of magnitude ABOVE the guard at
-    # src/SAIGE_test.cpp:970, which tests var_c <= DBL_MIN (2.2e-308). This is
-    # exactly the geometry LEDGER #44 had to fix with a RELATIVE test.
+    # ... and still ~294 orders of magnitude ABOVE the absolute guard at
+    # src/SAIGE_test.cpp, which is why an absolute test could never catch it
     expect_gt(vc, 1e-100)
-    # the reported effect size is then a ratio of two cancelled quantities and
-    # the SE is astronomically inflated; the p is forced to ~1.
-    expect_gt(abs(num(adj[r, "SE_c"])), 1e5)
-    expect_gt(num(adj[r, "p.value_c"]), 0.999)
-    expect_true(is.finite(num(adj[r, "BETA_c"])))     # NOT NA -- it is reported
+    # what the RELATIVE test sees: machine epsilon, far below n*eps
+    expect_lt(ratio(adj, r), thr / 10)
+    # so the effect size is declined rather than published
+    expect_identical(adj[r, "BETA_c"], "NA")
+    expect_identical(adj[r, "SE_c"], "NA")
+    expect_identical(adj[r, "p.value_c"], "1.000000E+00")
+  }
+
+  # POSITIVE CONTROL: the guard is scale-free, not a blanket suppression. The
+  # r2 ~ 0.9 partner has a genuinely reduced conditional variance and reports an
+  # ordinary finite BETA_c/SE_c -- and its ratio sits ~11 orders above the
+  # threshold, so nothing here is tuned to the fixture.
+  for (r in c("ld090", "ld050", "ld000", "sig")) {
+    expect_gt(ratio(adj, r), thr * 1e8)
+    expect_true(is.finite(num(adj[r, "BETA_c"])))
+    expect_true(is.finite(num(adj[r, "SE_c"])))
   }
 
   # CONTRAST, and the reason no CLI-driven golden could have caught this: at the
@@ -193,4 +218,5 @@ test_that("LEDGER #66: collinear conditioning cancels the variance past the DBL_
   # whose API default is FALSE and whose CLI default is TRUE (LEDGER #82).
   expect_gt(num(def["ld100", "var_c"]), 1e-3)
   expect_lt(num(def["ld100", "SE_c"]), 1e3)
+  expect_gt(ratio(def, "ld100"), thr * 1e8)
 })

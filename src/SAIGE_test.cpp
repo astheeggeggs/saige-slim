@@ -961,13 +961,41 @@ if(!t_isER){
     	arma::vec t_varT_ctemp = t_G1tilde_P_G2tilde * m_VarInvMat_cond * (t_G1tilde_P_G2tilde.t());
     	t_varT_c = t_var1 - t_varT_ctemp(0);
 
+    // LEDGER #66 FIXED. The conditional variance is a DIFFERENCE, var1 minus
+    // the part of it the conditioning markers explain, so a tested marker that
+    // is collinear with the conditioning set cancels it to float noise. That is
+    // the same geometry LEDGER #44 found in the two "fast" score tests, and it
+    // defeats an absolute guard for the same reason: on the constructed high-LD
+    // fixture a marker byte-identical to the conditioning marker gives
+    // varT_c ~ 2.5e-14 against var1 ~ 28, which is ~294 orders of magnitude
+    // ABOVE DBL_MIN. The guard below could never fire there, and the row was
+    // published as p.value_c = 1 with an SE_c of order 1e6 and a BETA_c that is
+    // the ratio of two cancelled quantities -- arbitrary, and not reproducible
+    // across platforms.
+    //
+    // So ask #44's question, with #44's threshold and #44's helper: is varT_c at
+    // the noise floor of its own two-term difference? The terms are var1 and
+    // varT_ctemp(0), both of them sums over the n samples, so n*eps is the right
+    // relative floor and nothing here is tuned to a fixture. MEASURED on the
+    // constructed high-LD fixture (7 markers, n = 1000, so n*eps = 2.22e-13):
+    // the markers collinear with the conditioning set give 4.89e-16 and
+    // 7.19e-16 -- machine epsilon, i.e. total cancellation -- while the
+    // r^2 = 0.9 partner gives 5.02e-02 and every other marker more. That is
+    // 14 orders of separation, with the threshold ~450x above the cancellation
+    // and ~11 orders below the smallest real value. Under the CLI default
+    // (--is_noadjCov=TRUE) the smallest ratio on that same fixture is 4.1e-03,
+    // so that path is untouched -- see LEDGER #82 for why the two differ.
+    bool collapsed_c = varianceCollapsed(t_varT_c,
+                                         std::fabs(t_var1) + std::fabs(t_varT_ctemp(0)),
+                                         m_n);
+
     double S_c = t_Tstat_c;
 
     double stat_c = S_c*S_c/t_varT_c;
 
     double pval_noSPA_c;
 
-     if (t_varT_c <= std::numeric_limits<double>::min()){
+     if (t_varT_c <= std::numeric_limits<double>::min() || collapsed_c){
         pval_noSPA_c = 1;
 	stat_c = 0;
      }else{
@@ -1000,8 +1028,21 @@ if(!t_isER){
     }
     std::string buffAsStdStr_c = pValueBuf_c;
     t_pval_noSPA_c = buffAsStdStr_c;
-    t_Beta_c = S_c/t_varT_c;
-    t_seBeta_c = fabs(t_Beta_c) / sqrt(stat_c);
+    // LEDGER #66 FIXED, second half: these two used to be computed
+    // unconditionally, PAST the guard above that has already forced
+    // pval_noSPA_c = 1 and stat_c = 0 -- so the guard-fires row was published
+    // with BETA_c = S_c/0 and SE_c = |BETA_c|/sqrt(0), which is exactly the
+    // inf/nan pair upstream reports. NA_REAL rather than a bare NaN, for the
+    // reason recorded at the marginal sites: a NaN's spelling is
+    // platform-dependent ("nan" on macOS, "-nan" on glibc when the sign bit is
+    // set) and the writers print an R_IsNA as the literal "NA" everywhere.
+    if(t_varT_c <= std::numeric_limits<double>::min() || collapsed_c){
+      t_Beta_c = NA_REAL;
+      t_seBeta_c = NA_REAL;
+    }else{
+      t_Beta_c = S_c/t_varT_c;
+      t_seBeta_c = fabs(t_Beta_c) / sqrt(stat_c);
+    }
     t_Tstat_c = S_c;
 
 

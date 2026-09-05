@@ -3851,16 +3851,17 @@ void writeOutfile_BURDEN(std::string regionName,
            }
            g_out.group << BURDEN_pval_Vec.at(i);
            g_out.group << "\t";
-           g_out.group << BURDEN_Beta_Vec.at(i);
+           // LEDGER #66: same reason as writeOutfile_singleInGroup above.
+           writeNumOrNA(g_out.group, BURDEN_Beta_Vec.at(i));
            g_out.group << "\t";
-           g_out.group << BURDEN_seBeta_Vec.at(i);
+           writeNumOrNA(g_out.group, BURDEN_seBeta_Vec.at(i));
            g_out.group << "\t";
            if(isCondition){
                g_out.group << BURDEN_pval_cVec.at(i);
                g_out.group << "\t";
-               g_out.group << BURDEN_Beta_cVec.at(i);
+               writeNumOrNA(g_out.group, BURDEN_Beta_cVec.at(i));
                g_out.group << "\t";
-               g_out.group << BURDEN_seBeta_cVec.at(i);
+               writeNumOrNA(g_out.group, BURDEN_seBeta_cVec.at(i));
                g_out.group << "\t";
 	   }
 	   g_out.group << MAC_GroupVec(i);
@@ -3971,9 +3972,15 @@ int writeOutfile_singleInGroup(bool t_isMoreOutput,
                         t_OutFile_singleInGroup << "\t";
 
                 }
-                t_OutFile_singleInGroup << BetaVec.at(k);
+                // LEDGER #66: writeNumOrNA, not a raw <<. The score tests
+                // (LEDGER #44) and now the conditional block emit NA_REAL for
+                // an effect size they declined to compute, and this writer --
+                // unlike writeOutfile_single -- printed it as a bare NaN,
+                // whose spelling is platform-dependent. Byte-neutral on every
+                // committed golden: none carries a non-finite effect size.
+                writeNumOrNA(t_OutFile_singleInGroup, BetaVec.at(k));
                 t_OutFile_singleInGroup << "\t";
-                t_OutFile_singleInGroup << seBetaVec.at(k);
+                writeNumOrNA(t_OutFile_singleInGroup, seBetaVec.at(k));
                 t_OutFile_singleInGroup << "\t";
                 t_OutFile_singleInGroup << TstatVec.at(k);
                 t_OutFile_singleInGroup << "\t";
@@ -3989,9 +3996,9 @@ int writeOutfile_singleInGroup(bool t_isMoreOutput,
                         t_OutFile_singleInGroup << "\t";
                 }
                 if(t_isCondition){
-                        t_OutFile_singleInGroup << Beta_cVec.at(k);
+                        writeNumOrNA(t_OutFile_singleInGroup, Beta_cVec.at(k));
                         t_OutFile_singleInGroup << "\t";
-                        t_OutFile_singleInGroup << seBeta_cVec.at(k);
+                        writeNumOrNA(t_OutFile_singleInGroup, seBeta_cVec.at(k));
                         t_OutFile_singleInGroup << "\t";
                         t_OutFile_singleInGroup << Tstat_cVec.at(k);
                         t_OutFile_singleInGroup << "\t";
