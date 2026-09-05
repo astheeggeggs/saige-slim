@@ -46,19 +46,20 @@ test_that("an unweighted file with a forced Weight column labels its single set 
   expect_identical(unique(res$Weight[res$Group == "Cauchy"]), "NA")
 })
 
-test_that("weights.beta moves the C++ statistics but not the R-side ACAT-V (LEDGER #19)", {
-  # region_postprocess hardcodes dbeta(MAF, 1, 25) for the implicit_beta set
-  # while C++ honours g_cfg.weights_beta, so changing --weights.beta shifts
-  # every C++-computed column and leaves Pvalue_ACATV exactly where it was.
-  # Pvalue_ACATO moves because it is CCT(ACATV, Burden, SKAT) and two of its
-  # three inputs moved. Preserved bug-for-bug: this test documents the
-  # asymmetry, it does not endorse it.
+test_that("weights.beta moves the C++ statistics AND the R-side ACAT-V (LEDGER #19 FIXED)", {
+  # region_postprocess used to hardcode dbeta(MAF, 1, 25) for the implicit_beta
+  # set while C++ honoured g_cfg.weights_beta, so changing --weights.beta
+  # shifted every C++-computed column and left Pvalue_ACATV exactly where it
+  # was (this test pinned that asymmetry until 2026-09-05). The implicit set now
+  # carries the first pair on both sides, so ACAT-V moves with the rest. The
+  # cell-for-cell agreement with the explicit-beta path is in
+  # test-step2-weightsbeta-single.R.
   a <- implicit_beta_run("1,25")
   b <- implicit_beta_run("1,1")
   expect_identical(colnames(a), colnames(b))
 
-  # frozen in R, therefore identical across the two runs
-  expect_identical(a$Pvalue_ACATV, b$Pvalue_ACATV)
+  # R-side weights now follow the pair too
+  expect_false(identical(a$Pvalue_ACATV, b$Pvalue_ACATV))
   # computed in C++ from the CLI value, therefore different
   for (cn in c("Pvalue", "Pvalue_Burden", "Pvalue_SKAT", "BETA_Burden", "SE_Burden")) {
     expect_false(identical(a[[cn]], b[[cn]]),

@@ -179,6 +179,14 @@ region_postprocess <- function(outList,
     ws_names <- weight_sets$name
   }
   isMultiWeight <- nWeightSets > 1 || ws_force
+  # The beta(a, b) pair the legacy single-set path weights with. It is the
+  # first weights.beta pair, carried on the implicit_beta descriptor; the
+  # weight_sets = NULL contract (no descriptor) keeps the historical c(1, 25).
+  implicitBeta <- if (identical(ws_kind[1], "implicit_beta") && !is.na(ws_betaA[1])) {
+    c(ws_betaA[1], ws_betaB[1])
+  } else {
+    c(1, 25)
+  }
   weightNames <- if (isMultiWeight) {
     if (is.null(ws_names)) paste0("W", seq_len(nWeightSets)) else ws_names
   } else {
@@ -214,8 +222,11 @@ region_postprocess <- function(outList,
       #    genoSumMat contribution by pdf(beta_r, MAF_collapsed), so the
       #    pseudo-marker weights like any marker at its collapsed MAF (the
       #    literal legacy K = 1 flow).
-      #  implicit_beta: the hardcoded dbeta(MAF, 1, 25) -- LEDGER.md #19,
-      #    preserved (only reachable at K = 1 with is_output_weight_column).
+      #  implicit_beta: dbeta(MAF, a, b) with the FIRST weights.beta pair,
+      #    the same pair C++ used for genoSumMat and the ultra-rare collapse
+      #    (LEDGER #19 FIXED: this used to be the literal dbeta(MAF, 1, 25)
+      #    whatever --weights.beta said, so a non-default single pair gave a
+      #    C++/R hybrid). Only reachable at K = 1 with is_output_weight_column.
       #  noweight: all ones.
       # outList$numofUR is q_anno*q_maf*K, so each vector is q0 + numofUR
       # long -- one entry per row of the marker-level output, as at K = 1
@@ -228,7 +239,7 @@ region_postprocess <- function(outList,
             c(w, rep(1, outList$numofUR))
           },
           beta = dbeta(outList$MAFVec, ws_betaA[r], ws_betaB[r]),
-          implicit_beta = dbeta(outList$MAFVec, 1, 25),
+          implicit_beta = dbeta(outList$MAFVec, ws_betaA[r], ws_betaB[r]),
           noweight = rep(1, length(outList$MAFVec)),
           stop("region_postprocess: unknown weight-set kind '", ws_kind[r], "'\n")
         )
@@ -300,7 +311,11 @@ region_postprocess <- function(outList,
       # AnnoWeights = AnnoWeights[varTestedIndices]
       AnnoWeights <- AnnoWeights[noNAIndices]
     } else {
-      AnnoWeights <- dbeta(MAFVec, 1, 25)
+      # LEDGER #19 FIXED. On the legacy single-set unweighted path the R-side
+      # weights come from the first weights.beta pair, as C++'s already did;
+      # before the fix this line was beta(1, 25) whatever the flag said. At the
+      # default pair the output bytes are unchanged.
+      AnnoWeights <- dbeta(MAFVec, implicitBeta[1], implicitBeta[2])
     }
 
     if (isMultiWeight) {
@@ -909,8 +924,9 @@ SAIGE.Region <- function(mu,
   #                    UR pseudo-markers included (their collapse is
   #                    unweighted, the beta weight of the collapsed MAF
   #                    applies like any marker's)
-  #   implicit_beta -> the literal legacy dbeta(MAFVec, 1, 25) (LEDGER.md
-  #                    #19: hardcoded, ignores weights.beta -- preserved)
+  #   implicit_beta -> dbeta(MAFVec, a, b) with the first weights.beta pair
+  #                    (LEDGER #19 FIXED 2026-09-05; it was the literal
+  #                    dbeta(MAFVec, 1, 25) whatever the flag said)
   #   noweight      -> all ones
   weight_sets_kind <- if (legacyNoWeight) {
     # legacy all-ones vector: enters C++ as a 1-column custom set
@@ -933,11 +949,13 @@ SAIGE.Region <- function(mu,
     betaA = {
       a <- rep(NA_real_, length(weight_sets_kind))
       if (useExplicitBeta) a[weight_sets_kind == "beta"] <- weights_beta_mat[, 1]
+      a[weight_sets_kind == "implicit_beta"] <- weights_beta_mat[1, 1]
       a
     },
     betaB = {
       b <- rep(NA_real_, length(weight_sets_kind))
       if (useExplicitBeta) b[weight_sets_kind == "beta"] <- weights_beta_mat[, 2]
+      b[weight_sets_kind == "implicit_beta"] <- weights_beta_mat[1, 2]
       b
     },
     force = is_output_weight_column
