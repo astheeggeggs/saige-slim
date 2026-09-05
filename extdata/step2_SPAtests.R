@@ -484,7 +484,7 @@ option_list <- list(
       "tests. Note, single-variant assoc test results will always be output when ",
       "SKAT and SKAT-O tests are conducted with --r.corr=0. This parameter ",
       "should only be used when only Burden tests are conducted with --r.corr=1, ",
-      "[default=FALSE on this command line; the R API SPAGMMATtest() defaults to TRUE -- LEDGER #18]"
+      "[default=FALSE, on the command line and in the R API SPAGMMATtest()]"
     )
   ),
   make_option(
