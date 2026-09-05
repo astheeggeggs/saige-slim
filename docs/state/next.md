@@ -373,6 +373,24 @@ each decided and implemented the same day
 open` lists what is still open (documentation rot, #92/#93/#95/#96, and the
 Sigma floors #91); `ledger.py decided` the four left-as-is rows.
 
+## Time the gate at the next run (2026-09-05)
+
+The standard tier took ~4 min 20 s per compare mode on the last pre-push
+(`harness/work/prepush-{byte,numeric}.log` mtimes 21:28:34 and 21:32:54, on a
+machine still at load 10-14 from the N = 50,000 gate), so `prepush.sh` is ~9
+min against the ~5 CLAUDE.md implies. Not yet measured idle. What this session
+added to the standard tier, all step-1 fits (wall time is bounded by the
+slowest FILE): `test-step1-nglmm-prep.R` (two extractNglmm runs, ~20 s each),
+`test-step1-lowmem-loco.R` (four 3 s fits), `test-step1-stale-model-file.R`
+(three fits), `test-step1-vr-sparse-scale.R` (two ~5 s fits), and the
+morning's `test-step1-pheno-scale.R` (three fits + three step-2 runs).
+At the next gate: check `uptime` first, run the tier once with
+`reporter = "progress"` and collect the per-file `[Ns]` markers (the parallel
+result object carries no timings), then split or demote the long poles
+(`nglmm-prep` is the likely one; its second arm could share the first's run).
+Also worth asking whether numeric mode needs to re-run every step-1 fit, since
+the two modes differ only in how step-2 tables are compared.
+
 ## From the 2026-09-05 code-quality review of the Phase 3 sweep
 
 [`docs/state/handoff-2026-09-05-review.md`; measured on the two-chromosome
