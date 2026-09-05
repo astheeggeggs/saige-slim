@@ -66,12 +66,12 @@ test_that("getroot_K1_Binom reports an infinite root as converged for an all-zer
   # K1 is identically -q, so Newton never moves and the routine walks the root
   # out to Inf while still flagging convergence. Unreachable through the CLI
   # (a monomorphic marker is dropped by minMAC before it gets here), but pinned
-  # so the degenerate branch is not silently changed. LEDGER #22: recorded,
-  # not fixed.
+  # so the degenerate branch is not silently changed. LEDGER #22 FIXED: it
+  # reports non-convergence now.
   d <- spa_fixture()
   r <- getroot_K1_Binom(0, d$mu, rep(0, length(d$g)), 0, 1e-8, 100L)
   expect_true(is.infinite(r$root))
-  expect_true(r$Isconverge)
+  expect_false(r$Isconverge)   # LEDGER #22 FIXED: no root, so not "converged"
 })
 
 test_that("Get_Saddle_Prob_Binom returns a SIGNED half-tail, not a probability", {
@@ -120,19 +120,16 @@ test_that("SPA_binary log and linear paths reconcile", {
 
 test_that("SPA_binary returns pval_noadj unchanged for an unreachable q", {
   # A q beyond anything K1 can attain sends the root finder straight to Inf,
-  # which it reports as CONVERGED in 0 iterations (as in the all-zero case
-  # above). Get_Saddle_Prob_Binom then sees non-finite k1/k2, declines the
-  # saddlepoint, and each tail falls back to pval_noadj/2 -- so the two halves
-  # reassemble the unadjusted p-value exactly, with Isconverge still TRUE.
-  # The Isconverge = FALSE branch needs the root finder to exhaust its own
-  # (defaulted, not caller-supplied) iteration budget and is not reachable
-  # through this export.
+  # which since LEDGER #22 was FIXED it reports as NOT converged (it used to
+  # say converged in 0 iterations). SPA_binary then takes its no-saddlepoint
+  # fallback: the unadjusted p-value exactly, Isconverge FALSE. The composed
+  # p is the same value the old route reassembled from two half-tails.
   d <- spa_fixture()
   m <- sum(d$mu * d$g)
   huge <- sum(abs(d$g)) + 1e3
   expect_true(is.infinite(getroot_K1_Binom(0, d$mu, d$g, huge, 1e-8, 100L)$root))
   r <- SPA_binary(d$mu, d$g, huge, 2 * m - huge, 0.0123, 1e-8, FALSE)
-  expect_true(r$Isconverge)
+  expect_false(r$Isconverge)
   expect_identical(r$pval, 0.0123)
 })
 

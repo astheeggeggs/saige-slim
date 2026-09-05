@@ -4,8 +4,8 @@
 # on the live inputs (K2 vanishes only for an all-zero g, which the bracket test
 # above it catches first), so this pins the behaviour around it rather than the
 # branch: an ordinary root is found and reported converged, and the all-zero
-# corner still returns its infinite "converged" root (that is LEDGER #22, open,
-# and this test will need inverting with it). Fast tier.
+# corner returns its infinite root and, since LEDGER #22 was fixed, reports
+# non-convergence. Fast tier.
 
 test_that("getroot_K1_Binom finds an ordinary root and reports convergence", {
   set.seed(45L)
@@ -21,9 +21,9 @@ test_that("getroot_K1_Binom finds an ordinary root and reports convergence", {
   expect_lt(abs(K1(r$root) - q), 1e-6)
 })
 
-test_that("an all-zero genotype vector still takes the bracket exit (LEDGER #22, open)", {
+test_that("an all-zero genotype vector takes the bracket exit and reports non-convergence (LEDGER #22 FIXED)", {
   mu <- rep(0.2, 50)
   r <- getroot_K1_Binom(0, mu, rep(0, 50), 1, 1e-8, 100L)
   expect_true(is.infinite(r$root))
-  expect_true(isTRUE(r$Isconverge))
+  expect_false(isTRUE(r$Isconverge))
 })

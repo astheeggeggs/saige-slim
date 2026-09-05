@@ -98,9 +98,13 @@ SPARoot getroot_K1_Binom_core(double init, const arma::vec & mu, const arma::vec
 	//std::cout << "gpos is " << gpos << std::endl;
 	//std::cout << "gneg is " << gneg << std::endl;
 	if(q >= gpos || q <= gneg){
+		// LEDGER #22 FIXED: an unattainable q (all-zero g, or q outside K1's
+		// range) has no root; report NON-convergence with the infinite root, so
+		// the caller takes its no-saddlepoint fallback deliberately rather than
+		// after finding k1/k2 non-finite. Same composed p-value either way.
 		root = std::numeric_limits<double>::infinity();
 		niter = 0;
-		Isconverge = true;
+		Isconverge = false;
 	} else{	
 		t = init;
 		K1_eval = K1_adj_Binom(t,mu,g,q);
@@ -376,9 +380,13 @@ SPARoot getroot_K1_fast_Binom_core(double init, const arma::vec & mu, const arma
 	double K1_eval, K2_eval, t, tnew, newK1;
 	double prevJump;
 	if(q >= gpos || q <= gneg){
+		// LEDGER #22 FIXED: an unattainable q (all-zero g, or q outside K1's
+		// range) has no root; report NON-convergence with the infinite root, so
+		// the caller takes its no-saddlepoint fallback deliberately rather than
+		// after finding k1/k2 non-finite. Same composed p-value either way.
 		root = std::numeric_limits<double>::infinity();
 		niter = 0;
-		Isconverge = true;
+		Isconverge = false;
 	} else{	
 		t = init;
 		K1_eval = K1_adj_fast_Binom(t,mu,g,q,gNA,gNB,muNA,muNB,NAmu, NAsigma);
