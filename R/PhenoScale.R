@@ -23,10 +23,12 @@
 # everything linear in y (coefficients, linear predictors, fitted values, the
 # working vector Y, residuals, y, offsets, alpha0) by f; obj.noK is recomputed
 # from the rescaled quantities (its pieces mix 1/theta[1] and residuals). The
-# variance ratio, a ratio whose numerator variance is in 1/y^2 units and whose
-# denominator is in genotype units only, scales by 1/f^2 -- measured 2026-09-05
-# on the fixture: y * 100 gives ratios 1e-4 x the unscaled ones to 5e-8
-# relative, and step-2 p-values identical to 1.5e-7.
+# null and null_noXadj variance ratios, whose numerator variance is in 1/y^2
+# units and whose denominator g'g is in genotype units only, scale by 1/f^2 --
+# measured 2026-09-05 on the fixture: y * 100 gives ratios 1e-4 x the unscaled
+# ones to 5e-8 relative, and step-2 p-values identical to 1.5e-7. The sparse
+# ratio is scale-free (both sides go through Sigma^-1) and is left alone
+# (LEDGER #97: scaling it too was an 11-12% error on the N = 50,000 fixture).
 
 # sd of the covariate-adjusted phenotype: the residual of the plain linear model
 # `formula` on `data`. Stops on a constant phenotype, the one case nothing can

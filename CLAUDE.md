@@ -376,9 +376,10 @@ only because its message beats the C++ throw's.
   units** (LEDGER #65, `R/PhenoScale.R`): `fitNULLGLMM` divides the phenotype
   by the sd of its covariate-adjusted values, fits and estimates variance
   ratios on that, then scales the `.rda` (theta by s^2, linear terms by s) and
-  the variance-ratio file (by 1/s^2) back. Anything that reads the model or the
-  ratios sees phenotype units; anything inserted between the fit and the
-  final rescale sees standardised ones.
+  the `null`/`null_noXadj` variance ratios (by 1/s^2) back; the `sparse` ratio
+  is scale-free and is NOT scaled (LEDGER #97). Anything that reads the model
+  or the ratios sees phenotype units; anything inserted between the fit and
+  the final rescale sees standardised ones.
 - Variance-ratio file: headerless `value type category` rows, `type` in
   `{sparse, null, null_noXadj}` (`Get_Variance_Ratio` in `R/readInGLMM.R`).
   Step-1 sparse-GRM fits emit only `null`/`null_noXadj` rows, so step 2 must

@@ -261,8 +261,9 @@ what a standalone run would have produced, which is the gate the feature is held
 
 A quantitative null model is fitted on the phenotype **standardised** by the
 standard deviation of its covariate-adjusted values, then scaled back before being
-saved: `theta` by `s^2`, linear terms by `s`, and the variance-ratio file by
-`1/s^2`. Everything that reads the model or the ratios therefore sees phenotype
+saved: `theta` by `s^2`, linear terms by `s`, and the `null` / `null_noXadj`
+variance ratios by `1/s^2` (the `sparse` ratio is scale-free and is left as
+estimated). Everything that reads the model or the ratios therefore sees phenotype
 units, and `--tauInit` is given in phenotype units. A trait measured in any unit
 fits the same way, so `--invNormalize` is not needed merely to fix scale.
 

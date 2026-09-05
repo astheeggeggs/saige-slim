@@ -343,16 +343,16 @@ are red at unpatched HEAD (1 / 5 / 4 failures) and green after.
 built beside `strip` in its own pixi env pinned to the same R 4.4.3 / OpenBLAS
 0.3.30 builds, both arms on `sim50k`, paired and alternated.
 
-- **LEDGER #97 -- fix it.** The #65 rescale multiplies the `sparse` variance-ratio
-  rows by 1/s^2, but that ratio is scale-free. Every quantitative model fitted with
-  `--useSparseGRMforVarRatio=TRUE` at HEAD carries `sparse` rows 11-12% high; the
-  region path and the escalated sparse score test consume them, so quantitative
-  gene tests on HEAD models are conservative by that factor on the variance
-  (`Pvalue` moves by up to 0.6 in -log10 on the fixture). One-line fix in
-  `R/SAIGE_fitGLMM_fast.R:2662`/`:2675`; the test to add is a quantitative step-1
-  with `--useSparseGRMforVarRatio=TRUE` whose `sparse` rows are invariant to y * 100
-  while its `null` rows scale by 1e-4. No committed golden has quantitative `sparse`
-  rows, which is why nothing caught it.
+- **LEDGER #97 -- FIXED 2026-09-05** (`R/SAIGE_fitGLMM_fast.R`, the `sparse` rows
+  of `varRatioTable` no longer multiplied by `varRatioScale`). The #65 rescale had
+  multiplied the scale-free `sparse` variance-ratio rows by 1/s^2, so every
+  quantitative model fitted with `--useSparseGRMforVarRatio=TRUE` between
+  `66a65bb9` and the fix carried `sparse` rows 11-12% high on the N = 50,000
+  fixture (1/s^2 ~ 1.5 on the bundled one); refit those models. Gate:
+  `tests/testthat/test-step1-vr-sparse-scale.R` (standard tier) -- a quantitative
+  step-1 with `--useSparseGRMforVarRatio=TRUE` whose `sparse` rows are invariant
+  to y * 100 while its `null` rows scale by 1e-4, and whose `sparse` rows are ~1.
+  No committed golden moved (none has quantitative `sparse` rows).
 - **The binary single-variant scan is NOT faster than upstream** (0.94x user CPU,
   n = 3 paired, p = 0.15, not significant) while the quantitative scan is 1.28x,
   step 1 is 1.34-1.37x and the gene tests 1.33-1.37x. Nothing in Phase 4 was

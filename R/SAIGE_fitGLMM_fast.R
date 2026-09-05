@@ -2387,11 +2387,14 @@ extractVarianceRatio <- function(obj.glmm.null,
                                  isDiagofKinSetAsOne,
                                  includeNonautoMarkersforVarRatio,
                                  genoIn = NULL,
-                                 # LEDGER #65: multiplies every ratio before it is
-                                 # written. The estimation runs on the standardised
-                                 # phenotype; a ratio's numerator variance is in
-                                 # 1/y^2 units, so 1/yScale^2 returns it to
-                                 # phenotype units. 1 for binary traits.
+                                 # LEDGER #65: multiplies the null and null_noXadj
+                                 # ratios before they are written. The estimation runs
+                                 # on the standardised phenotype; those ratios'
+                                 # numerator variance is in 1/y^2 units and their
+                                 # denominator g'g carries no y, so 1/yScale^2 returns
+                                 # them to phenotype units. The sparse ratio is NOT
+                                 # scaled (LEDGER #97): both its sides go through
+                                 # Sigma^-1, so it is scale-free. 1 for binary traits.
                                  varRatioScale = 1) {
   obj.noK <- obj.glmm.null$obj.noK
   if (is.null(genoIn)) genoIn <- genoInputPlink(bedFile, bimFile, famFile)
@@ -2659,7 +2662,9 @@ extractVarianceRatio <- function(obj.glmm.null,
       if (length(varRatio_sparseGRM_vec) > 0) {
         varRatio_sparse <- mean(varRatio_sparseGRM_vec)
         cat("varRatio_sparse", varRatio_sparse, "\n")
-        varRatioTable <- rbind(varRatioTable, c(varRatio_sparse * varRatioScale, "sparse", k))
+        # LEDGER #97 FIXED: the sparse ratio is scale-free (numerator AND
+        # denominator go through Sigma^-1), so it is NOT multiplied by varRatioScale
+        varRatioTable <- rbind(varRatioTable, c(varRatio_sparse, "sparse", k))
       }
       varRatio_null <- mean(varRatio_NULL_vec)
       varRatio_null_noXadj <- mean(varRatio_NULL_noXadj_vec)
@@ -2672,7 +2677,7 @@ extractVarianceRatio <- function(obj.glmm.null,
       varRatioTable <- rbind(varRatioTable, c(1 * varRatioScale, "null", k))
       varRatioTable <- rbind(varRatioTable, c(1 * varRatioScale, "null_noXadj", k))
       if (emitSparseRow) {
-        varRatioTable <- rbind(varRatioTable, c(1 * varRatioScale, "sparse", k))
+        varRatioTable <- rbind(varRatioTable, c(1, "sparse", k)) # LEDGER #97: scale-free
       }
     }
   } # for(k in 1:length(listOfMarkersForVarRatio)){

@@ -27,15 +27,8 @@
 #
 # Tier: standard.
 
-ps_pheno_file <- function(scale) {
-  src <- file.path(saige_extdata, "input",
-                   "pheno_1000samples.txt_withdosages_withBothTraitTypes.txt")
-  d <- read.table(src, header = TRUE, stringsAsFactors = FALSE, check.names = FALSE)
-  d$y_quantitative <- d$y_quantitative * scale
-  out <- tempfile(sprintf("pheno_x%g_", scale), fileext = ".txt")
-  write.table(d, out, quote = FALSE, row.names = FALSE, sep = " ")
-  out
-}
+# ps_pheno_file (the y * scale phenotype file) is in helper-pheno-scale.R,
+# shared with test-step1-vr-sparse-scale.R (LEDGER #97).
 
 ps_fit <- function(scale) {
   skip_unless_level("standard")
