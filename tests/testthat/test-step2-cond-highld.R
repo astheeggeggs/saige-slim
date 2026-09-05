@@ -219,4 +219,30 @@ test_that("LEDGER #66 FIXED: collinear conditioning reports NA, not cancelled no
   expect_gt(num(def["ld100", "var_c"]), 1e-3)
   expect_lt(num(def["ld100", "SE_c"]), 1e3)
   expect_gt(ratio(def, "ld100"), thr * 1e8)
+
+  # LEDGER #82, the conditional consequence, SETTLED 2026-09-05: that finite
+  # var_c is a MIXTURE of two projections. The default path's var1 is the
+  # unadjusted kernel vr_noXadj * sum(W (g - 2p)^2); the conditioning cross-term
+  # is built from the covariate-adjusted marker and, for a marker identical to
+  # its conditioning marker, equals that marker's ADJUSTED variance exactly
+  # (the adj run above shows var_c ~ 1e-14). So the identity, in printed
+  # columns alone, is var_c(def) = var(def) - (vr_noXadj / vr_null) * var(adj).
+  # Both variance ratios come from the model's file; MAC 501 sits in the top
+  # MAC category, which is the file's last. Tolerance 2e-3 because var and
+  # var_c print at 6 significant digits and the identity is a difference of
+  # two ~25 numbers. Derived from the model to every printed digit before it
+  # was written here (30% centring mismatch, 70% W-weighted covariate term).
+  vrf <- utils::read.table(paste0(ld_model_prefix, ".varianceRatio.txt"))
+  top <- max(vrf$V3)
+  vr_null <- vrf$V1[vrf$V2 == "null" & vrf$V3 == top]
+  vr_nox <- vrf$V1[vrf$V2 == "null_noXadj" & vrf$V3 == top]
+  expect_length(vr_null, 1)
+  expect_length(vr_nox, 1)
+  for (r in c("cond", "ld100")) {
+    pred <- num(def[r, "var"]) - (vr_nox / vr_null) * num(adj[r, "var"])
+    expect_lt(abs(num(def[r, "var_c"]) / pred - 1), 2e-3)
+    # and the same-ratio subtraction does NOT reproduce it -- the VR mismatch
+    # is small (~1%) but the identity is exact only with both ratios in it
+    expect_gt(abs(num(def[r, "var_c"]) / (num(def[r, "var"]) - num(adj[r, "var"])) - 1), 0.5)
+  }
 })

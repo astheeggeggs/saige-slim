@@ -208,11 +208,8 @@ worse than one that checks less.
   rest are traced, not reproduced. `docs/state/next.md` names the two coverage
   holes most of them sit behind, and the four REFUTED candidates that must not
   be re-opened.
-- The **open question** from the previous handoff is still open: at
-  `--is_noadjCov=TRUE` a marker identical to a conditioning marker reports
-  `var_c` = 0.259444 out of `var` = 28.0131, and the obvious mechanism predicts
-  0.117 -- off by 2.2x, so it is NOT established. This session's fix does not
-  touch it (that path's collapse ratio is 4.1e-03, ten orders above the guard),
-  and the measurement above reproduces the same regime if anyone wants to settle
-  it: `test-step2-cond-highld.R`'s `def` run is exactly it.
+- The **open question** from the previous handoff (`var_c` = 0.259 where the
+  obvious mechanism predicted 0.117) was SETTLED later on 2026-09-05: see
+  LEDGER #82 and `docs/state/next.md`. The mechanism was right, the arithmetic
+  was missing the centring-mismatch term and the mu(1-mu) weighting.
 - A **native AF > 0.5 fixture** is still absent (pre-existing gap, CLAUDE.md).

@@ -190,16 +190,16 @@ drops (1.89, against 1/(1-r^2) = 2.0).
   `src/SAIGE_test.cpp` and rebuilding into a scratch library fails 6 assertions;
   source reverted and reinstalled.
 
-**Open question this raised, NOT a ledger row because the mechanism does not
-reconcile.** At the CLI default (`--is_noadjCov=TRUE`) the same perfectly
-collinear marker reports `var_c = 0.259444` out of `var = 28.0131` -- 0.93%
-residual variance for a marker IDENTICAL to the conditioning marker, and
-`p.value_c = 0.96` rather than 1. The obvious explanation is that the tested
-marker is not covariate-adjusted while `assign_conditionMarkers_factors`
-hardcodes `ctx.noadjCov = false`, so the subtraction mixes two projections; but
-that predicts a residual of `var * R^2(G ~ covariates)` = 0.117, against 0.259
-reported -- **off by 2.2x, so the mechanism is NOT established.** Worth settling
-before anyone writes it up.
+**SETTLED 2026-09-05 (recorded in LEDGER #82).** At the CLI default
+(`--is_noadjCov=TRUE`) the same perfectly collinear marker reports a non-zero
+`var_c` because the tested marker's variance is the UNADJUSTED, allele-frequency-
+centred kernel while the conditioning cross-term is built from the covariate-
+ADJUSTED marker. The residual is exactly `vr_noXadj * [centring-mismatch term +
+W-weighted covariate term]`: predicted from the model to every printed digit
+(0.362754 on the run-time fixture) and, from the two runs' printed columns alone,
+`var(def) - (vr_noXadj/vr_null) * var(adj)` to printing precision. The earlier
+`var * R^2_OLS` prediction was low because it dropped the centring term (30% of
+the residual) and used an unweighted R^2. Pinned in `test-step2-cond-highld.R`.
 
 **Item 4 is DONE**: `tests/testthat/test-step1-varratio-cursor.R`. The
 variance-ratio marker loop advances `indexInMarkerList` once unconditionally and
