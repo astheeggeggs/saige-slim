@@ -68,3 +68,18 @@ test_that("missing null_noXadj rows yield numeric(0) from the parser (gated at r
   expect_identical(out$ratioVec_null_noXadj, numeric(0))
   expect_equal(out$ratioVec_null, c(0.95, 0.92))
 })
+
+test_that("LEDGER #39 FIXED: the null_noXadj coercion and cardinality guard run on the populated branch", {
+  # Both sat in the `else` of `if (length(...) > 0)`, i.e. ran only when the
+  # vector was EMPTY, so the guard "categorical variance Ratio null_noXadj are
+  # needed" could never fire and the ratios kept whatever type fread inferred.
+  f <- tempfile()
+  writeLines(c("0.87 null 1", "0.86 null 2", "0.85 null_noXadj 1"), f)   # categorical null, one noXadj
+  expect_error(Get_Variance_Ratio(f, c(10, 20), c(20), FALSE, FALSE, FALSE),
+               "categorical variance Ratio null_noXadj are needed", fixed = TRUE)
+  g <- tempfile()
+  writeLines(c("0.87 null 1", "0.86 null 2", "0.85 null_noXadj 1", "0.84 null_noXadj 2"), g)
+  out <- Get_Variance_Ratio(g, c(10, 20), c(20), FALSE, FALSE, FALSE)
+  expect_true(is.numeric(out$ratioVec_null_noXadj))
+  expect_identical(out$ratioVec_null_noXadj, c(0.85, 0.84))
+})

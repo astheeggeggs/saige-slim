@@ -403,9 +403,10 @@ Get_Variance_Ratio <- function(varianceRatioFile, cateVarRatioMinMACVecExclude, 
       }
 
       ratioVec_null_noXadj <- varRatioData[which(varRatioData[, 2] == "null_noXadj"), 1]
+      # LEDGER #39 FIXED: the coercion and the cardinality guard sat in the
+      # EMPTY branch, so they never ran; they run on the populated one now,
+      # like the sibling ratios above.
       if (length(ratioVec_null_noXadj) > 0) {
-        cat("variance Ratio null_noXadj is provided\n")
-      } else {
         ratioVec_null_noXadj <- as.numeric(ratioVec_null_noXadj)
         cat("variance Ratio null_noXadj is ", ratioVec_null_noXadj, "\n")
         if (length(ratioVec_null_noXadj) == 1 & iscateVR) {
