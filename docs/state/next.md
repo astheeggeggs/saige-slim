@@ -84,6 +84,14 @@ must be answered before item 2 below is coded.
 * per-task overhead still costs the gap between 1.30x and 1.43x; batching cells
   into fewer, larger tasks would narrow it and has not been tried. Small, low
   risk, and the gate already exists.
+* [DECIDED 2026-09-05, LEDGER #51] `--is_fastTest` on group runs is pure cost
+  (+16.3% at N = 50,000, byte-identical output) and stays so by decision: the
+  region path never reads the flag, the R side still escalates, and a warning
+  says so. The potential speed-up is bounded at the **8.3%** measured for
+  `scoreTestFast` throughout, and taking it would move every fastTest region
+  golden (P2, P3, P8, P8b, P10, P14, P15, P21, P23, P24, P34, P35) and retire
+  P35's reason to exist. Only worth revisiting once the two items above are
+  taken and the region loop is the bottleneck again.
 * the C++ region loop is the other 43.9%; threading it would compose with the
   above (serial fraction ~11% if both), but `qfc` thread-safety is unchecked and
   the SKAT-O side would have to be reimplemented to run in-process. The brief
