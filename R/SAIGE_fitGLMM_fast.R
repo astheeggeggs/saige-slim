@@ -2396,7 +2396,7 @@ extractVarianceRatio <- function(obj.glmm.null,
       cateVarRatioIndexVec <- rep(1, length(cateVarRatioMinMACVecExclude))
     }
     numCate <- length(cateVarRatioIndexVec)
-    for (i in 1:(numCate - 1)) {
+    for (i in seq_len(numCate - 1)) { # LEDGER #35 FIXED: 1:0 ran twice and indexed [[0]]
       MACindex <- which(MACdata$MACvector > cateVarRatioMinMACVecExclude[i] & MACdata$MACvector <= cateVarRatioMaxMACVecInclude[i])
       listOfMarkersForVarRatio[[i]] <- sample(MACindex, size = length(MACindex), replace = FALSE)
     }
