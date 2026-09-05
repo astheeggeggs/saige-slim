@@ -50,16 +50,21 @@ test_that("LEDGER #79 FIXED: a sparse-GRM fit factorises Sigma far fewer times t
   expect_gt(solves, 0L)
   expect_gt(facts, 0L)
   expect_lt(facts * 4L, solves)
-  # the fitted model is the committed golden's, within the harness tolerances:
-  # a cache that changed the numbers would show here as well as in the tier
-  e <- new.env()
-  load(paste0(prefix, ".rda"), e)
-  g <- new.env()
-  load(file.path(saige_goldens, "step1", "binary_sparseGRM_a.rda"), g)
-  expect_lt(rel_err(e$modglmm$theta, g$modglmm$theta), 1e-6)
-  expect_lt(rel_err(e$modglmm$coefficients, g$modglmm$coefficients), 1e-6)
-  expect_files_byte_identical(
-    file.path(saige_goldens, "step1", "binary_sparseGRM_a.varianceRatio.txt"),
-    paste0(prefix, ".varianceRatio.txt")
-  )
+  # The fitted model is the committed golden's, compared through the step-1
+  # helpers rather than a hand-rolled bound: they are byte-exact on the golden
+  # platform and fall back to the harness tolerances off it (TOL_THETA 1e-2 for
+  # theta and the variance ratios, TOL_OTHER 1e-3 for the other fitted fields).
+  #
+  # This block used to assert rel_err < 1e-6 and byte-identity of the
+  # variance-ratio file against a golden generated on another machine. That is a
+  # cross-platform reproduction claim the estimator does not make: it passed on
+  # macOS and failed on Linux CI at rel_err 2.6e-6, four orders of magnitude
+  # inside the harness tolerance. It also bypassed SAIGE_COMPARE_MODE, so
+  # prepush.sh's two modes both went green while CI went red.
+  # helper-step1multi.R:16-26 records the same lesson being learned once
+  # already, at 1e-5.
+  gold <- file.path(saige_goldens, "step1", "binary_sparseGRM_a")
+  expect_step1_matches(paste0(gold, ".rda"), paste0(prefix, ".rda"))
+  expect_step1_matches(paste0(gold, ".varianceRatio.txt"),
+                       paste0(prefix, ".varianceRatio.txt"))
 })
