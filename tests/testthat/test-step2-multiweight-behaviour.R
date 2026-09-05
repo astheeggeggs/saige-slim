@@ -5,32 +5,36 @@
 # Weight column on an unweighted file, and the characterizations for
 # LEDGER #19 (weights.beta reaches C++ but not the R-side ACAT-V) and
 # LEDGER #27 (BURDEN + is_fastTest drops every region but the last), plus
-# LEDGER #25 (a region run cannot be restarted).
+# LEDGER #25/#81 (a completed region run validates and is not re-run; FIXED).
 #
 # Split out of test-step2-multiweight.R; shared scaffolding is in
 # helper-multiweight.R. Tier: standard.
 
-test_that("a region run cannot be restarted, so the append schema guard never fires", {
-  # SAIGE.Region writes "nEachChunk = <numberRegionsInChunk>" into the index,
-  # but numberRegionsInChunk is still 0 when nEachChunk is captured
-  # (SAIGE_SPATest_Region.R:881,890) while checkOutputFile is called with a
-  # hardcoded 1 (:631). The two never match, so --is_overwrite_output=FALSE
-  # always fails validation on an untouched index -- even restarting the very
-  # same command. Consequence: the C6 append-restart schema guard at :770
-  # (multi-weight columns vs legacy header) is unreachable through the CLI.
-  # LEDGER #25: recorded, not fixed.
+test_that("LEDGER #25/#81 FIXED: a completed region run validates its own index and is not re-run", {
+  # The writer used to record "nEachChunk = <numberRegionsInChunk>" while that
+  # variable was still 0, against a reader expecting 1, so --is_overwrite_output
+  # =FALSE failed validation on an untouched index (#25); and it recorded the
+  # region counter one past the last region without ever writing the
+  # completion line (#81). Both fixed: the index says nEachChunk = 1, its chunk
+  # line is the number of regions, the completion line follows, and a re-run
+  # with --is_overwrite_output=FALSE says so and changes nothing.
   skip_unless_level("standard")
   out <- file.path(tempfile("step2_mwrestart_"), "region.txt")
   dir.create(dirname(out), recursive = TRUE)
   args <- MW_ARGS("group_new_snpid_withWeights.txt", out)
   expect_cli_ok(run_saige_cli("step2_SPAtests.R", args))
   idx <- readLines(paste0(out, ".index"), warn = FALSE)
-  expect_true(any(grepl("^nEachChunk = 0$", idx)))   # writer's value
+  expect_true(any(grepl("^nEachChunk = 1$", idx)))
+  expect_identical(tail(idx, 1), "Have completed the analyses of all chunks.")
+  expect_identical(tail(idx, 2)[1], "Have completed the analysis of chunk 2")   # two regions
+  before <- readLines(out)
 
   status <- run_saige_cli("step2_SPAtests.R", c(args, "--is_overwrite_output=FALSE"))
-  expect_false(identical(as.integer(status), 0L))
+  expect_cli_ok(status)
   log <- readLines(attr(status, "log"), warn = FALSE)
-  expect_true(any(grepl("is not as expected", log)))
+  expect_true(any(grepl("the analysis has been completed for the toal 2 chunks", log, fixed = TRUE)))
+  expect_false(any(grepl("is not as expected", log)))
+  expect_identical(readLines(out), before)
 })
 
 test_that("an unweighted file with a forced Weight column labels its single set Beta", {

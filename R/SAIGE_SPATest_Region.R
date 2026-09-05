@@ -716,6 +716,9 @@ SAIGE.Region <- function(mu,
   on.exit(stopSkatoCluster(), add = TRUE)
   skatFailureReset() # LEDGER #57: per-run accounting, R/SkatFailures.R
 
+  # LEDGER #25 FIXED: the index is written and validated with the SAME nEachChunk.
+  # It records completed REGIONS one per line, so the chunk size it states is 1
+  # on both sides (the writer used numberRegionsInChunk, still 0 when captured).
   outList <- checkOutputFile(OutputFile, OutputFileIndex, "Region", 1, isOverWriteOutput) # Check 'Util.R'
 
   indexChunk <- outList$indexChunk
@@ -992,7 +995,7 @@ SAIGE.Region <- function(mu,
   # must not emit a second one mid-file.
   iswriteRegion <- isappend
   i <- indexChunk + 1
-  nEachChunk <- numberRegionsInChunk
+  nEachChunk <- 1 # LEDGER #25 FIXED: was numberRegionsInChunk, still 0 here
 
   # All three mainRegionInCPP call sites passed an identical argument list;
   # the only per-site difference (which sparse-GRM flag was set beforehand)
@@ -1328,10 +1331,15 @@ SAIGE.Region <- function(mu,
             Output_MarkerList.all <- NULL
           }
 
-          indexChunk <- i
-          # Start = (i==1)
-          Start <- (cth_chunk_to_output == 1)
-          End <- (i == nRegions)
+          # LEDGER #81 FIXED: i was advanced past this region when it was read,
+          # so the index recorded one past the last region and the completion
+          # line was never written (End compared i with nRegions).
+          indexChunk <- i - 1
+          # ... and on a RESTART the first chunk written must APPEND, not truncate:
+          # Start drove append = FALSE from cth_chunk_to_output alone, which is 1
+          # on a restart too (unreachable before #25, so never seen).
+          Start <- (cth_chunk_to_output == 1) && !isappend
+          End <- (indexChunk == nRegions)
           # nEachChunk = 1
 
           if (regionTestType != "BURDEN") {
