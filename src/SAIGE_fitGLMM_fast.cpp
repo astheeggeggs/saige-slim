@@ -2234,7 +2234,16 @@ void findIndiceRelatedSample(){
 
   long int Ntotal2 = (long int)Ntotal;
 
-  long int totalCombination = Ntotal2*(Ntotal2-1)/2 - 1;
+  // LEDGER #63 FIXED: the `- 1` that used to be here dropped one REAL pair.
+  // parallelFor is HALF-OPEN, and the k -> (i,j) triangle fold in
+  // indicesRelatedSamples::operator() is an exact bijection onto all C(N,2)
+  // unordered pairs over k = 0..C(N,2)-1 (enumerated at N = 2..11, 50, 101,
+  // 604 and 1000), so the bound must be C(N,2) and not one less. The pair lost
+  // was the image of the last k: at even N = 2m the 0-based (m-1, m), i.e. two
+  // ADJACENT genotype-file rows, which is exactly where a family-structured
+  // PLINK file puts relatives. geno.indiceVec is the only pair list refineKin
+  // ever re-scores, so a pair never screened could never reach the .mtx.
+  long int totalCombination = Ntotal2*(Ntotal2-1)/2;
   std::cout << "Ntotal: " << Ntotal << std::endl;
   std::cout << std::numeric_limits<int>::max() << std::endl;
   std::cout << std::numeric_limits<long int>::max() << std::endl;

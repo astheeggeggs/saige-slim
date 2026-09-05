@@ -1,24 +1,26 @@
-# Characterization test for LEDGER.md #63 (OPEN): the sparse-GRM relatedness
-# screen enumerates C(N,2) - 1 sample pairs, not C(N,2).
+# LEDGER.md #63, FIXED: the sparse-GRM relatedness screen used to enumerate
+# C(N,2) - 1 sample pairs rather than C(N,2).
 #
-# `findIndiceRelatedSample` hands a HALF-OPEN parallelFor the count
-# `Ntotal*(Ntotal-1)/2 - 1`, and the k -> (i,j) triangle fold inside the worker
-# is an exact bijection onto all C(N,2) pairs over k = 0..C(N,2)-1. So the `- 1`
-# drops one REAL pair -- the image of the last k -- and `geno.indiceVec` is the
-# only pair list `refineKin` ever re-scores, so a pair never screened can never
-# reach the .mtx.
+# `findIndiceRelatedSample` hands a HALF-OPEN parallelFor the pair count, and
+# the k -> (i,j) triangle fold inside the worker is an exact bijection onto all
+# C(N,2) pairs over k = 0..C(N,2)-1. So the `- 1` that used to be on that bound
+# dropped one REAL pair -- the image of the last k -- and `geno.indiceVec` is
+# the only pair list `refineKin` ever re-scores, so a pair never screened could
+# never reach the .mtx.
 #
-# This test asserts TODAY's behaviour. When #63 is fixed, both the ledger row
-# and this file change together: the counts become choose(N, 2) and the
-# `missing` sets become empty.
+# The assertions below are the inverse of the ones this file carried while the
+# entry was open: the count is now choose(N, 2), nothing is missing, and the
+# pair that used to be dropped is present. Injectivity and in-range are kept
+# and are STRONGER than before -- they now demonstrate the bijection over the
+# whole domain rather than over the domain minus its last point.
 #
 # The fixture is derived at run time, and it is tiny (N = 10 and 11) so that
 # the screen can be run with a cutoff low enough to retain EVERY pair it visits
 # -- which is what makes the returned pair list a direct readout of the loop
 # bound rather than of the relatedness filter. No committed fixture can serve:
 # step 0's is N = 1,000, where retaining all 499,500 pairs is not cheap and
-# where the dropped pair happens to be unrelated (kinship -0.0087) and so is
-# invisible in the output.
+# where the dropped pair happens to be unrelated (kinship -0.0087) -- which is
+# also why fixing this left both step-0 goldens byte-identical.
 
 # Write a plink1 .bed/.bim/.fam triple. `geno` is M x N, entries 0/1/2 counting
 # copies of A1 (bim column 5); variant-major, 2 bits per sample, LSB-first,
@@ -96,7 +98,7 @@ all_pair_keys <- function(n) {
   paste(p[1, ], p[2, ], sep = ":")
 }
 
-# The pair the loop bound drops, derived by hand from k = C(N,2) - 1:
+# The pair the old loop bound dropped, derived by hand from k = C(N,2) - 1:
 #   N = 2m   -> i = j = m - 1, folded to (m - 1, m);
 #   N = 2m+1 -> (m - 1, 2m), unfolded.
 # 1-based, i < j.
@@ -106,7 +108,8 @@ dropped_pair_key <- function(n) {
 }
 
 for (n_samples in c(10L, 11L)) {
-  label <- paste0("LEDGER #63: the relatedness screen misses one pair at N = ", n_samples)
+  label <- paste0("LEDGER #63 FIXED: the relatedness screen visits every pair at N = ",
+                  n_samples)
   test_that(label, {
     skip_unless_level("standard")
 
@@ -119,32 +122,36 @@ for (n_samples in c(10L, 11L)) {
     expect_identical(res$mq, 40L)             # nothing lost to QC
     n_pairs <- choose(n_samples, 2)
 
-    # The count the code prints is the loop bound itself.
-    expect_true(any(grepl(paste0("^totalCombination: ", n_pairs - 1, "$"),
-                          res$log)))
+    # The count the code prints is the loop bound itself: C(N,2), not one less.
+    expect_true(any(grepl(paste0("^totalCombination: ", n_pairs, "$"), res$log)))
 
     got <- paste(pmin(res$i, res$j), pmax(res$i, res$j), sep = ":")
-    expect_identical(anyDuplicated(got), 0L)           # the fold is injective
-    expect_true(all(got %in% all_pair_keys(n_samples)))  # and lands in-range
+    # Injective and in-range over the WHOLE domain now, which together with the
+    # count below is the bijection itself -- the property the old bound was one
+    # short of using.
+    expect_identical(anyDuplicated(got), 0L)
+    expect_true(all(got %in% all_pair_keys(n_samples)))
+    expect_identical(length(got), as.integer(n_pairs))
+    expect_identical(setdiff(all_pair_keys(n_samples), got), character(0))
 
-    # ONE pair short, and it is the image of the last k.
-    missing <- setdiff(all_pair_keys(n_samples), got)
-    expect_identical(length(got), as.integer(n_pairs - 1))
-    expect_identical(missing, dropped_pair_key(n_samples))
+    # And specifically the pair the old bound dropped -- the image of the last
+    # k -- is present.
+    expect_true(dropped_pair_key(n_samples) %in% got)
 
-    # POSITIVE CONTROL that the loop BOUND dropped it, not the relatedness
-    # filter: recompute every pair's screening kinship from the same
+    # POSITIVE CONTROL that this is a readout of the loop BOUND and not of the
+    # relatedness filter: recompute every pair's screening kinship from the same
     # standardised genotypes the worker dots. All C(N,2) of them clear the
-    # cutoff, and the missing pair's value sits inside the range of the ones
-    # that were returned -- so nothing about the pair itself distinguishes it.
+    # cutoff, so every pair visited must be returned, and the formerly-dropped
+    # pair's value sits inside the range of the rest -- nothing about the pair
+    # itself ever distinguished it.
     kin_mat <- crossprod(res$std) / nrow(res$std)
     p_all <- utils::combn(n_samples, 2)
     kin_all <- kin_mat[cbind(p_all[1, ], p_all[2, ])]
     expect_true(all(kin_all > -1e6))
-    ij <- as.integer(strsplit(missing, ":")[[1]])
-    kin_missing <- kin_mat[ij[1], ij[2]]
-    kin_kept <- kin_all[all_pair_keys(n_samples) != missing]
-    expect_gte(kin_missing, min(kin_kept))
-    expect_lte(kin_missing, max(kin_kept))
+    ij <- as.integer(strsplit(dropped_pair_key(n_samples), ":")[[1]])
+    kin_was_dropped <- kin_mat[ij[1], ij[2]]
+    kin_others <- kin_all[all_pair_keys(n_samples) != dropped_pair_key(n_samples)]
+    expect_gte(kin_was_dropped, min(kin_others))
+    expect_lte(kin_was_dropped, max(kin_others))
   })
 }

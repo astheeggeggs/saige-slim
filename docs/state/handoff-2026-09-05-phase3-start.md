@@ -15,6 +15,8 @@ lives.
 |---|---|---|---|
 | `22be2a69` | #74 | `R/Geno.R` bim + pvar `fread` `colClasses` | `test-step2-numeric-marker-ids.R` inverted, pgen arm added |
 | `c9f7e9ae` | #66 | `src/SAIGE_test.cpp` relative guard + `src/Main.cpp` two writers | `test-step2-cond-highld.R` #66 block inverted |
+| `d95168c2` | #75 | `R/SAIGE_fitGLMM_fast.R` two deleted increments + `>=` guards | `test-step1-varratio-cursor.R` inverted, mixed pool added |
+| (this one) | #63 | `src/SAIGE_fitGLMM_fast.cpp` the `- 1` on the pair-screen bound | `test-characterization-ledger63.R` inverted |
 
 ## Gate numbers
 
@@ -26,8 +28,9 @@ lives.
 | start (`8aaed1f0`) | 2226 | 2401 |
 | `22be2a69` (#74) | 2237 | 2412 |
 | `c9f7e9ae` (#66) | 2253 | 2428 |
+| `d95168c2` (#75) | 2260 | 2435 |
 
-**NO GOLDEN MOVED for either fix**, which was predicted in advance both times
+**NO GOLDEN MOVED for any of the four fixes**, predicted in advance each time
 rather than discovered afterwards -- see below. No golden was re-baselined, so
 the "prove byte-reproducible twice first" rule did not have to be exercised.
 
@@ -90,6 +93,62 @@ HEAD**, showing the published junk verbatim -- `BETA_c = -0.0178571` with
 ratio assertions PASS at HEAD: the arithmetic is unchanged by the fix, only the
 guard's action is, so those lines are descriptive and the NA assertions are the
 discriminating ones. That is the right shape for an inverted test.
+
+## #75 -- the crash was the smaller half
+
+`indexInMarkerList` advanced once unconditionally and a SECOND time on each of
+the two skip branches. The fix is not a judgement call: the commented-out
+`# indexInMarkerList = indexInMarkerList + 1` still sitting inside the ACCEPTED
+branch records that the increment was hoisted to the top of the iteration and
+the two copies were left behind. Both are deleted; the exhaustion guards become
+`>=`, which with a one-per-iteration cursor is no longer load-bearing and is
+kept as insurance.
+
+Four run-time-derived pools, each measured at HEAD and after (n = 1000,
+MAC 40, `--numRandomMarkerforVarianceRatio` at its default 30):
+
+| pool | HEAD | fixed |
+|---|---|---|
+| 40 autosomal | 30 read, 30 tested | identical (negative control) |
+| 40 non-autosomal | 20 read | 40 read, still fails |
+| 41 non-autosomal | 22 read + NA crash | 41 read, clean exit |
+| 30 usable + 30 not | **24 of 30 tested, exit 0** | 30 tested |
+
+**The last row is the finding and it is bigger than the crash the entry was
+written around**: a variance ratio returned at exit 0, with no warning, from a
+silently thinned marker set. The all-skipped pools are what show the fix reads
+the whole pool without inventing data -- with no usable marker the run still
+fails, leaving the `.rda` on disk and the variance-ratio file empty.
+
+**A trap that cost a measurement cycle, now recorded in the test file**: the
+variance-ratio marker list is ordered by MAC, not by file order. A first draft
+of the positive control assumed file order, predicted that HEAD would fail on
+an alternating pool, and was wrong -- HEAD succeeded there. Only the TOTALS are
+derivable; every assertion in the file is order-independent for that reason.
+
+## #63 -- one character, and the goldens really do not move
+
+The bound is `C(N,2)` now, not `C(N,2) - 1`. A live step-0 ingest prints
+`totalCombination: 499500` against 499499 before.
+
+The provenance predicted both step-0 goldens would stay byte-identical, because
+the pair this fixture drops is 1-based (500,501) with a refineKin kinship of
+-0.0087 against a 0.05 cutoff. That prediction was CHECKED rather than trusted:
+`createSparseGRM.R` re-run through both readers, `cmp` against
+`harness/goldens/step0/` -- `.mtx` and `.sampleIDs.txt`, PLINK and PGEN, all
+four identical. This is the LEDGER #44 shape, and worth restating because it is
+the branch's most repeated lesson: **a fix whose goldens do not move is a
+statement about coverage, not a pass.**
+
+Drilled both ways with a clean rebuild each: 22/22 with the fix, 8 failures at
+unpatched HEAD naming the dropped pair as `5:6` at N = 10 and `5:11` at N = 11,
+which is exactly the hand derivation.
+
+**Deliberately NOT touched**: the debug `printComb` carries the same `- 1`, but
+it is not a copy of the worker -- it folds on `j < i` where the worker folds on
+`j <= i`, so it also emits a diagonal pair the worker never would. It only
+prints and R calls it with N = 3; correcting it means deciding what that printer
+is for. The commented-out OpenMP block carries the `- 1` too and is dead.
 
 ## Two things found on the way, both recorded
 

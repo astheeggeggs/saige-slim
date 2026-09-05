@@ -65,23 +65,29 @@ believe an older doc that says it is parked on a branch.
 (`sample`, `1:n`, `rbind` recycling) -- all latent behind a guard -- #45, #46,
 #49 (a restart re-runs the last completed chunk: wasted work, right answer),
 and **#63-#86, the 24 rows written on 2026-09-04 from the upstream issue
-tracker** -- 38 open of 86 in all (`ledger.py open` said 39 before this
-session, but that UNDERCOUNTED: #66's row was unparseable and invisible to the
-tool, so the true figure was 40). **Phase 3 (fixes) has STARTED**: #74 (the
+tracker** -- 36 open of 86 in all (`ledger.py open` said 39 at the start of
+this session, but that UNDERCOUNTED: #66's row was unparseable and invisible to
+the tool, so the true figure was 40). **Phase 3 (fixes) has STARTED**: #74 (the
 bim/pvar `fread` had no `colClasses`, so an all-numeric ID column inferred
 INTEGER and every join against it failed -- no golden could move, every
 committed variant file spells its IDs `rs<N>`) and #66 (the conditional
 variance's guard was ABSOLUTE where LEDGER #44 had already shown it must be
 RELATIVE; the fix reuses #44's helper and threshold, and closes a gap #44 left
 in `writeOutfile_singleInGroup`/`writeOutfile_BURDEN`, which printed effect
-sizes with a raw `<<` rather than `writeNumOrNA`). Both had characterization
-tests, and both tests were INVERTED in the same commit as the fix;
+sizes with a raw `<<` rather than `writeNumOrNA`), **#75** (the variance-ratio cursor
+advanced TWICE on a skipped marker, so a skip consumed the marker after it; the
+crash the row was written around turned out to be the smaller half -- a pool
+with enough usable markers came back at exit 0 having tested 24 of the 30
+requested) and **#63** (the relatedness screen's `- 1` dropped one REAL sample
+pair, at even N two ADJACENT genotype-file rows). All four had
+characterization tests, and all four tests were INVERTED in the same commit as
+the fix; NO GOLDEN MOVED for any of them, predicted in advance each time;
 **Phase 2 is COMPLETE** -- five items, one commit each: the QUANTITATIVE group
 goldens P36/P37 (which found **#86**, SKAT-O's p saturating to exactly 1 and
 rerouting the region's Cauchy row from ACAT to a Bonferroni), a constructed
 high-LD conditioning fixture, the variance-ratio cursor, all-numeric marker IDs
-and a duplicated phenotype ID. **#63, #67, #75, #84 and #86 have tests, and
-#66/#74 now have INVERTED ones; the other seventeen rows are entries whose consequence is traced, not
+and a duplicated phenotype ID. **#67, #84 and #86 have tests, and
+#63/#66/#74/#75 now have INVERTED ones; the other seventeen rows are entries whose consequence is traced, not
 reproduced.** Read `docs/state/next.md` before picking one up -- it lists the four
 candidates from that mine that were REFUTED and must not be re-opened, and names
 the two coverage holes (a quantitative group/BURDEN golden; a constructed
