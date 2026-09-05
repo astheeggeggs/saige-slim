@@ -572,8 +572,14 @@ option_list <- list(
       "centred genotype with the null_noXadj variance ratio; FALSE regresses ",
       "the covariates out of the genotype first and uses the null variance ",
       "ratio. Different score tests, different p-values. Ignored for group ",
-      "tests and for the sparse-GRM marker test, which always adjust ",
-      "[default=TRUE, on the command line and in the R API (LEDGER #82)]"
+      "tests and for the sparse-GRM marker test, which always adjust. Under ",
+      "--condition the conditioning terms are always built from the ADJUSTED ",
+      "genotype, so at TRUE the _c columns mix an unadjusted marginal score with ",
+      "adjusted conditioning terms: a marker in the conditioning set keeps a ",
+      "non-zero var_c and a finite p.value_c, and a correlated marker's ",
+      "conditional variance is slightly overstated. Use FALSE for exact ",
+      "conditional columns (LEDGER #82, settled) ",
+      "[default=TRUE, on the command line and in the R API]"
     )
   ),
   make_option(
