@@ -940,6 +940,24 @@ fitNULLGLMM <- function(plinkFile = "",
         stop("ERROR! all covariates in qCovarCol must be in covarColList\n")
       } else {
         for (q in qCovarCol) {
+          # LEDGER #78 FIXED: a column named categorical was made a factor with
+          # no look at its cardinality, so a continuous column became one dummy
+          # column per distinct value (upstream: 43,790 levels, 216 GB, no
+          # output). A column in which every sample has its own value cannot be
+          # a category and is refused; one with more than 20 levels is
+          # accepted with a warning that says how many dummies it will cost.
+          nLevels <- length(unique(data[, q]))
+          if (nLevels >= nrow(data) && nrow(data) > 1) {
+            stop("ERROR! covariate ", q, " is named in qCovarColList as categorical but has ",
+                 nLevels, " distinct values in ", nrow(data), " samples -- every sample its own ",
+                 "level. It is not a category; remove it from qCovarColList to treat it as ",
+                 "continuous.\n")
+          }
+          if (nLevels > 20) {
+            warning("covariate ", q, " is categorical with ", nLevels, " levels, i.e. ",
+                    nLevels - 1, " dummy columns in the null model. Check that it is really ",
+                    "categorical.", call. = FALSE)
+          }
           data[, q] <- as.factor(data[, q])
         }
       }
