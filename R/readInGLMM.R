@@ -349,6 +349,16 @@ Get_Variance_Ratio <- function(varianceRatioFile, cateVarRatioMinMACVecExclude, 
     if (varianceRatioFile != "") {
       stop("varianceRatioFile is specified but the file ", varianceRatioFile, " does not exist\n")
     } else {
+      # LEDGER #70 FIXED: this used to be a bare cat(). A missing ratio scales
+      # var by 1/r, BETA by r and SE by sqrt(r) in EVERY row (5-26% on the
+      # bundled fixtures, anti-conservative where r > 1), so it is raised as an
+      # R warning -- visible at the end of an Rscript run and in the log -- and
+      # says what is substituted. Still not a stop(): a ratio of 1 is what a
+      # step-1 run that skipped variance-ratio estimation intends.
+      warning("varianceRatioFile is not specified, so a variance ratio of 1 is used ",
+              "for every marker: var is scaled by 1/r, BETA by r and SE by sqrt(r) ",
+              "relative to a run with the step-1 ratio. Pass --varianceRatioFile ",
+              "unless step 1 deliberately skipped the ratio.", call. = FALSE)
       cat("varianceRatioFile is not specified so variance ratio won't be used\n")
     }
     if (isSparseGRM) {
