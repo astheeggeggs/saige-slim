@@ -702,7 +702,8 @@ SAIGE.Region <- function(mu,
                          # region loop stays single-threaded; this parallelises
                          # the 45% of a group run that Rprof puts in
                          # SKAT_davies. 1 means the serial path runs untouched.
-                         nThreadsSKATO = 1L) {
+                         nThreadsSKATO = 1L,
+                         nThreads = 1L) {
   OutputFileIndex <- NULL
   if (is.null(OutputFileIndex)) {
     OutputFileIndex <- paste0(OutputFile, ".index")
@@ -710,6 +711,21 @@ SAIGE.Region <- function(mu,
 
   # The worker pool outlives individual regions but must not outlive the scan.
   on.exit(stopSkatoCluster(), add = TRUE)
+
+  # 2026-09-06: --nThreads also threads the C++ region marker loop (one marker
+  # per worker inside each block, the accumulation serial), byte-identical to
+  # one thread. A reader that cannot clone (the PLINK pread fallback) drops to
+  # one thread with a printed reason, exactly as the marker path does. The
+  # thread count is PRINTED so a knob that never arrived cannot pass as green
+  # (LEDGER #30); the standing test asserts this line.
+  nThreads <- as.integer(nThreads)
+  if (nThreads > 1 && !isGenoReaderCloneableInCPP()) {
+    warning("--nThreads=", nThreads, " requested but the genotype reader cannot be ",
+            "cloned (PLINK .bed pread fallback); the region marker loop runs on 1 thread.")
+    cat("Region marker loop runs on 1 thread: the genotype reader cannot be cloned.\n")
+    nThreads <- 1L
+  }
+  cat("Region marker loop will use ", nThreads, " in-process threads.\n", sep = "")
   skatFailureReset() # LEDGER #57: per-run accounting, R/SkatFailures.R
 
   # LEDGER #25 FIXED: the index is written and validated with the SAME nEachChunk.
@@ -762,6 +778,16 @@ SAIGE.Region <- function(mu,
     stop("r.corr needs to be either 1 (BURDEN test) or 0 (SKAT-O test)\n")
   }
 
+
+  # Start the SKAT-O pool BEFORE the first C++ region call: with --nThreads > 1
+  # that call owns a TBB worker pool, and forking a multithreaded process is the
+  # hazard (PgenReader is not fork-safe either), so the workers are forked while
+  # the parent is still single-threaded. It used to be created lazily by the
+  # first region that took the parallel branch; the announcement line is the
+  # same and still printed once.
+  if (regionTestType != "BURDEN" && canParallelSkato(nThreadsSKATO)) {
+    startSkatoCluster(nThreadsSKATO)
+  }
 
   if (is_single_in_groupTest) {
     cat(
@@ -1042,7 +1068,8 @@ SAIGE.Region <- function(mu,
       annolistsub,
       regionName,
       is_fastTest,
-      is_output_moreDetails
+      is_output_moreDetails,
+      nThreads
     )
   }
   while (i <= nRegions) {

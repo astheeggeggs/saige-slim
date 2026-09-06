@@ -69,8 +69,8 @@ RegionSetUpConditional_binary_InCPP <- function(t_weight_cond) {
     .Call('_SAIGE_RegionSetUpConditional_binary_InCPP', PACKAGE = 'SAIGE', t_weight_cond)
 }
 
-mainRegionInCPP <- function(t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, t_P1Mat_placeholder, t_P2Mat_placeholder, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_forceWeightColumn, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput) {
-    .Call('_SAIGE_mainRegionInCPP', PACKAGE = 'SAIGE', t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, t_P1Mat_placeholder, t_P2Mat_placeholder, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_forceWeightColumn, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput)
+mainRegionInCPP <- function(t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, t_P1Mat_placeholder, t_P2Mat_placeholder, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_forceWeightColumn, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput, t_nThreads) {
+    .Call('_SAIGE_mainRegionInCPP', PACKAGE = 'SAIGE', t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, t_P1Mat_placeholder, t_P2Mat_placeholder, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_forceWeightColumn, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput, t_nThreads)
 }
 
 assign_conditionMarkers_factors <- function(t_genoType, t_genoIndex, t_n, t_weight_cond, t_modelIndex) {

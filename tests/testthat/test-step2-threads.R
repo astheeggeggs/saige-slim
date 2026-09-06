@@ -47,7 +47,7 @@ test_that("a threaded run writes the same index a serial run does", {
   expect_false(file.exists(paste0(out4, ".merging")))
 })
 
-test_that("group tests keep the marker loop serial and say so", {
+test_that("group tests thread the marker loop and say so", {
   skip_unless_level("standard")
   skip_if_no_goldens()
   out <- file.path(tempfile("step2_th_group_"), "group.txt")
@@ -71,12 +71,15 @@ test_that("group tests keep the marker loop serial and say so", {
     "--nThreads=4"), log = log)
   expect_cli_ok(status)
   lg <- readLines(log, warn = FALSE)
-  # The message changed on 2026-09-04 and the old text is deliberately gone:
-  # --nThreads is no longer DISCARDED on a group run, it drives the SKAT-O
-  # post-processing (R/SkatoParallel.R). What is still true, and what this test
-  # exists to pin, is that the MARKER loop stays serial.
-  expect_true(any(grepl("does not thread the group test's marker loop", lg,
+  # 2026-09-04: --nThreads stopped being DISCARDED on a group run (it drove the
+  # SKAT-O post-processing, R/SkatoParallel.R). 2026-09-06: it threads the C++
+  # region marker loop as well, and the count is PRINTED so a knob that never
+  # arrived cannot pass as green (LEDGER #30). The old "does not thread the
+  # group test's marker loop" line is deliberately gone.
+  expect_true(any(grepl("Region marker loop will use 4 in-process threads", lg,
                         fixed = TRUE)))
+  expect_false(any(grepl("does not thread the group test's marker loop", lg,
+                         fixed = TRUE)))
   expect_false(any(grepl("only supported for single-variant tests", lg,
                          fixed = TRUE)))
   # and the threads went somewhere rather than nowhere

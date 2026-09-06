@@ -21,6 +21,7 @@
 #include "Main.hpp"
 #include <cstring>
 #include <cstdlib>
+#include <functional>
 #include "Binary_global.hpp"   // S6: SKATMainThread, the ER handback
 #include "Binary_HyperGeo.hpp" // lchoose_threadsafe, for its regression test
 #include "GenoReader.hpp"
@@ -1819,7 +1820,8 @@ Rcpp::List mainRegionInCPP(
 			   std::vector<std::string> & annoStringVec,
 			   std::string regionName, 
 			   bool t_isFastTest, 
-			   bool t_isMoreOutput) 
+			   bool t_isMoreOutput,
+			   int t_nThreads)
 {
 
 
@@ -1840,7 +1842,9 @@ Rcpp::List mainRegionInCPP(
   // TestContext that outlives nothing.
   bool isEscalatedPass = g_regionEscalatedPass;
 
-  g_regionProfile.enabled = regionProfileRequested();
+  // Serial arm only, like the marker profile: the buckets are plain doubles
+  // that phase-1 workers would race on.
+  g_regionProfile.enabled = regionProfileRequested() && (t_nThreads <= 1);
   RegionProfile & rp = g_regionProfile;
   ProfileScope rpTotal(rp.enabled ? &rp.total : nullptr, &rp.nTotal);
 
@@ -2078,27 +2082,36 @@ Rcpp::List mainRegionInCPP(
 
   double cctpval;
   double cctpval_cond;
-  // ---- pass A, restructured 2026-09-06 (step 2 of the region plan) ----------
+  // ---- pass A, restructured 2026-09-06 (steps 2-3 of the region plan) -------
   // Each marker's work is split the way the marker path's was in S4:
   //   prepareAndTest(i, k, scratch, reader)  read + impute/flip + QC + weights,
-  //       then (rare markers) the test context and getMarkerPval, writing its
-  //       OWN slot i of the per-index vectors and column k of blockP1/blockP2.
-  //       Reads the model, never writes it; touches no cross-marker state.
-  //   accumulate(i, k)  the serial part, in marker order: the running chunk
-  //       index, the P1/P2 row copy, the float `+=` into genoSumMat (order-
-  //       dependent), the max-collapse into genoURMat, the group counters,
-  //       the anno x MAF indicator row and the chunk flush.
+  //       then (rare markers) the test context and getMarkerPval. Everything
+  //       it produces lands in preps[k] (one record per marker in the block)
+  //       and in column k of blockP1/blockP2. It reads the model and never
+  //       writes it, touches no cross-marker state and no per-index vector, so
+  //       one marker per worker is safe by construction.
+  //   accumulate(i, k)  the serial part, in marker order: the slot writes into
+  //       the per-index vectors, the running chunk index, the P1/P2 row copy,
+  //       the float `+=` into genoSumMat (order-dependent), the max-collapse
+  //       into genoURMat, the group counters, the anno x MAF indicator row and
+  //       the chunk flush.
   // Markers are processed in blocks of m1 (= markers_per_chunk): phase 1 over
-  // the block, then phase 2 over the same block in order. Every expression in
-  // phase 2 is the pre-restructure one over the values phase 1 stored, so the
-  // output is byte-identical; the point of the split is that phase 1 can run
-  // one marker per worker (step 3) and one model per prepared marker (step 4).
+  // the block -- serially at t_nThreads == 1, on a parallelFor otherwise --
+  // then phase 2 over the same block in order. Every expression in phase 2 is
+  // the pre-restructure one over the values phase 1 stored, so the output is
+  // byte-identical whatever the thread count.
   struct RegionPrep {
     bool readFailed = false;
     bool passQC = false;
     bool isRare = false;
-    bool tested = false;      // slot i and blockP1/P2 column k carry a test
+    bool tested = false;      // test outputs below and blockP1/P2 column k are valid
+    bool deferredToMainThread = false;   // the ER arm, main-thread only: re-run there
+    bool hasError = false;
+    std::string errMsg;
     bool flip = false;
+    // marker fields (written for every marker that was read, QC or not)
+    std::string chr, pos, ref, alt, marker, info;
+    double altFreq = 0.0, altCounts = 0.0, missingRate = 0.0, imputeInfo = 0.0;
     double MAF = 0.0;
     double MAC = 0.0;
     double MACcasegroup = 0.0;
@@ -2106,6 +2119,17 @@ Rcpp::List mainRegionInCPP(
     arma::uvec nz;            // nonzero sample indices after impute/flip
     arma::vec gnz;            // their genotype values (all phase 2 needs of GVec)
     arma::vec w0;             // per weight set
+    // test outputs
+    double Beta = 0.0, seBeta = 0.0, Tstat = 0.0, varT = 0.0, gy = 0.0;
+    std::string pval, pval_noSPA;
+    bool isSPAConverge = false;
+    double Beta_c = 0.0, seBeta_c = 0.0, Tstat_c = 0.0, varT_c = 0.0;
+    std::string pval_c, pval_noSPA_c;
+    arma::rowvec G1row;       // G1tilde_P_G2tilde_Weighted_Mat.row(i), already weighted
+    // binary summary
+    double AF_case = 0.0, AF_ctrl = 0.0;
+    uint32_t N_case = 0, N_ctrl = 0;
+    double N_case_hom = 0.0, N_case_het = 0.0, N_ctrl_hom = 0.0, N_ctrl_het = 0.0;
   };
   const bool doSingleTests = (t_regionTestType != "BURDEN" || t_isSingleinGroupTest);
   const bool keepP1P2 = (t_regionTestType != "BURDEN");
@@ -2146,34 +2170,21 @@ Rcpp::List mainRegionInCPP(
       pr.readFailed = true;
       return;
     }
-    std::string pds = std::to_string(pd);
-    std::string info = chr+":"+std::to_string(pd)+":"+ref+":"+alt;
+    pr.chr = chr; pr.pos = std::to_string(pd); pr.ref = ref; pr.alt = alt; pr.marker = marker;
+    pr.info = chr+":"+std::to_string(pd)+":"+ref+":"+alt;
 
     double MAF = std::min(altFreq, 1 - altFreq);
     double MAC = MAF * 2 * t_n * (1 - missingRate);   // checked on 08-10-2021
     flip = imputeGenoAndFlip(sc.GVec, altFreq, altCounts, sc.indexForMissing, g_cfg.impute_method, g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC, sc.indexZeroVec, sc.indexNonZeroVec);
     MAF = std::min(altFreq, 1 - altFreq);
     MAC = std::min(altCounts, t_n *2 - altCounts);
-    chrVec.at(i) = chr;
-    posVec.at(i) = pds;
-    refVec.at(i) = ref;
-    altVec.at(i) = alt;
-    markerVec.at(i) = marker;             // marker IDs
-    infoVec.at(i) = info;                 // marker information: CHR:POS:REF:ALT
-    altFreqVec.at(i) = altFreq;           // allele frequencies of ALT allele, this is not always < 0.5.
-    missingRateVec.at(i) = missingRate;
-    altCountsVec.at(i) = altCounts;
-    MACVec.at(i) = MAC;
-    MAFVec.at(i) = MAF;
-    imputationInfoVec.at(i) = imputeInfo;
+    pr.altFreq = altFreq; pr.missingRate = missingRate; pr.altCounts = altCounts;
+    pr.imputeInfo = imputeInfo; pr.MAC = MAC; pr.MAF = MAF; pr.flip = flip;
 
     if((missingRate > g_cfg.missingRate_cutoff) || (MAF > g_cfg.maxMAFLimit) || (MAF < g_cfg.marker_minMAF_cutoff) || (MAC < g_cfg.marker_minMAC_cutoff) || (imputeInfo < g_cfg.marker_minINFO_cutoff)){
       return;
     }
     pr.passQC = true;
-    pr.flip = flip;
-    pr.MAF = MAF;
-    pr.MAC = MAC;
 
     pr.w0.set_size(q_weight);
     for(unsigned int r = 0; r < q_weight; r++){
@@ -2200,6 +2211,10 @@ Rcpp::List mainRegionInCPP(
     // S12: this marker's test context, derived and consumed here. A common
     // marker uses the non-sparse variance ratio, a rare one follows the model;
     // nothing is parked on g_model, so two markers can be tested at once.
+    // hasVarRatio is per call, as in testOneModel: selectVarianceRatio writes
+    // it, nothing here reads it, and a frame-shared flag written from every
+    // worker is a data race (TSAN, 2026-09-06) even when the value never changes.
+    bool hasVarRatio = true;
     SAIGE::TestContext ctx;
     ctx.useSparseGRM = (MAC > g_model->m_cateVarRatioMinMACVecExclude.back())
                          ? false : g_model->m_flagSparseGRM;
@@ -2211,53 +2226,33 @@ Rcpp::List mainRegionInCPP(
     }
 
     if(doSingleTests){ //perform single-variant assoc tests
-      std::string pval, pval_noSPA, pval_c, pval_noSPA_c;
-      double Beta, seBeta, Tstat, varT, gy;
-      double Beta_c, seBeta_c, Tstat_c, varT_c;
-      bool isSPAConverge, is_gtilde, is_Firth, is_FirthConverge;
-
+      bool is_gtilde, is_Firth, is_FirthConverge;
       sc.indexZeroVec_arma = arma::conv_to<arma::uvec>::from(sc.indexZeroVec);
       ProfileScope rpTest(rp.enabled ? &rp.test : nullptr, &rp.nTest);
       if(MAC <=  g_cfg.MACCutoffforER && t_traitType == "binary"){
         Unified_getMarkerPval(
                   sc.GVec,
                   false, // bool t_isOnlyOutputNonZero,
-        sc.indexNonZeroVec_arma, sc.indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
+        sc.indexNonZeroVec_arma, sc.indexZeroVec_arma, pr.Beta, pr.seBeta, pr.pval, pr.pval_noSPA, pr.Tstat, pr.gy, pr.varT, altFreq, pr.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, pr.Beta_c, pr.seBeta_c, pr.pval_c, pr.pval_noSPA_c, pr.Tstat_c, pr.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
       }else{
         Unified_getMarkerPval(
                   sc.GVec,
                   false, // bool t_isOnlyOutputNonZero,
-        sc.indexNonZeroVec_arma, sc.indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
+        sc.indexNonZeroVec_arma, sc.indexZeroVec_arma, pr.Beta, pr.seBeta, pr.pval, pr.pval_noSPA, pr.Tstat, pr.gy, pr.varT, altFreq, pr.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, pr.Beta_c, pr.seBeta_c, pr.pval_c, pr.pval_noSPA_c, pr.Tstat_c, pr.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
       }
       rpTest.stop();
 
-      BetaVec.at(i) = Beta * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true
-      seBetaVec.at(i) = seBeta;
-      pvalVec.at(i) = pval;
-      pvalNAVec.at(i) = pval_noSPA;
-      TstatVec.at(i) = Tstat * (1 - 2*flip);
-      TstatVec_flip.at(i) = Tstat;
-      gyVec.at(i) = gy;
-      varTVec.at(i) = varT;
-      isSPAConvergeVec.at(i) = isSPAConverge;
-
       if(isCondition){
-        Beta_cVec.at(i) = Beta_c * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true
-        seBeta_cVec.at(i) = seBeta_c;
-        pval_cVec.at(i) = pval_c;
-        pvalNA_cVec.at(i) = pval_noSPA_c;
-        Tstat_cVec.at(i) = Tstat_c * (1 - 2*flip);
-        varT_cVec.at(i) = varT_c;
         if(q_weight == 1){
           // the legacy baked row: G2-side conditioning weights times this
           // marker's single-set weight w0
-          G1tilde_P_G2tilde_Weighted_Mat.row(i) = sc.G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t() * pr.w0(0);
+          pr.G1row = sc.G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t() * pr.w0(0);
         }else{
           // design D7 (C11): at K>1 the exported matrix is G1-raw -- still
           // scaled by the (set-independent) G2 conditioning weights, but with
           // NO per-row w0 baked in. region_postprocess applies set r's weight
           // per (anno, max_MAF, set) cell.
-          G1tilde_P_G2tilde_Weighted_Mat.row(i) = sc.G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t();
+          pr.G1row = sc.G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t();
         }
       }
 
@@ -2284,30 +2279,26 @@ Rcpp::List mainRegionInCPP(
           AF_case = 1-AF_case;
           AF_ctrl = 1-AF_ctrl;
         }
-        AF_caseVec.at(i) = AF_case;
-        AF_ctrlVec.at(i) = AF_ctrl;
-        uint32_t N_case = dosage_case.n_elem;
-        uint32_t N_ctrl = dosage_ctrl.n_elem;
-        N_caseVec.at(i) = N_case;
-        N_ctrlVec.at(i) = N_ctrl;
+        pr.AF_case = AF_case;
+        pr.AF_ctrl = AF_ctrl;
+        pr.N_case = dosage_case.n_elem;
+        pr.N_ctrl = dosage_ctrl.n_elem;
 
         arma::uvec N_case_ctrl_het_hom0;
         if(t_isMoreOutput){
           N_case_ctrl_het_hom0 = arma::find(dosage_case <= 2 && dosage_case >=1.5);
-          N_case_homVec.at(i)  = N_case_ctrl_het_hom0.n_elem;
+          pr.N_case_hom = N_case_ctrl_het_hom0.n_elem;
           N_case_ctrl_het_hom0 = arma::find(dosage_case < 1.5 && dosage_case >= 0.5);
-          N_case_hetVec.at(i) = N_case_ctrl_het_hom0.n_elem;
+          pr.N_case_het = N_case_ctrl_het_hom0.n_elem;
           N_case_ctrl_het_hom0 = arma::find(dosage_ctrl <= 2 && dosage_ctrl >=1.5);
-          N_ctrl_homVec.at(i) = N_case_ctrl_het_hom0.n_elem;
+          pr.N_ctrl_hom = N_case_ctrl_het_hom0.n_elem;
           N_case_ctrl_het_hom0 = arma::find(dosage_ctrl < 1.5 && dosage_ctrl >= 0.5);
-          N_ctrl_hetVec.at(i) = N_case_ctrl_het_hom0.n_elem;
+          pr.N_ctrl_het = N_case_ctrl_het_hom0.n_elem;
           if(flip){
-                N_case_homVec.at(i) = N_case - N_case_hetVec.at(i) -  N_case_homVec.at(i);
-                N_ctrl_homVec.at(i) = N_ctrl - N_ctrl_hetVec.at(i) - N_ctrl_homVec.at(i);
+                pr.N_case_hom = pr.N_case - pr.N_case_het -  pr.N_case_hom;
+                pr.N_ctrl_hom = pr.N_ctrl - pr.N_ctrl_het - pr.N_ctrl_hom;
           }
         }
-      }else if(t_traitType == "quantitative"){
-        N_Vec.at(i) = t_n;
       }
     } //if(doSingleTests)
   };
@@ -2315,19 +2306,53 @@ Rcpp::List mainRegionInCPP(
   auto accumulate = [&](unsigned int i, unsigned int k)
   {
     const RegionPrep & pr = preps[k];
+    // the marker fields, for every marker that was read (QC or not)
+    chrVec.at(i) = pr.chr;
+    posVec.at(i) = pr.pos;
+    refVec.at(i) = pr.ref;
+    altVec.at(i) = pr.alt;
+    markerVec.at(i) = pr.marker;          // marker IDs
+    infoVec.at(i) = pr.info;              // marker information: CHR:POS:REF:ALT
+    altFreqVec.at(i) = pr.altFreq;        // allele frequencies of ALT allele, this is not always < 0.5.
+    missingRateVec.at(i) = pr.missingRate;
+    altCountsVec.at(i) = pr.altCounts;
+    MACVec.at(i) = pr.MAC;
+    MAFVec.at(i) = pr.MAF;
+    imputationInfoVec.at(i) = pr.imputeInfo;
     if(!pr.passQC){
       return;
     }
     const uint nNonZero = pr.nz.n_elem;
+    const bool flip = pr.flip;
     if(pr.isRare){  // not Ultra-Rare Variants
       ProfileScope rpRare(rp.enabled ? &rp.rareArm : nullptr, &rp.nRareArm);
       indicatorVec.at(i) = 1;
       if(i1InChunk == 0){
         std::cout << "Start analyzing chunk " << ichunk << "....." << std::endl;
       }
-      if(pr.tested && keepP1P2){
-        P1Mat.row(i1InChunk) = blockP1.col(k).t();
-        P2Mat.col(i1InChunk) = blockP2.col(k);
+      if(pr.tested){
+        BetaVec.at(i) = pr.Beta * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true
+        seBetaVec.at(i) = pr.seBeta;
+        pvalVec.at(i) = pr.pval;
+        pvalNAVec.at(i) = pr.pval_noSPA;
+        TstatVec.at(i) = pr.Tstat * (1 - 2*flip);
+        TstatVec_flip.at(i) = pr.Tstat;
+        gyVec.at(i) = pr.gy;
+        varTVec.at(i) = pr.varT;
+        isSPAConvergeVec.at(i) = pr.isSPAConverge;
+        if(isCondition){
+          Beta_cVec.at(i) = pr.Beta_c * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true
+          seBeta_cVec.at(i) = pr.seBeta_c;
+          pval_cVec.at(i) = pr.pval_c;
+          pvalNA_cVec.at(i) = pr.pval_noSPA_c;
+          Tstat_cVec.at(i) = pr.Tstat_c * (1 - 2*flip);
+          varT_cVec.at(i) = pr.varT_c;
+          G1tilde_P_G2tilde_Weighted_Mat.row(i) = pr.G1row;
+        }
+        if(keepP1P2){
+          P1Mat.row(i1InChunk) = blockP1.col(k).t();
+          P2Mat.col(i1InChunk) = blockP2.col(k);
+        }
       }
       i1 += 1;
       i1InChunk += 1;
@@ -2363,6 +2388,22 @@ Rcpp::List mainRegionInCPP(
         }
       }
       annoMAFIndicatorMat.row(i) = annoMAFIndicatorVec.t();
+      if(doSingleTests){
+        if(t_traitType == "binary"){
+          AF_caseVec.at(i) = pr.AF_case;
+          AF_ctrlVec.at(i) = pr.AF_ctrl;
+          N_caseVec.at(i) = pr.N_case;
+          N_ctrlVec.at(i) = pr.N_ctrl;
+          if(t_isMoreOutput){
+            N_case_homVec.at(i) = pr.N_case_hom;
+            N_case_hetVec.at(i) = pr.N_case_het;
+            N_ctrl_homVec.at(i) = pr.N_ctrl_hom;
+            N_ctrl_hetVec.at(i) = pr.N_ctrl_het;
+          }
+        }else if(t_traitType == "quantitative"){
+          N_Vec.at(i) = t_n;
+        }
+      }
     }else{   // Ultra-Rare Variants (URV)
       ProfileScope rpUrc(rp.enabled ? &rp.urCollapse : nullptr, &rp.nUrCollapse);
       indicatorVec.at(i) = 2;
@@ -2427,26 +2468,103 @@ Rcpp::List mainRegionInCPP(
     }
   };
 
+  // Phase 1 on a parallelFor. Each range checks out a worker state (one
+  // scratch + one reader clone) from the marker path's pool, refuses the R
+  // API for its duration, and records a marker's failure IN ITS OWN prep
+  // record: the main thread then acts on the lowest index, which is what a
+  // serial run would have stopped at (the marker path's post-passes, S6).
+  struct RegionBlockWorker : public RcppParallel::Worker {
+    RegionBlockWorker(MarkerStatePool & t_pool, unsigned int t_iStart,
+                      std::vector<RegionPrep> & t_preps,
+                      const std::function<void(unsigned int, unsigned int, Marker::MarkerScratch&, Geno::GenoReader&)> & t_fn)
+      : m_pool(t_pool), m_iStart(t_iStart), m_preps(t_preps), m_fn(t_fn) {}
+    void operator()(std::size_t t_begin, std::size_t t_end) override {
+      std::unique_ptr<MarkerWorkerState> state = m_pool.checkout();
+      RefuseMainThreadGuard noRAPI;
+      for(std::size_t k = t_begin; k < t_end; k++){
+        try {
+          m_fn(m_iStart + k, k, *state->scratch[0], *state->readers[0]);
+        } catch (const SKATMainThread::NeedsMainThread&) {
+          m_preps[k] = RegionPrep();
+          m_preps[k].deferredToMainThread = true;
+        } catch (const std::exception& e) {
+          m_preps[k] = RegionPrep();
+          m_preps[k].hasError = true;
+          m_preps[k].errMsg = e.what();
+        }
+      }
+      m_pool.checkin(std::move(state));
+      SAIGE_TSAN_HAPPENS_BEFORE(&m_pool);
+    }
+    MarkerStatePool & m_pool;
+    unsigned int m_iStart;
+    std::vector<RegionPrep> & m_preps;
+    const std::function<void(unsigned int, unsigned int, Marker::MarkerScratch&, Geno::GenoReader&)> & m_fn;
+  };
+  const int nThreadsRegion = std::max(1, t_nThreads);
+  std::unique_ptr<MarkerStatePool> regionPool;
+  std::vector<std::vector<int>> regionGroups;
+  if(nThreadsRegion > 1){
+    regionGroups.push_back(std::vector<int>(1, 0));   // model 0, reader 0
+    regionPool.reset(new MarkerStatePool(regionGroups, nThreadsRegion));
+  }
+  const std::function<void(unsigned int, unsigned int, Marker::MarkerScratch&, Geno::GenoReader&)> prepareFn = prepareAndTest;
+
   // The block driver. A failed read stops the region at that marker exactly
-  // where the serial loop's `break` did: nothing after it is prepared, tested
-  // or accumulated, and the rest of the call proceeds on what it has.
+  // where the serial loop's `break` did: nothing after it is accumulated, and
+  // the rest of the call proceeds on what it has.
   {
     bool shortRead = false;
     unsigned int iStart = 0;
     while(iStart < q0 && !shortRead){
       const unsigned int iEnd = std::min(q0, iStart + blockSize);
-      unsigned int nPrepared = 0;
-      for(unsigned int i = iStart; i < iEnd; i++){
-        prepareAndTest(i, i - iStart, scratchA, *g_reader);
-        if(preps[i - iStart].readFailed){
-          break;
+      const unsigned int nBlock = iEnd - iStart;
+      unsigned int nPrepared = nBlock;
+      if(nThreadsRegion == 1){
+        // literally serial: no pool, no guard, ER runs inline
+        nPrepared = 0;
+        for(unsigned int i = iStart; i < iEnd; i++){
+          prepareAndTest(i, i - iStart, scratchA, *g_reader);
+          if(preps[i - iStart].readFailed){
+            break;
+          }
+          nPrepared++;
         }
-        nPrepared++;
+      }else{
+        RegionBlockWorker worker(*regionPool, iStart, preps, prepareFn);
+        std::size_t grain = 8;
+        RcppParallel::parallelFor(0, (std::size_t)nBlock, worker, grain, nThreadsRegion);
+        SAIGE_TSAN_HAPPENS_AFTER(regionPool.get());
+        // post-pass 1: the error a serial run would have reported (lowest index)
+        for(unsigned int k = 0; k < nBlock; k++){
+          if(preps[k].hasError){
+            throw std::runtime_error(preps[k].errMsg);
+          }
+        }
+        // post-pass 2: truncate at the earliest short read
+        for(unsigned int k = 0; k < nBlock; k++){
+          if(preps[k].readFailed){
+            nPrepared = k;
+            break;
+          }
+        }
+        // post-pass 3: the ER markers, on the main thread. Re-preparing is
+        // byte-neutral because prepare is deterministic; ComputeExact re-seeds
+        // at entry, so the order the deferred markers run in does not matter.
+        for(unsigned int k = 0; k < nPrepared; k++){
+          if(preps[k].deferredToMainThread){
+            prepareAndTest(iStart + k, k, scratchA, *g_reader);
+            if(preps[k].readFailed){
+              nPrepared = k;
+              break;
+            }
+          }
+        }
       }
       for(unsigned int i = iStart; i < iStart + nPrepared; i++){
         accumulate(i, i - iStart);
       }
-      if(nPrepared < iEnd - iStart){
+      if(nPrepared < nBlock){
         std::cout << "ERROR: Reading " << (iStart + nPrepared) << "th marker failed." << std::endl;
         shortRead = true;
       }

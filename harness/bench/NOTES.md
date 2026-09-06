@@ -1368,3 +1368,52 @@ a good part of the 42% was system time and page-cache waiting rather than user c
 fills and the per-cell O(N) bookkeeping. An intermediate build that zeroed the scratch
 once per call (`zeros(m1max, n)`) measured C++ 67.8 / 46.5 s: the zero-fill alone was
 11-12 s, which is why the scratch is now persistent and unzeroed.
+
+## Step 3: `--nThreads` threads the region marker loop (2026-09-06, same day)
+
+After step 2's split (`prepareAndTest` per marker, `accumulate` serial in marker
+order), phase 1 of each block of `markers_per_chunk` markers runs on an
+`RcppParallel::parallelFor` with the marker path's own machinery: `MarkerStatePool`
+(one `MarkerScratch` + one reader clone per state), `RefuseMainThreadGuard`, failures
+recorded per marker and acted on by the main thread in serial order -- the lowest
+error is rethrown, the earliest short read truncates, and the ER arm
+(`MAC <= max_MAC_for_ER`, binary) is deferred and re-prepared on the main thread. At
+`--nThreads=1` the loop is literally serial. R prints the count once
+("Region marker loop will use N in-process threads."), the SKAT-O fork pool is now
+started BEFORE the first C++ call (forking a process that already owns a TBB pool is
+the hazard; `PgenReader` is not fork-safe), and a reader that cannot clone drops to
+one thread with a printed reason. The `qfc` audit stands: SKAT-O itself stays on the
+fork pool.
+
+Gate: every region golden byte-identical at 1/4/8 threads (`test-step2-region-threads.R`:
+P2 with escalation, P3 conditional, P5 BURDEN at 8, P36/P37 quantitative); goldens all
+PASS; `sim50k` at 4 threads `cmp`-identical to 1 thread for SKAT-O and BURDEN on both
+traits (24/24 files, including the 1-thread runs against step 2's); `tsan.sh plant` on
+the new `region` workload 95 / 109 races at 4 / 8 threads with DIFFERING bytes, `clean`
+0 after the one race it found was fixed (a frame-shared `hasVarRatio` flag written by
+`selectVarianceRatio` from every worker; per call now, as in `testOneModel`).
+
+**Wall time, `sim50k`, 1 -> 4 threads** (one rep each, arms adjacent, load 4-5):
+
+| arm | 1 thread | 4 threads | speedup | user 1 -> 4 |
+|---|---|---|---|---|
+| y_binary SKAT-O | 178.3 | **105.5** | 1.69x | 162 -> 175 |
+| y_binary BURDEN | 46.7 | **29.8** | 1.57x | 44 -> 50 |
+| y_quant SKAT-O | 145.4 | **75.2** | 1.93x | 134 -> 145 |
+| y_quant BURDEN | 26.9 | **16.4** | 1.64x | 25 -> 31 |
+
+Against the 2026-09-04 upstream comparison (SKAT-O 4 threads 1.21x / 1.59x, the pool
+alone) this is 1.69x / 1.93x; against 1-thread HEAD `7a9efcb8` before today's three
+region commits (194.8 / 172.2 s) the binary and quantitative SKAT-O runs are now
+**1.85x / 2.29x faster at 4 threads**.
+
+**BURDEN is 1.57x, not the 3.36x the region-perf handoff projected, and the reason is
+located.** That projection assumed the whole 93.7% C++ threads. It does not: the
+step-1 buckets say the BURDEN C++ is prepare 35% + per-marker test 26% (threaded now)
+against the ultra-rare pass 21% + the BURDEN emitter 10% + accumulate 5% (serial, and
+two of them are 15 per-cell `getMarkerPval` calls each), plus the R side. Serial ~45%
+of the run; 1/(0.45 + 0.55 x 1.39/4) = 1.55x predicted against 1.57x measured, the
+1.39x being the hardware inflation floor of the writer bench. The threaded part
+itself went 26 -> ~9 s. The next lever on BURDEN is therefore the per-cell tests of
+passes B and D (15 independent cells, order-free until their outputs are written),
+not the marker loop.

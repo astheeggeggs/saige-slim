@@ -61,9 +61,11 @@ Standing facts that have each cost at least one session. One line of why each.
   the printed `var`/`var_c` columns).
 - **Every non-BURDEN group golden already takes the chunked region path**
   (`nchunks == 2`, the ultra-rare collapse appends a chunk), so
-  `--markers_per_chunk_in_groupTest` changes nothing there. The chunk-file
-  FAILURE is reached only by `test-step2-region-chunkio.R`, which plants a
-  directory where the chunk file must go.
+  `--markers_per_chunk_in_groupTest` changes nothing there. Since 2026-09-06
+  the chunks stay in memory (`RegionChunkStore`); the chunk-file FAILURE is
+  reached only by `test-step2-region-chunkio.R` with the spill forced
+  (`SAIGE_REGION_CHUNK_MEMORY_MB=0`) and a directory planted where the chunk
+  file must go.
 - **`rs20` and `rs22` in `genotype_100markers.bed` ARE the covariates `a9`/`a10`**
   (R^2 = 1.000000). Any covariate-adjusting path reports `BETA=NA SE=NA` on them
   (LEDGER #44); expect two degenerate rows and do not read them as a signal.
@@ -357,13 +359,19 @@ two paths: one path over a disjoint partition, no cross-marker arithmetic.
 thread count** -- a knob that fails to arrive would otherwise pass as green
 (the LEDGER #30 shape). Drilled both ways.
 
-Two deliberate degradations: **group tests keep the C++ loop on one thread**
-and spend `--nThreads` on the SKAT-O post-processing instead
-(`R/SkatoParallel.R`, 1.30x at 4 workers, byte-identical; the worker function
-MUST be top-level, or R ships the whole `outList` per task, and the pool is
-forked ONCE per scan -- `docs/state/region-perf-handoff.md`); and a reader that
-cannot clone (only the PLINK pread fallback now) drops to one thread with a
-printed reason and an R `warning()`.
+**Group tests thread too (2026-09-06):** `--nThreads` drives the C++ region
+marker loop (one marker per worker inside each block of `markers_per_chunk`,
+the order-dependent accumulation serial, byte-identical at any count;
+`test-step2-region-threads.R`) AND the SKAT-O post-processing pool
+(`R/SkatoParallel.R`, forked BEFORE the first C++ call because forking a
+process that owns a TBB pool is the hazard; the worker function MUST be
+top-level, or R ships the whole `outList` per task). The two alternate per
+region. SKAT-O itself can never run in-process on threads: SKAT's `qfc` is
+file-scope statics and a global `jmp_buf` (`docs/state/region-perf-handoff.md`).
+The ultra-rare pass and the BURDEN emitter are still serial per cell, which
+is what caps BURDEN at ~1.6x on 4 threads. One deliberate degradation: a
+reader that cannot clone (only the PLINK pread fallback now) drops to one
+thread with a printed reason and an R `warning()`.
 
 Three findings that outlive the fork path: **E0** chunk boundaries cannot reach
 the output bytes (`markers_per_chunk` drives only a stdout counter); **E1**

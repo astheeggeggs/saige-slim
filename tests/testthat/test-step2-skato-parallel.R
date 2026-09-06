@@ -74,8 +74,8 @@ test_that("nThreads>1 evaluates SKAT-O in parallel and is byte-identical", {
   # only a region that took the parallel branch creates it.
   expect_identical(workers_reported(r$log), 1L)
   expect_true(any(grepl("use 4 workers", r$log, fixed = TRUE)))
-  # And it says plainly that the marker loop is not what got threaded.
-  expect_true(any(grepl("does not thread the group test's marker loop",
+  # And the region marker loop threads too, and says so (2026-09-06).
+  expect_true(any(grepl("Region marker loop will use 4 in-process threads",
                         r$log, fixed = TRUE)))
   expect_output_matches_golden(P6g, r$path)
 })

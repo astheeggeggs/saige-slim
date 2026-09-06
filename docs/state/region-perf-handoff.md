@@ -131,7 +131,15 @@ no RNG — so this is one code path re-run over a partition.
 
 ---
 
-## Item 4: thread the C++ region loop
+## Item 4: thread the C++ region loop -- DONE 2026-09-06 for the marker loop
+
+Landed the same day as the `qfc` audit above, after the region C++ was
+bucketed and de-churned first (`docs/state/handoff-2026-09-06-region-threads.md`,
+`harness/bench/NOTES.md`). What remains of this item is the per-cell tests of
+the ultra-rare pass and the BURDEN emitter, which stay serial and cap BURDEN
+at ~1.6x on 4 threads instead of the 3.36x projected below; that projection
+assumed the whole C++ threads. The text below is kept as the design brief it
+was.
 
 ### The prize, and the two things blocking it
 

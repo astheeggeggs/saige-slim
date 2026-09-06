@@ -299,8 +299,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // mainRegionInCPP
-Rcpp::List mainRegionInCPP(std::string t_genoType, std::vector<std::string>& t_genoIndex, arma::mat& annoIndicatorMat, arma::vec& maxMAFVec, std::string t_outputFile, std::string t_traitType, unsigned int t_n, arma::mat& t_P1Mat_placeholder, arma::mat& t_P2Mat_placeholder, std::string t_regionTestType, bool t_isImputation, arma::mat& t_weight, arma::mat& t_beta_params, bool t_includeNoWeights, std::vector<std::string>& t_weightNames, bool t_forceWeightColumn, arma::vec& t_weight_cond, bool t_isSingleinGroupTest, bool t_isOutputMarkerList, std::vector<std::string>& annoStringVec, std::string regionName, bool t_isFastTest, bool t_isMoreOutput);
-RcppExport SEXP _SAIGE_mainRegionInCPP(SEXP t_genoTypeSEXP, SEXP t_genoIndexSEXP, SEXP annoIndicatorMatSEXP, SEXP maxMAFVecSEXP, SEXP t_outputFileSEXP, SEXP t_traitTypeSEXP, SEXP t_nSEXP, SEXP t_P1Mat_placeholderSEXP, SEXP t_P2Mat_placeholderSEXP, SEXP t_regionTestTypeSEXP, SEXP t_isImputationSEXP, SEXP t_weightSEXP, SEXP t_beta_paramsSEXP, SEXP t_includeNoWeightsSEXP, SEXP t_weightNamesSEXP, SEXP t_forceWeightColumnSEXP, SEXP t_weight_condSEXP, SEXP t_isSingleinGroupTestSEXP, SEXP t_isOutputMarkerListSEXP, SEXP annoStringVecSEXP, SEXP regionNameSEXP, SEXP t_isFastTestSEXP, SEXP t_isMoreOutputSEXP) {
+Rcpp::List mainRegionInCPP(std::string t_genoType, std::vector<std::string>& t_genoIndex, arma::mat& annoIndicatorMat, arma::vec& maxMAFVec, std::string t_outputFile, std::string t_traitType, unsigned int t_n, arma::mat& t_P1Mat_placeholder, arma::mat& t_P2Mat_placeholder, std::string t_regionTestType, bool t_isImputation, arma::mat& t_weight, arma::mat& t_beta_params, bool t_includeNoWeights, std::vector<std::string>& t_weightNames, bool t_forceWeightColumn, arma::vec& t_weight_cond, bool t_isSingleinGroupTest, bool t_isOutputMarkerList, std::vector<std::string>& annoStringVec, std::string regionName, bool t_isFastTest, bool t_isMoreOutput, int t_nThreads);
+RcppExport SEXP _SAIGE_mainRegionInCPP(SEXP t_genoTypeSEXP, SEXP t_genoIndexSEXP, SEXP annoIndicatorMatSEXP, SEXP maxMAFVecSEXP, SEXP t_outputFileSEXP, SEXP t_traitTypeSEXP, SEXP t_nSEXP, SEXP t_P1Mat_placeholderSEXP, SEXP t_P2Mat_placeholderSEXP, SEXP t_regionTestTypeSEXP, SEXP t_isImputationSEXP, SEXP t_weightSEXP, SEXP t_beta_paramsSEXP, SEXP t_includeNoWeightsSEXP, SEXP t_weightNamesSEXP, SEXP t_forceWeightColumnSEXP, SEXP t_weight_condSEXP, SEXP t_isSingleinGroupTestSEXP, SEXP t_isOutputMarkerListSEXP, SEXP annoStringVecSEXP, SEXP regionNameSEXP, SEXP t_isFastTestSEXP, SEXP t_isMoreOutputSEXP, SEXP t_nThreadsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -327,7 +327,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::string >::type regionName(regionNameSEXP);
     Rcpp::traits::input_parameter< bool >::type t_isFastTest(t_isFastTestSEXP);
     Rcpp::traits::input_parameter< bool >::type t_isMoreOutput(t_isMoreOutputSEXP);
-    rcpp_result_gen = Rcpp::wrap(mainRegionInCPP(t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, t_P1Mat_placeholder, t_P2Mat_placeholder, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_forceWeightColumn, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput));
+    Rcpp::traits::input_parameter< int >::type t_nThreads(t_nThreadsSEXP);
+    rcpp_result_gen = Rcpp::wrap(mainRegionInCPP(t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, t_P1Mat_placeholder, t_P2Mat_placeholder, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_forceWeightColumn, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput, t_nThreads));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -2084,7 +2085,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_setSAIGEobjInCPP", (DL_FUNC) &_SAIGE_setSAIGEobjInCPP, 34},
     {"_SAIGE_addSAIGEobjInCPP", (DL_FUNC) &_SAIGE_addSAIGEobjInCPP, 35},
     {"_SAIGE_RegionSetUpConditional_binary_InCPP", (DL_FUNC) &_SAIGE_RegionSetUpConditional_binary_InCPP, 1},
-    {"_SAIGE_mainRegionInCPP", (DL_FUNC) &_SAIGE_mainRegionInCPP, 23},
+    {"_SAIGE_mainRegionInCPP", (DL_FUNC) &_SAIGE_mainRegionInCPP, 24},
     {"_SAIGE_assign_conditionMarkers_factors", (DL_FUNC) &_SAIGE_assign_conditionMarkers_factors, 5},
     {"_SAIGE_assign_conditionMarkers_factors_binary_region", (DL_FUNC) &_SAIGE_assign_conditionMarkers_factors_binary_region, 1},
     {"_SAIGE_fast_logistf_fit", (DL_FUNC) &_SAIGE_fast_logistf_fit, 11},

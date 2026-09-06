@@ -232,17 +232,17 @@ SPAGMMATtest <- function(bedFile = "",
   if (is.na(nThreads) || nThreads < 1) {
     stop("nThreads should be a positive integer.")
   }
-  # Group tests keep the C++ region loop single-threaded, but --nThreads is no
-  # longer thrown away there: it drives the SKAT-O post-processing, which Rprof
-  # puts at 45% of a group run (harness/bench/NOTES.md). Carried separately so
-  # nothing downstream of `nThreads` can be surprised by a value it never saw
-  # before.
+  # On a group run --nThreads drives BOTH the C++ region marker loop (since
+  # 2026-09-06, one marker per worker inside each block) and the SKAT-O
+  # post-processing pool (R/SkatoParallel.R, 45% of a SKAT-O run). The two
+  # alternate per region rather than overlap, so the same count serves both;
+  # carried separately so nothing downstream is surprised by a value it never
+  # saw before.
   nThreadsSKATO <- 1L
   if (nThreads > 1 && groupFile != "") {
     nThreadsSKATO <- nThreads
-    cat("nThreads > 1 does not thread the group test's marker loop; it will be used for",
-        "the SKAT-O post-processing instead\n")
-    nThreads <- 1L
+    cat("nThreads > 1 on a group run: the region marker loop and the SKAT-O",
+        "post-processing both use", nThreads, "threads/workers\n")
   }
 
 
@@ -687,7 +687,8 @@ SPAGMMATtest <- function(bedFile = "",
       is_output_moreDetails,
       weights_beta_mat = weights.beta,
       is_output_weight_column = is_output_weight_column,
-      nThreadsSKATO = nThreadsSKATO
+      nThreadsSKATO = nThreadsSKATO,
+      nThreads = nThreads
     )
   }
 }

@@ -90,8 +90,12 @@ b = """    for(int i = 0; i < t_nStates; i++){
 # workload -- which every workload here is -- that is exactly the old plant.
 c = "*state->scratch[g], rows);"
 d = "*m_pool.m_plantShared, rows);"
-assert s.count(a) == 1 and s.count(c) == 1, "plant anchors drifted; fix harness/tsan.sh"
-open(p, 'w').write(s.replace(a, b).replace(c, d))
+# The region loop's worker (2026-09-06) takes the same defect: every range
+# prepares and tests its markers in the first state's scratch.
+e = "m_fn(m_iStart + k, k, *state->scratch[0], *state->readers[0]);"
+f = "m_fn(m_iStart + k, k, *m_pool.m_plantShared, *state->readers[0]);"
+assert s.count(a) == 1 and s.count(c) == 1 and s.count(e) == 1, "plant anchors drifted; fix harness/tsan.sh"
+open(p, 'w').write(s.replace(a, b).replace(c, d).replace(e, f))
 PY
 fi
 
@@ -201,13 +205,21 @@ tsan_run() { # tsan_run <workload> <threads>
     # the exact test on a worker, where the bundled binary fixture puts only 4.1%
     # of markers there. A clean TSAN run on `binary` alone would be a statement
     # about 4% of the change.
+    # The region (group-test) marker loop, threaded 2026-09-06: golden P2's
+    # command. Its model lives in extdata/output, not $GOLD/step1, and the
+    # marker-path flags below (--minMAC, --markers_per_chunk) are harmless to
+    # it; bytes are compared against this workload's own 1-thread run.
+    region)        model=example_binary_sparseGRM
+      args="$SG --groupFile=input/group_new_snpid.txt --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous --maxMAF_in_groupTest=0.0001,0.001,0.01 --is_fastTest=TRUE --chrom=1"
+      bed="--bedFile=./input/genotype_100markers.bed --bimFile=./input/genotype_100markers.bim --famFile=./input/genotype_100markers.fam --AlleleOrder=alt-first" ;;
     rare[0-9][0-9][0-9])
       model=binary_sparseGRM_a; args=""
       local rp="$REPO/harness/work/rarefix/$wl"
       [ -f "$rp.bed" ] || { echo "missing $rp.bed -- run harness/make_rare_fixture.py" >&2; exit 1; }
       bed="--bedFile=$rp.bed --bimFile=$rp.bim --famFile=$rp.fam --AlleleOrder=alt-first" ;;
   esac
-  local base="$RUNS/$wl.t$nt" include=""
+  local base="$RUNS/$wl.t$nt" include="" modeldir="$GOLD/step1"
+  [ "$wl" = region ] && modeldir="$REPO/extdata/output"
   if [ -n "$MAXMK" ]; then
     # First N variant IDs of this workload's fixture. pvar has a #CHROM header
     # and ID in column 3; bim has no header and ID in column 2.
@@ -229,8 +241,8 @@ tsan_run() { # tsan_run <workload> <threads>
   RCPP_PARALLEL_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
     pixi run --manifest-path "$REPO/pixi.toml" bash "$WORK/run_r.sh" -f step2_SPAtests.R --args \
     $bed --minMAF=0 --minMAC=1 --LOCO=FALSE --markers_per_chunk=10000 --nThreads=$nt $include $args \
-    --GMMATmodelFile="$GOLD/step1/$model.rda" \
-    --varianceRatioFile="$GOLD/step1/$model.varianceRatio.txt" \
+    --GMMATmodelFile="$modeldir/$model.rda" \
+    --varianceRatioFile="$modeldir/$model.varianceRatio.txt" \
     --SAIGEOutputFile="$base.txt" > "$base.log" 2>&1 || true
   local races threaded
   races=$(cat "$base".tsan.[0-9]* 2>/dev/null | grep -c "WARNING: ThreadSanitizer: data race" || true)
@@ -249,7 +261,7 @@ tsan_run() { # tsan_run <workload> <threads>
 }
 
 echo "=== TSAN runs ($MODE); ${MAXMK:-128,868} markers each"
-for wl in ${SAIGE_TSAN_WORKLOADS:-binary binary_sparse quant}; do
+for wl in ${SAIGE_TSAN_WORKLOADS:-binary binary_sparse quant region}; do
   for nt in 1 4 8; do tsan_run "$wl" "$nt"; done
 done
 echo
