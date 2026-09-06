@@ -1230,3 +1230,21 @@ against the single-model runs (driver-enforced `cmp` on every pair). Swap
 (3 GB) went 1.53 -> 2.34 GB peak with >= 730 MB free and 57-64% system memory
 free throughout; the scan's 2.5-2.9 GB RSS is the mmap'd `.bed`, and the swap
 growth is idle desktop pages, not pressure.
+
+### Addendum, same day: the remaining thread inflation is the hardware floor, not churn
+
+The paragraph above inferred ~1.25x of removable allocation churn on the binary
+path at 4 threads by subtracting the 1.3-1.4x turbo/hyperthreading floor from a
+1.71x inflation measured under desktop load. Re-measured on a quiet machine
+(`bench_writer.sh w2`, load 2.25): the 4-thread binary scan is **56.6 s wall,
+196 s user against 141 s at 1 thread = 1.39x**, i.e. the floor with nothing
+left over. The 4-thread profile agrees: allocator + lock frames are 3.1% of
+self time (1.4% at 1 thread), pool waiting 4.3%, and every compute leaf's
+share FALLS (`exp` 0.89, Firth 0.86, impute 0.77, decode 0.80) while the
+memory-bound BLAS `ddot` rises 1.36x -- the signature of memory bandwidth and
+shared cores, not of malloc. At 8 threads the allocator reaches 5-7.5%
+(`mach_vm_deallocate` 3.7% on the quantitative path: the N-length doubles
+freed per marker) and waiting 4.4-6.9%, but 8 threads is already no faster
+than 4 here. **Closed: a per-worker workspace for the score-test/impute
+temporaries would buy at most ~2% at 4 threads on this machine.** The
+`--nThreads` help now says to use the physical core count.

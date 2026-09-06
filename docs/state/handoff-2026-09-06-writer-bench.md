@@ -57,6 +57,16 @@ worker. T = 8 is no faster than T = 4 with a binary model on this 4-core i5.
 - Bash `run_in_background` has a 10-minute ceiling; a 50-minute bench must be
   `nohup`'d from a Monitor script that then tails its log.
 
+## Follow-ups, same session
+
+- `--nThreads` help (`extdata/step2_SPAtests.R`) says to use the PHYSICAL core
+  count, with the measured cost of not doing so; `test-step2-cli-help.R` pins
+  the sentence (red without it, green with it).
+- The allocation-churn follow-up is CLOSED by a quiet-machine 4-thread run and
+  profile (`writer.tsv` label `w2`; NOTES addendum): inflation 1.39x = the
+  turbo/HT floor, allocator + lock 3.1% of self time, waiting 4.3%. Nothing
+  worth a workspace refactor at 4 threads.
+
 ## Not done
 
 - No commit (the owner did not ask for one). Files above are untracked.
