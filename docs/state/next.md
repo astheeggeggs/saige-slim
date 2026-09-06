@@ -1,6 +1,6 @@
 # What is worth doing next (2026-09-03, updated 2026-09-05)
 
-**Current handoff: `docs/state/handoff-2026-09-05-binary-profile.md`** (then this
+**Current handoff: `docs/state/handoff-2026-09-06-writer-bench.md`** (then this
 file, then `python3 harness/tools/ledger.py open`). Handoffs are dated and
 never renamed; when several share the newest date `ls | tail -1` sorts them by
 name, not by time, so this line is the pointer and is updated with every new
@@ -455,23 +455,20 @@ files are byte-identical. Tests: `test-unit-skat-failures.R`,
 
 ## Items
 
-**Format step-2 output rows on the workers.**
-[Now MORE valuable than when this was written: a multi-model scan formats P rows
-per marker on the serial writer, so the Amdahl serial fraction under
-`--nThreads` rises with the number of models -- see
-`docs/state/multimodel-step2.md`.]
-[From the 2026-09-03 assessment; NOT independently measured.] `testOneMarker`
-would build the row into a `std::string` on `Marker::MarkerResult`, leaving
-`writeOutfile_single` (`src/Main.cpp:3072`, called at `:811` after the
-`parallelFor`) as one `<<` per row on the main thread. The predicted effect is
-on the serial fraction measured above (s = 0.305 at N = 1,000), so it should
-shrink as the writer stops formatting. Byte-exactness rests on the
-`std::ostringstream` carrying the same stream state as `g_out.single`
-(`src/Main.cpp:89`, where no precision or flags are set) -- check that rather
-than assume it, and gate on the marker goldens P1/P4/P7/P11/P12/P27-P33 plus
-their PGEN mirrors.
-`[ASSUMPTION: the prediction of a specific speedup is the assessment's
-arithmetic from NOTES.md's Amdahl fit, not a measurement of this change.]`
+**Resolved: formatting step-2 output rows on the workers is CLOSED by
+measurement (2026-09-06).** [Measured; `harness/bench/NOTES.md`, the writer
+section; `docs/state/handoff-2026-09-06-writer-bench.md`] The item predicted
+that P rows per marker on the one writer thread cap `--nThreads` as P grows.
+At N = 50,000, HEAD `b11e6b07`, the writer is 2-3 us per row and takes
+w = 0.2-0.9% of the main thread's `mainMarkerInCPP` time at 1 thread and
+0.5-2.1% at 8, on 1, 3 and 5 models alike (worst case 3 quantitative models,
+w = 0.021, ceiling 1.02x). The thread-scaling loss the Amdahl fit called a
+serial fraction is CPU inflation (1.3-2.7x more user CPU for the same work at
+8 threads: allocation churn and hyperthreading on 4 physical cores); the main
+thread is 91-95% busy as a worker at T=8. Do not re-open without a fixture
+where marker work is under ~20 us (N well below 1,000), which is not the
+target regime. Driver: `harness/bench_writer.sh`; reader:
+`harness/bench/writer_profile.py`; table: `harness/bench/writer_analyse.py`.
 
 **If phenotype batching is ever attempted, one trap is already known.**
 [From the same assessment; recorded because it is cheap to write down and

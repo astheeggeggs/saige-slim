@@ -1163,3 +1163,70 @@ modes. `test-step2-firth-solver.R` pins `qr` against P31 at 1e-10 (parsed) and t
 refusal of an unknown solver. The adoption run's timings (542 s wall for the scan,
 40 min for the standard tier) are NOT benchmarks: the machine was at load 100 from
 VS Code's C++ indexer, Docker and a second session; the -27% above is the number.
+
+## The serial step-2 writer does NOT cap `--nThreads`, at any model count (2026-09-06)
+
+The `next.md` item "format step-2 output rows on the workers" rested on an
+Amdahl argument: P models format P rows per marker on the one writer thread, so
+the serial fraction grows with P. Measured at HEAD `b11e6b07` (library rebuilt
+from it, md5 `41844865`), `sim50k`, `--minMAC=20`, the `step2_single` flags,
+`bash harness/bench_writer.sh w1 2` (driver + `writer_profile.py` +
+`writer_analyse.py` beside this file; rows in `writer.tsv`, trees in
+`profiles/writer_w1.*`). Decision rule fixed before the run: implement if
+w(5 models, 8 threads) >= 0.15, close if < 0.10.
+
+**w = writer / main-thread time inside `mainMarkerInCPP`** (1 ms `sample`):
+
+| cell | rows | T=1 | T=8 | us per row |
+|---|---|---|---|---|
+| 1 binary | 70,709 | 0.002 | 0.005 | 2.7 |
+| 1 quant | 70,709 | 0.004 | 0.014 | 2.0 |
+| 3 quant (worst case: smallest per-model kernel) | 212,127 | 0.008 | 0.021 | 1.9-2.0 |
+| 5 mixed (2 binary + 3 quant) | 353,545 | 0.003 | 0.009 | 2.4 |
+
+**Verdict: CLOSED.** The best case for the item is 1/(1-0.021) = **1.02x**.
+The writer's mechanism is real -- 74% of its samples are number formatting
+(`__put_num`/`num_put`/`snprintf`/`__dtoa`), 15% the `filebuf` write -- its
+magnitude is 2-3 us per row against 200-2,000 us of marker work, and it does
+not grow with P faster than the work does.
+
+Instrument controls, all before the verdict was read: writer samples are
+invariant with T within 3% on every cell (194/191, 142/143, 403/415, 843/849)
+and scale with ROWS not models (per-row cost 2.4 us at P=1 vs 2.1 us at P>1;
+the binary-vs-quant spread 2.7 vs 2.0 is row width, binary rows carry 4-8
+more columns). `sample` attaches after the R prologue and its cadence slows
+under 8 busy threads (main-thread samples 57-90% of timed wall), which
+affects absolute seconds and not the within-profile ratios that w is.
+
+**Where the lost thread scaling actually is: CPU inflation, not a serial
+section.** Wall time, mean of 2 reps, T = 1/4/8; user CPU beside it:
+
+| cell | wall 1 | wall 4 | wall 8 | speedup 4 / 8 | user 1 -> 4 -> 8 |
+|---|---|---|---|---|---|
+| 1 binary | 146.6 | 69.6 | 70.4 | 2.10x / 2.08x | 141 -> 242 -> 368 |
+| 1 quant | 44.4 | 17.3 | 14.5 | 2.56x / 3.07x | 41 -> 52 -> 67 |
+| 3 quant | 66.0 | 28.8 | 26.9 | 2.29x / 2.46x | 60 -> 84 -> 120 |
+| 5 mixed | 274.4 | 111.1 | 118.1 | 2.47x / 2.32x | 266 -> 391 -> 724 |
+
+An Amdahl fit reads these as s = 0.19-0.41, but the profiles refuse that
+reading: at T=8 the main thread spends 91-95% of its time doing marker work as
+the eighth worker, 2-8% waiting on the pool and <= 1.2% in writer + post-passes.
+The same work costs 1.3-2.7x more user CPU at T=8 than at T=1 -- the
+allocation churn and hyperthreading (8 logical on 4 physical cores) that
+`docs/state/handoff-2026-09-05-binary-profile.md` located -- and T/inflation
+predicts the T=4 speedups to within ~10% (binary 2.34 vs 2.10, 5-mixed 2.72 vs
+2.47), the residual being two desktop processes (VS Code's C++ indexer, a
+Chrome renderer, ~30% of a core each) that also cost binary rep 2 up to 18%
+against rep 1. **On this machine T=8 is no faster than T=4 for anything with a
+binary model**, and the P=1 "serial fraction" of 0.16-0.23 from the upstream
+comparison is this inflation, not serial code.
+
+Side findings, same runs: after the 09-05/06 kernel work the binary scan is
+146.6 s (252 s at `fa0ec961`) and the quant scan 44.4 s (62.5 s); the 5-model
+manifest now buys **1.55x** over five serial runs (426 s -> 274 s; Phase 3
+measured 2.99x) and the 3-quant manifest 2.02x, because the shared prepare has
+less per-model work left to amortise. All outputs byte-identical across T and
+against the single-model runs (driver-enforced `cmp` on every pair). Swap
+(3 GB) went 1.53 -> 2.34 GB peak with >= 730 MB free and 57-64% system memory
+free throughout; the scan's 2.5-2.9 GB RSS is the mmap'd `.bed`, and the swap
+growth is idle desktop pages, not pressure.
