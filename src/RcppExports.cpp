@@ -535,6 +535,28 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// read_singleInGroupTemp
+std::vector<std::string> read_singleInGroupTemp(int t_modelIndex);
+RcppExport SEXP _SAIGE_read_singleInGroupTemp(SEXP t_modelIndexSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type t_modelIndex(t_modelIndexSEXP);
+    rcpp_result_gen = Rcpp::wrap(read_singleInGroupTemp(t_modelIndex));
+    return rcpp_result_gen;
+END_RCPP
+}
+// append_singleInGroup
+void append_singleInGroup(int t_modelIndex, std::vector<std::string> t_lines);
+RcppExport SEXP _SAIGE_append_singleInGroup(SEXP t_modelIndexSEXP, SEXP t_linesSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type t_modelIndex(t_modelIndexSEXP);
+    Rcpp::traits::input_parameter< std::vector<std::string> >::type t_lines(t_linesSEXP);
+    append_singleInGroup(t_modelIndex, t_lines);
+    return R_NilValue;
+END_RCPP
+}
 // copy_singleInGroup
 void copy_singleInGroup(int t_modelIndex);
 RcppExport SEXP _SAIGE_copy_singleInGroup(SEXP t_modelIndexSEXP) {
@@ -2109,6 +2131,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_testQnormTwoSidedLogPInCPP", (DL_FUNC) &_SAIGE_testQnormTwoSidedLogPInCPP, 1},
     {"_SAIGE_set_flagSparseGRM_cur_SAIGE", (DL_FUNC) &_SAIGE_set_flagSparseGRM_cur_SAIGE, 1},
     {"_SAIGE_set_flagSparseGRM_cur_SAIGE_org", (DL_FUNC) &_SAIGE_set_flagSparseGRM_cur_SAIGE_org, 0},
+    {"_SAIGE_read_singleInGroupTemp", (DL_FUNC) &_SAIGE_read_singleInGroupTemp, 1},
+    {"_SAIGE_append_singleInGroup", (DL_FUNC) &_SAIGE_append_singleInGroup, 2},
     {"_SAIGE_copy_singleInGroup", (DL_FUNC) &_SAIGE_copy_singleInGroup, 1},
     {"_SAIGE_lchooseThreadsafeDiffCountInCPP", (DL_FUNC) &_SAIGE_lchooseThreadsafeDiffCountInCPP, 1},
     {"_SAIGE_closeGenoFile_plink", (DL_FUNC) &_SAIGE_closeGenoFile_plink, 0},

@@ -1028,8 +1028,6 @@ SAIGE.Region <- function(mu,
   cth_chunk_to_output <- 1
   iswriteMarkerList <- rep(FALSE, nModels)
   iswriteRegion <- rep(isappend, nModels)
-  # per-model, per-region state the legacy scalars held for the one model
-  cctpvalK <- rep(NA_real_, nModels)
   i <- indexChunk + 1
   nEachChunk <- 1 # LEDGER #25 FIXED: was numberRegionsInChunk, still 0 here
 
@@ -1056,7 +1054,7 @@ SAIGE.Region <- function(mu,
   # sentinel and the implicit legacy beta path) and t_includeNoWeights
   # appends the all-ones "No_Weights" set; C++ composes the sets in the same
   # custom -> beta -> No_Weights order as weight_sets/region_weight_names.
-  weight_matrix_for_CPP <- function() {
+  weight_matrix_for_CPP <- function(WEIGHT) {
     if (is.matrix(WEIGHT)) {
       matrix(as.numeric(WEIGHT), nrow = nrow(WEIGHT), ncol = ncol(WEIGHT))
     } else {
@@ -1071,11 +1069,12 @@ SAIGE.Region <- function(mu,
   # Step 4 (2026-09-06): mainRegionInCPP tests a vector of null models per
   # call and returns one output list per model; a single-model run passes
   # index 0 and takes the first (only) element, byte-identical to before.
-  run_mainRegionInCPP <- function(idx) {
+  # S is the region's state record (built in the loop below).
+  run_mainRegionInCPP <- function(idx, S) {
     mainRegionInCPP(
       genoType,
-      region$genoIndex,
-      annoIndicatorMat,
+      S$region$genoIndex,
+      S$annoIndicatorMat,
       maxMAFlist,
       OutputFile,
       # the FIRST model of this call's subset: C++ checks it against that
@@ -1087,7 +1086,7 @@ SAIGE.Region <- function(mu,
       P2Mat,
       regionTestType,
       isImputation,
-      weight_matrix_for_CPP(),
+      weight_matrix_for_CPP(S$WEIGHT),
       beta_params_for_CPP,
       includeNoWeightsSet,
       region_weight_names,
@@ -1095,13 +1094,251 @@ SAIGE.Region <- function(mu,
       weight_cond,
       is_single_in_groupTest,
       is_output_markerList_in_groupTest,
-      annolistsub,
-      regionName,
+      S$annolistsub,
+      S$regionName,
       is_fastTest,
       is_output_moreDetails,
       nThreads,
       as.integer(idx)
     )
+  }
+
+  # ---- Step 5 (2026-09-06): the SKAT-O cells batched across regions -------
+  # With the pool (--nThreads > 1 on a SKAT-O run) a region's post-processing
+  # is split into stages so that the cells of a BATCH of regions -- a
+  # group-file chunk, or fewer when the held C++ output lists pass
+  # SAIGE_SKATO_BATCH_MB -- go to the pool in ONE call (R/SkatoParallel.R):
+  #   A  per region, in order: C++ fast pass, stash the single-variant temp
+  #      rows, COLLECT the first-pass cells                      (loop body)
+  #   B  one pool call for the batch                          (flushSkatoBatch)
+  #   C  per region, in order: SERVE, decide escalation, C++ accurate pass
+  #      for the escalated models, append the stashed rows for the others,
+  #      COLLECT the escalated models' cells                  (regionEscalate)
+  #   D  one pool call for the escalated cells, then per region in order:
+  #      SERVE them, marker list, result rows                  (regionFinish)
+  # Serial (--nThreads=1) and BURDEN runs take A, C, D region by region with
+  # one region_postprocess drive each: the same stages, no batch, no pool.
+  useSkatoBatch <- regionTestType != "BURDEN" && canParallelSkato(nThreadsSKATO)
+  skatoBatch <- list()
+  skatoBatchBytes <- 0
+  skatoBatchBudget <- skatoBatchBudgetBytes()
+
+  # region_postprocess's argument list for model k of region S.
+  postArgs <- function(S, k, is_rerun) {
+    list(
+      S$outLists[[k]],
+      mu[[k]],
+      S$WEIGHT,
+      traitTypes[k],
+      r.corr,
+      regionTestType,
+      isCondition,
+      S$annolistsub,
+      maxMAFlist,
+      S$regionName,
+      is_single_in_groupTest,
+      is_rerun = is_rerun,
+      # the per-set carry-forward cache of the first pass; at K = 1 this is
+      # list(resultDF), exactly the legacy carry-over (NULL on the first pass)
+      resultDF_carryover = if (is_rerun) S$resultDFListK[[k]] else NULL,
+      weight_sets = weight_sets
+    )
+  }
+  # Bind one model's post-processing result into the region's state.
+  takePost <- function(S, k, res) {
+    # `[k] <- list(...)` rather than `[[k]] <-`: assigning NULL into a list
+    # DELETES the element and shifts the models after it, which bound one
+    # model's rows to another's on sim50k
+    S$pvalRegionK[k] <- list(res$pval.Region)
+    if ("cctpval" %in% names(res)) {
+      S$cctpvalK[k] <- res$cctpval
+    }
+    if ("resultDFList" %in% names(res)) {
+      S$resultDFListK[[k]] <- res$resultDFList
+    }
+    S
+  }
+  # Stage C for one region: escalate the models whose Cauchy p crosses the
+  # cutoff (their accurate pass writes their single-variant rows itself) and
+  # append the stashed fast-pass rows for the others. Batched, the escalated
+  # models' cells are collected here and served in regionFinish.
+  regionEscalate <- function(S) {
+    # the counts are genotype-only, identical for every model
+    outList <- S$outLists[[1]]
+    S$runCore <- (sum(outList$NumUltraRare_GroupVec) + sum(outList$NumRare_GroupVec)) > 0
+    S$esc <- integer(0)
+    S$jobs2 <- list()
+    if (S$runCore && regionTestType != "BURDEN" && is_fastTest) {
+      # The models whose Cauchy p crosses the cutoff are re-run on the
+      # accurate pass in ONE call; the others keep the fast pass and
+      # their single-in-group rows are copied over. One model: the
+      # legacy escalate-or-copy.
+      esc <- which(S$cctpvalK < pval_cutoff_for_fastTest)
+      if (length(esc) > 0) {
+        # if(cctpval < 0.1 & is_fastTest){
+        cat("Non-fast test is performed\n")
+        set_flagSparseGRM_cur_SAIGE(TRUE)
+
+        rerun <- run_mainRegionInCPP(modelIdx[esc], S)
+        for (j in seq_along(esc)) {
+          S$outLists[[esc[j]]] <- rerun[[j]]
+        }
+        S$esc <- esc
+        if (useSkatoBatch) {
+          S$jobs2 <- lapply(esc, function(k) skatoCollect(postArgs(S, k, TRUE)))
+        } else {
+          for (k in esc) {
+            S <- takePost(S, k, do.call(region_postprocess, postArgs(S, k, TRUE)))
+          }
+        }
+      }
+      for (k in setdiff(seq_len(nModels), esc)) {
+        # cctpval < 0.05)
+        if (!is.null(S$tempSingle[[k]])) {
+          append_singleInGroup(k - 1L, S$tempSingle[[k]])
+        }
+      }
+    } # if(is_fastTest){
+    S
+  }
+  # Stage D for one region: the marker list and the result rows, into the
+  # chunk accumulators of the enclosing frame.
+  regionFinish <- function(S) {
+    if (!S$runCore) {
+      return(invisible(NULL))
+    }
+    outList <- S$outLists[[1]]
+    SNP <- S$SNP
+    annolistsub <- S$annolistsub
+    regionName <- S$regionName
+
+    Output_MarkerList <- NULL
+    if (is_output_markerList_in_groupTest) {
+      for (j in 1:length(annolistsub)) {
+        AnnoName <- annolistsub[j]
+        for (m in 1:length(maxMAFlist)) {
+          jm <- (j - 1) * (length(maxMAFlist)) + m
+          maxMAFName <- maxMAFlist[m]
+          # the marker list is weight-independent (real markers belong to
+          # the same (anno, max_MAF) cell in every weight set), so read
+          # the first weight set's column: jmr with r = 1, which is jm
+          # when there is a single set
+          jmr1 <- (jm - 1) * nWeightSetsUsed + 1
+          tempPos <- which(outList$annoMAFIndicatorMat[, jmr1] > 0)
+          marker_rare_pos <- which(outList$markerIndcatorVec == 1)
+          marker_ultrarare_pos <- which(outList$markerIndcatorVec == 2)
+          if (length(tempPos) > 0) {
+            if (length(marker_rare_pos) > 0) {
+              markerind_b <- which(marker_rare_pos %in% tempPos)
+              if (length(markerind_b) > 0) {
+                markerind <- marker_rare_pos[markerind_b]
+                SNPlist_rare <- paste(SNP[markerind], collapse = ",")
+              } else {
+                SNPlist_rare <- ""
+              }
+            } else {
+              SNPlist_rare <- ""
+            }
+            if (length(marker_ultrarare_pos) > 0) {
+              markerind_UR_b <- which(marker_ultrarare_pos %in% tempPos)
+              if (length(markerind_UR_b) > 0) {
+                markerindUR <- marker_ultrarare_pos[markerind_UR_b]
+                SNPlist_Ultra_rare <- paste(SNP[markerindUR], collapse = ",")
+              } else {
+                SNPlist_Ultra_rare <- ""
+              }
+            } else {
+              SNPlist_Ultra_rare <- ""
+            }
+            Output_MarkerList <- rbind(
+              Output_MarkerList,
+              c(
+                regionName,
+                AnnoName,
+                maxMAFName,
+                SNPlist_rare,
+                SNPlist_Ultra_rare
+              )
+            )
+          }
+        }
+      }
+    }
+
+    if (is_output_markerList_in_groupTest) {
+      colnames(Output_MarkerList) <- c(
+        "Region",
+        "Group",
+        "max_MAF",
+        "Rare_Variants",
+        "Ultra_Rare_Variants"
+      )
+      Output_MarkerList.all <<- rbind(Output_MarkerList.all, Output_MarkerList)
+    } else {
+      Output_MarkerList.all <<- NULL
+    }
+
+    # LEDGER #81 FIXED: i was advanced past this region when it was read,
+    # so the index recorded one past the last region and the completion
+    # line was never written (End compared i with nRegions).
+    indexChunk <<- S$i - 1
+    # ... and on a RESTART the first chunk written must APPEND, not truncate:
+    # Start drove append = FALSE from cth_chunk_to_output alone, which is 1
+    # on a restart too (unreachable before #25, so never seen).
+    Start <<- (cth_chunk_to_output == 1) && !isappend
+    End <<- (indexChunk == nRegions)
+    if (regionTestType != "BURDEN") {
+      for (k in seq_len(nModels)) {
+        pval.Region.all[[k]] <<- rbind(pval.Region.all[[k]], S$pvalRegionK[[k]])
+      }
+    }
+    invisible(NULL)
+  }
+  # Stages B, C and D for the held batch: one pool call for the first-pass
+  # cells, then per region in order serve / escalate / collect, one pool
+  # call for the escalated cells, then per region in order serve / finish.
+  # The answers are consumed sequentially in the order the jobs were
+  # collected (region, then model), which skatoServe's counters check.
+  flushSkatoBatch <- function() {
+    cl <- startSkatoCluster(nThreadsSKATO)
+    flatten <- function(x) {
+      out <- do.call(c, do.call(c, x))
+      if (is.null(out)) list() else out
+    }
+    jobs <- flatten(lapply(skatoBatch, `[[`, "jobs"))
+    # Printed per batch so a test can assert the batching actually happened
+    # (a knob that never arrived would otherwise pass as green, LEDGER #30).
+    cat("SKAT-O batch: ", length(jobs), " cell(s) from ", length(skatoBatch),
+        " region(s) to the pool\n", sep = "")
+    answers <- skatoEvaluate(cl, jobs)
+    pos <- 0L
+    for (b in seq_along(skatoBatch)) {
+      S <- skatoBatch[[b]]
+      for (k in seq_len(nModels)) {
+        nk <- length(S$jobs[[k]])
+        S <- takePost(S, k, skatoServe(postArgs(S, k, FALSE), answers[pos + seq_len(nk)]))
+        pos <- pos + nk
+      }
+      skatoBatch[[b]] <<- regionEscalate(S)
+    }
+    jobs <- flatten(lapply(skatoBatch, `[[`, "jobs2"))
+    if (length(jobs) > 0) {
+      cat("SKAT-O batch: ", length(jobs), " escalated cell(s) to the pool\n", sep = "")
+    }
+    answers <- skatoEvaluate(cl, jobs)
+    pos <- 0L
+    for (b in seq_along(skatoBatch)) {
+      S <- skatoBatch[[b]]
+      for (j in seq_along(S$esc)) {
+        nk <- length(S$jobs2[[j]])
+        S <- takePost(S, S$esc[j], skatoServe(postArgs(S, S$esc[j], TRUE), answers[pos + seq_len(nk)]))
+        pos <- pos + nk
+      }
+      regionFinish(S)
+    }
+    skatoBatch <<- list()
+    skatoBatchBytes <<- 0
+    invisible(NULL)
   }
   while (i <= nRegions) {
     # for(i in (indexChunk+1):nRegions){
@@ -1180,8 +1417,6 @@ SAIGE.Region <- function(mu,
           )
         }
 
-        annoIndicatorMat <- region$annoIndicatorMat
-
         # chrom = region$chrom
         print(paste0(
           "Analyzing Region ",
@@ -1192,235 +1427,72 @@ SAIGE.Region <- function(mu,
           nRegions,
           ")."
         ))
-        # tp1 = proc.time()
-        # gc()
+        # Everything the region's later stages read, so that a batch of
+        # regions can be held while the pool evaluates their cells (step 5).
+        S <- list(
+          regionName = regionName,
+          i = i,
+          SNP = SNP,
+          WEIGHT = WEIGHT,
+          annolistsub = annolistsub,
+          annoIndicatorMat = region$annoIndicatorMat,
+          region = region,
+          cctpvalK = rep(NA_real_, nModels),
+          pvalRegionK = vector("list", nModels),
+          resultDFListK = vector("list", nModels) # the per-set carry-forward cache, per model
+        )
+        rm(region)
 
         if (!is_fastTest) {
           set_flagSparseGRM_cur_SAIGE_org()
         } else {
           set_flagSparseGRM_cur_SAIGE(FALSE)
         }
-        outLists <- run_mainRegionInCPP(modelIdx)   # one list per model
+        S$outLists <- run_mainRegionInCPP(modelIdx, S)   # one list per model
 
         if (regionTestType == "BURDEN" & is_fastTest) {
           # BURDEN decides in C++ whether the fast pass's answer is kept
           # (iswriteOutput); the models it did not write are re-run on the
           # accurate pass together. One model: exactly the legacy re-run.
-          need <- which(vapply(outLists, function(o) !is.null(o$iswriteOutput) && !isTRUE(o$iswriteOutput), logical(1)))
+          need <- which(vapply(S$outLists, function(o) !is.null(o$iswriteOutput) && !isTRUE(o$iswriteOutput), logical(1)))
           if (length(need) > 0) {
             set_flagSparseGRM_cur_SAIGE(TRUE)
 
 
-            outLists[need] <- run_mainRegionInCPP(modelIdx[need])
+            S$outLists[need] <- run_mainRegionInCPP(modelIdx[need], S)
           }
         }
 
-        # print("time_mainRegionInCPP")
-        # print(time_mainRegionInCPP)
-        if (!is_fastTest) {
-          rm(region)
+        # The fast pass wrote each model's single-variant rows to that
+        # model's temp file, which the NEXT fast pass truncates. Read them
+        # now; regionEscalate appends them for the models the Cauchy screen
+        # clears, whenever that decision is made (step 5 defers it past the
+        # batch's pool call).
+        if (regionTestType != "BURDEN" && is_fastTest && is_single_in_groupTest) {
+          S$tempSingle <- lapply(seq_len(nModels), function(k) {
+            if (isTRUE(S$outLists[[k]]$iswriteOutput)) NULL else read_singleInGroupTemp(k - 1L)
+          })
         }
-        # rm(genoIndex)
-        # gc()
-        # tb0 = proc.time()
 
-        pvalRegionK <- vector("list", nModels)
-        resultDFListK <- vector("list", nModels)   # the per-set carry-forward cache, per model
-        for (k in seq_len(nModels)) {
-          res_postprocess <- region_postprocess_parallel(
-            outLists[[k]],
-            mu[[k]],
-            WEIGHT,
-            traitTypes[k],
-            r.corr,
-            regionTestType,
-            isCondition,
-            annolistsub,
-            maxMAFlist,
-            regionName,
-            is_single_in_groupTest,
-            is_rerun = FALSE,
-            weight_sets = weight_sets,
-            nThreads = nThreadsSKATO
-          )
-          pvalRegionK[[k]] <- res_postprocess$pval.Region
-          if ("cctpval" %in% names(res_postprocess)) {
-            cctpvalK[k] <- res_postprocess$cctpval
+        if (useSkatoBatch) {
+          S$jobs <- lapply(seq_len(nModels), function(k) skatoCollect(postArgs(S, k, FALSE)))
+          skatoBatch[[length(skatoBatch) + 1L]] <- S
+          skatoBatchBytes <- skatoBatchBytes + as.numeric(utils::object.size(S$outLists))
+        } else {
+          for (k in seq_len(nModels)) {
+            S <- takePost(S, k, do.call(region_postprocess, postArgs(S, k, FALSE)))
           }
-          if ("resultDFList" %in% names(res_postprocess)) {
-            resultDFListK[[k]] <- res_postprocess$resultDFList
-          }
+          S <- regionEscalate(S)
+          regionFinish(S)
         }
-        # the counts are genotype-only, identical for every model
-        outList <- outLists[[1]]
-
-        if ((sum(outList$NumUltraRare_GroupVec) + sum(outList$NumRare_GroupVec)) > 0) {
-          if (regionTestType != "BURDEN") {
-            # ta1 = proc.time()
-            # print("ta0 - tb0")
-            # print(ta0 - tb0)
-            # print("ta1 - ta0")
-            # print(ta1 - ta0)
-
-
-            if (is_fastTest) {
-              # The models whose Cauchy p crosses the cutoff are re-run on the
-              # accurate pass in ONE call; the others keep the fast pass and
-              # their single-in-group rows are copied over. One model: the
-              # legacy escalate-or-copy.
-              esc <- which(cctpvalK < pval_cutoff_for_fastTest)
-              if (length(esc) > 0) {
-                # if(cctpval < 0.1 & is_fastTest){
-                cat("Non-fast test is performed\n")
-                set_flagSparseGRM_cur_SAIGE(TRUE)
-
-                rerun <- run_mainRegionInCPP(modelIdx[esc])
-                for (j in seq_along(esc)) {
-                  k <- esc[j]
-                  # (no `pvalRegionK[[k]] <- NULL` here: assigning NULL into a
-                  # list DELETES the element and shifts the models after it,
-                  # which bound one model's rows to another's on sim50k)
-                  outLists[[k]] <- rerun[[j]]
-                  res_postprocess <- region_postprocess_parallel(
-                    outLists[[k]],
-                    mu[[k]],
-                    WEIGHT,
-                    traitTypes[k],
-                    r.corr,
-                    regionTestType,
-                    isCondition,
-                    annolistsub,
-                    maxMAFlist,
-                    regionName,
-                    is_single_in_groupTest,
-                    is_rerun = TRUE,
-                    # the per-set carry-forward cache; at K = 1 this is
-                    # list(resultDF), exactly the legacy carry-over
-                    resultDF_carryover = resultDFListK[[k]],
-                    weight_sets = weight_sets,
-                    nThreads = nThreadsSKATO
-                  )
-                  pvalRegionK[[k]] <- res_postprocess$pval.Region
-                  if ("cctpval" %in% names(res_postprocess)) {
-                    cctpvalK[k] <- res_postprocess$cctpval
-                  }
-                  if ("resultDFList" %in% names(res_postprocess)) {
-                    resultDFListK[[k]] <- res_postprocess$resultDFList
-                  }
-                }
-                outList <- outLists[[1]]
-              }
-              for (k in setdiff(seq_len(nModels), esc)) {
-                # cctpval < 0.05)
-                copy_singleInGroup(k - 1L)
-              }
-            } # if(is_fastTest){
-          } # if(regionTestType != "BURDEN"){
-
-
-          Output_MarkerList <- NULL
-          if (is_output_markerList_in_groupTest) {
-            for (j in 1:length(annolistsub)) {
-              AnnoName <- annolistsub[j]
-              for (m in 1:length(maxMAFlist)) {
-                jm <- (j - 1) * (length(maxMAFlist)) + m
-                maxMAFName <- maxMAFlist[m]
-                # the marker list is weight-independent (real markers belong to
-                # the same (anno, max_MAF) cell in every weight set), so read
-                # the first weight set's column: jmr with r = 1, which is jm
-                # when there is a single set
-                jmr1 <- (jm - 1) * nWeightSetsUsed + 1
-                tempPos <- which(outList$annoMAFIndicatorMat[, jmr1] > 0)
-                marker_rare_pos <- which(outList$markerIndcatorVec == 1)
-                marker_ultrarare_pos <- which(outList$markerIndcatorVec == 2)
-                if (length(tempPos) > 0) {
-                  if (length(marker_rare_pos) > 0) {
-                    markerind_b <- which(marker_rare_pos %in% tempPos)
-                    if (length(markerind_b) > 0) {
-                      markerind <- marker_rare_pos[markerind_b]
-                      SNPlist_rare <- paste(SNP[markerind], collapse = ",")
-                    } else {
-                      SNPlist_rare <- ""
-                    }
-                  } else {
-                    SNPlist_rare <- ""
-                  }
-                  if (length(marker_ultrarare_pos) > 0) {
-                    markerind_UR_b <- which(marker_ultrarare_pos %in% tempPos)
-                    if (length(markerind_UR_b) > 0) {
-                      markerindUR <- marker_ultrarare_pos[markerind_UR_b]
-                      SNPlist_Ultra_rare <- paste(SNP[markerindUR], collapse = ",")
-                    } else {
-                      SNPlist_Ultra_rare <- ""
-                    }
-                  } else {
-                    SNPlist_Ultra_rare <- ""
-                  }
-                  Output_MarkerList <- rbind(
-                    Output_MarkerList,
-                    c(
-                      regionName,
-                      AnnoName,
-                      maxMAFName,
-                      SNPlist_rare,
-                      SNPlist_Ultra_rare
-                    )
-                  )
-                }
-              }
-            }
-          }
-
-          # ta2 = proc.time()
-          # print("ta2 - ta1")
-          # print(ta2 - ta1)
-          if (is_output_markerList_in_groupTest) {
-            colnames(Output_MarkerList) <- c(
-              "Region",
-              "Group",
-              "max_MAF",
-              "Rare_Variants",
-              "Ultra_Rare_Variants"
-            )
-            Output_MarkerList.all <- rbind(Output_MarkerList.all, Output_MarkerList)
-          } else {
-            Output_MarkerList.all <- NULL
-          }
-
-          # LEDGER #81 FIXED: i was advanced past this region when it was read,
-          # so the index recorded one past the last region and the completion
-          # line was never written (End compared i with nRegions).
-          indexChunk <- i - 1
-          # ... and on a RESTART the first chunk written must APPEND, not truncate:
-          # Start drove append = FALSE from cth_chunk_to_output alone, which is 1
-          # on a restart too (unreachable before #25, so never seen).
-          Start <- (cth_chunk_to_output == 1) && !isappend
-          End <- (indexChunk == nRegions)
-          if (regionTestType != "BURDEN") {
-            for (k in seq_len(nModels)) {
-              pval.Region.all[[k]] <- rbind(pval.Region.all[[k]], pvalRegionK[[k]])
-            }
-          }
-
-
-
-          if (is_output_markerList_in_groupTest) {
-            rm(Output_MarkerList)
-          }
-
-          rm(outList)
-          rm(outLists)
-          rm(pvalRegionK)
-          if (regionTestType != "BURDEN") {
-            # the per-set carry-forward cache is region-local, exactly like
-            # the legacy resultDF
-            rm(resultDFListK)
-          }
-          # (per-iteration gc() removed in Phase 4: it dominated the profile; R collects on demand)
-        } # if(length(noNAIndices) > 0){
+        rm(S)
       } else {
         # if(!is.null(region)){
         cat(regionName, " is empty.\n")
+      }
+      if (useSkatoBatch && length(skatoBatch) > 0 &&
+          (mth == numberRegionsInChunk || skatoBatchBytes > skatoBatchBudget)) {
+        flushSkatoBatch()
       }
 
 

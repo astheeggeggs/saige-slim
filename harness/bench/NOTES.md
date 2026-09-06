@@ -1577,3 +1577,41 @@ escalates exactly the smaller-p model, in both manifest orders, with the
 "Non-fast test is performed" line count asserting which models escalated.
 Seconds, where sim50k takes an hour -- and red against a scratch install with
 the two defects re-introduced.
+
+## Step 5 (2026-09-06): the SKAT-O cells dispatched once per BATCH of regions
+
+**Design.** `R/SkatoParallel.R` fed the fork pool once per region: ~15 cells
+per region, `clusterApplyLB`, then a barrier before the next region's C++
+call. Step 5 keeps `clusterApplyLB` and one task per cell, but collects the
+cells of every region in a batch (a group-file chunk, or fewer regions when
+the held C++ output lists pass `SAIGE_SKATO_BATCH_MB`, default 512) and
+dispatches them in ONE call, sorted expensive-first by `ncol(Phi)`
+(longest-processing-time-first; cell cost spans 0.5-540 ms and the top 10%
+of cells hold 48% of the work, so the sort is what keeps the tail short).
+Then, in region order: serve, decide escalation, run the accurate C++ pass
+for the escalated models, copy the fast-pass single-variant rows for the
+others -- those rows are read from the C++ temp file right after each fast
+pass, because the next region's fast pass truncates it -- and the escalated
+regions' cells go through one more collect/dispatch/serve for the batch.
+BURDEN and `--nThreads=1` never enter the batch (region-by-region, one
+`region_postprocess` drive, exactly as before).
+
+**Prediction, written before the measurement.** The 2026-09-04 pool measured
+1.30x at 4 workers (204.5 -> 156.7 s, `sim50k` binary SKAT-O, C++ serial)
+against a 1.43x Amdahl ceiling (143 s): 13.7 s over 210 regions = 65 ms per
+region. Two costs make that gap: the per-region barrier (the last cell's
+tail, ~50 ms when the largest cell is 50-100 ms against an 87 ms ideal share)
+and the per-task master overhead (8-20 ms per region measured for the pool,
+which one-task-per-cell keeps). Batching removes ~200 of the 210 barriers:
+
+- pool-only, 4 workers: **1.30x -> 1.38-1.41x** (saves 9-11 s of 156.7 s);
+- on HEAD, where the C++ loop threads too (binary SKAT-O 1.69x at 4 threads,
+  ~121 s): the same 9-11 s off, **~110-112 s, 1.83-1.86x**, i.e. 7-9% less
+  wall than HEAD at 4 threads with user CPU unchanged (+-2%);
+- 8 workers should now beat 4 by a few seconds (the 2026-09-04 8 = 4 result
+  was the barrier's signature; the pool-only ceiling at 8 is 1.65x);
+- negative control: `--nThreads=1` wall unchanged (+-2%), every file
+  byte-identical at 1, 4 and 8 threads, single-model and five-model.
+
+If the gain is under ~4 s the barrier was not the gap and the per-task cost
+is: the next lever is jobs as LISTS of cells (fewer, larger tasks).

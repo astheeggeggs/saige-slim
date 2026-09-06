@@ -34,6 +34,16 @@
 # serve the answers back in call order. The second drive costs the loop's
 # non-SKAT work a second time; that is the price of not rewriting the most
 # intricate function in the package, and it is measured in NOTES.md.
+#
+# BATCHED ACROSS REGIONS (step 5, 2026-09-06). Feeding the pool once per
+# region left a barrier per region -- the last cell's tail -- which is what
+# held the pool at 1.30x against a 1.43x ceiling and made 8 workers no better
+# than 4. SAIGE.Region now collects the cells of a whole batch of regions
+# (skatoCollect), evaluates them in ONE pool call sorted expensive-first
+# (skatoEvaluate) and serves each region back in order (skatoServe); the
+# escalated regions' accurate-pass cells go round once more per batch. The
+# pieces are separate functions so the driver can interleave the C++ calls
+# and the single-variant row copies between them in region order.
 
 # One worker pool for the whole run. Created on first use, reused by every
 # region, and torn down by stopSkatoCluster().
@@ -97,21 +107,31 @@ canParallelSkato <- function(nThreads) {
     nThreads > 1 && .Platform$OS.type == "unix"
 }
 
-#' Drive `region_postprocess` with its SKAT-O cells evaluated in parallel.
-#'
-#' `...` is passed through verbatim, so this stays correct as
-#' `region_postprocess`'s signature grows.
+#' The memory the driver may hold in C++ output lists before it dispatches a
+#' batch early (`SAIGE_SKATO_BATCH_MB`, default 512). Step 5 (2026-09-06)
+#' evaluates the SKAT-O cells of a whole batch of regions in ONE pool call,
+#' which means holding every region's `mainRegionInCPP` output until its
+#' answers are back: ~7-10 MB per region and model at N = 50,000 (the N x
+#' cells `genoSumMat` dominates), so a 100-region chunk of five models would
+#' be several GB. The budget caps the batch below the chunk when needed; a
+#' batch of one region is the 2026-09-04 per-region pool.
 #' @noRd
-region_postprocess_parallel <- function(..., nThreads) {
-  if (!canParallelSkato(nThreads)) {
-    return(region_postprocess(...))
-  }
+skatoBatchBudgetBytes <- function() {
+  mb <- suppressWarnings(as.numeric(Sys.getenv("SAIGE_SKATO_BATCH_MB", "512")))
+  if (is.na(mb) || mb < 0) mb <- 512
+  mb * 1024^2
+}
 
-  # --- pass 1: collect -----------------------------------------------------
-  # The placeholder must be shaped like a real answer so the loop's arithmetic
-  # (ACAT-V/ACAT-O combination, resultDF construction) runs without error. Its
-  # VALUES are discarded with the rest of this pass; 0.5 is used because it is
-  # a legal p-value everywhere one is consumed.
+#' COLLECT the SKAT-O cells one `region_postprocess` drive would test.
+#'
+#' `args` is the argument list of that drive (everything but `skat_fun`). The
+#' placeholder answer must be shaped like a real one so the loop's arithmetic
+#' (ACAT-V/ACAT-O combination, resultDF construction) runs without error; its
+#' VALUES are discarded with the rest of this pass, 0.5 being a legal p-value
+#' everywhere one is consumed. Returns the list of (Score, Phi, r.corr,
+#' regionTestType) jobs, in call order.
+#' @noRd
+skatoCollect <- function(args) {
   st <- new.env(parent = emptyenv())
   st$jobs <- list()
   collect <- function(Score, Phi, r.corr, regionTestType) {
@@ -120,42 +140,78 @@ region_postprocess_parallel <- function(..., nThreads) {
     list(Pvalue_SKATO = 0.5, Pvalue_Burden = 0.5, Pvalue_SKAT = 0.5,
          BETA_Burden = 0, SE_Burden = 1)
   }
-  invisible(region_postprocess(..., skat_fun = collect))
+  invisible(do.call(region_postprocess, c(args, list(skat_fun = collect))))
+  st$jobs
+}
 
-  # Nothing to test (a region with no polymorphic cell), or so little that the
-  # round trip would cost more than it saves: fall through to the serial path,
-  # which also re-runs the loop only once.
-  if (length(st$jobs) < 2L) {
-    return(region_postprocess(...))
+#' Evaluate a batch of collected cells on the pool; answers in job order.
+#'
+#' One task per cell, `clusterApplyLB` (load-BALANCED: cell cost spans three
+#' orders of magnitude, 0.5 ms for a single-marker cell to 540 ms for the
+#' worst, and the top 10% of cells hold 48% of the total, so static
+#' round-robin would routinely hand one worker most of the work). The cells
+#' are dispatched expensive-first -- longest-processing-time-first on the
+#' free proxy `ncol(Phi)`, the Davies integration being over Phi's
+#' eigenvalues -- so the batch's tail is a small cell, not a large one; the
+#' answers are put back in call order before they are served. Ties keep call
+#' order (`order` is stable), and the order of EVALUATION cannot reach the
+#' bytes anyway: each answer is a pure function of its own cell.
+#' @noRd
+skatoEvaluate <- function(cl, jobs) {
+  if (length(jobs) == 0L) {
+    return(list())
   }
+  cost <- vapply(jobs, function(j) as.numeric(NCOL(j$Phi)), numeric(1))
+  ord <- order(-cost)
+  answers <- vector("list", length(jobs))
+  answers[ord] <- parallel::clusterApplyLB(cl, jobs[ord], skatoEvalJob)
+  answers
+}
 
-  # --- pass 2: evaluate in parallel ---------------------------------------
-  cl <- startSkatoCluster(nThreads)
-  # Load-BALANCED: cell cost spans three orders of magnitude (0.5 ms for a
-  # single-marker cell to 540 ms for the worst), and the top 10% of cells hold
-  # 48% of the total, so static round-robin scheduling would routinely hand one
-  # worker most of the work.
-  answers <- parallel::clusterApplyLB(cl, st$jobs, skatoEvalJob)
-
-  # --- pass 3: serve -------------------------------------------------------
-  # The cell loop's control flow does not depend on any p-value, so this drive
-  # asks for exactly the same cells in exactly the same order. The counter
-  # check is not decoration: if that ever stopped being true it would otherwise
-  # silently pair each cell with another cell's p-value.
+#' SERVE a batch's answers back into the same `region_postprocess` drive.
+#'
+#' The cell loop's control flow does not depend on any p-value, so this drive
+#' asks for exactly the cells the collecting drive found, in the same order.
+#' The counter checks are not decoration: if that ever stopped being true it
+#' would otherwise silently pair each cell with another cell's p-value.
+#' @noRd
+skatoServe <- function(args, answers) {
+  st <- new.env(parent = emptyenv())
   st$i <- 0L
   serve <- function(Score, Phi, r.corr, regionTestType) {
     st$i <- st$i + 1L
     if (st$i > length(answers)) {
-      stop("region_postprocess_parallel: the serving pass asked for more SKAT-O ",
-           "cells (", st$i, ") than the collecting pass found (", length(answers),
+      stop("skatoServe: the serving pass asked for more SKAT-O cells (", st$i,
+           ") than the collecting pass found (", length(answers),
            "). The cell loop's control flow must not depend on a p-value.\n")
     }
     answers[[st$i]]
   }
-  out <- region_postprocess(..., skat_fun = serve)
+  out <- do.call(region_postprocess, c(args, list(skat_fun = serve)))
   if (st$i != length(answers)) {
-    stop("region_postprocess_parallel: the serving pass asked for ", st$i,
+    stop("skatoServe: the serving pass asked for ", st$i,
          " SKAT-O cells but the collecting pass found ", length(answers), ".\n")
   }
   out
+}
+
+#' Drive `region_postprocess` with its SKAT-O cells evaluated in parallel,
+#' for ONE region: collect, evaluate, serve. The driver batches regions
+#' itself (step 5); this composition is kept for a single region and for the
+#' unit tests of the three pieces. `...` is passed through verbatim, so this
+#' stays correct as `region_postprocess`'s signature grows.
+#' @noRd
+region_postprocess_parallel <- function(..., nThreads) {
+  if (!canParallelSkato(nThreads)) {
+    return(region_postprocess(...))
+  }
+  args <- list(...)
+  jobs <- skatoCollect(args)
+  # Nothing to test (a region with no polymorphic cell), or so little that the
+  # round trip would cost more than it saves: fall through to the serial path,
+  # which also re-runs the loop only once.
+  if (length(jobs) < 2L) {
+    return(region_postprocess(...))
+  }
+  skatoServe(args, skatoEvaluate(startSkatoCluster(nThreads), jobs))
 }

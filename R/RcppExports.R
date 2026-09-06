@@ -141,6 +141,14 @@ set_flagSparseGRM_cur_SAIGE_org <- function() {
     invisible(.Call('_SAIGE_set_flagSparseGRM_cur_SAIGE_org', PACKAGE = 'SAIGE'))
 }
 
+read_singleInGroupTemp <- function(t_modelIndex) {
+    .Call('_SAIGE_read_singleInGroupTemp', PACKAGE = 'SAIGE', t_modelIndex)
+}
+
+append_singleInGroup <- function(t_modelIndex, t_lines) {
+    invisible(.Call('_SAIGE_append_singleInGroup', PACKAGE = 'SAIGE', t_modelIndex, t_lines))
+}
+
 copy_singleInGroup <- function(t_modelIndex) {
     invisible(.Call('_SAIGE_copy_singleInGroup', PACKAGE = 'SAIGE', t_modelIndex))
 }

@@ -4865,21 +4865,46 @@ int writeOutfile_singleInGroup(bool t_isMoreOutput,
 
 }
 
+// The fastTest first pass writes a region's single-variant rows to a temp
+// file (one per model, truncated by every fast pass); a region the Cauchy
+// screen clears has them copied into the output by R. Since step 5
+// (2026-09-06) the SKAT-O cells of a whole batch of regions are evaluated
+// before any region's screen is decided, so R reads the temp right after the
+// fast pass (read_singleInGroupTemp) and appends the lines when the decision
+// is made (append_singleInGroup). getline strips the newline and the append
+// writes one back: the bytes are what copy_singleInGroup produced.
 // [[Rcpp::export]]
-void copy_singleInGroup(int t_modelIndex){
+std::vector<std::string> read_singleInGroupTemp(int t_modelIndex){
   RegionWriter & rw = regionWriter(t_modelIndex);
+  std::vector<std::string> lines;
   std::ifstream ini_file;
   ini_file.open(rw.prefixSingleInGroupTemp.c_str());
   if (!ini_file)
   {
     std::cout << "Error in Opening the temp file!" << std::endl;
+    return lines;
   }
   std::string str;
   while (getline(ini_file, str))
   {
-    rw.singleInGroup << str << "\n"; 	
+    lines.push_back(str);
   }
   ini_file.close();
+  return lines;
+}
+
+// [[Rcpp::export]]
+void append_singleInGroup(int t_modelIndex, std::vector<std::string> t_lines){
+  RegionWriter & rw = regionWriter(t_modelIndex);
+  for (std::size_t k = 0; k < t_lines.size(); k++)
+  {
+    rw.singleInGroup << t_lines[k] << "\n";
+  }
+}
+
+// [[Rcpp::export]]
+void copy_singleInGroup(int t_modelIndex){
+  append_singleInGroup(t_modelIndex, read_singleInGroupTemp(t_modelIndex));
 }
 
 // Exhaustively compare lchoose_threadsafe against Rf_lchoose over the integer

@@ -31,26 +31,42 @@ SKATO_SG <- c(
 cli2 <- run_saige_cli
 P6g <- file.path(saige_goldens, "step2", "plink_group_nofast.txt")
 P3g <- file.path(saige_goldens, "step2", "plink_group_cond_binary.txt")
+P35g <- file.path(saige_goldens, "step2", "plink_group_fastTest_escalated.txt")
 
 # Golden P6's command (group test, SKAT-O, is_fastTest=FALSE) plus --nThreads.
-skato_run <- function(nThreads, extra = character()) {
+# `extra` OVERRIDES a default of the same name: optparse keeps the FIRST value
+# of a repeated option, so appending "--is_fastTest=TRUE" after the default
+# "--is_fastTest=FALSE" used to leave the run on the non-fast path while the
+# test read as a fastTest one (P2/P35's bytes equal P6's only where LEDGER #51
+# says so, which is why it passed).
+skato_run <- function(nThreads, extra = character(), env = character()) {
   out <- file.path(tempfile(paste0("step2_skato_", nThreads, "_")), "out.txt")
   dir.create(dirname(out), recursive = TRUE)
-  st <- cli2("step2_SPAtests.R", c(
-    SKATO_G, SKATO_MODEL, SKATO_SG, extra,
+  defaults <- c(
     "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
     "--groupFile=./input/group_new_snpid.txt",
     "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
-    "--maxMAF_in_groupTest=0.0001,0.001,0.01", "--is_fastTest=FALSE",
+    "--maxMAF_in_groupTest=0.0001,0.001,0.01", "--is_fastTest=FALSE"
+  )
+  opt_name <- function(a) sub("=.*$", "", a)
+  defaults <- defaults[!opt_name(defaults) %in% opt_name(extra)]
+  st <- withr::with_envvar(env, cli2("step2_SPAtests.R", c(
+    SKATO_G, SKATO_MODEL, SKATO_SG, extra, defaults,
     paste0("--nThreads=", nThreads),
     paste0("--SAIGEOutputFile=", out)
-  ))
+  )))
   list(status = st, path = out,
        log = readLines(attr(st, "log"), warn = FALSE))
 }
 
 workers_reported <- function(lg) {
   sum(grepl("SKAT-O post-processing will use", lg, fixed = TRUE))
+}
+# The batch lines (step 5, 2026-09-06): "SKAT-O batch: N cell(s) from M
+# region(s) to the pool", one per batch; regions per batch as integers.
+regions_per_batch <- function(lg) {
+  b <- grep("^SKAT-O batch: .* from [0-9]+ region", lg, value = TRUE)
+  as.integer(sub("^SKAT-O batch: .* from ([0-9]+) region.*$", "\\1", b))
 }
 
 test_that("nThreads=1 leaves the group path untouched", {
@@ -77,6 +93,24 @@ test_that("nThreads>1 evaluates SKAT-O in parallel and is byte-identical", {
   # And the region marker loop threads too, and says so (2026-09-06).
   expect_true(any(grepl("Region marker loop will use 4 in-process threads",
                         r$log, fixed = TRUE)))
+  # Step 5: the cells of the whole chunk went to the pool in ONE batch. The
+  # bundled group file has two regions in one chunk; a batch of one region
+  # would be the 2026-09-04 per-region pool wearing the new label.
+  expect_identical(regions_per_batch(r$log), 2L)
+  expect_output_matches_golden(P6g, r$path)
+})
+
+test_that("a zero batch budget falls back to one region per batch, byte-identical", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+
+  # The other way round: with the memory budget at zero every region is its
+  # own batch, so the two regions produce two batch lines -- and the same
+  # bytes, since the batch boundary cannot reach a cell's answer.
+  r <- skato_run(4, env = c(SAIGE_SKATO_BATCH_MB = "0"))
+  expect_cli_ok(r$status)
+  expect_identical(workers_reported(r$log), 1L)
+  expect_identical(regions_per_batch(r$log), c(1L, 1L))
   expect_output_matches_golden(P6g, r$path)
 })
 
@@ -90,5 +124,28 @@ test_that("the conditional group path is byte-identical in parallel too", {
   r <- skato_run(4, extra)
   expect_cli_ok(r$status)
   expect_identical(workers_reported(r$log), 1L)
+  expect_identical(regions_per_batch(r$log), 2L)
   expect_output_matches_golden(P3g, r$path)
+})
+
+test_that("fastTest escalation inside a batch keeps the single rows in region order (P35)", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+
+  # Golden P35: SKAT-O with fastTest and the cutoff at 1, so EVERY region's
+  # Cauchy p crosses it and the accurate pass re-runs each (at the default
+  # cutoff no bundled gene escalates, LEDGER #51). Batched, the decision comes
+  # after the batch's pool call, so every region's fast-pass single-variant
+  # rows are stashed and the escalated models' cells go round the pool once
+  # more. P35's singleAssoc file pins the OTHER writer's rows (LEDGER #50),
+  # the region file the p-values.
+  r <- skato_run(4, c("--is_fastTest=TRUE", "--pval_cutoff_for_fastTest=1"))
+  expect_cli_ok(r$status)
+  expect_identical(workers_reported(r$log), 1L)
+  expect_identical(regions_per_batch(r$log), 2L)
+  expect_identical(sum(grepl("Non-fast test is performed", r$log, fixed = TRUE)), 2L)
+  expect_true(any(grepl("escalated cell(s) to the pool", r$log, fixed = TRUE)))
+  expect_output_matches_golden(P35g, r$path)
+  expect_output_matches_golden(paste0(P35g, ".singleAssoc.txt"),
+                               paste0(r$path, ".singleAssoc.txt"))
 })
