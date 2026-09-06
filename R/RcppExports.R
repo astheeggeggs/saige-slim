@@ -65,8 +65,8 @@ addSAIGEobjInCPP <- function(t_XVX, t_XXVX_inv, t_XV, t_XVX_inv_XV, t_Sigma_iXXS
     invisible(.Call('_SAIGE_addSAIGEobjInCPP', PACKAGE = 'SAIGE', t_XVX, t_XXVX_inv, t_XV, t_XVX_inv_XV, t_Sigma_iXXSigma_iX, t_X, t_S_a, t_res, t_mu2, t_mu, t_varRatio_sparse, t_varRatio_null, t_varRatio_null_noXadj, t_cateVarRatioMinMACVecExclude, t_cateVarRatioMaxMACVecInclude, t_SPA_Cutoff, t_tauvec, t_traitType, t_y, t_impute_method, t_flagSparseGRM, t_isFastTest, t_isnoadjCov, t_pval_cutoff_for_fastTest, t_locationMat, t_valueVec, t_dimNum, t_isCondition, t_condition_genoIndex, t_is_Firth_beta, t_pCutoffforFirth, t_firthSolver, t_offset, t_resout, t_groupIndex))
 }
 
-RegionSetUpConditional_binary_InCPP <- function(t_weight_cond) {
-    .Call('_SAIGE_RegionSetUpConditional_binary_InCPP', PACKAGE = 'SAIGE', t_weight_cond)
+RegionSetUpConditional_binary_InCPP <- function(t_weight_cond, t_modelIndex) {
+    .Call('_SAIGE_RegionSetUpConditional_binary_InCPP', PACKAGE = 'SAIGE', t_weight_cond, t_modelIndex)
 }
 
 mainRegionInCPP <- function(t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, t_P1Mat_placeholder, t_P2Mat_placeholder, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_forceWeightColumn, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput, t_nThreads, t_modelIdx) {
@@ -77,8 +77,8 @@ assign_conditionMarkers_factors <- function(t_genoType, t_genoIndex, t_n, t_weig
     invisible(.Call('_SAIGE_assign_conditionMarkers_factors', PACKAGE = 'SAIGE', t_genoType, t_genoIndex, t_n, t_weight_cond, t_modelIndex))
 }
 
-assign_conditionMarkers_factors_binary_region <- function(scalefactor_G2_cond) {
-    invisible(.Call('_SAIGE_assign_conditionMarkers_factors_binary_region', PACKAGE = 'SAIGE', scalefactor_G2_cond))
+assign_conditionMarkers_factors_binary_region <- function(scalefactor_G2_cond, t_modelIndex) {
+    invisible(.Call('_SAIGE_assign_conditionMarkers_factors_binary_region', PACKAGE = 'SAIGE', scalefactor_G2_cond, t_modelIndex))
 }
 
 fast_logistf_fit <- function(x, y, weight, offset, firth, init, maxit, maxstep, gconv, xconv, isfirthconverge) {

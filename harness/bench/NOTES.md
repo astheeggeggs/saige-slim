@@ -1513,3 +1513,67 @@ What is left serial in BURDEN at 4 threads, from the buckets: B1/D1 (the
 `genoSumMat` updates, ~3.8 s binary), accumulate (~2.3 s), the R side (~2 s).
 The next lever, if BURDEN at scale matters, is the one the previous handoff
 named: thread across REGIONS, which puts all of that on workers too.
+
+## Step 4: several null models per region, one genotype pass (2026-09-06, same day)
+
+Two commits. **4a (`1e02a154`)** made `mainRegionInCPP` test a vector of models per
+call: everything model-bound (the per-marker tests, P1/P2 and VarMat, the
+residualised `genoSumMat`, the per-index outputs, the case/control counts, the
+ultra-rare and BURDEN cell tests, the BURDEN emission, the output files, the
+exported list) in a `RegionModelWork` per model; everything genotype-bound (read,
+impute, QC, weights, the ultra-rare collapse, the MAC/count accumulators, the chunk
+bookkeeping, the shared `genoSumMat` accumulation) once. Pass A prepares each
+marker once and tests it for every model on the same worker; the cell tests run
+one (cell, model) per task; the shared `genoSumMat` is copied per model at the
+residualisation so one model sees the in-place sequence it always did. Models in
+one call share a sample set and agree on the conditioning set-up and the sparse
+GRM flag. One model is byte-identical: goldens all PASS, `sim50k` 24/24 files
+identical to step 3's at 1 and 4 threads, prepush FAIL 0 both modes, TSAN clean
+0/0 and plant 166/96 with differing bytes. **4b** accepts the model manifest on a
+region run when the models share a sample set (refused otherwise, before C++):
+one C++ call per region, per-model post-processing, per-model escalation (SKAT-O
+by Cauchy p, BURDEN by the C++ write decision), per-model files and indexes.
+Gate: `test-step2-region-multimodel.R` (two models on SKAT-O with escalation and
+on BURDEN at 4 threads, each model's three files byte-identical to its own
+single-model run; a one-row manifest reproduces P2 and P5 unsuffixed; different
+sample sets refused), goldens, prepush both modes.
+
+**What step 1's buckets predicted for a P-model manifest.** The shared prepare is
+18-23% of the SKAT-O region C++ (~10% of a SKAT-O run per extra model, the rest of
+the SKAT-O case being the process start-up and the genotype I/O) and 35-59% of
+BURDEN's, which is 92-99% of a BURDEN run: five BURDEN models predicted ~1.4x
+(binary-led) / ~1.8x (quant-led) over five serial runs.
+
+**Measured, `sim50k`, 1 thread, the five-trait manifest in ONE run against the
+five single-model runs, every per-model file `cmp`-identical (15/15 for SKAT-O,
+15/15 for BURDEN; `harness/work/region_profile/sim50k_s4b.log`,
+`results_s4b_sim50k.tsv`; load 4-6, the same box state for both arms, arms
+adjacent):**
+
+| kind | five serial runs (sum) | manifest | speedup | user (sum -> manifest) | max RSS |
+|---|---|---|---|---|---|
+| SKAT-O | 934 s | **788 s** | 1.19x | 801 -> 699 s | 1.2 GB per run -> 2.2 GB |
+| BURDEN | 178 s | **97 s** | 1.83x | 165 -> 91 s | 0.83 GB per run -> 0.9 GB |
+
+BURDEN lands at the top of the 1.4-1.8x window (two binary and three
+quantitative models; the shared prepare is the larger share on the
+quantitative arms). SKAT-O saves what the buckets said it would -- the prepare
+bucket and the genotype I/O, ~15% of five runs -- because 45% of a SKAT-O run
+is the R-side Davies integration, which is per model and unchanged. The
+memory cost is the per-model P1/P2 scratch and records: +1 GB for five SKAT-O
+models at N = 50,000.
+
+**Two R defects the bundled fixture could not see and `sim50k` did, before
+the run above:** `pvalRegionK[[k]] <- NULL` in the escalation loop DELETED the
+list element and shifted the models after it, so a binary model's rows were
+bound to a quantitative model's frame ("numbers of columns of arguments do not
+match"); and the escalation call handed C++ the run's first model's trait
+type while the subset's first model was quantitative. Both need an escalation
+subset that is a strict, non-leading part of the manifest, which two bundled
+genes never produced by chance. `test-step2-region-multimodel.R` now forces
+that subset deterministically: `--pval_cutoff_for_fastTest` set between the
+two models' fast-pass Cauchy p for GENE1 (read from their own single runs)
+escalates exactly the smaller-p model, in both manifest orders, with the
+"Non-fast test is performed" line count asserting which models escalated.
+Seconds, where sim50k takes an hour -- and red against a scratch install with
+the two defects re-introduced.

@@ -1671,9 +1671,14 @@ void setSparseSigmaInCPP(int r, arma::umat & t_locationMatinR, arma::vec & t_val
 */
 
 // [[Rcpp::export]]
-Rcpp::List RegionSetUpConditional_binary_InCPP(arma::vec & t_weight_cond){
+Rcpp::List RegionSetUpConditional_binary_InCPP(arma::vec & t_weight_cond, int t_modelIndex){
+	// step 4: THIS model's conditioning set-up (0 for a single-model run)
+	if(t_modelIndex < 0 || (std::size_t)t_modelIndex >= g_models.size()){
+		Rcpp::stop("RegionSetUpConditional_binary_InCPP: no null model at index " + std::to_string(t_modelIndex));
+	}
+	const SAIGE::SAIGEClass & model = *g_models.at(t_modelIndex);
 
-	unsigned int q_cond = (g_model->m_VarInvMat_cond).n_rows;
+	unsigned int q_cond = (model.m_VarInvMat_cond).n_rows;
   	boost::math::beta_distribution<> beta_dist(g_cfg.weights_beta[0], g_cfg.weights_beta[1]);
   	arma::vec w0G2Vec_cond(q_cond);
   	double w0G2_cond, MAFG2_cond;
@@ -1681,18 +1686,18 @@ Rcpp::List RegionSetUpConditional_binary_InCPP(arma::vec & t_weight_cond){
 		if(!(t_weight_cond.is_zero())){
 			w0G2_cond = t_weight_cond(ci);
 		}else{
-                	MAFG2_cond = (g_model->m_MAF_cond)[ci];
+                	MAFG2_cond = (model.m_MAF_cond)[ci];
                 	w0G2_cond = boost::math::pdf(beta_dist, MAFG2_cond);
 		}
                 w0G2Vec_cond.at(ci) = w0G2_cond;
         }
-	arma::mat m_VarMat_weighted_cond = (w0G2Vec_cond * (w0G2Vec_cond.t())) % (g_model->m_VarMat_cond);
+	arma::mat m_VarMat_weighted_cond = (w0G2Vec_cond * (w0G2Vec_cond.t())) % (model.m_VarMat_cond);
 
 	 Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("VarMat_G2_cond") = m_VarMat_weighted_cond,
-                                          Rcpp::Named("Score_G2_cond") = g_model->m_Tstat_cond,
-                                          Rcpp::Named("pval_G2_cond") = g_model->m_p_cond,
-                                          Rcpp::Named("gsum_G2_cond") = g_model->m_gsum_cond,
-                                          Rcpp::Named("qsum_G2_cond") = g_model->m_qsum_cond
+                                          Rcpp::Named("Score_G2_cond") = model.m_Tstat_cond,
+                                          Rcpp::Named("pval_G2_cond") = model.m_p_cond,
+                                          Rcpp::Named("gsum_G2_cond") = model.m_gsum_cond,
+                                          Rcpp::Named("qsum_G2_cond") = model.m_qsum_cond
 					  );
 	 return(OutList);
 
@@ -4027,9 +4032,13 @@ void assign_conditionMarkers_factors(
 
 // [[Rcpp::export]]
 void assign_conditionMarkers_factors_binary_region(
-			   arma::vec & scalefactor_G2_cond){
-	//std::cout << "assign_conditionMarkers_factors_binary_region" << std::endl;
-	g_model->assignConditionFactors_scalefactor(scalefactor_G2_cond);
+			   arma::vec & scalefactor_G2_cond,
+			   int t_modelIndex){
+	// step 4: the scale factors of THIS model (0 for a single-model run)
+	if(t_modelIndex < 0 || (std::size_t)t_modelIndex >= g_models.size()){
+		Rcpp::stop("assign_conditionMarkers_factors_binary_region: no null model at index " + std::to_string(t_modelIndex));
+	}
+	g_models.at(t_modelIndex)->assignConditionFactors_scalefactor(scalefactor_G2_cond);
 }
 
 

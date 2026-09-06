@@ -288,13 +288,14 @@ BEGIN_RCPP
 END_RCPP
 }
 // RegionSetUpConditional_binary_InCPP
-Rcpp::List RegionSetUpConditional_binary_InCPP(arma::vec& t_weight_cond);
-RcppExport SEXP _SAIGE_RegionSetUpConditional_binary_InCPP(SEXP t_weight_condSEXP) {
+Rcpp::List RegionSetUpConditional_binary_InCPP(arma::vec& t_weight_cond, int t_modelIndex);
+RcppExport SEXP _SAIGE_RegionSetUpConditional_binary_InCPP(SEXP t_weight_condSEXP, SEXP t_modelIndexSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec& >::type t_weight_cond(t_weight_condSEXP);
-    rcpp_result_gen = Rcpp::wrap(RegionSetUpConditional_binary_InCPP(t_weight_cond));
+    Rcpp::traits::input_parameter< int >::type t_modelIndex(t_modelIndexSEXP);
+    rcpp_result_gen = Rcpp::wrap(RegionSetUpConditional_binary_InCPP(t_weight_cond, t_modelIndex));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -348,12 +349,13 @@ BEGIN_RCPP
 END_RCPP
 }
 // assign_conditionMarkers_factors_binary_region
-void assign_conditionMarkers_factors_binary_region(arma::vec& scalefactor_G2_cond);
-RcppExport SEXP _SAIGE_assign_conditionMarkers_factors_binary_region(SEXP scalefactor_G2_condSEXP) {
+void assign_conditionMarkers_factors_binary_region(arma::vec& scalefactor_G2_cond, int t_modelIndex);
+RcppExport SEXP _SAIGE_assign_conditionMarkers_factors_binary_region(SEXP scalefactor_G2_condSEXP, SEXP t_modelIndexSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec& >::type scalefactor_G2_cond(scalefactor_G2_condSEXP);
-    assign_conditionMarkers_factors_binary_region(scalefactor_G2_cond);
+    Rcpp::traits::input_parameter< int >::type t_modelIndex(t_modelIndexSEXP);
+    assign_conditionMarkers_factors_binary_region(scalefactor_G2_cond, t_modelIndex);
     return R_NilValue;
 END_RCPP
 }
@@ -2088,10 +2090,10 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_addGenoReaderInCPP", (DL_FUNC) &_SAIGE_addGenoReaderInCPP, 3},
     {"_SAIGE_setSAIGEobjInCPP", (DL_FUNC) &_SAIGE_setSAIGEobjInCPP, 34},
     {"_SAIGE_addSAIGEobjInCPP", (DL_FUNC) &_SAIGE_addSAIGEobjInCPP, 35},
-    {"_SAIGE_RegionSetUpConditional_binary_InCPP", (DL_FUNC) &_SAIGE_RegionSetUpConditional_binary_InCPP, 1},
+    {"_SAIGE_RegionSetUpConditional_binary_InCPP", (DL_FUNC) &_SAIGE_RegionSetUpConditional_binary_InCPP, 2},
     {"_SAIGE_mainRegionInCPP", (DL_FUNC) &_SAIGE_mainRegionInCPP, 25},
     {"_SAIGE_assign_conditionMarkers_factors", (DL_FUNC) &_SAIGE_assign_conditionMarkers_factors, 5},
-    {"_SAIGE_assign_conditionMarkers_factors_binary_region", (DL_FUNC) &_SAIGE_assign_conditionMarkers_factors_binary_region, 1},
+    {"_SAIGE_assign_conditionMarkers_factors_binary_region", (DL_FUNC) &_SAIGE_assign_conditionMarkers_factors_binary_region, 2},
     {"_SAIGE_fast_logistf_fit", (DL_FUNC) &_SAIGE_fast_logistf_fit, 11},
     {"_SAIGE_closeGenoFile", (DL_FUNC) &_SAIGE_closeGenoFile, 1},
     {"_SAIGE_openOutfile", (DL_FUNC) &_SAIGE_openOutfile, 5},

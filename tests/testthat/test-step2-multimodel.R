@@ -264,12 +264,20 @@ test_that("the CLI refuses the two combinations that cannot work", {
   expect_false(identical(as.integer(st), 0L))
   expect_true(any(grepl("mutually exclusive", mm_log(st))))
 
+  # Since step 4 (2026-09-06) a manifest on a region run is NOT refused: the
+  # models share a sample set, so the region path runs them in one pass
+  # (test-step2-region-multimodel.R gates the bytes; the refusal that remains
+  # is for models on DIFFERENT sample sets, gated there too).
   st2 <- run_saige_cli("step2_SPAtests.R", c(
     MM_PLINK, MM_COMMON,
     paste0("--GMMATmodel_varianceRatio_multiTraits_File=", man),
     "--groupFile=./input/group_new_snpid.txt",
+    "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+    "--maxMAF_in_groupTest=0.0001,0.001,0.01", "--r.corr=1",
     paste0("--SAIGEOutputFile=", out)
   ))
-  expect_false(identical(as.integer(st2), 0L))
-  expect_true(any(grepl("single-variant tests only", mm_log(st2))))
+  expect_cli_ok(st2)
+  expect_true(any(grepl("Region tests will run 2 null model(s) over one sample set", mm_log(st2),
+                        fixed = TRUE)))
+  expect_false(any(grepl("single-variant tests only", mm_log(st2))))
 })

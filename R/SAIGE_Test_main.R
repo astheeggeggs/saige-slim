@@ -207,13 +207,9 @@ SPAGMMATtest <- function(bedFile = "",
   if (nModels > 1) {
     # Three deliberate refusals, each because the feature keeps per-RUN state
     # that is model-order-dependent (see docs/state/multimodel-step2.md):
-    if (groupFile != "") {
-      stop(
-        "A model manifest with ", nModels, " models is supported for ",
-        "single-variant tests only; --groupFile names a region test. Run the ",
-        "region tests one model at a time.\n"
-      )
-    }
+    # Region tests take a manifest since step 4 (2026-09-06) -- one C++ call per
+    # region tests every model -- provided every model was fitted on the SAME
+    # sample set; that check needs the models read, and is below.
     if (is_rewrite_XnonPAR_forMales) {
       stop(
         "is_rewrite_XnonPAR_forMales keeps ONE set of male sample indices in ",
@@ -390,10 +386,25 @@ SPAGMMATtest <- function(bedFile = "",
   grouping <- groupModelsBySampleSet(lapply(prepared, function(p) p$obj.model$sampleID))
   groupOf <- grouping$groupOf
   nGroups <- length(grouping$representatives)
-  cat(
-    "Single-variant tests will run", nModels, "null model(s) in",
-    nGroups, "sample-set group(s)\n"
-  )
+  if (isGroupTest) {
+    # The region path prepares each marker once and tests it for every model
+    # in ONE call, so the models must share the genotype work's sample set
+    # (identical() step-1 sampleID vectors, the marker path's grouping rule).
+    if (nModels > 1 && nGroups > 1) {
+      stop(
+        "A model manifest on a region test (--groupFile) needs every model ",
+        "fitted on the SAME sample set (identical step-1 sampleID vectors); ",
+        nGroups, " sample-set groups were found among the ", nModels,
+        " models. Run the region tests one sample set at a time.\n"
+      )
+    }
+    cat("Region tests will run", nModels, "null model(s) over one sample set\n")
+  } else {
+    cat(
+      "Single-variant tests will run", nModels, "null model(s) in",
+      nGroups, "sample-set group(s)\n"
+    )
+  }
 
   if (obj.model$traitType != "binary") {
     max_MAC_use_ER <- 0
@@ -542,17 +553,22 @@ SPAGMMATtest <- function(bedFile = "",
         length(prepared[[k]]$obj.model$y), condition_weights, as.integer(k - 1L)
       )
     }
-    if (obj.model$traitType == "binary" & isGroupTest) {
-      outG2cond <- RegionSetUpConditional_binary_InCPP(condition_weights)
+    # Per model (step 4): each binary model's own conditioning scale factors,
+    # from its own conditioning statistics and fitted values. A single model is
+    # exactly the one call this always made.
+    for (k in seq_len(nModels)) {
+      if (prepared[[k]]$obj.model$traitType == "binary" & isGroupTest) { # nolint: vector_logic_linter.
+        outG2cond <- RegionSetUpConditional_binary_InCPP(condition_weights, as.integer(k - 1L))
 
 
-      outG2cond$pval_G2_cond <- unlist(lapply(outG2cond$pval_G2_cond, convert_str_to_log))
+        outG2cond$pval_G2_cond <- unlist(lapply(outG2cond$pval_G2_cond, convert_str_to_log))
 
-      G2condList <- get_newPhi_scaleFactor(q.sum = outG2cond$qsum_G2_cond, mu.a = obj.model$mu, g.sum = outG2cond$gsum_G2_cond, p.new = outG2cond$pval_G2_cond, Score = outG2cond$Score_G2_cond, Phi = outG2cond$VarMat_G2_cond, "SKAT-O")
-      # print(G2condList)
-      scaleFactorVec <- as.vector(G2condList$scaleFactor)
-      # print(scaleFactorVec)
-      assign_conditionMarkers_factors_binary_region(scaleFactorVec)
+        G2condList <- get_newPhi_scaleFactor(q.sum = outG2cond$qsum_G2_cond, mu.a = prepared[[k]]$obj.model$mu, g.sum = outG2cond$gsum_G2_cond, p.new = outG2cond$pval_G2_cond, Score = outG2cond$Score_G2_cond, Phi = outG2cond$VarMat_G2_cond, "SKAT-O")
+        # print(G2condList)
+        scaleFactorVec <- as.vector(G2condList$scaleFactor)
+        # print(scaleFactorVec)
+        assign_conditionMarkers_factors_binary_region(scaleFactorVec, as.integer(k - 1L))
+      }
     }
   } else {
     condition_weights <- c(0)
@@ -562,6 +578,10 @@ SPAGMMATtest <- function(bedFile = "",
   # path takes each model's trait type from the model itself in C++.
   traitType <- obj.model$traitType
   mu <- obj.model$mu
+  # Every model's, for the region path (step 4): one C++ call per region tests
+  # them all, and the post-processing needs each model's fitted values.
+  traitTypes <- vapply(prepared, function(p) p$obj.model$traitType, character(1))
+  mus <- lapply(prepared, function(p) p$obj.model$mu)
   rm(obj.model)
   rm(prepared)
   gc()
@@ -662,8 +682,8 @@ SPAGMMATtest <- function(bedFile = "",
       }
     }
 
-    SAIGE.Region(mu,
-      OutputFile,
+    SAIGE.Region(mus,
+      OutputFiles,
       MACCutoff_to_CollapseUltraRare,
       groupFile,
       annotation_in_groupTest,
@@ -671,7 +691,7 @@ SPAGMMATtest <- function(bedFile = "",
       markers_per_chunk_in_groupTest,
       genoType,
       objGeno$markerInfo,
-      traitType,
+      traitTypes,
       is_imputed_data,
       isCondition,
       condition_weights,

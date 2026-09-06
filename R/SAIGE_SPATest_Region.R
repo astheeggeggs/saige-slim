@@ -704,9 +704,29 @@ SAIGE.Region <- function(mu,
                          # SKAT_davies. 1 means the serial path runs untouched.
                          nThreadsSKATO = 1L,
                          nThreads = 1L) {
+  # Step 4 (2026-09-06): several null models per region. `mu` is a LIST of
+  # fitted-value vectors (one per model), `OutputFile` and `traitType` vectors
+  # of the same length; a single model arrives as the legacy scalars and is
+  # wrapped here, so everything below is the one-model flow at nModels = 1.
+  # One C++ call per region tests every model (they share a sample set, checked
+  # by the caller); each model keeps its own result file, .index, marker list
+  # and single-in-group file, byte-identical to its own single-model run.
+  if (!is.list(mu)) {
+    mu <- list(mu)
+  }
+  nModels <- length(mu)
+  OutputFiles <- OutputFile
+  traitTypes <- traitType
+  if (length(OutputFiles) != nModels || length(traitTypes) != nModels) {
+    stop("SAIGE.Region: mu, OutputFile and traitType must describe the same models\n")
+  }
+  OutputFile <- OutputFiles[1]
+  traitType <- traitTypes[1]
+  modelIdx <- seq_len(nModels) - 1L
+  OutputFileIndexes <- paste0(OutputFiles, ".index")
   OutputFileIndex <- NULL
   if (is.null(OutputFileIndex)) {
-    OutputFileIndex <- paste0(OutputFile, ".index")
+    OutputFileIndex <- OutputFileIndexes[1]
   }
 
   # The worker pool outlives individual regions but must not outlive the scan.
@@ -731,7 +751,18 @@ SAIGE.Region <- function(mu,
   # LEDGER #25 FIXED: the index is written and validated with the SAME nEachChunk.
   # It records completed REGIONS one per line, so the chunk size it states is 1
   # on both sides (the writer used numberRegionsInChunk, still 0 when captured).
-  outList <- checkOutputFile(OutputFile, OutputFileIndex, "Region", 1, isOverWriteOutput) # Check 'Util.R'
+  # checkOutputFile is in 'Util.R'; one check per model, and the models' index
+  # files must agree about where to restart (R/MultiModel.R).
+  outChecks <- lapply(seq_len(nModels), function(k) {
+    checkOutputFile(OutputFiles[k], OutputFileIndexes[k], "Region", 1, isOverWriteOutput)
+  })
+  outList <- outChecks[[1]]
+  if (nModels > 1) {
+    restartChunkForModels(outChecks, OutputFileIndexes)
+    if (any(vapply(outChecks, function(x) !identical(x$Start, outList$Start) || !identical(x$End, outList$End), logical(1)))) {
+      stop("The models' output files disagree about whether the analysis has started or finished; delete them and re-run, or set --is_overwrite_output=TRUE\n")
+    }
+  }
 
   indexChunk <- outList$indexChunk
   Start <- outList$Start
@@ -744,7 +775,7 @@ SAIGE.Region <- function(mu,
   if (End) {
     message <- paste0(
       "The analysis has been completed in earlier analysis. Results are saved in '",
-      OutputFile,
+      paste(OutputFiles, collapse = "', '"),
       "'. ",
       "If you want to change parameters and restart the analysis, please use another 'OutputFile'."
     )
@@ -756,7 +787,7 @@ SAIGE.Region <- function(mu,
     isappend <- TRUE
   }
 
-  n <- length(mu) # sample size
+  n <- length(mu[[1]]) # sample size
 
 
   if (r.corr == 0) {
@@ -793,13 +824,15 @@ SAIGE.Region <- function(mu,
     cat(
       "is_single_in_groupTest = TRUE. Single-variant assoc tests results will be output\n"
     )
-    isOpenOutFile_singleinGroup <- openOutfile_singleinGroup(0L, traitType, isImputation, isappend, is_output_moreDetails)
-    if (!isOpenOutFile_singleinGroup) {
-      stop(
-        "Output file ",
-        OutputFile,
-        ".singleAssoc.txt can't be opened\n"
-      )
+    for (k in seq_len(nModels)) {
+      isOpenOutFile_singleinGroup <- openOutfile_singleinGroup(k - 1L, traitTypes[k], isImputation, isappend, is_output_moreDetails)
+      if (!isOpenOutFile_singleinGroup) {
+        stop(
+          "Output file ",
+          OutputFiles[k],
+          ".singleAssoc.txt can't be opened\n"
+        )
+      }
     }
   } else {
     cat(
@@ -882,13 +915,14 @@ SAIGE.Region <- function(mu,
   # Restart guard: the multi-weight schema adds columns (Weight,
   # Pvalue_ACATV, Pvalue_ACATO), so appending to a file written with a
   # different weight configuration would interleave two schemas in one file.
-  if (isappend && file.exists(OutputFile) && file.info(OutputFile)$size > 0) {
-    existingHeader <- strsplit(readLines(OutputFile, n = 1), "[\t]")[[1]]
+  for (existingOut in OutputFiles[isappend & file.exists(OutputFiles)]) {
+    if (file.info(existingOut)$size == 0) next
+    existingHeader <- strsplit(readLines(existingOut, n = 1), "[\t]")[[1]]
     hasWeightCol <- "Weight" %in% existingHeader
     if (hasWeightCol != isMultiWeightSchema) {
       stop(
         "The existing 'OutputFile' of '",
-        OutputFile,
+        existingOut,
         "' was written ",
         if (hasWeightCol) "WITH" else "WITHOUT",
         " the multi-weight columns (Weight, Pvalue_ACATV, Pvalue_ACATO), but this run uses ",
@@ -903,9 +937,11 @@ SAIGE.Region <- function(mu,
     # C++-written header gains the Weight column right after max_MAF; at
     # K = 1 it is byte-identical to the legacy header)
     cat("isappend ", isappend, "\n")
-    isOpenOutFile <- openOutfile(0L, traitType, isappend, nWeightSetsUsed, is_output_weight_column)
-    if (!isOpenOutFile) {
-      stop("Output file ", OutputFile, " can't be opened\n")
+    for (k in seq_len(nModels)) {
+      isOpenOutFile <- openOutfile(k - 1L, traitTypes[k], isappend, nWeightSetsUsed, is_output_weight_column)
+      if (!isOpenOutFile) {
+        stop("Output file ", OutputFiles[k], " can't be opened\n")
+      }
     }
   }
 
@@ -986,26 +1022,14 @@ SAIGE.Region <- function(mu,
   numberRegionsInChunk <- 0
   cat("indexChunk ", indexChunk, "\n")
   cat("nRegions ", nRegions, "\n")
-  pval.Region.all <- NULL
+  pval.Region.all <- vector("list", nModels)   # per model
   OutList.all <- NULL
-  Output_MarkerList.all <- NULL
+  Output_MarkerList.all <- NULL                  # model-independent content, written to every model's file
   cth_chunk_to_output <- 1
-  iswriteMarkerList <- FALSE
-  # LEDGER #59: whether the region file's HEADER is already on disk, which is not
-  # the same question as "is this the first chunk". `cth_chunk_to_output` advances
-  # for every chunk that reaches the output block, including one that produced no
-  # rows, so a barren first chunk used to consume the only chance to emit column
-  # names and the next chunk appended its rows as the first bytes in the file --
-  # data rows, no header, exit 0. Reproduced on the bundled fixture with a first
-  # region of monomorphic markers and --groups_per_chunk=1. This is exactly the
-  # flag `iswriteMarkerList` above already keeps for the sibling writer below;
-  # the region writer simply never had one.
-  #
-  # Seeded from `isappend`, the restart signal taken from checkOutputFile at :727
-  # BEFORE `Start` is reassigned from the chunk counter at :1315: resuming an
-  # existing file means its header was written by the earlier process, so this
-  # must not emit a second one mid-file.
-  iswriteRegion <- isappend
+  iswriteMarkerList <- rep(FALSE, nModels)
+  iswriteRegion <- rep(isappend, nModels)
+  # per-model, per-region state the legacy scalars held for the one model
+  cctpvalK <- rep(NA_real_, nModels)
   i <- indexChunk + 1
   nEachChunk <- 1 # LEDGER #25 FIXED: was numberRegionsInChunk, still 0 here
 
@@ -1047,14 +1071,17 @@ SAIGE.Region <- function(mu,
   # Step 4 (2026-09-06): mainRegionInCPP tests a vector of null models per
   # call and returns one output list per model; a single-model run passes
   # index 0 and takes the first (only) element, byte-identical to before.
-  run_mainRegionInCPP <- function() {
+  run_mainRegionInCPP <- function(idx) {
     mainRegionInCPP(
       genoType,
       region$genoIndex,
       annoIndicatorMat,
       maxMAFlist,
       OutputFile,
-      traitType,
+      # the FIRST model of this call's subset: C++ checks it against that
+      # model (an escalation call may start at a quantitative model while the
+      # run's first is binary -- sim50k, five traits)
+      traitTypes[idx[1] + 1L],
       n,
       P1Mat,
       P2Mat,
@@ -1073,8 +1100,8 @@ SAIGE.Region <- function(mu,
       is_fastTest,
       is_output_moreDetails,
       nThreads,
-      0L
-    )[[1]]
+      as.integer(idx)
+    )
   }
   while (i <= nRegions) {
     # for(i in (indexChunk+1):nRegions){
@@ -1173,19 +1200,18 @@ SAIGE.Region <- function(mu,
         } else {
           set_flagSparseGRM_cur_SAIGE(FALSE)
         }
-        outList <- run_mainRegionInCPP()
-
-        # print("outList$VarMat 1 ")
-        # print(outList$VarMat)
+        outLists <- run_mainRegionInCPP(modelIdx)   # one list per model
 
         if (regionTestType == "BURDEN" & is_fastTest) {
-          if (!is.null(outList$iswriteOutput)) {
-            if (!(outList$iswriteOutput)) {
-              set_flagSparseGRM_cur_SAIGE(TRUE)
+          # BURDEN decides in C++ whether the fast pass's answer is kept
+          # (iswriteOutput); the models it did not write are re-run on the
+          # accurate pass together. One model: exactly the legacy re-run.
+          need <- which(vapply(outLists, function(o) !is.null(o$iswriteOutput) && !isTRUE(o$iswriteOutput), logical(1)))
+          if (length(need) > 0) {
+            set_flagSparseGRM_cur_SAIGE(TRUE)
 
 
-              outList <- run_mainRegionInCPP()
-            }
+            outLists[need] <- run_mainRegionInCPP(modelIdx[need])
           }
         }
 
@@ -1198,32 +1224,35 @@ SAIGE.Region <- function(mu,
         # gc()
         # tb0 = proc.time()
 
-        res_postprocess <- region_postprocess_parallel(
-          outList,
-          mu,
-          WEIGHT,
-          traitType,
-          r.corr,
-          regionTestType,
-          isCondition,
-          annolistsub,
-          maxMAFlist,
-          regionName,
-          is_single_in_groupTest,
-          is_rerun = FALSE,
-          weight_sets = weight_sets,
-          nThreads = nThreadsSKATO
-        )
-        pval.Region <- res_postprocess$pval.Region
-        if ("cctpval" %in% names(res_postprocess)) {
-          cctpval <- res_postprocess$cctpval
+        pvalRegionK <- vector("list", nModels)
+        resultDFListK <- vector("list", nModels)   # the per-set carry-forward cache, per model
+        for (k in seq_len(nModels)) {
+          res_postprocess <- region_postprocess_parallel(
+            outLists[[k]],
+            mu[[k]],
+            WEIGHT,
+            traitTypes[k],
+            r.corr,
+            regionTestType,
+            isCondition,
+            annolistsub,
+            maxMAFlist,
+            regionName,
+            is_single_in_groupTest,
+            is_rerun = FALSE,
+            weight_sets = weight_sets,
+            nThreads = nThreadsSKATO
+          )
+          pvalRegionK[[k]] <- res_postprocess$pval.Region
+          if ("cctpval" %in% names(res_postprocess)) {
+            cctpvalK[k] <- res_postprocess$cctpval
+          }
+          if ("resultDFList" %in% names(res_postprocess)) {
+            resultDFListK[[k]] <- res_postprocess$resultDFList
+          }
         }
-        if ("resultDF" %in% names(res_postprocess)) {
-          resultDF <- res_postprocess$resultDF
-        }
-        if ("resultDFList" %in% names(res_postprocess)) {
-          resultDFList <- res_postprocess$resultDFList
-        }
+        # the counts are genotype-only, identical for every model
+        outList <- outLists[[1]]
 
         if ((sum(outList$NumUltraRare_GroupVec) + sum(outList$NumRare_GroupVec)) > 0) {
           if (regionTestType != "BURDEN") {
@@ -1235,45 +1264,55 @@ SAIGE.Region <- function(mu,
 
 
             if (is_fastTest) {
-              if (cctpval < pval_cutoff_for_fastTest) {
+              # The models whose Cauchy p crosses the cutoff are re-run on the
+              # accurate pass in ONE call; the others keep the fast pass and
+              # their single-in-group rows are copied over. One model: the
+              # legacy escalate-or-copy.
+              esc <- which(cctpvalK < pval_cutoff_for_fastTest)
+              if (length(esc) > 0) {
                 # if(cctpval < 0.1 & is_fastTest){
-                pval.Region <- NULL
                 cat("Non-fast test is performed\n")
                 set_flagSparseGRM_cur_SAIGE(TRUE)
 
-                outList <- run_mainRegionInCPP()
-                res_postprocess <- region_postprocess_parallel(
-                  outList,
-                  mu,
-                  WEIGHT,
-                  traitType,
-                  r.corr,
-                  regionTestType,
-                  isCondition,
-                  annolistsub,
-                  maxMAFlist,
-                  regionName,
-                  is_single_in_groupTest,
-                  is_rerun = TRUE,
-                  # the per-set carry-forward cache; at K = 1 this is
-                  # list(resultDF), exactly the legacy carry-over
-                  resultDF_carryover = if (exists("resultDFList", inherits = FALSE)) resultDFList else NULL,
-                  weight_sets = weight_sets,
-                  nThreads = nThreadsSKATO
-                )
-                pval.Region <- res_postprocess$pval.Region
-                if ("cctpval" %in% names(res_postprocess)) {
-                  cctpval <- res_postprocess$cctpval
+                rerun <- run_mainRegionInCPP(modelIdx[esc])
+                for (j in seq_along(esc)) {
+                  k <- esc[j]
+                  # (no `pvalRegionK[[k]] <- NULL` here: assigning NULL into a
+                  # list DELETES the element and shifts the models after it,
+                  # which bound one model's rows to another's on sim50k)
+                  outLists[[k]] <- rerun[[j]]
+                  res_postprocess <- region_postprocess_parallel(
+                    outLists[[k]],
+                    mu[[k]],
+                    WEIGHT,
+                    traitTypes[k],
+                    r.corr,
+                    regionTestType,
+                    isCondition,
+                    annolistsub,
+                    maxMAFlist,
+                    regionName,
+                    is_single_in_groupTest,
+                    is_rerun = TRUE,
+                    # the per-set carry-forward cache; at K = 1 this is
+                    # list(resultDF), exactly the legacy carry-over
+                    resultDF_carryover = resultDFListK[[k]],
+                    weight_sets = weight_sets,
+                    nThreads = nThreadsSKATO
+                  )
+                  pvalRegionK[[k]] <- res_postprocess$pval.Region
+                  if ("cctpval" %in% names(res_postprocess)) {
+                    cctpvalK[k] <- res_postprocess$cctpval
+                  }
+                  if ("resultDFList" %in% names(res_postprocess)) {
+                    resultDFListK[[k]] <- res_postprocess$resultDFList
+                  }
                 }
-                if ("resultDF" %in% names(res_postprocess)) {
-                  resultDF <- res_postprocess$resultDF
-                }
-                if ("resultDFList" %in% names(res_postprocess)) {
-                  resultDFList <- res_postprocess$resultDFList
-                }
-              } else {
+                outList <- outLists[[1]]
+              }
+              for (k in setdiff(seq_len(nModels), esc)) {
                 # cctpval < 0.05)
-                copy_singleInGroup(0L)
+                copy_singleInGroup(k - 1L)
               }
             } # if(is_fastTest){
           } # if(regionTestType != "BURDEN"){
@@ -1357,10 +1396,12 @@ SAIGE.Region <- function(mu,
           # on a restart too (unreachable before #25, so never seen).
           Start <- (cth_chunk_to_output == 1) && !isappend
           End <- (indexChunk == nRegions)
-
           if (regionTestType != "BURDEN") {
-            pval.Region.all <- rbind(pval.Region.all, pval.Region)
+            for (k in seq_len(nModels)) {
+              pval.Region.all[[k]] <- rbind(pval.Region.all[[k]], pvalRegionK[[k]])
+            }
           }
+
 
 
           if (is_output_markerList_in_groupTest) {
@@ -1368,12 +1409,12 @@ SAIGE.Region <- function(mu,
           }
 
           rm(outList)
-          rm(pval.Region)
+          rm(outLists)
+          rm(pvalRegionK)
           if (regionTestType != "BURDEN") {
-            rm(resultDF)
             # the per-set carry-forward cache is region-local, exactly like
-            # resultDF above
-            rm(resultDFList)
+            # the legacy resultDF
+            rm(resultDFListK)
           }
           # (per-iteration gc() removed in Phase 4: it dominated the profile; R collects on demand)
         } # if(length(noNAIndices) > 0){
@@ -1395,14 +1436,15 @@ SAIGE.Region <- function(mu,
         cat("write to output\n")
         # cat("n1 is ", n1, "\n")
         # cat("n2 is ", n2, "\n")
+        for (k in seq_len(nModels)) {
         if (regionTestType != "BURDEN") {
           # The truncate-vs-append decision is untouched; only the HEADER moves,
           # to the first chunk that actually HAS rows (LEDGER #59).
           if (Start) {
-            if (!is.null(pval.Region.all)) {
+            if (!is.null(pval.Region.all[[k]])) {
               fwrite(
-                pval.Region.all,
-                OutputFile,
+                pval.Region.all[[k]],
+                OutputFiles[k],
                 quote = FALSE,
                 sep = "\t",
                 append = FALSE,
@@ -1410,34 +1452,31 @@ SAIGE.Region <- function(mu,
                 row.names = FALSE,
                 na = "NA"
               )
-              iswriteRegion <- TRUE
+              iswriteRegion[k] <- TRUE
             }
           } else {
-            if (!is.null(pval.Region.all)) {
+            if (!is.null(pval.Region.all[[k]])) {
               fwrite(
-                pval.Region.all,
-                OutputFile,
+                pval.Region.all[[k]],
+                OutputFiles[k],
                 quote = FALSE,
                 sep = "\t",
                 append = TRUE,
-                # FALSE on every run that already emitted its header, which is
-                # every run that reaches here today; TRUE only when the earlier
-                # chunks produced no rows at all.
-                col.names = !iswriteRegion,
+                col.names = !iswriteRegion[k],
                 row.names = FALSE,
                 na = "NA"
               )
-              iswriteRegion <- TRUE
+              iswriteRegion[k] <- TRUE
             }
-            # write.table(Output, OutputFile, quote = F, sep = "\t", append = T, col.names = F, row.names = F)
           }
         }
         if (is_output_markerList_in_groupTest) {
+          markerListFile <- paste0(OutputFiles[k], ".markerList.txt")
           if (Start) {
             if (!is.null(Output_MarkerList.all)) {
               fwrite(
                 Output_MarkerList.all,
-                paste0(OutputFile, ".markerList.txt"),
+                markerListFile,
                 quote = FALSE,
                 sep = "\t",
                 append = FALSE,
@@ -1445,15 +1484,14 @@ SAIGE.Region <- function(mu,
                 row.names = FALSE,
                 na = "NA"
               )
-              iswriteMarkerList <- TRUE
-              Output_MarkerList.all <- NULL
+              iswriteMarkerList[k] <- TRUE
             }
           } else {
             if (!is.null(Output_MarkerList.all)) {
-              if (iswriteMarkerList) {
+              if (iswriteMarkerList[k]) {
                 fwrite(
                   Output_MarkerList.all,
-                  paste0(OutputFile, ".markerList.txt"),
+                  markerListFile,
                   quote = FALSE,
                   sep = "\t",
                   append = TRUE,
@@ -1464,7 +1502,7 @@ SAIGE.Region <- function(mu,
               } else {
                 fwrite(
                   Output_MarkerList.all,
-                  paste0(OutputFile, ".markerList.txt"),
+                  markerListFile,
                   quote = FALSE,
                   sep = "\t",
                   append = FALSE,
@@ -1473,20 +1511,14 @@ SAIGE.Region <- function(mu,
                   na = "NA"
                 )
               }
-              iswriteMarkerList <- TRUE
-              Output_MarkerList.all <- NULL
+              iswriteMarkerList[k] <- TRUE
             }
-            # write.table(Output, OutputFile, quote = F, sep = "\t", append = T, col.names = F, row.names = F)
           }
         }
-
-
-        # if(FALSE){
-        # print("write Output 2")
         if (Start) {
           write.table(
             c(message1, message2, message3),
-            OutputFileIndex,
+            OutputFileIndexes[k],
             quote = FALSE,
             sep = "\t",
             append = FALSE,
@@ -1496,7 +1528,7 @@ SAIGE.Region <- function(mu,
         }
         write.table(
           message4,
-          OutputFileIndex,
+          OutputFileIndexes[k],
           quote = FALSE,
           sep = "\t",
           append = TRUE,
@@ -1507,7 +1539,7 @@ SAIGE.Region <- function(mu,
         if (End) {
           write.table(
             message5,
-            OutputFileIndex,
+            OutputFileIndexes[k],
             quote = FALSE,
             sep = "\t",
             append = TRUE,
@@ -1515,9 +1547,10 @@ SAIGE.Region <- function(mu,
             row.names = FALSE
           )
         }
+        } # for k (models)
         # }#if(FALSE)
 
-        pval.Region.all <- NULL
+        pval.Region.all <- vector("list", nModels)
         OutList.all <- NULL
         Output_MarkerList.all <- NULL
         cth_chunk_to_output <- cth_chunk_to_output + 1
@@ -1535,21 +1568,23 @@ SAIGE.Region <- function(mu,
 
   message <- paste0(
     "Analysis done! The results have been saved to '",
-    OutputFile,
+    paste(OutputFiles, collapse = "', '"),
     "' and '",
-    paste0(OutputFile, ".markerInfo"),
+    paste(paste0(OutputFiles, ".markerInfo"), collapse = "', '"),
     "'."
   )
 
   # LEDGER #57: how many cells the SKAT kernel failed on (their rows are NA),
   # and a sidecar naming each with its message when that count is not zero.
+  # With several models the count is over all of them and the sidecar goes
+  # beside the FIRST model's file (the per-cell record has no model column).
   skatFailureSummary(OutputFile)
 
   message <- "Analysis done!"
   message <- paste0(
     message,
     " The set-based tests results have been saved to '",
-    OutputFile,
+    paste(OutputFiles, collapse = "', '"),
     "'."
   )
   if (is_output_markerList_in_groupTest) {

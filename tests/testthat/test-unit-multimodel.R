@@ -119,7 +119,7 @@ test_that("a restart with disagreeing index files stops and names them", {
   )
 })
 
-test_that("P > 1 is refused for the three paths that keep per-run state", {
+test_that("P > 1 is refused for the two paths that keep per-run state (regions no longer)", {
   skip_if_no_goldens()
   path <- write_manifest(c(paste("a", mm_rda, mm_vr), paste("b", mm_rda, mm_vr)))
   # Each stop must fire BEFORE anything is pushed into C++, which is why they
@@ -130,9 +130,13 @@ test_that("P > 1 is refused for the three paths that keep per-run state", {
     SAIGEOutputFile = tempfile(),
     GMMATmodel_varianceRatio_multiTraits_File = path
   )
+  # Regions took a manifest from step 4 on (2026-09-06): the run proceeds to
+  # the group-file check, which is what fires here on a file that does not
+  # exist. The refusal that remains -- models on DIFFERENT sample sets -- needs
+  # the models read and is gated end to end in test-step2-region-multimodel.R.
   expect_error(
     do.call(SAIGE::SPAGMMATtest, c(base, list(groupFile = "nope.txt"))),
-    "single-variant tests only"
+    "groupFile nope.txt does not"
   )
   expect_error(
     do.call(SAIGE::SPAGMMATtest, c(base, list(is_rewrite_XnonPAR_forMales = TRUE))),
