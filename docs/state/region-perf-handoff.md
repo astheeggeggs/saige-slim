@@ -44,7 +44,18 @@ thing to thread first. It was not, and item 3 is what took its place.
 
 ---
 
-## Item 3: batch the SKAT-O cells
+## Item 3: batch the SKAT-O cells -- DONE 2026-09-06 (step 5, commit `1c706bd2`)
+
+The first of the two shapes below landed: `clusterApplyLB` kept, one task per
+cell, but the cells of a whole BATCH of regions (a group-file chunk, or fewer
+under `SAIGE_SKATO_BATCH_MB`) dispatched in one call sorted expensive-first by
+`ncol(Phi)`, the escalated regions' cells in a second call per batch. The
+driver holds each region's C++ output list until its answers are back, which
+is why the batch has a memory budget. Measurement and the handoff:
+`docs/state/handoff-2026-09-06-region-skato-batch.md`, `harness/bench/NOTES.md`
+(step 5 section, prediction written before the run). The text below is kept as
+the brief it was.
+
 
 ### Where it stands
 

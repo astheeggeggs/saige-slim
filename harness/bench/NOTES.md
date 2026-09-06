@@ -1615,3 +1615,39 @@ which one-task-per-cell keeps). Batching removes ~200 of the 210 barriers:
 
 If the gain is under ~4 s the barrier was not the gap and the per-task cost
 is: the next lever is jobs as LISTS of cells (fewer, larger tasks).
+
+**The `chr20` middle-tier fixture exists (built 2026-09-06, 21:31-22:46, one
+clean run of `CONFIG=chr20 bash harness/sim/run_all.sh`; `harness/work/sim`,
+6.5 GB, git-ignored).** 10,000 samples (9,000 EUR founders + 1,000), the whole
+chr20 (2,267,192 markers), 550 genes, five traits, step 0 at 0.125, the
+pedigree-truth GRM beside it. Stage 01 (coalescent) 23 min, stage 02
+(genotypes, annotations, traits) 21 min, step 0 15 s, the five step-1 fits
+3 s each, a serial SKAT-O group run ~300 s per trait (`--nThreads` unset in
+the pipeline, so no pool and no batch), a single-variant run 25-42 s. Fast-pass
+escalations at the default cutoff: 21 of 550 regions on `y_binary`, 33 on
+`y_quant`. The analysis controls are in `harness/work/sim/RESULTS.txt`.
+
+**Measured (step 5, `sim50k`, HEAD `2ed00165` scratch install = arm a against
+the step-5 build `1c706bd2` = arm b, arms alternated, load 3.5-5.9, `y_binary`
+escalates 22 of 210 regions, `y_quant` 10; `harness/work/region_profile/ab_s5.log`,
+`results_s5_ab.tsv`; every arm's three files `cmp`-identical, 30/30):**
+
+| trait | threads | a: HEAD | b: step 5 | delta | b vs 1 thread |
+|---|---|---|---|---|---|
+| y_binary | 4 | 106.6, 105.5 s | **92.5, 93.4 s** | **-13.1 s (-12.4%)** | 1.79x (a: 1.57x) |
+| y_binary | 8 | 104.3 s | 91.5 s | -12.8 s | 1.82x (a: 1.60x) |
+| y_binary | 1 | 166.4 s | 166.2 s | 0.0% (control) | -- |
+| y_quant | 4 | 75.9 s | **63.2 s** | **-12.7 s (-16.7%)** | -- |
+
+User CPU is unchanged within 1% at 4 threads (188 -> 185 s) and 1 thread
+(151.5 -> 151.4 s). Against the prediction: the 9-11 s predicted came out at
+13 s, so the per-region barrier was (at least) the whole of the 2026-09-04
+gap; the composed 4-thread figure predicted at 1.83-1.86x reads 1.79x on a
+1-thread baseline that is itself 166 s today (204 s on 2026-09-04's box
+state), and the negative control holds exactly. One prediction did NOT come
+true: 8 workers still buy nothing over 4 (91.5 vs 92.9 s, within a rep's
+spread, with user CPU up 38%), so what remains between 1.79x and the ceiling
+is not the barrier; the candidates are the per-task master cost (one task per
+cell kept) and the thread-scaling inflation the marker path already measured,
+and the batch line shows 7 batches per run (a chunk each, plus its escalated
+call: the 512 MB budget was never hit at one model).
