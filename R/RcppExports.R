@@ -69,8 +69,8 @@ RegionSetUpConditional_binary_InCPP <- function(t_weight_cond) {
     .Call('_SAIGE_RegionSetUpConditional_binary_InCPP', PACKAGE = 'SAIGE', t_weight_cond)
 }
 
-mainRegionInCPP <- function(t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, t_P1Mat_placeholder, t_P2Mat_placeholder, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_forceWeightColumn, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput, t_nThreads) {
-    .Call('_SAIGE_mainRegionInCPP', PACKAGE = 'SAIGE', t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, t_P1Mat_placeholder, t_P2Mat_placeholder, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_forceWeightColumn, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput, t_nThreads)
+mainRegionInCPP <- function(t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, t_P1Mat_placeholder, t_P2Mat_placeholder, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_forceWeightColumn, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput, t_nThreads, t_modelIdx) {
+    .Call('_SAIGE_mainRegionInCPP', PACKAGE = 'SAIGE', t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, t_P1Mat_placeholder, t_P2Mat_placeholder, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_forceWeightColumn, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput, t_nThreads, t_modelIdx)
 }
 
 assign_conditionMarkers_factors <- function(t_genoType, t_genoIndex, t_n, t_weight_cond, t_modelIndex) {
@@ -89,12 +89,12 @@ closeGenoFile <- function(t_genoType) {
     invisible(.Call('_SAIGE_closeGenoFile', PACKAGE = 'SAIGE', t_genoType))
 }
 
-openOutfile <- function(t_traitType, isappend, t_nWeightSets, t_forceWeightColumn) {
-    .Call('_SAIGE_openOutfile', PACKAGE = 'SAIGE', t_traitType, isappend, t_nWeightSets, t_forceWeightColumn)
+openOutfile <- function(t_modelIndex, t_traitType, isappend, t_nWeightSets, t_forceWeightColumn) {
+    .Call('_SAIGE_openOutfile', PACKAGE = 'SAIGE', t_modelIndex, t_traitType, isappend, t_nWeightSets, t_forceWeightColumn)
 }
 
-openOutfile_singleinGroup <- function(t_traitType, t_isImputation, isappend, t_isMoreOutput) {
-    .Call('_SAIGE_openOutfile_singleinGroup', PACKAGE = 'SAIGE', t_traitType, t_isImputation, isappend, t_isMoreOutput)
+openOutfile_singleinGroup <- function(t_modelIndex, t_traitType, t_isImputation, isappend, t_isMoreOutput) {
+    .Call('_SAIGE_openOutfile_singleinGroup', PACKAGE = 'SAIGE', t_modelIndex, t_traitType, t_isImputation, isappend, t_isMoreOutput)
 }
 
 openOutfile_single <- function(t_modelIndex, t_isImputation, isappend, t_isMoreOutput) {
@@ -141,8 +141,8 @@ set_flagSparseGRM_cur_SAIGE_org <- function() {
     invisible(.Call('_SAIGE_set_flagSparseGRM_cur_SAIGE_org', PACKAGE = 'SAIGE'))
 }
 
-copy_singleInGroup <- function() {
-    invisible(.Call('_SAIGE_copy_singleInGroup', PACKAGE = 'SAIGE'))
+copy_singleInGroup <- function(t_modelIndex) {
+    invisible(.Call('_SAIGE_copy_singleInGroup', PACKAGE = 'SAIGE', t_modelIndex))
 }
 
 lchooseThreadsafeDiffCountInCPP <- function(t_nmax) {

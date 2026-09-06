@@ -304,7 +304,7 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
         arma::vec & t_scalefactor_G2_cond);	
 
 
-    void extract_XV_XXVX_inv(arma::mat & t_XV, arma::mat & t_XXVX_inv);
+    void extract_XV_XXVX_inv(arma::mat & t_XV, arma::mat & t_XXVX_inv) const;   // step 4: read by every model of a region call
 
     // The Firth fit over [1, t_g] with the workspace's buffers; t_ws.ensureFirth
     // is called inside. Same operations in the same order as the original,

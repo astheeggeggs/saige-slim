@@ -224,6 +224,7 @@ void set_flagSparseGRM_cur_SAIGE(bool t_flagSparseGRM_cur);
 void set_flagSparseGRM_cur_SAIGE_org();
 
 
+struct RegionWriter;   // src/Main.cpp: one model's region output files (step 4)
 void writeOutfile_BURDEN(std::string regionName,
                         std::vector<std::string>  & BURDEN_AnnoName_Vec,
                         std::vector<std::string> & BURDEN_maxMAFName_Vec,
@@ -246,7 +247,8 @@ void writeOutfile_BURDEN(std::string regionName,
                         std::vector<std::string> & t_weightNames,
                         bool t_emitWeightColumn,
                         bool isCondition,
-                        std::string t_traitType);
+                        std::string t_traitType,
+			RegionWriter & rw);
 
 void copy_singleInGroup();
 

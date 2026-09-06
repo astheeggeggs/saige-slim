@@ -1327,7 +1327,7 @@ void SAIGEClass::assignConditionFactors_scalefactor(
 	
 }
 
-void SAIGEClass::extract_XV_XXVX_inv(arma::mat & t_XV, arma::mat & t_XXVX_inv){
+void SAIGEClass::extract_XV_XXVX_inv(arma::mat & t_XV, arma::mat & t_XXVX_inv) const {
 	t_XV = m_XV;
 	t_XXVX_inv = m_XXVX_inv;	
 }

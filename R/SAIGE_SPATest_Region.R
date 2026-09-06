@@ -793,7 +793,7 @@ SAIGE.Region <- function(mu,
     cat(
       "is_single_in_groupTest = TRUE. Single-variant assoc tests results will be output\n"
     )
-    isOpenOutFile_singleinGroup <- openOutfile_singleinGroup(traitType, isImputation, isappend, is_output_moreDetails)
+    isOpenOutFile_singleinGroup <- openOutfile_singleinGroup(0L, traitType, isImputation, isappend, is_output_moreDetails)
     if (!isOpenOutFile_singleinGroup) {
       stop(
         "Output file ",
@@ -903,7 +903,7 @@ SAIGE.Region <- function(mu,
     # C++-written header gains the Weight column right after max_MAF; at
     # K = 1 it is byte-identical to the legacy header)
     cat("isappend ", isappend, "\n")
-    isOpenOutFile <- openOutfile(traitType, isappend, nWeightSetsUsed, is_output_weight_column)
+    isOpenOutFile <- openOutfile(0L, traitType, isappend, nWeightSetsUsed, is_output_weight_column)
     if (!isOpenOutFile) {
       stop("Output file ", OutputFile, " can't be opened\n")
     }
@@ -1044,6 +1044,9 @@ SAIGE.Region <- function(mu,
   } else {
     matrix(0, nrow = 1, ncol = 2)
   }
+  # Step 4 (2026-09-06): mainRegionInCPP tests a vector of null models per
+  # call and returns one output list per model; a single-model run passes
+  # index 0 and takes the first (only) element, byte-identical to before.
   run_mainRegionInCPP <- function() {
     mainRegionInCPP(
       genoType,
@@ -1069,8 +1072,9 @@ SAIGE.Region <- function(mu,
       regionName,
       is_fastTest,
       is_output_moreDetails,
-      nThreads
-    )
+      nThreads,
+      0L
+    )[[1]]
   }
   while (i <= nRegions) {
     # for(i in (indexChunk+1):nRegions){
@@ -1269,7 +1273,7 @@ SAIGE.Region <- function(mu,
                 }
               } else {
                 # cctpval < 0.05)
-                copy_singleInGroup()
+                copy_singleInGroup(0L)
               }
             } # if(is_fastTest){
           } # if(regionTestType != "BURDEN"){

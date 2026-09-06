@@ -127,12 +127,39 @@ struct SingleWriter {
   std::string prefix;
 };
 
-struct Step2Output {
+// The region-test output files of ONE null model: the group (BURDEN) file,
+// the single-in-group file and its fastTest temp. One per model since step 4
+// (2026-09-06); a single-model run has exactly one, at the run prefix, so its
+// file names and bytes are what they always were. unique_ptr for the same
+// reason as SingleWriter.
+struct RegionWriter {
   std::ofstream group, singleInGroup, singleInGroupTemp;
   std::string prefixGroup, prefixSingleInGroup, prefixSingleInGroupTemp;
+};
+
+struct Step2Output {
+  std::vector<std::unique_ptr<RegionWriter>> regions;
   std::vector<std::unique_ptr<SingleWriter>> singles;
 };
 static Step2Output g_out;
+
+static std::unique_ptr<RegionWriter> makeRegionWriter(const std::string & t_prefix){
+  std::unique_ptr<RegionWriter> w(new RegionWriter());
+  w->prefixGroup = t_prefix;
+  w->prefixSingleInGroup = t_prefix + ".singleAssoc.txt";
+  w->prefixSingleInGroupTemp = t_prefix + ".singleAssoc.txt_temp";
+  return w;
+}
+
+// The region writer of model k, or a stop naming the index: every region-side
+// export takes the model index explicitly (0 for a single-model run).
+static RegionWriter & regionWriter(int t_modelIndex){
+  if(t_modelIndex < 0 || (std::size_t)t_modelIndex >= g_out.regions.size()){
+    Rcpp::stop("No region output writer at model index " + std::to_string(t_modelIndex) +
+               " (" + std::to_string(g_out.regions.size()) + " configured).");
+  }
+  return *g_out.regions[t_modelIndex];
+}
 
 
 
@@ -158,9 +185,8 @@ void setAssocTest_GlobalVarsInCPP(std::string t_impute_method,
   g_cfg.dosage_zerod_cutoff = t_dosage_zerod_cutoff;
   g_cfg.dosage_zerod_MAC_cutoff = t_dosage_zerod_MAC_cutoff;
   g_cfg.weights_beta = t_weights_beta;
-  g_out.prefixGroup = t_outputFilePrefix;
-  g_out.prefixSingleInGroup = t_outputFilePrefix + ".singleAssoc.txt";
-  g_out.prefixSingleInGroupTemp = t_outputFilePrefix + ".singleAssoc.txt_temp";
+  g_out.regions.clear();
+  g_out.regions.push_back(makeRegionWriter(t_outputFilePrefix));
   // One writer by default: the single-model run, whose file is the run prefix.
   // setSingleOutputPrefixesInCPP resizes this when a manifest asks for more.
   g_out.singles.clear();
@@ -1821,12 +1847,14 @@ Rcpp::List mainRegionInCPP(
 			   std::string regionName, 
 			   bool t_isFastTest, 
 			   bool t_isMoreOutput,
-			   int t_nThreads)
+			   int t_nThreads,
+			   std::vector<int> t_modelIdx)   // 0-based indices into g_models; {0} for a single-model run
 {
 
 
-  //create the output list
-  Rcpp::List OutList = Rcpp::List::create();
+  // step 4 (2026-09-06): one output list PER MODEL, returned as a list of
+  // lists (R unwraps a single-model call's [[1]]). Each lives in its
+  // RegionModelWork below.
   //arma::vec timeoutput1 = getTime();
   unsigned int q0 = t_genoIndex.size();                 // number of markers (before QC) in one region
 
@@ -1841,6 +1869,41 @@ Rcpp::List mainRegionInCPP(
   // region calls, and each marker's variance-ratio choice lives in a local
   // TestContext that outlives nothing.
   bool isEscalatedPass = g_regionEscalatedPass;
+
+  // ---- step 4: the null models this call tests -----------------------------
+  // Everything that depends on the MODEL -- the tests, P1/P2 and VarMat, the
+  // residualised genoSumMat, the per-index outputs, the case/control counts,
+  // the BURDEN emission and the output files -- is done once per model in a
+  // RegionModelWork; everything that depends only on the GENOTYPES -- read,
+  // impute, QC, weights, the ultra-rare collapse, the MAC/count accumulators,
+  // the chunk bookkeeping -- is computed once and shared. The models in one
+  // call therefore share a sample set (R groups by identical sampleID and
+  // hands the region path one group), and must agree on what the shared
+  // set-up reads from `model0`: the conditioning set-up and the sparse-GRM
+  // flag. A single-model run passes {0} and is byte-identical to before.
+  if(t_modelIdx.empty()){
+    Rcpp::stop("mainRegionInCPP: t_modelIdx is empty; pass the model indices to test (0 for a single model).");
+  }
+  const unsigned int P = t_modelIdx.size();
+  std::vector<const SAIGE::SAIGEClass*> models(P);
+  for(unsigned int k = 0; k < P; k++){
+    if(t_modelIdx[k] < 0 || (std::size_t)t_modelIdx[k] >= g_models.size()){
+      Rcpp::stop("mainRegionInCPP: no null model at index " + std::to_string(t_modelIdx[k]));
+    }
+    models[k] = g_models[t_modelIdx[k]].get();
+    if((unsigned int)models[k]->m_n != t_n){
+      Rcpp::stop("mainRegionInCPP: model " + std::to_string(t_modelIdx[k]) + " has " + std::to_string(models[k]->m_n) + " samples, the call has " + std::to_string(t_n) + "; models tested in one region call must share one sample set.");
+    }
+    if(models[k]->m_isCondition != models[0]->m_isCondition ||
+       models[k]->m_flagSparseGRM != models[0]->m_flagSparseGRM ||
+       models[k]->m_VarInvMat_cond.n_rows != models[0]->m_VarInvMat_cond.n_rows){
+      Rcpp::stop("mainRegionInCPP: models tested in one region call must agree on the conditioning set-up and the sparse GRM (model " + std::to_string(t_modelIdx[k]) + " differs from model " + std::to_string(t_modelIdx[0]) + ").");
+    }
+  }
+  const SAIGE::SAIGEClass & model0 = *models[0];
+  if(model0.m_traitType != t_traitType){
+    Rcpp::stop("mainRegionInCPP: t_traitType '" + t_traitType + "' is not model " + std::to_string(t_modelIdx[0]) + "'s trait type '" + model0.m_traitType + "'.");
+  }
 
   // Serial arm only, like the marker profile: the buckets are plain doubles
   // that phase-1 workers would race on.
@@ -1934,10 +1997,10 @@ Rcpp::List mainRegionInCPP(
 
 
   //setting up conditional markers
-  unsigned int q_cond = (g_model->m_VarInvMat_cond).n_rows;
+  unsigned int q_cond = (model0.m_VarInvMat_cond).n_rows;
   arma::rowvec G1tilde_P_G2tilde_Vec(q_cond);
 
-  bool isCondition = g_model->m_isCondition;
+  bool isCondition = model0.m_isCondition;
   arma::vec w0G2Vec_cond(q_cond);
   double w0G2_cond, MAFG2_cond;
   if(isCondition){
@@ -1945,7 +2008,7 @@ Rcpp::List mainRegionInCPP(
 		if(!(t_weight_cond.is_zero())){
 			w0G2_cond = t_weight_cond(ci);
 		}else{	
-			MAFG2_cond = (g_model->m_MAF_cond)[ci];	
+			MAFG2_cond = (model0.m_MAF_cond)[ci];	
   			w0G2_cond = boost::math::pdf(beta_dist, MAFG2_cond);
 		}	
 		w0G2Vec_cond.at(ci) = w0G2_cond;
@@ -1956,23 +2019,12 @@ Rcpp::List mainRegionInCPP(
   arma::mat genoSumMat(t_n, q_anno_maf_weight, arma::fill::zeros); //for Phi_cc for binary traits and BURDEN test
   arma::vec genoSumcount_noweight(q_anno_maf, arma::fill::zeros);  // jm-indexed (weight-independent)
   //arma::sp_mat genoSumMat_sp(t_n, q_anno_maf); //for Phi_cc for binary traits and BURDEN test
-  std::vector<double> Beta_cVec(q, arma::datum::nan);         // beta value for ALT allele
-  std::vector<double> seBeta_cVec(q, arma::datum::nan);
   //std::vector<double> pval_cVec(q, arma::datum::nan);
-  std::vector<std::string> pval_cVec(q, "NA");
-  std::vector<double> Tstat_cVec(q, arma::datum::nan);
-  std::vector<double> varT_cVec(q, arma::datum::nan);
   //std::vector<double> pvalNA_cVec(q, arma::datum::nan);
-  std::vector<std::string> pvalNA_cVec(q, "NA");
-  arma::mat G1tilde_P_G2tilde_Weighted_Mat(q, q_cond);
   //group test output
   //arma::vec MAC_GroupVec = arma::zeros<vec>(q_anno_maf);
   arma::vec MAC_GroupVec(q_anno_maf_weight);
   MAC_GroupVec.zeros();
-  arma::vec MACCase_GroupVec(q_anno_maf_weight);
-  MACCase_GroupVec.zeros();
-  arma::vec MACControl_GroupVec(q_anno_maf_weight);
-  MACControl_GroupVec.zeros();
   arma::vec NumRare_GroupVec(q_anno_maf_weight);
   NumRare_GroupVec.zeros();
   arma::vec NumUltraRare_GroupVec(q_anno_maf_weight);
@@ -1992,29 +2044,99 @@ Rcpp::List mainRegionInCPP(
   std::vector<double> altFreqVec(q, arma::datum::nan);      // allele frequencies of ALT allele, this is not always < 0.5.
   std::vector<double> MACVec(q, arma::datum::nan);      // allele frequencies of ALT allele, this is not always < 0.5.
   std::vector<double> MAFVec(q, arma::datum::nan);      // allele frequencies of ALT allele, this is not always < 0.5.
-  std::vector<double> AF_caseVec(q, arma::datum::nan);      // allele frequencies of ALT allele, this is not always < 0.5.
-  std::vector<double> AF_ctrlVec(q, arma::datum::nan);      // allele frequencies of ALT allele, this is not always < 0.5.
-  std::vector<uint32_t> N_caseVec(q, arma::datum::nan);      // allele frequencies of ALT allele, this is not always < 0.5.
-  std::vector<uint32_t> N_ctrlVec(q, arma::datum::nan);      // allele frequencies of ALT allele, this is not always < 0.5.
-  std::vector<double>  N_case_homVec(q, arma::datum::nan);
-  std::vector<double>  N_ctrl_hetVec(q, arma::datum::nan);
-  std::vector<double>  N_case_hetVec(q, arma::datum::nan);
-  std::vector<double>  N_ctrl_homVec(q, arma::datum::nan);
-  std::vector<uint32_t> N_Vec(q, arma::datum::nan);      // allele frequencies of ALT allele, this is not always < 0.5.
   std::vector<double> altCountsVec(q, arma::datum::nan);    // allele counts of ALT allele.
   std::vector<double> imputationInfoVec(q, arma::datum::nan);    // imputation info of ALT allele.
   std::vector<double> missingRateVec(q, arma::datum::nan);
-  std::vector<double> BetaVec(q, arma::datum::nan);         // beta value for ALT allele
-  std::vector<double> seBetaVec(q, arma::datum::nan);
-  std::vector<std::string> pvalVec(q, "NA");
   //std::vector<double> pvalVec_val(q, arma::datum::nan);
-  std::vector<double> TstatVec(q, arma::datum::nan);
-  std::vector<double> TstatVec_flip(q, arma::datum::nan);
-  std::vector<double> gyVec(q, arma::datum::nan);
-  std::vector<double> varTVec(q, arma::datum::nan);
-  std::vector<std::string> pvalNAVec(q, "NA");  
-  std::vector<unsigned char> isSPAConvergeVec(q, 0);   // not vector<bool>: bit-packed writes race across markers
 
+
+  // ---- step 4: per-model state -------------------------------------------
+  // The per-cell test records (passes B and D) split the same way: the
+  // genotype side (URCell / BurdenCell below, persistent across regions) is
+  // shared, the model side lives here.
+  struct URCellModel {
+    SAIGE::TestContext ctx;
+    bool isER = false;
+    double Beta = 0.0, seBeta = 0.0, Tstat = 0.0, varT = 0.0, gy = 0.0;
+    std::string pval, pval_noSPA;
+    bool isSPAConverge = false;
+    double Beta_c = 0.0, seBeta_c = 0.0, Tstat_c = 0.0, varT_c = 0.0;
+    std::string pval_c, pval_noSPA_c;
+    arma::rowvec G1;               // G1tilde_P_G2tilde_Vec, conditional runs only
+  };
+  struct BurdenCellModel {
+    SAIGE::TestContext ctx;
+    bool isER = false;
+    double Beta = 0.0, seBeta = 0.0, Tstat = 0.0, varT = 0.0, gy = 0.0;
+    std::string pval, pval_noSPA;
+    bool isSPAConverge = false;
+    double Beta_c = 0.0, seBeta_c = 0.0, Tstat_c = 0.0, varT_c = 0.0;
+    std::string pval_c, pval_noSPA_c;
+  };
+  struct RegionModelWork {
+    const SAIGE::SAIGEClass * model = nullptr;
+    int modelIndex = 0;
+    std::string traitType;
+    bool isSingleVarianceRatio = true;
+    // the per-index outputs (q = q0 markers + the ultra-rare pseudo-markers)
+    std::vector<double> BetaVec, seBetaVec, TstatVec, TstatVec_flip, gyVec, varTVec;
+    std::vector<std::string> pvalVec, pvalNAVec;
+    std::vector<unsigned char> isSPAConvergeVec;   // not vector<bool>: bit-packed writes race across markers
+    std::vector<double> Beta_cVec, seBeta_cVec, Tstat_cVec, varT_cVec;
+    std::vector<std::string> pval_cVec, pvalNA_cVec;
+    arma::mat G1tilde_P_G2tilde_Weighted_Mat;
+    arma::vec MACCase_GroupVec, MACControl_GroupVec;
+    std::vector<double> AF_caseVec, AF_ctrlVec, N_case_homVec, N_ctrl_hetVec, N_case_hetVec, N_ctrl_homVec;
+    std::vector<uint32_t> N_caseVec, N_ctrlVec, N_Vec;
+    arma::mat genoSumMat;        // SKAT-O only: this model's residualised copy of the shared matrix
+    arma::mat blockP1, blockP2;  // n x blockSize: column k = sqrt(vr) * gtilde / sqrt(vr) * P2Vec of marker k
+    arma::mat VarMat;
+    std::unique_ptr<RegionChunkStore> chunkStore;
+    std::vector<URCellModel> urOut;
+    std::vector<BurdenCellModel> burdenOut;
+    double cctpval = 1.0, cctpval_cond = 1.0;
+    bool iswriteOutput = false;
+    Rcpp::List OutList;
+  };
+  std::vector<RegionModelWork> W(P);
+  for(unsigned int k = 0; k < P; k++){
+    RegionModelWork & w = W[k];
+    w.model = models[k];
+    w.modelIndex = t_modelIdx[k];
+    w.traitType = models[k]->m_traitType;
+    w.isSingleVarianceRatio = ((models[k]->m_varRatio_null).n_elem <= 1);
+    // the same constructors as the single-model locals had, fill values included
+    w.Beta_cVec = std::vector<double>(q, arma::datum::nan);
+    w.seBeta_cVec = std::vector<double>(q, arma::datum::nan);
+    w.pval_cVec = std::vector<std::string>(q, "NA");
+    w.Tstat_cVec = std::vector<double>(q, arma::datum::nan);
+    w.varT_cVec = std::vector<double>(q, arma::datum::nan);
+    w.pvalNA_cVec = std::vector<std::string>(q, "NA");
+    w.G1tilde_P_G2tilde_Weighted_Mat.set_size(q, q_cond);
+    w.MACCase_GroupVec.zeros(q_anno_maf_weight);
+    w.MACControl_GroupVec.zeros(q_anno_maf_weight);
+    w.AF_caseVec = std::vector<double>(q, arma::datum::nan);
+    w.AF_ctrlVec = std::vector<double>(q, arma::datum::nan);
+    w.N_caseVec = std::vector<uint32_t>(q, arma::datum::nan);
+    w.N_ctrlVec = std::vector<uint32_t>(q, arma::datum::nan);
+    w.N_case_homVec = std::vector<double>(q, arma::datum::nan);
+    w.N_ctrl_hetVec = std::vector<double>(q, arma::datum::nan);
+    w.N_case_hetVec = std::vector<double>(q, arma::datum::nan);
+    w.N_ctrl_homVec = std::vector<double>(q, arma::datum::nan);
+    w.N_Vec = std::vector<uint32_t>(q, arma::datum::nan);
+    w.BetaVec = std::vector<double>(q, arma::datum::nan);
+    w.seBetaVec = std::vector<double>(q, arma::datum::nan);
+    w.pvalVec = std::vector<std::string>(q, "NA");
+    w.TstatVec = std::vector<double>(q, arma::datum::nan);
+    w.TstatVec_flip = std::vector<double>(q, arma::datum::nan);
+    w.gyVec = std::vector<double>(q, arma::datum::nan);
+    w.varTVec = std::vector<double>(q, arma::datum::nan);
+    w.pvalNAVec = std::vector<std::string>(q, "NA");
+    w.isSPAConvergeVec = std::vector<unsigned char>(q, 0);
+    w.urOut = std::vector<URCellModel>(q_anno_maf_weight);
+    w.burdenOut = std::vector<BurdenCellModel>(q_anno_maf_weight);
+    w.OutList = Rcpp::List::create();
+  }
 
   unsigned int m1 = g_cfg.region_maxMarkers_cutoff;     // number of markers in all chunks expect for the last chunk
 
@@ -2030,14 +2152,27 @@ Rcpp::List mainRegionInCPP(
   // unless SAIGE_REGION_CHUNK_MEMORY_MB says otherwise. R passes 1 x 1
   // placeholders (R/SAIGE_SPATest_Region.R).
   (void)t_P1Mat_placeholder; (void)t_P2Mat_placeholder;
-  static arma::mat s_regionP1, s_regionP2;
-  arma::mat & P1Mat = s_regionP1;
-  arma::mat & P2Mat = s_regionP2;
+  // step 4: one scratch pair and one chunk store per model (the chunk
+  // STRUCTURE -- counters, boundaries -- is shared: the same markers are
+  // tested for every model in the call). A spilled chunk file's name carries
+  // the model index when there is more than one model.
+  static std::vector<arma::mat> s_regionP1, s_regionP2;
+  if(s_regionP1.size() < P){
+    s_regionP1.resize(P);
+    s_regionP2.resize(P);
+  }
   const unsigned int m1max = std::max(m1, q_anno_maf_weight);
-  RegionChunkStore chunkStore(t_outputFile, regionName);
+  for(unsigned int k = 0; k < P; k++){
+    W[k].chunkStore.reset(new RegionChunkStore(t_outputFile,
+        (P == 1) ? regionName : (regionName + "_m" + std::to_string(t_modelIdx[k]))));
+  }
   if(t_regionTestType != "BURDEN"){
-    if(P1Mat.n_rows != m1max || P1Mat.n_cols != t_n){ P1Mat.set_size(m1max, t_n); }
-    if(P2Mat.n_rows != t_n || P2Mat.n_cols != m1max){ P2Mat.set_size(t_n, m1max); }
+    for(unsigned int k = 0; k < P; k++){
+      arma::mat & P1Mat = s_regionP1[k];
+      arma::mat & P2Mat = s_regionP2[k];
+      if(P1Mat.n_rows != m1max || P1Mat.n_cols != t_n){ P1Mat.set_size(m1max, t_n); }
+      if(P2Mat.n_rows != t_n || P2Mat.n_cols != m1max){ P2Mat.set_size(t_n, m1max); }
+    }
   }
   // P2Mat should be of dimension: t_n * m1 
   // Suppose that 
@@ -2070,7 +2205,6 @@ Rcpp::List mainRegionInCPP(
   // model member that no read in this function could reach -- each of the three
   // sites reassigns before its own read -- and it went with the member (S12).
   bool hasVarRatio = true;
-  bool isSingleVarianceRatio = ((g_model->m_varRatio_null).n_elem <= 1);
   // initiate chunk information
   unsigned int nchunks = 0; //number of chunks
   unsigned int ichunk = 0; //ith chunk
@@ -2080,8 +2214,6 @@ Rcpp::List mainRegionInCPP(
   unsigned int jm;    // legacy weight-independent index j*q_maf + m
   unsigned int jmr;   // per-set index jm*q_weight + r (weight fastest)
 
-  double cctpval;
-  double cctpval_cond;
   // ---- pass A, restructured 2026-09-06 (steps 2-3 of the region plan) -------
   // Each marker's work is split the way the marker path's was in S4:
   //   prepareAndTest(i, k, scratch, reader)  read + impute/flip + QC + weights,
@@ -2100,6 +2232,19 @@ Rcpp::List mainRegionInCPP(
   // then phase 2 over the same block in order. Every expression in phase 2 is
   // the pre-restructure one over the values phase 1 stored, so the output is
   // byte-identical whatever the thread count.
+  struct RegionPrepModel {
+    double Beta = 0.0, seBeta = 0.0, Tstat = 0.0, varT = 0.0, gy = 0.0;
+    std::string pval, pval_noSPA;
+    bool isSPAConverge = false;
+    double Beta_c = 0.0, seBeta_c = 0.0, Tstat_c = 0.0, varT_c = 0.0;
+    std::string pval_c, pval_noSPA_c;
+    arma::rowvec G1row;       // G1tilde_P_G2tilde_Weighted_Mat.row(i), already weighted
+    double MACcasegroup = 0.0;
+    double MACcontrolgroup = 0.0;
+    double AF_case = 0.0, AF_ctrl = 0.0;
+    uint32_t N_case = 0, N_ctrl = 0;
+    double N_case_hom = 0.0, N_case_het = 0.0, N_ctrl_hom = 0.0, N_ctrl_het = 0.0;
+  };
   struct RegionPrep {
     bool readFailed = false;
     bool passQC = false;
@@ -2114,31 +2259,20 @@ Rcpp::List mainRegionInCPP(
     double altFreq = 0.0, altCounts = 0.0, missingRate = 0.0, imputeInfo = 0.0;
     double MAF = 0.0;
     double MAC = 0.0;
-    double MACcasegroup = 0.0;
-    double MACcontrolgroup = 0.0;
     arma::uvec nz;            // nonzero sample indices after impute/flip
     arma::vec gnz;            // their genotype values (all phase 2 needs of GVec)
     arma::vec w0;             // per weight set
-    // test outputs
-    double Beta = 0.0, seBeta = 0.0, Tstat = 0.0, varT = 0.0, gy = 0.0;
-    std::string pval, pval_noSPA;
-    bool isSPAConverge = false;
-    double Beta_c = 0.0, seBeta_c = 0.0, Tstat_c = 0.0, varT_c = 0.0;
-    std::string pval_c, pval_noSPA_c;
-    arma::rowvec G1row;       // G1tilde_P_G2tilde_Weighted_Mat.row(i), already weighted
-    // binary summary
-    double AF_case = 0.0, AF_ctrl = 0.0;
-    uint32_t N_case = 0, N_ctrl = 0;
-    double N_case_hom = 0.0, N_case_het = 0.0, N_ctrl_hom = 0.0, N_ctrl_het = 0.0;
+    std::vector<RegionPrepModel> m;   // one per model: test outputs and case/control counts
   };
   const bool doSingleTests = (t_regionTestType != "BURDEN" || t_isSingleinGroupTest);
   const bool keepP1P2 = (t_regionTestType != "BURDEN");
   const unsigned int blockSize = std::max(1u, m1);
   std::vector<RegionPrep> preps(blockSize);
-  arma::mat blockP1, blockP2;   // n x blockSize: column k = sqrt(vr) * gtilde / sqrt(vr) * P2Vec of marker k
   if(keepP1P2){
-    blockP1.set_size(t_n, blockSize);
-    blockP2.set_size(t_n, blockSize);
+    for(unsigned int k = 0; k < P; k++){
+      W[k].blockP1.set_size(t_n, blockSize);
+      W[k].blockP2.set_size(t_n, blockSize);
+    }
   }
   Marker::MarkerScratch scratchA(t_n, q_cond);
 
@@ -2146,6 +2280,7 @@ Rcpp::List mainRegionInCPP(
   {
     RegionPrep & pr = preps[k];
     pr = RegionPrep();
+    pr.m.resize(P);
     double altFreq, altCounts, missingRate, imputeInfo;
     std::string chr, ref, alt, marker;
     uint32_t pd;
@@ -2207,100 +2342,104 @@ Rcpp::List mainRegionInCPP(
     }
     pr.isRare = true;
     ProfileScope rpRare(rp.enabled ? &rp.rareArm : nullptr, &rp.nRareArm);
-
-    // S12: this marker's test context, derived and consumed here. A common
-    // marker uses the non-sparse variance ratio, a rare one follows the model;
-    // nothing is parked on g_model, so two markers can be tested at once.
-    // hasVarRatio is per call, as in testOneModel: selectVarianceRatio writes
-    // it, nothing here reads it, and a frame-shared flag written from every
-    // worker is a data race (TSAN, 2026-09-06) even when the value never changes.
-    bool hasVarRatio = true;
-    SAIGE::TestContext ctx;
-    ctx.useSparseGRM = (MAC > g_model->m_cateVarRatioMinMACVecExclude.back())
-                         ? false : g_model->m_flagSparseGRM;
-    ctx.noadjCov = false;
-    if(!isSingleVarianceRatio){
-      ctx.varRatioVal = g_model->selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
-    }else{
-      ctx.varRatioVal = g_model->selectSingleVarianceRatio(ctx.useSparseGRM, false);
-    }
-
-    if(doSingleTests){ //perform single-variant assoc tests
-      bool is_gtilde, is_Firth, is_FirthConverge;
-      sc.indexZeroVec_arma = arma::conv_to<arma::uvec>::from(sc.indexZeroVec);
-      ProfileScope rpTest(rp.enabled ? &rp.test : nullptr, &rp.nTest);
-      if(MAC <=  g_cfg.MACCutoffforER && t_traitType == "binary"){
-        Unified_getMarkerPval(
-                  sc.GVec,
-                  false, // bool t_isOnlyOutputNonZero,
-        sc.indexNonZeroVec_arma, sc.indexZeroVec_arma, pr.Beta, pr.seBeta, pr.pval, pr.pval_noSPA, pr.Tstat, pr.gy, pr.varT, altFreq, pr.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, pr.Beta_c, pr.seBeta_c, pr.pval_c, pr.pval_noSPA_c, pr.Tstat_c, pr.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
-      }else{
-        Unified_getMarkerPval(
-                  sc.GVec,
-                  false, // bool t_isOnlyOutputNonZero,
-        sc.indexNonZeroVec_arma, sc.indexZeroVec_arma, pr.Beta, pr.seBeta, pr.pval, pr.pval_noSPA, pr.Tstat, pr.gy, pr.varT, altFreq, pr.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, pr.Beta_c, pr.seBeta_c, pr.pval_c, pr.pval_noSPA_c, pr.Tstat_c, pr.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
-      }
-      rpTest.stop();
-
-      if(isCondition){
-        if(q_weight == 1){
-          // the legacy baked row: G2-side conditioning weights times this
-          // marker's single-set weight w0
-          pr.G1row = sc.G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t() * pr.w0(0);
-        }else{
-          // design D7 (C11): at K>1 the exported matrix is G1-raw -- still
-          // scaled by the (set-independent) G2 conditioning weights, but with
-          // NO per-row w0 baked in. region_postprocess applies set r's weight
-          // per (anno, max_MAF, set) cell.
-          pr.G1row = sc.G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t();
-        }
-      }
-
-      if(keepP1P2){
-        blockP1.col(k) = sqrt(ctx.varRatioVal)*sc.gtildeVec;
-        blockP2.col(k) = sqrt(ctx.varRatioVal)*sc.P2Vec;
-      }
-      pr.tested = true;
-    }//if(doSingleTests)
-
-    arma::vec dosage_case, dosage_ctrl;
-    if(t_traitType == "binary"){
-      dosage_case = sc.GVec.elem(g_model->m_case_indices);
-      dosage_ctrl = sc.GVec.elem(g_model->m_ctrl_indices);
-      pr.MACcasegroup = arma::accu(dosage_case);
-      pr.MACcontrolgroup = arma::accu(dosage_ctrl);
-    }
-
     if(doSingleTests){
-      if(t_traitType == "binary"){
-        double AF_case = arma::mean(dosage_case) /2;
-        double AF_ctrl = arma::mean(dosage_ctrl) /2;
-        if(flip){
-          AF_case = 1-AF_case;
-          AF_ctrl = 1-AF_ctrl;
-        }
-        pr.AF_case = AF_case;
-        pr.AF_ctrl = AF_ctrl;
-        pr.N_case = dosage_case.n_elem;
-        pr.N_ctrl = dosage_ctrl.n_elem;
+      sc.indexZeroVec_arma = arma::conv_to<arma::uvec>::from(sc.indexZeroVec);
+    }
+    // step 4: every model in the call tests the one prepared buffer.
+    // getMarkerPval is const and never writes t_GVec or the index vectors
+    // (S3/S12), which is what lets the models share it with no copy.
+    for(unsigned int km = 0; km < P; km++){
+      const SAIGE::SAIGEClass & model = *W[km].model;
+      RegionPrepModel & prm = pr.m[km];
+      // S12: this marker's test context, derived and consumed here. A common
+      // marker uses the non-sparse variance ratio, a rare one follows the model;
+      // nothing is parked on the model, so two markers can be tested at once.
+      // hasVarRatio is per call, as in testOneModel: selectVarianceRatio writes
+      // it, nothing here reads it, and a frame-shared flag written from every
+      // worker is a data race (TSAN, 2026-09-06) even when the value never changes.
+      bool hasVarRatio = true;
+      SAIGE::TestContext ctx;
+      ctx.useSparseGRM = (MAC > model.m_cateVarRatioMinMACVecExclude.back())
+                           ? false : model.m_flagSparseGRM;
+      ctx.noadjCov = false;
+      if(!W[km].isSingleVarianceRatio){
+        ctx.varRatioVal = model.selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
+      }else{
+        ctx.varRatioVal = model.selectSingleVarianceRatio(ctx.useSparseGRM, false);
+      }
 
-        arma::uvec N_case_ctrl_het_hom0;
-        if(t_isMoreOutput){
-          N_case_ctrl_het_hom0 = arma::find(dosage_case <= 2 && dosage_case >=1.5);
-          pr.N_case_hom = N_case_ctrl_het_hom0.n_elem;
-          N_case_ctrl_het_hom0 = arma::find(dosage_case < 1.5 && dosage_case >= 0.5);
-          pr.N_case_het = N_case_ctrl_het_hom0.n_elem;
-          N_case_ctrl_het_hom0 = arma::find(dosage_ctrl <= 2 && dosage_ctrl >=1.5);
-          pr.N_ctrl_hom = N_case_ctrl_het_hom0.n_elem;
-          N_case_ctrl_het_hom0 = arma::find(dosage_ctrl < 1.5 && dosage_ctrl >= 0.5);
-          pr.N_ctrl_het = N_case_ctrl_het_hom0.n_elem;
-          if(flip){
-                pr.N_case_hom = pr.N_case - pr.N_case_het -  pr.N_case_hom;
-                pr.N_ctrl_hom = pr.N_ctrl - pr.N_ctrl_het - pr.N_ctrl_hom;
+      if(doSingleTests){ //perform single-variant assoc tests
+        bool is_gtilde, is_Firth, is_FirthConverge;
+        ProfileScope rpTest(rp.enabled ? &rp.test : nullptr, &rp.nTest);
+        // model.getMarkerPval rather than the Unified_ wrapper (which
+        // dispatches to g_models[0]); the worker's KernelWorkspace goes in.
+        if(MAC <=  g_cfg.MACCutoffforER && W[km].traitType == "binary"){
+          model.getMarkerPval(sc.GVec, sc.indexNonZeroVec_arma, sc.indexZeroVec_arma, prm.Beta, prm.seBeta, prm.pval, prm.pval_noSPA, altFreq, prm.Tstat, prm.gy, prm.varT, prm.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, prm.Beta_c, prm.seBeta_c, prm.pval_c, prm.pval_noSPA_c, prm.Tstat_c, prm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx, &sc.ws);
+        }else{
+          model.getMarkerPval(sc.GVec, sc.indexNonZeroVec_arma, sc.indexZeroVec_arma, prm.Beta, prm.seBeta, prm.pval, prm.pval_noSPA, altFreq, prm.Tstat, prm.gy, prm.varT, prm.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, prm.Beta_c, prm.seBeta_c, prm.pval_c, prm.pval_noSPA_c, prm.Tstat_c, prm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx, &sc.ws);
+        }
+        rpTest.stop();
+
+        if(isCondition){
+          if(q_weight == 1){
+            // the legacy baked row: G2-side conditioning weights times this
+            // marker's single-set weight w0
+            prm.G1row = sc.G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t() * pr.w0(0);
+          }else{
+            // design D7 (C11): at K>1 the exported matrix is G1-raw -- still
+            // scaled by the (set-independent) G2 conditioning weights, but with
+            // NO per-row w0 baked in. region_postprocess applies set r's weight
+            // per (anno, max_MAF, set) cell.
+            prm.G1row = sc.G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t();
           }
         }
+
+        if(keepP1P2){
+          W[km].blockP1.col(k) = sqrt(ctx.varRatioVal)*sc.gtildeVec;
+          W[km].blockP2.col(k) = sqrt(ctx.varRatioVal)*sc.P2Vec;
+        }
+        pr.tested = true;
+      }//if(doSingleTests)
+
+      arma::vec dosage_case, dosage_ctrl;
+      if(W[km].traitType == "binary"){
+        dosage_case = sc.GVec.elem(model.m_case_indices);
+        dosage_ctrl = sc.GVec.elem(model.m_ctrl_indices);
+        prm.MACcasegroup = arma::accu(dosage_case);
+        prm.MACcontrolgroup = arma::accu(dosage_ctrl);
       }
-    } //if(doSingleTests)
+
+      if(doSingleTests){
+        if(W[km].traitType == "binary"){
+          double AF_case = arma::mean(dosage_case) /2;
+          double AF_ctrl = arma::mean(dosage_ctrl) /2;
+          if(flip){
+            AF_case = 1-AF_case;
+            AF_ctrl = 1-AF_ctrl;
+          }
+          prm.AF_case = AF_case;
+          prm.AF_ctrl = AF_ctrl;
+          prm.N_case = dosage_case.n_elem;
+          prm.N_ctrl = dosage_ctrl.n_elem;
+
+          arma::uvec N_case_ctrl_het_hom0;
+          if(t_isMoreOutput){
+            N_case_ctrl_het_hom0 = arma::find(dosage_case <= 2 && dosage_case >=1.5);
+            prm.N_case_hom = N_case_ctrl_het_hom0.n_elem;
+            N_case_ctrl_het_hom0 = arma::find(dosage_case < 1.5 && dosage_case >= 0.5);
+            prm.N_case_het = N_case_ctrl_het_hom0.n_elem;
+            N_case_ctrl_het_hom0 = arma::find(dosage_ctrl <= 2 && dosage_ctrl >=1.5);
+            prm.N_ctrl_hom = N_case_ctrl_het_hom0.n_elem;
+            N_case_ctrl_het_hom0 = arma::find(dosage_ctrl < 1.5 && dosage_ctrl >= 0.5);
+            prm.N_ctrl_het = N_case_ctrl_het_hom0.n_elem;
+            if(flip){
+                  prm.N_case_hom = prm.N_case - prm.N_case_het -  prm.N_case_hom;
+                  prm.N_ctrl_hom = prm.N_ctrl - prm.N_ctrl_het - prm.N_ctrl_hom;
+            }
+          }
+        }
+      } //if(doSingleTests)
+    } // for km (models)
   };
 
   auto accumulate = [&](unsigned int i, unsigned int k)
@@ -2331,27 +2470,31 @@ Rcpp::List mainRegionInCPP(
         std::cout << "Start analyzing chunk " << ichunk << "....." << std::endl;
       }
       if(pr.tested){
-        BetaVec.at(i) = pr.Beta * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true
-        seBetaVec.at(i) = pr.seBeta;
-        pvalVec.at(i) = pr.pval;
-        pvalNAVec.at(i) = pr.pval_noSPA;
-        TstatVec.at(i) = pr.Tstat * (1 - 2*flip);
-        TstatVec_flip.at(i) = pr.Tstat;
-        gyVec.at(i) = pr.gy;
-        varTVec.at(i) = pr.varT;
-        isSPAConvergeVec.at(i) = pr.isSPAConverge;
-        if(isCondition){
-          Beta_cVec.at(i) = pr.Beta_c * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true
-          seBeta_cVec.at(i) = pr.seBeta_c;
-          pval_cVec.at(i) = pr.pval_c;
-          pvalNA_cVec.at(i) = pr.pval_noSPA_c;
-          Tstat_cVec.at(i) = pr.Tstat_c * (1 - 2*flip);
-          varT_cVec.at(i) = pr.varT_c;
-          G1tilde_P_G2tilde_Weighted_Mat.row(i) = pr.G1row;
-        }
-        if(keepP1P2){
-          P1Mat.row(i1InChunk) = blockP1.col(k).t();
-          P2Mat.col(i1InChunk) = blockP2.col(k);
+        for(unsigned int km = 0; km < P; km++){
+          RegionModelWork & w = W[km];
+          const RegionPrepModel & prm = pr.m[km];
+          w.BetaVec.at(i) = prm.Beta * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true
+          w.seBetaVec.at(i) = prm.seBeta;
+          w.pvalVec.at(i) = prm.pval;
+          w.pvalNAVec.at(i) = prm.pval_noSPA;
+          w.TstatVec.at(i) = prm.Tstat * (1 - 2*flip);
+          w.TstatVec_flip.at(i) = prm.Tstat;
+          w.gyVec.at(i) = prm.gy;
+          w.varTVec.at(i) = prm.varT;
+          w.isSPAConvergeVec.at(i) = prm.isSPAConverge;
+          if(isCondition){
+            w.Beta_cVec.at(i) = prm.Beta_c * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true
+            w.seBeta_cVec.at(i) = prm.seBeta_c;
+            w.pval_cVec.at(i) = prm.pval_c;
+            w.pvalNA_cVec.at(i) = prm.pval_noSPA_c;
+            w.Tstat_cVec.at(i) = prm.Tstat_c * (1 - 2*flip);
+            w.varT_cVec.at(i) = prm.varT_c;
+            w.G1tilde_P_G2tilde_Weighted_Mat.row(i) = prm.G1row;
+          }
+          if(keepP1P2){
+            s_regionP1[km].row(i1InChunk) = w.blockP1.col(k).t();
+            s_regionP2[km].col(i1InChunk) = w.blockP2.col(k);
+          }
         }
       }
       i1 += 1;
@@ -2370,9 +2513,11 @@ Rcpp::List mainRegionInCPP(
                 jmr = jm*q_weight + r;
                 annoMAFIndicatorVec(jmr) = 1;
                 MAC_GroupVec(jmr) = MAC_GroupVec(jmr) + pr.MAC;
-                if(t_traitType == "binary"){
-                  MACCase_GroupVec(jmr) = MACCase_GroupVec(jmr) + pr.MACcasegroup;
-                  MACControl_GroupVec(jmr) = MACControl_GroupVec(jmr) + pr.MACcontrolgroup;
+                for(unsigned int km = 0; km < P; km++){
+                  if(W[km].traitType == "binary"){
+                    W[km].MACCase_GroupVec(jmr) = W[km].MACCase_GroupVec(jmr) + pr.m[km].MACcasegroup;
+                    W[km].MACControl_GroupVec(jmr) = W[km].MACControl_GroupVec(jmr) + pr.m[km].MACcontrolgroup;
+                  }
                 }
                 for(unsigned int k2 = 0; k2 < nNonZero; k2++){
                   genoSumMat(pr.nz(k2), jmr) = genoSumMat(pr.nz(k2), jmr) + pr.w0(r)*pr.gnz(k2);
@@ -2389,19 +2534,23 @@ Rcpp::List mainRegionInCPP(
       }
       annoMAFIndicatorMat.row(i) = annoMAFIndicatorVec.t();
       if(doSingleTests){
-        if(t_traitType == "binary"){
-          AF_caseVec.at(i) = pr.AF_case;
-          AF_ctrlVec.at(i) = pr.AF_ctrl;
-          N_caseVec.at(i) = pr.N_case;
-          N_ctrlVec.at(i) = pr.N_ctrl;
-          if(t_isMoreOutput){
-            N_case_homVec.at(i) = pr.N_case_hom;
-            N_case_hetVec.at(i) = pr.N_case_het;
-            N_ctrl_homVec.at(i) = pr.N_ctrl_hom;
-            N_ctrl_hetVec.at(i) = pr.N_ctrl_het;
+        for(unsigned int km = 0; km < P; km++){
+          RegionModelWork & w = W[km];
+          const RegionPrepModel & prm = pr.m[km];
+          if(w.traitType == "binary"){
+            w.AF_caseVec.at(i) = prm.AF_case;
+            w.AF_ctrlVec.at(i) = prm.AF_ctrl;
+            w.N_caseVec.at(i) = prm.N_case;
+            w.N_ctrlVec.at(i) = prm.N_ctrl;
+            if(t_isMoreOutput){
+              w.N_case_homVec.at(i) = prm.N_case_hom;
+              w.N_case_hetVec.at(i) = prm.N_case_het;
+              w.N_ctrl_homVec.at(i) = prm.N_ctrl_hom;
+              w.N_ctrl_hetVec.at(i) = prm.N_ctrl_het;
+            }
+          }else if(w.traitType == "quantitative"){
+            w.N_Vec.at(i) = t_n;
           }
-        }else if(t_traitType == "quantitative"){
-          N_Vec.at(i) = t_n;
         }
       }
     }else{   // Ultra-Rare Variants (URV)
@@ -2459,7 +2608,7 @@ Rcpp::List mainRegionInCPP(
       ProfileScope rpFlush(rp.enabled ? &rp.flush : nullptr, &rp.nFlush);
       std::cout << "In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and " << i1 << " markers are not ultra-rare." << std::endl;
       if(t_regionTestType != "BURDEN"){
-        chunkStore.add(ichunk, P1Mat.rows(0, i1InChunk - 1), P2Mat.cols(0, i1InChunk - 1));
+        for(unsigned int km = 0; km < P; km++){ W[km].chunkStore->add(ichunk, s_regionP1[km].rows(0, i1InChunk - 1), s_regionP2[km].cols(0, i1InChunk - 1)); }
       }
       mPassCVVec.push_back(m1);
       ichunk += 1;
@@ -2651,7 +2800,7 @@ Rcpp::List mainRegionInCPP(
     ProfileScope rpFlush2(rp.enabled ? &rp.flush : nullptr, &rp.nFlush);
     std::cout << "In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and " << i1 << " markers are not ultra-rare." << std::endl;
     if(t_regionTestType != "BURDEN"){	  
-      chunkStore.add(ichunk, P1Mat.rows(0, i1InChunk - 1), P2Mat.cols(0, i1InChunk - 1));
+      for(unsigned int km = 0; km < P; km++){ W[km].chunkStore->add(ichunk, s_regionP1[km].rows(0, i1InChunk - 1), s_regionP2[km].cols(0, i1InChunk - 1)); }
     }
     ichunk = ichunk + 1;
     //}
@@ -2661,6 +2810,16 @@ Rcpp::List mainRegionInCPP(
   }
 
 
+  // step 4: the residualised genoSumMat is per model (each model's XV). It
+  // starts as a copy of the shared accumulation and B1 residualises its
+  // columns in place, exactly as the single matrix used to be; a region with
+  // no ultra-rare marker skips the pass and exports the copy unresidualised,
+  // as before.
+  if(t_regionTestType != "BURDEN"){
+    for(unsigned int km = 0; km < P; km++){
+      W[km].genoSumMat = genoSumMat;
+    }
+  }
 //for all UR variants
 if(i2 > 0){
   ProfileScope rpUr(rp.enabled ? &rp.urPass : nullptr, &rp.nUrPass);
@@ -2674,8 +2833,10 @@ if(i2 > 0){
   // (P1Mat/P2Mat already hold m1new = m1max rows/cols: sized once per call above)
   (void)m1new;
 
-  arma::mat XV, XXVX_inv;
-  g_model->extract_XV_XXVX_inv(XV, XXVX_inv);
+  std::vector<arma::mat> XVs(P), XXVX_invs(P);
+  for(unsigned int km = 0; km < P; km++){
+    W[km].model->extract_XV_XXVX_inv(XVs[km], XXVX_invs[km]);
+  }
   //the last chunk for UR
   // Step 3b (2026-09-06): the per-cell getMarkerPval calls are split out of
   // this loop. The loop below (B1) is the pre-existing per-cell body minus the
@@ -2692,16 +2853,7 @@ if(i2 > 0){
     std::vector<arma::uword> nz, zero;   // its nonzero / zero sample indices
     double altFreq = 0.0;
     bool flip = false;
-    bool isER = false;
     double w0 = 0.0;
-    SAIGE::TestContext ctx;
-    // test outputs
-    double Beta = 0.0, seBeta = 0.0, Tstat = 0.0, varT = 0.0, gy = 0.0;
-    std::string pval, pval_noSPA;
-    bool isSPAConverge = false;
-    double Beta_c = 0.0, seBeta_c = 0.0, Tstat_c = 0.0, varT_c = 0.0;
-    std::string pval_c, pval_noSPA_c;
-    arma::rowvec G1;               // G1tilde_P_G2tilde_Vec, conditional runs only
   };
   // The records persist across regions (a function static, like the P1/P2
   // scratch): the collapsed vector is copied into an existing N-length
@@ -2827,10 +2979,12 @@ if(i2 > 0){
 
 
   	 if(t_regionTestType != "BURDEN"){
+	    for(unsigned int km = 0; km < P; km++){
 	    arma::vec genoSumMatvec1 = genoSumMat.col(jmr);
-	    arma::vec genoSumMatvec2 = XV * genoSumMatvec1;
-	    arma::vec genoSumMatvec3 = genoSumMatvec1 - XXVX_inv * genoSumMatvec2;
-	    genoSumMat.col(jmr) = genoSumMatvec3;
+	    arma::vec genoSumMatvec2 = XVs[km] * genoSumMatvec1;
+	    arma::vec genoSumMatvec3 = genoSumMatvec1 - XXVX_invs[km] * genoSumMatvec2;
+	    W[km].genoSumMat.col(jmr) = genoSumMatvec3;
+	    }
           }
 
 	  MAC = MAF * 2 * t_n * (1 - missingRate);   // checked on 08-10-2021
@@ -2841,14 +2995,21 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
       // a rare one follows the model -- but nothing is parked on g_model, so no
       // later read can pick up a marker's choice by accident (LEDGER #27/#50)
       // and two markers could be tested at once without racing.
-      SAIGE::TestContext ctx;
-      ctx.useSparseGRM = (MAC > g_model->m_cateVarRatioMinMACVecExclude.back())
-                           ? false : g_model->m_flagSparseGRM;
-      ctx.noadjCov = false;
-      if(!isSingleVarianceRatio){
-        ctx.varRatioVal = g_model->selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
-      }else{
-        ctx.varRatioVal = g_model->selectSingleVarianceRatio(ctx.useSparseGRM, false);
+      // step 4: this cell's test context and ER predicate, per model
+      for(unsigned int km = 0; km < P; km++){
+        const SAIGE::SAIGEClass & model = *W[km].model;
+        URCellModel & cm = W[km].urOut[jmr];
+        SAIGE::TestContext ctx;
+        ctx.useSparseGRM = (MAC > model.m_cateVarRatioMinMACVecExclude.back())
+                             ? false : model.m_flagSparseGRM;
+        ctx.noadjCov = false;
+        if(!W[km].isSingleVarianceRatio){
+          ctx.varRatioVal = model.selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
+        }else{
+          ctx.varRatioVal = model.selectSingleVarianceRatio(ctx.useSparseGRM, false);
+        }
+        cm.ctx = ctx;
+        cm.isER = (MAC <= g_cfg.MACCutoffforER && W[km].traitType == "binary" && erAllowedVec[r]);
       }
 
 
@@ -2888,48 +3049,52 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
 	      std::string wname = (r < t_weightNames.size()) ? t_weightNames.at(r) : ("W" + std::to_string(r + 1));
 	      markerVec.at(i) = markerVec.at(i) + ":" + wname;
 	    }
-            arma::vec dosage_case, dosage_ctrl;
             MAC_GroupVec(jmr) = MAC_GroupVec(jmr) + MAC;
-            if(t_traitType == "binary"){
-                        dosage_case = genoURVec.elem(g_model->m_case_indices);
-                        dosage_ctrl = genoURVec.elem(g_model->m_ctrl_indices);
+            for(unsigned int km = 0; km < P; km++){
+            RegionModelWork & w = W[km];
+            const SAIGE::SAIGEClass & model = *w.model;
+            arma::vec dosage_case, dosage_ctrl;
+            if(w.traitType == "binary"){
+                        dosage_case = genoURVec.elem(model.m_case_indices);
+                        dosage_ctrl = genoURVec.elem(model.m_ctrl_indices);
                         MACcasegroup = arma::accu(dosage_case);
                         MACcontrolgroup = arma::accu(dosage_ctrl);
-                        MACCase_GroupVec(jmr) = MACCase_GroupVec(jmr) + MACcasegroup;
-                        MACControl_GroupVec(jmr) = MACControl_GroupVec(jmr) + MACcontrolgroup;
+                        w.MACCase_GroupVec(jmr) = w.MACCase_GroupVec(jmr) + MACcasegroup;
+                        w.MACControl_GroupVec(jmr) = w.MACControl_GroupVec(jmr) + MACcontrolgroup;
             }
 
-          if(t_traitType == "binary"){
+          if(w.traitType == "binary"){
             AF_case = arma::mean(dosage_case) /2;
             AF_ctrl = arma::mean(dosage_ctrl) /2;
             if(flip){
               AF_case = 1-AF_case;
               AF_ctrl = 1-AF_ctrl;
             }
-          AF_caseVec.at(i) = AF_case;
-          AF_ctrlVec.at(i) = AF_ctrl;
-          N_caseVec.at(i) = dosage_case.n_elem;
-          N_ctrlVec.at(i) = dosage_ctrl.n_elem;
+          w.AF_caseVec.at(i) = AF_case;
+          w.AF_ctrlVec.at(i) = AF_ctrl;
+          w.N_caseVec.at(i) = dosage_case.n_elem;
+          w.N_ctrlVec.at(i) = dosage_ctrl.n_elem;
 
          arma::uvec N_case_ctrl_het_hom0;
         if(t_isMoreOutput){
           N_case_ctrl_het_hom0 = arma::find(dosage_case <= 2 && dosage_case >=1.5);
-          N_case_homVec.at(i)  = N_case_ctrl_het_hom0.n_elem;
+          w.N_case_homVec.at(i)  = N_case_ctrl_het_hom0.n_elem;
           N_case_ctrl_het_hom0 = arma::find(dosage_case < 1.5 && dosage_case >= 0.5);
-          N_case_hetVec.at(i) = N_case_ctrl_het_hom0.n_elem;
+          w.N_case_hetVec.at(i) = N_case_ctrl_het_hom0.n_elem;
           N_case_ctrl_het_hom0 = arma::find(dosage_ctrl <= 2 && dosage_ctrl >=1.5);
-          N_ctrl_homVec.at(i) = N_case_ctrl_het_hom0.n_elem;
+          w.N_ctrl_homVec.at(i) = N_case_ctrl_het_hom0.n_elem;
           N_case_ctrl_het_hom0 = arma::find(dosage_ctrl < 1.5 && dosage_ctrl >= 0.5);
-          N_ctrl_hetVec.at(i) = N_case_ctrl_het_hom0.n_elem;
+          w.N_ctrl_hetVec.at(i) = N_case_ctrl_het_hom0.n_elem;
           if(flip){
-                N_case_homVec.at(i) = N_case - N_case_hetVec.at(i) -  N_case_homVec.at(i);
-                N_ctrl_homVec.at(i) = N_ctrl - N_ctrl_hetVec.at(i) - N_ctrl_homVec.at(i);
+                w.N_case_homVec.at(i) = N_case - w.N_case_hetVec.at(i) -  w.N_case_homVec.at(i);
+                w.N_ctrl_homVec.at(i) = N_ctrl - w.N_ctrl_hetVec.at(i) - w.N_ctrl_homVec.at(i);
           }
         }
 
-        }else if(t_traitType == "quantitative"){
-          N_Vec.at(i) = n;
+        }else if(w.traitType == "quantitative"){
+          w.N_Vec.at(i) = n;
         }
+            } // for km (models)
       // Hand this cell's operands to its record (persistent storage, see
       // its declaration): the copy into c.genoURVec is a memcpy into an
       // existing N-length buffer, and the index copies reuse capacity. The
@@ -2946,20 +3111,22 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
         c.altFreq = altFreq;
         c.flip = flip;
         c.w0 = w0;
-        c.ctx = ctx;
-        c.isER = (MAC <= g_cfg.MACCutoffforER && t_traitType == "binary" && erAllowedVec[r]);
         urTested.push_back(jmr);
       }
     }else{//if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
             MAC_GroupVec(jmr) = MAC_GroupVec(jmr) + MAC;
+            for(unsigned int km = 0; km < P; km++){
+            RegionModelWork & w = W[km];
+            const SAIGE::SAIGEClass & model = *w.model;
 	                arma::vec dosage_case, dosage_ctrl;
-            if(t_traitType == "binary"){
-                        dosage_case = genoURVec.elem(g_model->m_case_indices);
-                        dosage_ctrl = genoURVec.elem(g_model->m_ctrl_indices);
+            if(w.traitType == "binary"){
+                        dosage_case = genoURVec.elem(model.m_case_indices);
+                        dosage_ctrl = genoURVec.elem(model.m_ctrl_indices);
                         MACcasegroup = arma::accu(dosage_case);
                         MACcontrolgroup = arma::accu(dosage_ctrl);
-                        MACCase_GroupVec(jmr) = MACCase_GroupVec(jmr) + MACcasegroup;
-                        MACControl_GroupVec(jmr) = MACControl_GroupVec(jmr) + MACcontrolgroup;
+                        w.MACCase_GroupVec(jmr) = w.MACCase_GroupVec(jmr) + MACcasegroup;
+                        w.MACControl_GroupVec(jmr) = w.MACControl_GroupVec(jmr) + MACcontrolgroup;
+            }
             }
     }
 
@@ -2969,86 +3136,91 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
     }// for r (weight sets)
    }
   }
-  // B2: the per-cell tests, over the cells B1 prepared -- in cell order at
-  // one thread, one cell per range on the pass-A pool otherwise. Each cell
-  // reads its own record and the const model and writes its own record plus
-  // its own P1Mat row / P2Mat column, so two cells never touch the same
-  // memory; the per-worker scratch supplies gtildeVec, P2Vec and the
-  // conditional row exactly as prepareAndTest's does.
+  // B2: the per-cell tests, over the cells B1 prepared x the models -- in
+  // order at one thread, one (cell, model) per range on the pass-A pool
+  // otherwise. Each task reads its cell's shared record and its model's
+  // record and writes only the latter plus its own P1Mat row / P2Mat column,
+  // so two tasks never touch the same memory; the per-worker scratch
+  // supplies gtildeVec, P2Vec, the conditional row and the KernelWorkspace.
   {
     const std::function<void(unsigned int, Marker::MarkerScratch&)> urTestFn =
-      [&](unsigned int k, Marker::MarkerScratch & sc)
+      [&](unsigned int t, Marker::MarkerScratch & sc)
     {
-      URCell & c = urCells[urTested[k]];
+      const unsigned int km = t % P;
+      const URCell & c = urCells[urTested[t / P]];
+      const SAIGE::SAIGEClass & model = *W[km].model;
+      URCellModel & cm = W[km].urOut[urTested[t / P]];
       bool is_gtilde, is_Firth, is_FirthConverge;
       // strict, non-owning views: getMarkerPval never resizes its index
-      // arguments (a strict view would throw if it tried). The worker's
-      // KernelWorkspace goes in too: without it every Firth/SPA temporary is
-      // a fresh N-length allocation on a worker thread, and the 4-thread
-      // profile showed those large frees at ~1.6x the step-3 share.
-      arma::uvec nzView(c.nz.data(), c.nz.size(), false, true);
-      arma::uvec zeroView(c.zero.data(), c.zero.size(), false, true);
+      // arguments (a strict view would throw if it tried)
+      arma::uvec nzView(const_cast<arma::uword*>(c.nz.data()), c.nz.size(), false, true);
+      arma::uvec zeroView(const_cast<arma::uword*>(c.zero.data()), c.zero.size(), false, true);
+      arma::vec & genoURVecRef = const_cast<arma::vec&>(c.genoURVec);   // getMarkerPval takes a non-const ref and never writes it (S3/S12)
       ProfileScope rpUrTest(rp.enabled ? &rp.urTest : nullptr, &rp.nUrTest);
-      if(c.isER){
-        g_model->getMarkerPval(c.genoURVec, nzView, zeroView, c.Beta, c.seBeta, c.pval, c.pval_noSPA, c.altFreq, c.Tstat, c.gy, c.varT, c.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, c.Beta_c, c.seBeta_c, c.pval_c, c.pval_noSPA_c, c.Tstat_c, c.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, c.flip, c.ctx, &sc.ws);
+      if(cm.isER){
+        model.getMarkerPval(genoURVecRef, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, c.flip, cm.ctx, &sc.ws);
       }else{
-        g_model->getMarkerPval(c.genoURVec, nzView, zeroView, c.Beta, c.seBeta, c.pval, c.pval_noSPA, c.altFreq, c.Tstat, c.gy, c.varT, c.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, c.Beta_c, c.seBeta_c, c.pval_c, c.pval_noSPA_c, c.Tstat_c, c.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, c.flip, c.ctx, &sc.ws);
+        model.getMarkerPval(genoURVecRef, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, c.flip, cm.ctx, &sc.ws);
       }
       rpUrTest.stop();
       if(isCondition){
-        c.G1 = sc.G1tilde_P_G2tilde_Vec;
+        cm.G1 = sc.G1tilde_P_G2tilde_Vec;
       }
       if(t_regionTestType != "BURDEN"){
-        P1Mat.row(c.rowInChunk) = sqrt(c.ctx.varRatioVal)*sc.gtildeVec.t();
-        P2Mat.col(c.rowInChunk) = sqrt(c.ctx.varRatioVal)*sc.P2Vec;
+        s_regionP1[km].row(c.rowInChunk) = sqrt(cm.ctx.varRatioVal)*sc.gtildeVec.t();
+        s_regionP2[km].col(c.rowInChunk) = sqrt(cm.ctx.varRatioVal)*sc.P2Vec;
       }
     };
-    runCellTests((unsigned int)urTested.size(), urTestFn);
+    runCellTests((unsigned int)(urTested.size() * P), urTestFn);
   }
 
-  // B3: the outputs the tests feed, in cell order -- the pre-split writes
-  // over the values the records hold.
+  // B3: the outputs the tests feed, per model in cell order -- the pre-split
+  // writes over the values the records hold.
+  for(unsigned int km = 0; km < P; km++){
+  RegionModelWork & w = W[km];
   for(unsigned int k = 0; k < urTested.size(); k++){
     const URCell & c = urCells[urTested[k]];
+    const URCellModel & cm = w.urOut[urTested[k]];
     const unsigned int ic = c.i;
     const bool flip = c.flip;
-    BetaVec.at(ic) = c.Beta* (1 - 2*flip);
-    seBetaVec.at(ic) = c.seBeta;
-    pvalVec.at(ic) = c.pval;
-    pvalNAVec.at(ic) = c.pval_noSPA;
-    TstatVec.at(ic) = c.Tstat * (1 - 2*flip);
-    TstatVec_flip.at(ic) = c.Tstat;
-    gyVec.at(ic) = c.gy;
-    varTVec.at(ic) = c.varT;
-    isSPAConvergeVec.at(ic) = c.isSPAConverge;
+    w.BetaVec.at(ic) = cm.Beta* (1 - 2*flip);
+    w.seBetaVec.at(ic) = cm.seBeta;
+    w.pvalVec.at(ic) = cm.pval;
+    w.pvalNAVec.at(ic) = cm.pval_noSPA;
+    w.TstatVec.at(ic) = cm.Tstat * (1 - 2*flip);
+    w.TstatVec_flip.at(ic) = cm.Tstat;
+    w.gyVec.at(ic) = cm.gy;
+    w.varTVec.at(ic) = cm.varT;
+    w.isSPAConvergeVec.at(ic) = cm.isSPAConverge;
     if(isCondition){
-      Beta_cVec.at(ic) = c.Beta_c * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true
-      seBeta_cVec.at(ic) = c.seBeta_c;
-      pval_cVec.at(ic) = c.pval_c;
-      pvalNA_cVec.at(ic) = c.pval_noSPA_c;
-      Tstat_cVec.at(ic) = c.Tstat_c * (1 - 2*flip);
-      varT_cVec.at(ic) = c.varT_c;
+      w.Beta_cVec.at(ic) = cm.Beta_c * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true
+      w.seBeta_cVec.at(ic) = cm.seBeta_c;
+      w.pval_cVec.at(ic) = cm.pval_c;
+      w.pvalNA_cVec.at(ic) = cm.pval_noSPA_c;
+      w.Tstat_cVec.at(ic) = cm.Tstat_c * (1 - 2*flip);
+      w.varT_cVec.at(ic) = cm.varT_c;
       if(q_weight == 1){
         // w0 is assigned on every branch of B1: 1.0 for custom sets (LEDGER
         // #17 -- their collapse already baked w_r into genoURVec),
         // pdf(beta_r, MAF) for beta sets, 1.0 for No_Weights. Reachable only
         // at q_weight == 1: a K>1 run takes the raw-export branch below,
         // which reads no w0.
-        G1tilde_P_G2tilde_Weighted_Mat.row(ic) = c.G1 % w0G2Vec_cond.t() * c.w0;
+        w.G1tilde_P_G2tilde_Weighted_Mat.row(ic) = cm.G1 % w0G2Vec_cond.t() * c.w0;
       }else{
         // design D7 (C11): G1-raw row at K>1, per-set weight applied in
         // region_postprocess (1 for custom sets, pdf(beta_r, MAF) for beta
         // sets, matching what the baked path would use)
-        G1tilde_P_G2tilde_Weighted_Mat.row(ic) = c.G1 % w0G2Vec_cond.t();
+        w.G1tilde_P_G2tilde_Weighted_Mat.row(ic) = cm.G1 % w0G2Vec_cond.t();
       }
     }
+  }
   }
 
 
   if(i1InChunk != 0){
     nchunks = nchunks + 1;
     if(t_regionTestType != "BURDEN"){
-      chunkStore.add(ichunk, P1Mat.rows(0, i1InChunk - 1), P2Mat.cols(0, i1InChunk - 1));
+      for(unsigned int km = 0; km < P; km++){ W[km].chunkStore->add(ichunk, s_regionP1[km].rows(0, i1InChunk - 1), s_regionP2[km].cols(0, i1InChunk - 1)); }
     }
       ichunk = ichunk + 1;
 //    }
@@ -3061,11 +3233,11 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
   nchunks = mPassCVVecsize;
 
 
-arma::mat VarMat;
-//(i1, i1);
-
 if(t_regionTestType != "BURDEN"){
   ProfileScope rpVm(rp.enabled ? &rp.varmat : nullptr, &rp.nVarmat);
+ for(unsigned int km = 0; km < P; km++){
+  arma::mat & VarMat = W[km].VarMat;
+  RegionChunkStore & chunkStore = *W[km].chunkStore;
   VarMat.resize(i1, i1);
 
   // VarMat is assembled from the SAME per-chunk sub-block products the disk
@@ -3135,6 +3307,7 @@ if(t_regionTestType != "BURDEN"){
     }
     chunkStore.clear();   // removes any spilled files; a no-op in memory
   }
+ } // for km (models)
 }  //if(t_regionTestType != "BURDEN"){
 
 //read and test single markers done
@@ -3151,27 +3324,10 @@ for(unsigned int j = 0; j < q_anno; j++){
 
 //If only conduct Burden test
 //arma::vec BURDEN_pval_Vec(q_anno_maf);
-std::vector<std::string> BURDEN_pval_Vec(q_anno_maf_weight, "NA");
-//BURDEN_pval_Vec.fill(-1.0);
-//arma::vec BURDEN_pval_cVec(q_anno_maf);
-std::vector<std::string> BURDEN_pval_cVec(q_anno_maf_weight, "NA");
-//BURDEN_pval_cVec.fill(-1.0);
-std::vector<std::string> BURDEN_AnnoName_Vec(q_anno_maf_weight);
-std::vector<std::string> BURDEN_maxMAFName_Vec(q_anno_maf_weight);
-std::vector<double> BURDEN_Beta_Vec(q_anno_maf_weight);
-std::vector<double> BURDEN_seBeta_Vec(q_anno_maf_weight);
-//std::vector<double> BURDEN_pval_cVec(q_anno_maf);
-std::vector<double> BURDEN_Beta_cVec(q_anno_maf_weight);
-std::vector<double> BURDEN_seBeta_cVec(q_anno_maf_weight);
-
-
-
-bool iswriteOutput = false;
-bool isregion = true;
-if(!g_model->m_flagSparseGRM){
-	isregion = false;
-}
-//Rcpp::DataFrame OUT_BURDEN = Rcpp::DataFrame::create();
+// step 4: the emission is per model. The shared quantities computed above
+// (q_maf_for_anno, the MAC and count accumulators, the marker fields) are
+// read by every model; the tests, the BURDEN rows, the writers and the
+// exported list are each model's own.
 unsigned int i= 0;
 unsigned int q_maf_m;
 std::string AnnoName;
@@ -3180,23 +3336,16 @@ if(t_regionTestType == "BURDEN"){
      // Step 3b (2026-09-06): the per-cell getMarkerPval is split out of the
      // emitter. D1 walks the cells in order and prepares one BurdenCell for
      // every cell the emitter would test (the same predicate over the same
-     // operands); D2 runs those tests, serially at one thread and one cell
-     // per range on the pass-A pool otherwise; D3 is the pre-split emitter
-     // loop reading each cell's result instead of computing it, so the
+     // operands; step 4: the test context per model beside it); D2 runs
+     // those tests, serially at one thread and one (cell, model) per range on
+     // the pass-A pool otherwise; D3 is the pre-split emitter loop per model,
+     // reading each cell's result instead of computing it, so the
      // carry-forward cache sees exactly the sequence it always did.
      struct BurdenCell {
        bool tested = false;
        arma::vec genoSumVec;
        std::vector<arma::uword> nz, zero;
        double altFreq = 0.0;
-       bool isER = false;
-       SAIGE::TestContext ctx;
-       // test outputs
-       double Beta = 0.0, seBeta = 0.0, Tstat = 0.0, varT = 0.0, gy = 0.0;
-       std::string pval, pval_noSPA;
-       bool isSPAConverge = false;
-       double Beta_c = 0.0, seBeta_c = 0.0, Tstat_c = 0.0, varT_c = 0.0;
-       std::string pval_c, pval_noSPA_c;
      };
      // persistent across regions, for the same reason as the URCells
      static std::vector<BurdenCell> s_burdenCells;
@@ -3234,28 +3383,32 @@ if(t_regionTestType == "BURDEN"){
 		MAC = MAF*2*t_n;
 	}
         if(indexNonZeroVec_arma.n_elem > 0 && MAC >= g_cfg.min_gourpmac_for_burdenonly){
+          for(unsigned int km = 0; km < P; km++){
+            const SAIGE::SAIGEClass & model = *W[km].model;
+            BurdenCellModel & cm = W[km].burdenOut[jmr];
       // S12: this marker's test context, derived and consumed here. Same two
       // steps as before -- a common marker uses the non-sparse variance ratio,
-      // a rare one follows the model -- but nothing is parked on g_model, so no
+      // a rare one follows the model -- but nothing is parked on the model, so no
       // later read can pick up a marker's choice by accident (LEDGER #27/#50)
       // and two markers could be tested at once without racing.
       SAIGE::TestContext ctx;
-      ctx.useSparseGRM = (MAC > g_model->m_cateVarRatioMinMACVecExclude.back())
-                           ? false : g_model->m_flagSparseGRM;
+      ctx.useSparseGRM = (MAC > model.m_cateVarRatioMinMACVecExclude.back())
+                           ? false : model.m_flagSparseGRM;
       ctx.noadjCov = false;
-      if(!isSingleVarianceRatio){
-        ctx.varRatioVal = g_model->selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
+      if(!W[km].isSingleVarianceRatio){
+        ctx.varRatioVal = model.selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
       }else{
-        ctx.varRatioVal = g_model->selectSingleVarianceRatio(ctx.useSparseGRM, false);
+        ctx.varRatioVal = model.selectSingleVarianceRatio(ctx.useSparseGRM, false);
       }
+            cm.ctx = ctx;
+            cm.isER = (MAC <= g_cfg.MACCutoffforER && W[km].traitType == "binary" && erAllowedVec[r]);
+          }
           BurdenCell & c = burdenCells[jmr];
           c.tested = true;
           c.genoSumVec = genoSumVec;   // memcpy into the persistent N-length buffer
           c.nz.assign(indexNonZeroVec_arma.begin(), indexNonZeroVec_arma.end());
           c.zero.assign(indexZeroVec_arma.begin(), indexZeroVec_arma.end());
           c.altFreq = altFreq;
-          c.ctx = ctx;
-          c.isER = (MAC <= g_cfg.MACCutoffforER && t_traitType == "binary" && erAllowedVec[r]);
           burdenTested.push_back(jmr);
         }
       }
@@ -3263,27 +3416,43 @@ if(t_regionTestType == "BURDEN"){
        }
      }
 
-     // D2: the tests. flip is false on this path, as it always was.
+     // D2: the tests, (cell, model) per task. flip is false on this path, as it always was.
      {
        const std::function<void(unsigned int, Marker::MarkerScratch&)> burdenTestFn =
-         [&](unsigned int k, Marker::MarkerScratch & sc)
+         [&](unsigned int t, Marker::MarkerScratch & sc)
        {
-         BurdenCell & c = burdenCells[burdenTested[k]];
+         const unsigned int km = t % P;
+         const unsigned int jmrT = burdenTested[t / P];
+         const SAIGE::SAIGEClass & model = *W[km].model;
+         BurdenCell & c = burdenCells[jmrT];
+         BurdenCellModel & cm = W[km].burdenOut[jmrT];
          bool is_gtilde, is_Firth, is_FirthConverge;
          bool flip = false;
+         bool isregion = model.m_flagSparseGRM;
          arma::uvec nzView(c.nz.data(), c.nz.size(), false, true);
          arma::uvec zeroView(c.zero.data(), c.zero.size(), false, true);
          ProfileScope rpEmitTest(rp.enabled ? &rp.emitTest : nullptr, &rp.nEmitTest);
-         if(c.isER){
-           g_model->getMarkerPval(c.genoSumVec, nzView, zeroView, c.Beta, c.seBeta, c.pval, c.pval_noSPA, c.altFreq, c.Tstat, c.gy, c.varT, c.isSPAConverge, sc.gtildeVec, is_gtilde, isregion, sc.P2Vec, isCondition, c.Beta_c, c.seBeta_c, c.pval_c, c.pval_noSPA_c, c.Tstat_c, c.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, c.ctx, &sc.ws);
+         if(cm.isER){
+           model.getMarkerPval(c.genoSumVec, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, isregion, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, cm.ctx, &sc.ws);
          }else{
-           g_model->getMarkerPval(c.genoSumVec, nzView, zeroView, c.Beta, c.seBeta, c.pval, c.pval_noSPA, c.altFreq, c.Tstat, c.gy, c.varT, c.isSPAConverge, sc.gtildeVec, is_gtilde, isregion, sc.P2Vec, isCondition, c.Beta_c, c.seBeta_c, c.pval_c, c.pval_noSPA_c, c.Tstat_c, c.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, c.ctx, &sc.ws);
+           model.getMarkerPval(c.genoSumVec, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, isregion, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, cm.ctx, &sc.ws);
          }
        };
-       runCellTests((unsigned int)burdenTested.size(), burdenTestFn);
+       runCellTests((unsigned int)(burdenTested.size() * P), burdenTestFn);
      }
 
-     // D3: the emitter loop, reading the cells.
+     // D3: the emitter loop per model, reading the cells.
+     for(unsigned int km = 0; km < P; km++){
+     RegionModelWork & w = W[km];
+     RegionWriter & rw = regionWriter(w.modelIndex);
+     std::vector<std::string> BURDEN_pval_Vec(q_anno_maf_weight, "NA");
+     std::vector<std::string> BURDEN_pval_cVec(q_anno_maf_weight, "NA");
+     std::vector<std::string> BURDEN_AnnoName_Vec(q_anno_maf_weight);
+     std::vector<std::string> BURDEN_maxMAFName_Vec(q_anno_maf_weight);
+     std::vector<double> BURDEN_Beta_Vec(q_anno_maf_weight);
+     std::vector<double> BURDEN_seBeta_Vec(q_anno_maf_weight);
+     std::vector<double> BURDEN_Beta_cVec(q_anno_maf_weight);
+     std::vector<double> BURDEN_seBeta_cVec(q_anno_maf_weight);
      // Carry-forward cache for maxMAF cutoffs beyond q_maf_for_anno(j): those
      // cutoffs add no markers, so the last tested (j,*,r) result is re-emitted.
      // With the weight dimension the cache and the isPolyMarker flag are per
@@ -3306,30 +3475,31 @@ if(t_regionTestType == "BURDEN"){
 	i = jmr;
       if(m <= q_maf_m){
         const BurdenCell & c = burdenCells[jmr];
+        const BurdenCellModel & cm = w.burdenOut[jmr];
         if(c.tested){
           isPolyMarkerVec[r] = true;
 	  if(isCondition){
-	    BURDEN_pval_cVec.at(i) = c.pval_c;
-	    BURDEN_Beta_cVec.at(i) = c.Beta_c;
-	    BURDEN_seBeta_cVec.at(i) = c.seBeta_c;
+	    BURDEN_pval_cVec.at(i) = cm.pval_c;
+	    BURDEN_Beta_cVec.at(i) = cm.Beta_c;
+	    BURDEN_seBeta_cVec.at(i) = cm.seBeta_c;
           }
 
 	   BURDEN_AnnoName_Vec.at(i) = AnnoName;
 	   std::string str = std::to_string(maxMAFName);
 	   str.erase ( str.find_last_not_of('0') + 1, std::string::npos );
 	   BURDEN_maxMAFName_Vec.at(i) = str;
-	   BURDEN_pval_Vec.at(i) = c.pval;
-	   BURDEN_Beta_Vec.at(i) = c.Beta;
-	   BURDEN_seBeta_Vec.at(i) = c.seBeta;
+	   BURDEN_pval_Vec.at(i) = cm.pval;
+	   BURDEN_Beta_Vec.at(i) = cm.Beta;
+	   BURDEN_seBeta_Vec.at(i) = cm.seBeta;
 
 	   // cache this set's result for the m > q_maf_for_anno(j) carry-forward
-	   carry_pval[r] = c.pval;
-	   carry_Beta[r] = c.Beta;
-	   carry_seBeta[r] = c.seBeta;
+	   carry_pval[r] = cm.pval;
+	   carry_Beta[r] = cm.Beta;
+	   carry_seBeta[r] = cm.seBeta;
 	   if(isCondition){
-	     carry_pval_c[r] = c.pval_c;
-	     carry_Beta_c[r] = c.Beta_c;
-	     carry_seBeta_c[r] = c.seBeta_c;
+	     carry_pval_c[r] = cm.pval_c;
+	     carry_Beta_c[r] = cm.Beta_c;
+	     carry_seBeta_c[r] = cm.seBeta_c;
 	   }
 
          }else{
@@ -3369,34 +3539,31 @@ if(t_regionTestType == "BURDEN"){
 				burden_p_cond = parsePrintedPval(BURDEN_pval_cVec.at(i));
 				nonMissingPvalVec_c_std.push_back(burden_p_cond);
 			}
-		}	
-	  } 
+		}
+	  }
 
 	  arma::vec nonMissingPvalVec = arma::conv_to< arma::vec >::from(nonMissingPvalVec_std);
-	  //arma::uvec nonMissingPvalVecInd = arma::find(BURDEN_pval_Vec >= 0);
-	  //arma::vec nonMissingPvalVec = BURDEN_pval_Vec.elem(nonMissingPvalVecInd);
-	   cctpval = CCT_cpp(nonMissingPvalVec);
+	   w.cctpval = CCT_cpp(nonMissingPvalVec);
            if(isCondition){
-	        //arma::vec nonMissingPvalVec_cond = BURDEN_pval_cVec.elem(nonMissingPvalVecInd);
 		arma::vec nonMissingPvalVec_cond  = arma::conv_to< arma::vec >::from(nonMissingPvalVec_c_std);
-	   	cctpval_cond = CCT_cpp(nonMissingPvalVec_cond);	   
+	   	w.cctpval_cond = CCT_cpp(nonMissingPvalVec_cond);
            }
 
-	
+
 	   if(!t_isFastTest){
-		iswriteOutput = true;
+		w.iswriteOutput = true;
 	   }else{
 		//LEDGER #27: the caller's intent at entry, not the mutated flag
 		if(isEscalatedPass){
-			iswriteOutput = true;
+			w.iswriteOutput = true;
 		}else{
-		  if(cctpval >= 0.1){
-			iswriteOutput = true;
-		  } 	
+		  if(w.cctpval >= 0.1){
+			w.iswriteOutput = true;
+		  }
 		}
 	   }
-	
-	   if(iswriteOutput){
+
+	   if(w.iswriteOutput){
 		writeOutfile_BURDEN(regionName,
 			BURDEN_AnnoName_Vec,
 			BURDEN_maxMAFName_Vec,
@@ -3407,93 +3574,89 @@ if(t_regionTestType == "BURDEN"){
 			BURDEN_Beta_cVec,
 			BURDEN_seBeta_cVec,
 			MAC_GroupVec,
-			MACCase_GroupVec,
-			MACControl_GroupVec,
+			w.MACCase_GroupVec,
+			w.MACControl_GroupVec,
 			NumRare_GroupVec,
 			NumUltraRare_GroupVec,
-			cctpval,
-			cctpval_cond,
+			w.cctpval,
+			w.cctpval_cond,
 			q_anno,
 			q_maf,
 			q_weight,
 			t_weightNames,
 			emitWeightColumn,
 			isCondition,
-			t_traitType);
+			w.traitType,
+			rw);
 	   }else{
-	     OutList.push_back(iswriteOutput, "iswriteOutput");
+	     w.OutList.push_back(w.iswriteOutput, "iswriteOutput");
 	   }
+     } // for km (models)
 
  //arma::vec timeoutput3 = getTime();
  //printTime(timeoutput2, timeoutput3, "burden test done");
  }else{
   q_maf_for_anno = q_maf_for_anno + 1;
+  for(unsigned int km = 0; km < P; km++){
+  RegionModelWork & w = W[km];
+  const SAIGE::SAIGEClass & model = *w.model;
+  Rcpp::List & OutList = w.OutList;
   OutList.push_back(MAC_GroupVec, "MAC_GroupVec");
   OutList.push_back(q_maf_for_anno, "q_maf_for_annoVec");
-  if(t_traitType == "binary"){
-   if(t_traitType == "binary"){
-    OutList.push_back(MACCase_GroupVec, "MACCase_GroupVec");
-    OutList.push_back(MACControl_GroupVec, "MACCtrl_GroupVec");
+  if(w.traitType == "binary"){
+   if(w.traitType == "binary"){
+    OutList.push_back(w.MACCase_GroupVec, "MACCase_GroupVec");
+    OutList.push_back(w.MACControl_GroupVec, "MACCtrl_GroupVec");
    }
 
-    OutList.push_back(genoSumMat, "genoSumMat");
-    OutList.push_back(gyVec, "gyVec");
+    OutList.push_back(w.genoSumMat, "genoSumMat");
+    OutList.push_back(w.gyVec, "gyVec");
   }
 
-    OutList.push_back(VarMat, "VarMat");	
-    OutList.push_back(MAFVec, "MAFVec");	
-    OutList.push_back(TstatVec_flip, "TstatVec_flip");	
+    OutList.push_back(w.VarMat, "VarMat");
+    OutList.push_back(MAFVec, "MAFVec");
+    OutList.push_back(w.TstatVec_flip, "TstatVec_flip");
   //arma::mat scaled_m_VarInvMat_cond;
     if(isCondition){
   //std::cout << "okk5" << std::endl;
      if(q_weight == 1){
-      arma::mat AdjCondMat = G1tilde_P_G2tilde_Weighted_Mat * (g_model->m_VarInvMat_cond / (w0G2Mat_cond));
-      arma::mat VarMatAdjCond = AdjCondMat * (G1tilde_P_G2tilde_Weighted_Mat.t());
-      arma::vec TstatAdjCond = AdjCondMat * (g_model->m_Tstat_cond % w0G2Vec_cond );
-      OutList.push_back(G1tilde_P_G2tilde_Weighted_Mat, "G1tilde_P_G2tilde_Weighted_Mat");
-      OutList.push_back(g_model->m_scalefactor_G2_cond, "scalefactor_G2_cond");
-      OutList.push_back(g_model->m_VarInvMat_cond_scaled_weighted, "VarInvMat_G2_cond_scaled");
-      OutList.push_back(g_model->m_Tstat_cond, "Tstat_G2_cond"); //m_Tstat_cond is weighted
-      OutList.push_back(g_model->m_G2_Weight_cond, "G2_Weight_cond");
+      arma::mat AdjCondMat = w.G1tilde_P_G2tilde_Weighted_Mat * (model.m_VarInvMat_cond / (w0G2Mat_cond));
+      arma::mat VarMatAdjCond = AdjCondMat * (w.G1tilde_P_G2tilde_Weighted_Mat.t());
+      arma::vec TstatAdjCond = AdjCondMat * (model.m_Tstat_cond % w0G2Vec_cond );
+      OutList.push_back(w.G1tilde_P_G2tilde_Weighted_Mat, "G1tilde_P_G2tilde_Weighted_Mat");
+      OutList.push_back(model.m_scalefactor_G2_cond, "scalefactor_G2_cond");
+      OutList.push_back(model.m_VarInvMat_cond_scaled_weighted, "VarInvMat_G2_cond_scaled");
+      OutList.push_back(model.m_Tstat_cond, "Tstat_G2_cond"); //m_Tstat_cond is weighted
+      OutList.push_back(model.m_G2_Weight_cond, "G2_Weight_cond");
       OutList.push_back(TstatAdjCond, "TstatAdjCond");
       OutList.push_back(VarMatAdjCond, "VarMatAdjCond");
      }else{
       // design D7 (C11): at K>1 the baked TstatAdjCond/VarMatAdjCond would
       // carry set 0's weights only, so they are not computed here.
       // G1tilde_P_G2tilde_Weighted_Mat is the G1-raw matrix (see the fill
-      // sites); region_postprocess forms, per set r,
-      //   G1w_r = raw[cell rows] * AnnoWeights_r
-      //   AdjCondMat_r  = G1w_r * VarInvMat_G2_cond_w0
-      //   VarMatAdjCond_r = AdjCondMat_r * G1w_r'
-      //   TstatAdjCond_r  = AdjCondMat_r * Tstat_G2_cond_w0
-      // -- the literal q_weight == 1 arithmetic above with w0 moved to R.
-      arma::mat VarInvMat_G2_cond_w0 = g_model->m_VarInvMat_cond / (w0G2Mat_cond);
-      arma::vec Tstat_G2_cond_w0 = g_model->m_Tstat_cond % w0G2Vec_cond;
-      OutList.push_back(G1tilde_P_G2tilde_Weighted_Mat, "G1tilde_P_G2tilde_Weighted_Mat");
-      OutList.push_back(g_model->m_scalefactor_G2_cond, "scalefactor_G2_cond");
-      OutList.push_back(g_model->m_VarInvMat_cond_scaled_weighted, "VarInvMat_G2_cond_scaled");
-      OutList.push_back(g_model->m_Tstat_cond, "Tstat_G2_cond");
-      OutList.push_back(g_model->m_G2_Weight_cond, "G2_Weight_cond");
+      // sites above); region_postprocess applies each set's weights and
+      // forms the adjustment per (anno, max_MAF, set) cell.
+      arma::mat VarInvMat_G2_cond_w0 = model.m_VarInvMat_cond / (w0G2Mat_cond);
+      arma::vec Tstat_G2_cond_w0 = model.m_Tstat_cond % w0G2Vec_cond;
+      OutList.push_back(w.G1tilde_P_G2tilde_Weighted_Mat, "G1tilde_P_G2tilde_Weighted_Mat");
+      OutList.push_back(model.m_scalefactor_G2_cond, "scalefactor_G2_cond");
+      OutList.push_back(model.m_VarInvMat_cond_scaled_weighted, "VarInvMat_G2_cond_scaled");
+      OutList.push_back(model.m_Tstat_cond, "Tstat_G2_cond");
+      OutList.push_back(model.m_G2_Weight_cond, "G2_Weight_cond");
       OutList.push_back(VarInvMat_G2_cond_w0, "VarInvMat_G2_cond_w0");
       OutList.push_back(Tstat_G2_cond_w0, "Tstat_G2_cond_w0");
      }
     }
 
     if(!t_isFastTest){
-            iswriteOutput = true;
+            w.iswriteOutput = true;
      }else{
-        // LEDGER #50 fix, the non-BURDEN twin of #27 at :2240. This read used to
-        // be g_model->m_flagSparseGRM_cur, which the marker and ultra-rare loops
-        // above overwrite from each marker's MAC -- so by the time the write
-        // decision runs, R's "this is the escalated pass, DO write" signal has
-        // been replaced by the last pseudo-marker's variance-ratio choice. On the
-        // fast pass R takes the rows from the temp bin itself (copy_singleInGroup),
-        // so the escalated pass is the ONLY route by which an escalated region's
-        // single-variant rows can be written, and they were silently dropped.
+        //LEDGER #27: the caller's intent at entry, not the mutated flag
         if(isEscalatedPass){
-            iswriteOutput = true;
+            w.iswriteOutput = true;
         }
      }
+  } // for km (models)
 }
 
 
@@ -3501,16 +3664,19 @@ if(t_regionTestType == "BURDEN"){
  int numofUR0;
  int mFirth = 0;
 if(t_isSingleinGroupTest){
+ for(unsigned int km = 0; km < P; km++){
+ RegionModelWork & w = W[km];
+ RegionWriter & rw = regionWriter(w.modelIndex);
  // OutList.push_back(pvalVec_val, "pvalVec");
- OutList.push_back(pvalVec, "pvalVec");
-if(iswriteOutput){
+ w.OutList.push_back(w.pvalVec, "pvalVec");
+if(w.iswriteOutput){
   numofUR0 = writeOutfile_singleInGroup(t_isMoreOutput,
       t_isImputation,
       isCondition,
       is_Firth,
       mFirth,
       is_FirthConverge,
-      t_traitType,
+      w.traitType,
       chrVec,
       posVec,
       markerVec,
@@ -3520,38 +3686,42 @@ if(iswriteOutput){
       altFreqVec,
       imputationInfoVec,
       missingRateVec,
-      BetaVec,
-      seBetaVec,
-      TstatVec,
-      varTVec,
-      pvalVec,
-      pvalNAVec,
-      isSPAConvergeVec,
-      Beta_cVec,
-      seBeta_cVec,
-      Tstat_cVec,
-      varT_cVec,
-      pval_cVec,
-      pvalNA_cVec,
-      AF_caseVec,
-      AF_ctrlVec,
-      N_caseVec,
-      N_ctrlVec,
-      N_case_homVec,
-      N_ctrl_hetVec,
-      N_case_hetVec,
-      N_ctrl_homVec,
-      N_Vec,
-      g_out.singleInGroup);
+      w.BetaVec,
+      w.seBetaVec,
+      w.TstatVec,
+      w.varTVec,
+      w.pvalVec,
+      w.pvalNAVec,
+      w.isSPAConvergeVec,
+      w.Beta_cVec,
+      w.seBeta_cVec,
+      w.Tstat_cVec,
+      w.varT_cVec,
+      w.pval_cVec,
+      w.pvalNA_cVec,
+      w.AF_caseVec,
+      w.AF_ctrlVec,
+      w.N_caseVec,
+      w.N_ctrlVec,
+      w.N_case_homVec,
+      w.N_ctrl_hetVec,
+      w.N_case_hetVec,
+      w.N_ctrl_homVec,
+      w.N_Vec,
+      rw.singleInGroup);
  }else{
-  g_out.singleInGroupTemp.open(g_out.prefixSingleInGroupTemp.c_str(), std::ofstream::out);
+        // On the fastTest first pass the rows go to a temp bin rather than the
+        // output: a region the Cauchy screen sends to the accurate re-run is
+        // written by THAT run, and a region it clears is copied over by R
+        // (copy_singleInGroup). LEDGER #57 traced the temp file's lifetime.
+  rw.singleInGroupTemp.open(rw.prefixSingleInGroupTemp.c_str(), std::ofstream::out);
   numofUR0 = writeOutfile_singleInGroup(t_isMoreOutput,
       t_isImputation,
       isCondition,
       is_Firth,
       mFirth,
       is_FirthConverge,
-      t_traitType,
+      w.traitType,
       chrVec,
       posVec,
       markerVec,
@@ -3561,50 +3731,49 @@ if(iswriteOutput){
       altFreqVec,
       imputationInfoVec,
       missingRateVec,
-      BetaVec,
-      seBetaVec,
-      TstatVec,
-      varTVec,
-      pvalVec,
-      pvalNAVec,
-      isSPAConvergeVec,
-      Beta_cVec,
-      seBeta_cVec,
-      Tstat_cVec,
-      varT_cVec,
-      pval_cVec,
-      pvalNA_cVec,
-      AF_caseVec,
-      AF_ctrlVec,
-      N_caseVec,
-      N_ctrlVec,
-      N_case_homVec,
-      N_ctrl_hetVec,
-      N_case_hetVec,
-      N_ctrl_homVec,
-      N_Vec,
-      g_out.singleInGroupTemp);
-  g_out.singleInGroupTemp.close();
+      w.BetaVec,
+      w.seBetaVec,
+      w.TstatVec,
+      w.varTVec,
+      w.pvalVec,
+      w.pvalNAVec,
+      w.isSPAConvergeVec,
+      w.Beta_cVec,
+      w.seBeta_cVec,
+      w.Tstat_cVec,
+      w.varT_cVec,
+      w.pval_cVec,
+      w.pvalNA_cVec,
+      w.AF_caseVec,
+      w.AF_ctrlVec,
+      w.N_caseVec,
+      w.N_ctrlVec,
+      w.N_case_homVec,
+      w.N_ctrl_hetVec,
+      w.N_case_hetVec,
+      w.N_ctrl_homVec,
+      w.N_Vec,
+      rw.singleInGroupTemp);
+  rw.singleInGroupTemp.close();
 
  }//iswriteOutput
- OutList.push_back(numofUR, "numofUR");
+ w.OutList.push_back(numofUR, "numofUR");
+ } // for km (models)
 }
 
-OutList.push_back(iswriteOutput, "iswriteOutput");
+ for(unsigned int km = 0; km < P; km++){
+ Rcpp::List & OutList = W[km].OutList;
+OutList.push_back(W[km].iswriteOutput, "iswriteOutput");
 
  if(t_isOutputMarkerList){
 	OutList.push_back(indicatorVec, "markerIndcatorVec");
  }
-
-  
-
   OutList.push_back(NumRare_GroupVec, "NumRare_GroupVec");
   OutList.push_back(NumUltraRare_GroupVec, "NumUltraRare_GroupVec");
-
-
  if(t_regionTestType != "BURDEN" || t_isOutputMarkerList){
   OutList.push_back(annoMAFIndicatorMat, "annoMAFIndicatorMat");
  }
+ } // for km (models)
 
   if(rp.enabled){
     rpEmit.stop();
@@ -3632,8 +3801,12 @@ OutList.push_back(iswriteOutput, "iswriteOutput");
               << " total=" << rp.total
               << std::endl;
   }
-
-  return OutList;
+  // one list per model, in t_modelIdx order
+  Rcpp::List perModel(P);
+  for(unsigned int km = 0; km < P; km++){
+    perModel[km] = W[km].OutList;
+  }
+  return perModel;
 }
 
 
@@ -3967,84 +4140,88 @@ void closeGenoFile(std::string & t_genoType)
 }
 
 // [[Rcpp::export]]
-bool openOutfile(std::string t_traitType, bool isappend, unsigned int t_nWeightSets, bool t_forceWeightColumn){
+bool openOutfile(int t_modelIndex, std::string t_traitType, bool isappend, unsigned int t_nWeightSets, bool t_forceWeightColumn){
+	RegionWriter & rw = regionWriter(t_modelIndex);
+	const SAIGE::SAIGEClass & model = *g_models.at(t_modelIndex);
 	bool isopen;
 	if(!isappend){
-	g_out.group.open(g_out.prefixGroup.c_str());
-	isopen = g_out.group.is_open();
+	rw.group.open(rw.prefixGroup.c_str());
+	isopen = rw.group.is_open();
 	if(isopen){
-		g_out.group << "Region\tGroup\tmax_MAF\t";
+		rw.group << "Region\tGroup\tmax_MAF\t";
 		// additive multi-weight schema (design D3): the Weight label column
 		// sits right after max_MAF and exists only when more than one weight
 		// set is in play (or the user forces it at a single set with
 		// is_output_weight_column); otherwise the emitted bytes are exactly
 		// the legacy header.
 		if(t_nWeightSets > 1 || t_forceWeightColumn){
-			g_out.group << "Weight\t";
+			rw.group << "Weight\t";
 		}
-		g_out.group << "Pvalue_Burden\tBETA_Burden\tSE_Burden\t";
-		if(g_model->m_isCondition){
-			g_out.group << "Pvalue_Burden_c\tBeta_Burden_c\tseBeta_Burden_c\t";
+		rw.group << "Pvalue_Burden\tBETA_Burden\tSE_Burden\t";
+		if(model.m_isCondition){
+			rw.group << "Pvalue_Burden_c\tBeta_Burden_c\tseBeta_Burden_c\t";
 		}
-		g_out.group << "MAC\t";
+		rw.group << "MAC\t";
 		if(t_traitType == "binary"){	
-			g_out.group << "MAC_case\tMAC_control\t";
+			rw.group << "MAC_case\tMAC_control\t";
 		}
 
-		g_out.group << "Number_rare\tNumber_ultra_rare\n";
+		rw.group << "Number_rare\tNumber_ultra_rare\n";
 	}
      }else{
-	g_out.group.open(g_out.prefixGroup.c_str(), std::ofstream::out | std::ofstream::app) ;				
-	isopen = g_out.group.is_open();
+	rw.group.open(rw.prefixGroup.c_str(), std::ofstream::out | std::ofstream::app) ;				
+	isopen = rw.group.is_open();
      }
      return(isopen);
 }
 
 // [[Rcpp::export]]
-bool openOutfile_singleinGroup(std::string t_traitType, bool t_isImputation, bool isappend, bool t_isMoreOutput){
+bool openOutfile_singleinGroup(int t_modelIndex, std::string t_traitType, bool t_isImputation, bool isappend, bool t_isMoreOutput){
+        RegionWriter & rw = regionWriter(t_modelIndex);
+        const SAIGE::SAIGEClass & model = *g_models.at(t_modelIndex);
         bool isopen;
      if(!isappend){
-        g_out.singleInGroup.open(g_out.prefixSingleInGroup.c_str());
-	isopen = g_out.singleInGroup.is_open();
+        rw.singleInGroup.open(rw.prefixSingleInGroup.c_str());
+	isopen = rw.singleInGroup.is_open();
         if(isopen){
-                g_out.singleInGroup << "CHR\tPOS\tMarkerID\tAllele1\tAllele2\tAC_Allele2\tAF_Allele2\t";
+                rw.singleInGroup << "CHR\tPOS\tMarkerID\tAllele1\tAllele2\tAC_Allele2\tAF_Allele2\t";
 		if(t_isImputation){
-			g_out.singleInGroup << "imputationInfo\t";
+			rw.singleInGroup << "imputationInfo\t";
 		}else{
 			
-			g_out.singleInGroup << "MissingRate\t";
+			rw.singleInGroup << "MissingRate\t";
 		}
-		g_out.singleInGroup << "BETA\tSE\tTstat\tvar\tp.value\t";
+		rw.singleInGroup << "BETA\tSE\tTstat\tvar\tp.value\t";
 	        if(t_traitType == "binary"){
-                        g_out.singleInGroup << "p.value.NA\tIs.SPA\t";
+                        rw.singleInGroup << "p.value.NA\tIs.SPA\t";
                 }	
 
-                if(g_model->m_isCondition){
-                        g_out.singleInGroup << "BETA_c\tSE_c\tTstat_c\tvar_c\tp.value_c\t";
+                if(model.m_isCondition){
+                        rw.singleInGroup << "BETA_c\tSE_c\tTstat_c\tvar_c\tp.value_c\t";
 			if(t_traitType == "binary"){
-				g_out.singleInGroup << "p.value.NA_c\t";		
+				rw.singleInGroup << "p.value.NA_c\t";		
 			}
                 }
 		
 	        if(t_traitType == "binary"){
-                        g_out.singleInGroup << "AF_case\tAF_ctrl\tN_case\tN_ctrl";
+                        rw.singleInGroup << "AF_case\tAF_ctrl\tN_case\tN_ctrl";
  			if(t_isMoreOutput){
-                                g_out.singleInGroup << "\tN_case_hom\tN_case_het\tN_ctrl_hom\tN_ctrl_het";
+                                rw.singleInGroup << "\tN_case_hom\tN_case_het\tN_ctrl_hom\tN_ctrl_het";
                         }
-			g_out.singleInGroup << "\n";
+			rw.singleInGroup << "\n";
                 }else if(t_traitType == "quantitative"){
-			g_out.singleInGroup << "N\n";	
+			rw.singleInGroup << "N\n";	
 			
 		}
 
         }
     }else{
-       g_out.singleInGroup.open(g_out.prefixSingleInGroup.c_str(), std::ofstream::out | std::ofstream::app);
-       isopen = g_out.singleInGroup.is_open();
+       rw.singleInGroup.open(rw.prefixSingleInGroup.c_str(), std::ofstream::out | std::ofstream::app);
+       isopen = rw.singleInGroup.is_open();
     }
 
     //if(t_testType != "BURDEN" && t_isfastTest){
-    //  g_out.singleInGroupTemp.open(g_out.prefixSingleInGroupTemp.c_str(), std::ofstream::out | std::ofstream::app);
+    //  rw.singleInGroupTemp.open(rw.prefixSingleInGroupTemp.c_str(), std::ofstream::out | std::ofstream::app);
     //}
       return(isopen);
 }
@@ -4174,9 +4351,11 @@ void setSingleOutputPrefixesInCPP(std::vector<std::string> t_outputFilePrefixes)
     Rcpp::stop("At least one single-variant output prefix is required.");
   }
   g_out.singles.clear();
+  g_out.regions.clear();
   for(std::size_t k = 0; k < t_outputFilePrefixes.size(); k++){
     g_out.singles.push_back(std::unique_ptr<SingleWriter>(new SingleWriter()));
     g_out.singles[k]->prefix = t_outputFilePrefixes[k];
+    g_out.regions.push_back(makeRegionWriter(t_outputFilePrefixes[k]));
   }
 }
 
@@ -4462,7 +4641,8 @@ void writeOutfile_BURDEN(std::string regionName,
 			std::vector<std::string> & t_weightNames,
 			bool t_emitWeightColumn,
 			bool isCondition,
-			std::string t_traitType){
+			std::string t_traitType,
+			RegionWriter & rw){
      unsigned int i;
      for(unsigned int j = 0; j < q_anno; j++){
        for(unsigned int m = 0; m < q_maf; m++){
@@ -4471,68 +4651,68 @@ void writeOutfile_BURDEN(std::string regionName,
            // q_weight == 1 emits the legacy rows byte for byte
            i = (j*q_maf+m)*q_weight + r;
 	   if(BURDEN_pval_Vec.at(i) != "NA"){
-           g_out.group << regionName;
-           g_out.group << "\t";
-           g_out.group << BURDEN_AnnoName_Vec.at(i);
-           g_out.group << "\t";
-           g_out.group << BURDEN_maxMAFName_Vec.at(i);
-           g_out.group << "\t";
+           rw.group << regionName;
+           rw.group << "\t";
+           rw.group << BURDEN_AnnoName_Vec.at(i);
+           rw.group << "\t";
+           rw.group << BURDEN_maxMAFName_Vec.at(i);
+           rw.group << "\t";
            if(t_emitWeightColumn){
              // per-set Weight label right after max_MAF (design D3); same
              // name fallback as the UR pseudo-marker suffix in mainRegionInCPP
-             g_out.group << ((r < t_weightNames.size()) ? t_weightNames.at(r) : ("W" + std::to_string(r + 1)));
-             g_out.group << "\t";
+             rw.group << ((r < t_weightNames.size()) ? t_weightNames.at(r) : ("W" + std::to_string(r + 1)));
+             rw.group << "\t";
            }
-           g_out.group << BURDEN_pval_Vec.at(i);
-           g_out.group << "\t";
+           rw.group << BURDEN_pval_Vec.at(i);
+           rw.group << "\t";
            // LEDGER #66: same reason as writeOutfile_singleInGroup above.
-           writeNumOrNA(g_out.group, BURDEN_Beta_Vec.at(i));
-           g_out.group << "\t";
-           writeNumOrNA(g_out.group, BURDEN_seBeta_Vec.at(i));
-           g_out.group << "\t";
+           writeNumOrNA(rw.group, BURDEN_Beta_Vec.at(i));
+           rw.group << "\t";
+           writeNumOrNA(rw.group, BURDEN_seBeta_Vec.at(i));
+           rw.group << "\t";
            if(isCondition){
-               g_out.group << BURDEN_pval_cVec.at(i);
-               g_out.group << "\t";
-               writeNumOrNA(g_out.group, BURDEN_Beta_cVec.at(i));
-               g_out.group << "\t";
-               writeNumOrNA(g_out.group, BURDEN_seBeta_cVec.at(i));
-               g_out.group << "\t";
+               rw.group << BURDEN_pval_cVec.at(i);
+               rw.group << "\t";
+               writeNumOrNA(rw.group, BURDEN_Beta_cVec.at(i));
+               rw.group << "\t";
+               writeNumOrNA(rw.group, BURDEN_seBeta_cVec.at(i));
+               rw.group << "\t";
 	   }
-	   g_out.group << MAC_GroupVec(i);
-           g_out.group << "\t";
+	   rw.group << MAC_GroupVec(i);
+           rw.group << "\t";
            if(t_traitType == "binary"){
-               g_out.group << MACCase_GroupVec(i);
-               g_out.group << "\t";
-               g_out.group << MACControl_GroupVec(i);
-               g_out.group << "\t";
+               rw.group << MACCase_GroupVec(i);
+               rw.group << "\t";
+               rw.group << MACControl_GroupVec(i);
+               rw.group << "\t";
            }
-           g_out.group << NumRare_GroupVec(i);
-           g_out.group << "\t";
-           g_out.group << NumUltraRare_GroupVec(i);
-           g_out.group << "\n";
+           rw.group << NumRare_GroupVec(i);
+           rw.group << "\t";
+           rw.group << NumUltraRare_GroupVec(i);
+           rw.group << "\n";
 	}
          }
      }
    }
-     g_out.group << regionName;
-     g_out.group << "\tCauchy\tNA\t";
+     rw.group << regionName;
+     rw.group << "\tCauchy\tNA\t";
      if(t_emitWeightColumn){
        // the single pooled Cauchy row is not tied to one weight set
-       g_out.group << "NA\t";
+       rw.group << "NA\t";
      }
-     g_out.group << cctpval;
-     g_out.group << "\tNA\tNA\t";	
+     rw.group << cctpval;
+     rw.group << "\tNA\tNA\t";	
      if(isCondition){
-	g_out.group << cctpval_cond;
-	g_out.group << "\tNA\tNA\t";
+	rw.group << cctpval_cond;
+	rw.group << "\tNA\tNA\t";
      }
-     g_out.group << "NA\t";
+     rw.group << "NA\t";
      if(t_traitType == "binary"){
-        g_out.group << "NA\t";
-        g_out.group << "NA\t";
+        rw.group << "NA\t";
+        rw.group << "NA\t";
      }
-     g_out.group << "NA\t";
-     g_out.group << "NA\n";	
+     rw.group << "NA\t";
+     rw.group << "NA\n";	
 }
 
 
@@ -4677,9 +4857,10 @@ int writeOutfile_singleInGroup(bool t_isMoreOutput,
 }
 
 // [[Rcpp::export]]
-void copy_singleInGroup(){
+void copy_singleInGroup(int t_modelIndex){
+  RegionWriter & rw = regionWriter(t_modelIndex);
   std::ifstream ini_file;
-  ini_file.open(g_out.prefixSingleInGroupTemp.c_str());
+  ini_file.open(rw.prefixSingleInGroupTemp.c_str());
   if (!ini_file)
   {
     std::cout << "Error in Opening the temp file!" << std::endl;
@@ -4687,7 +4868,7 @@ void copy_singleInGroup(){
   std::string str;
   while (getline(ini_file, str))
   {
-    g_out.singleInGroup << str << "\n"; 	
+    rw.singleInGroup << str << "\n"; 	
   }
   ini_file.close();
 }
