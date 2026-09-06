@@ -617,7 +617,10 @@ option_list <- list(
       "N = 50,000; 1.3x at 4 workers, byte-identical; Unix only, elsewhere a ",
       "group run stays serial). Falls back to one thread with a warning if the ",
       "genotype reader cannot be cloned, which is now only PLINK when the .bed ",
-      "could not be memory-mapped; PGEN threads. [default=1]"
+      "could not be memory-mapped; PGEN threads. Set it to the machine's ",
+      "PHYSICAL core count: threads beyond that (hyperthreads) did not shorten ",
+      "a binary scan at N = 50,000 on a 4-core machine and cost 50-85% more ",
+      "CPU (harness/bench/NOTES.md, the writer section). [default=1]"
     )
   ),
   make_option(

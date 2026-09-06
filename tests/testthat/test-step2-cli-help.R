@@ -21,4 +21,7 @@ test_that("LEDGER #94 FIXED: --nThreads help describes group tests and PGEN corr
   expect_true(grepl("SKAT-O post-processing", para, fixed = TRUE))
   expect_true(grepl("PGEN threads", para, fixed = TRUE))
   expect_true(grepl("could not be memory-mapped", para, fixed = TRUE))
+  # 2026-09-06: threads past the physical core count cost CPU and buy no wall
+  # time on a binary scan (harness/bench/NOTES.md); the help says so.
+  expect_true(grepl("PHYSICAL core count", para, fixed = TRUE))
 })
