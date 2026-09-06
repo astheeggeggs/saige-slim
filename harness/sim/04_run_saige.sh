@@ -82,6 +82,7 @@ step2_group() {
     --groupFile=$D/groupFile.txt \
     --annotation_in_groupTest="high,medium,low,high:medium,high:medium:low" \
     ${GROUP_NT:+--nThreads=$GROUP_NT} \
+    ${S2EXTRA:-} \
     --SAIGEOutputFile=${S2OUT:-$D/step2_group_$col.txt}
 }
 

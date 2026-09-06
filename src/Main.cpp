@@ -299,6 +299,33 @@ static bool markerProfileRequested()
   return (e != nullptr) && (e[0] != '\0') && (std::strcmp(e, "0") != 0);
 }
 
+// The region-path twin, gated on SAIGE_PROFILE_REGION. mainRegionInCPP is
+// called once per region, so the buckets accumulate across calls and one
+// cumulative line is printed per call; the last such line in a log is the
+// run's total. Buckets follow the function's passes: the per-marker loop
+// (prepare = read + impute/flip + QC + weights; rareArm = everything on the
+// non-ultra-rare branch INCLUDING test; test = the getMarkerPval calls inside
+// it; urCollapse = the ultra-rare branch; flush = chunk-file writes), the
+// ultra-rare pseudo-marker pass (urPass, with its own getMarkerPval calls in
+// urTest), the VarMat assembly (varmat), and the emitters (emit, with the
+// BURDEN getMarkerPval calls in emitTest). total is the whole call.
+struct RegionProfile {
+  bool enabled = false;
+  long long calls = 0;
+  double prepare = 0.0, rareArm = 0.0, test = 0.0, urCollapse = 0.0, flush = 0.0;
+  double urPass = 0.0, urTest = 0.0, varmat = 0.0, emit = 0.0, emitTest = 0.0, total = 0.0;
+  long long nPrepare = 0, nRareArm = 0, nTest = 0, nUrCollapse = 0, nFlush = 0;
+  long long nUrPass = 0, nUrTest = 0, nVarmat = 0, nEmit = 0, nEmitTest = 0, nTotal = 0;
+};
+
+static RegionProfile g_regionProfile;
+
+static bool regionProfileRequested()
+{
+  const char* e = std::getenv("SAIGE_PROFILE_REGION");
+  return (e != nullptr) && (e[0] != '\0') && (std::strcmp(e, "0") != 0);
+}
+
 // Stops on destruction so the early returns inside the prepare phase are timed
 // too; stop() makes it explicit where a phase ends mid-function.
 class ProfileScope {
@@ -1726,6 +1753,10 @@ Rcpp::List mainRegionInCPP(
   // TestContext that outlives nothing.
   bool isEscalatedPass = g_regionEscalatedPass;
 
+  g_regionProfile.enabled = regionProfileRequested();
+  RegionProfile & rp = g_regionProfile;
+  ProfileScope rpTotal(rp.enabled ? &rp.total : nullptr, &rp.nTotal);
+
   // ---- weight-set layout (jmr extension) ----------------------------------
   // Weight sets are ordered: custom (group-file) sets first, then beta(a,b)
   // sets, then the optional all-ones "No_Weights" set. When the caller
@@ -1950,6 +1981,7 @@ Rcpp::List mainRegionInCPP(
     bool isOutputIndexForMissing = true;
     bool isOnlyOutputNonZero = false;
 
+    ProfileScope rpPrep(rp.enabled ? &rp.prepare : nullptr, &rp.nPrepare);
     GVec.resize(t_n);
     GVec.zeros();
 
@@ -2013,8 +2045,10 @@ Rcpp::List mainRegionInCPP(
 
     indexNonZeroVec_arma = arma::conv_to<arma::uvec>::from(indexNonZeroVec);
     uint nNonZero = indexNonZeroVec_arma.n_elem;
+    rpPrep.stop();
 
     if(MAC > g_cfg.region_minMAC_cutoff){  // not Ultra-Rare Variants
+      ProfileScope rpRare(rp.enabled ? &rp.rareArm : nullptr, &rp.nRareArm);
 
       indicatorVec.at(i) = 1;      
       if(i1InChunk == 0){
@@ -2040,6 +2074,7 @@ Rcpp::List mainRegionInCPP(
       if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){ //perform single-variant assoc tests 
  
         indexZeroVec_arma = arma::conv_to<arma::uvec>::from(indexZeroVec);
+        ProfileScope rpTest(rp.enabled ? &rp.test : nullptr, &rp.nTest);
         if(MAC <=  g_cfg.MACCutoffforER && t_traitType == "binary"){	
           Unified_getMarkerPval(
                     GVec,
@@ -2052,7 +2087,7 @@ Rcpp::List mainRegionInCPP(
                     false, // bool t_isOnlyOutputNonZero,
           indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
 	}
-
+        rpTest.stop();
 
 
 	BetaVec.at(i) = Beta * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true       
@@ -2188,6 +2223,7 @@ Rcpp::List mainRegionInCPP(
       //printTime(timeoutput3ab, timeoutput4a, "Unified_getOneMarker 3");
 
     }else{   // Ultra-Rare Variants (URV)
+      ProfileScope rpUrc(rp.enabled ? &rp.urCollapse : nullptr, &rp.nUrCollapse);
       indicatorVec.at(i) = 2;
       arma::vec MAFIndicatorVec(maxMAFVec.n_elem);
       MAFIndicatorVec.zeros();
@@ -2243,6 +2279,7 @@ Rcpp::List mainRegionInCPP(
 //
     
     if(i1InChunk == m1 ){
+      ProfileScope rpFlush(rp.enabled ? &rp.flush : nullptr, &rp.nFlush);
       std::cout << "In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and " << i1 << " markers are not ultra-rare." << std::endl;
       if(t_regionTestType != "BURDEN"){
         saveChunkMatOrStop(P1Mat, t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin", regionName);
@@ -2263,6 +2300,7 @@ Rcpp::List mainRegionInCPP(
 
 //the second last chunk
   if(i1InChunk != 0){
+    ProfileScope rpFlush2(rp.enabled ? &rp.flush : nullptr, &rp.nFlush);
     std::cout << "In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and " << i1 << " markers are not ultra-rare." << std::endl;
     if(t_regionTestType != "BURDEN"){	  
       P1Mat = P1Mat.rows(0, i1InChunk - 1);
@@ -2280,6 +2318,7 @@ Rcpp::List mainRegionInCPP(
 
 //for all UR variants
 if(i2 > 0){
+  ProfileScope rpUr(rp.enabled ? &rp.urPass : nullptr, &rp.nUrPass);
   int m1new = std::max(m1, q_anno_maf_weight);
   //if(isWeightCustomized){
     //weightURMat_cnt.replace(0, 1); 	  
@@ -2444,11 +2483,13 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
             indexNonZeroVec_arma = arma::conv_to<arma::uvec>::from(indexNonZeroVec);
 
 
+	    ProfileScope rpUrTest(rp.enabled ? &rp.urTest : nullptr, &rp.nUrTest);
 	    if(MAC <= g_cfg.MACCutoffforER && t_traitType == "binary" && erAllowedVec[r]){
               g_model->getMarkerPval(genoURVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
 	    }else{
               g_model->getMarkerPval(genoURVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
 	    }
+	    rpUrTest.stop();
 
             BetaVec.at(i) = Beta* (1 - 2*flip);
             seBetaVec.at(i) = seBeta;
@@ -2592,6 +2633,7 @@ arma::mat VarMat;
 //(i1, i1);
 
 if(t_regionTestType != "BURDEN"){
+  ProfileScope rpVm(rp.enabled ? &rp.varmat : nullptr, &rp.nVarmat);
   VarMat.resize(i1, i1);	
   if(nchunks == 1){
     VarMat = P1Mat * P2Mat;
@@ -2680,6 +2722,7 @@ if(t_regionTestType != "BURDEN"){
 //printTime(timeoutput1, timeoutput2, "read and test single markers done");
 //check the max MAF of all markers
 //if there are sets containing the same markers
+ProfileScope rpEmit(rp.enabled ? &rp.emit : nullptr, &rp.nEmit);
 arma::uvec q_maf_for_anno(q_anno);
 for(unsigned int j = 0; j < q_anno; j++){
 	arma::uvec jtemp = find(maxMAFVec >= maxMAFperAnno(j));
@@ -2786,11 +2829,13 @@ if(t_regionTestType == "BURDEN"){
 
 
 	  //arma::vec timeoutput_getp = getTime();
+	  ProfileScope rpEmitTest(rp.enabled ? &rp.emitTest : nullptr, &rp.nEmitTest);
 	  if(MAC <= g_cfg.MACCutoffforER && t_traitType == "binary" && erAllowedVec[r] ){
           g_model->getMarkerPval(genoSumVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, isregion, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
 	  }else{
           g_model->getMarkerPval(genoSumVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, isregion, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
 	  }	  
+	  rpEmitTest.stop();
 	  //arma::vec timeoutput_getp2 = getTime();
 	  //printTime(timeoutput_getp, timeoutput_getp2, "get p  done");
 	  
@@ -3091,7 +3136,34 @@ OutList.push_back(iswriteOutput, "iswriteOutput");
  if(t_regionTestType != "BURDEN" || t_isOutputMarkerList){
   OutList.push_back(annoMAFIndicatorMat, "annoMAFIndicatorMat");
  }
-  
+
+  if(rp.enabled){
+    rpEmit.stop();
+    rpTotal.stop();
+    rp.calls += 1;
+    // one cumulative line per call; the last one in a log is the run's total
+    std::cout << "REGION PROFILE cum (SAIGE_PROFILE_REGION set):"
+              << " calls=" << rp.calls
+              << " markers=" << rp.nPrepare
+              << " tested=" << rp.nTest
+              << " urCollapsed=" << rp.nUrCollapse
+              << " urTested=" << rp.nUrTest
+              << " burdenTested=" << rp.nEmitTest
+              << " | prepare=" << rp.prepare
+              << " rareArm=" << rp.rareArm
+              << " test=" << rp.test
+              << " rareOther=" << (rp.rareArm - rp.test)
+              << " urCollapse=" << rp.urCollapse
+              << " flush=" << rp.flush
+              << " urPass=" << rp.urPass
+              << " urTest=" << rp.urTest
+              << " varmat=" << rp.varmat
+              << " emit=" << rp.emit
+              << " emitTest=" << rp.emitTest
+              << " total=" << rp.total
+              << std::endl;
+  }
+
   return OutList;
 }
 

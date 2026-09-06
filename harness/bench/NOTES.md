@@ -1248,3 +1248,85 @@ freed per marker) and waiting 4.4-6.9%, but 8 threads is already no faster
 than 4 here. **Closed: a per-worker workspace for the score-test/impute
 temporaries would buy at most ~2% at 4 threads on this machine.** The
 `--nThreads` help now says to use the physical core count.
+
+## The region C++ bucketed at N = 50,000: it is matrix churn, not the tests (2026-09-06)
+
+Step 1 of the region plan (`~/.claude/plans/can-you-summarise-what-shimmering-snail.md`,
+approved 2026-09-06). Instrument: `SAIGE_PROFILE_REGION`, the region twin of
+`SAIGE_PROFILE_MARKER` (`src/Main.cpp`, `RegionProfile`): `steady_clock` buckets over
+the four passes of `mainRegionInCPP`, one cumulative line per region call, the last
+line in a log is the run. Zero cost when unset; P2 and P5 byte-identical with it on.
+Runs: `sim50k`, HEAD `7a9efcb8` + the instrument (`SAIGE.so` md5 `44661224`),
+`harness/sim/04_run_saige.sh step2_group` flags (`--is_single_in_groupTest=TRUE`,
+15 anno x maxMAF cells, `--is_fastTest=TRUE`), `--nThreads=1`, BURDEN = the same plus
+`--r.corr=1` (driver gained `S2EXTRA` on group runs), 2 reps with the arm order
+reversed, load 3.5-5.8 with VS Code's C++ indexer re-indexing `Main.cpp` at ~75% of a
+core through rep 2 (absolute seconds carry that; shares do not). Table:
+`harness/work/region_profile/buckets.txt`; logs beside the upstream-compare ones.
+
+**Prediction, written before the run:** prepare ~10% of C++, per-marker test ~20%,
+P1/P2 fill + VarMat product 30-40%, the ultra-rare pass the rest.
+
+**Measured (mean of 2 reps; shares of the C++ `mainRegionInCPP` time):**
+
+| arm | user s | C++ s | C++/user | prepare | test | rareOther | flush | urPass (of which urTest) | varmat | emit |
+|---|---|---|---|---|---|---|---|---|---|---|
+| y_binary SKAT-O | 163 | 79.5 | 0.49 | 18.1% | 13.7% | 7.6% | 7.9% | **36.9%** (6.7%) | 12.0% | 1.1% |
+| y_quant SKAT-O | 145 | 59.1 | 0.41 | 23.4% | 7.2% | 6.4% | 9.3% | **37.3%** (2.6%) | 14.8% | 0.2% |
+| y_binary BURDEN | 45 | 44.5 | **0.99** | 35.4% | 26.3% | 5.4% | 0.2% | 21.5% (14.2%) | 0 | 10.2% |
+| y_quant BURDEN | 25 | 23.4 | **0.92** | 59.4% | 17.1% | 1.1% | 0.2% | 14.4% (6.2%) | 0 | 6.2% |
+
+Unaccounted 0.9-2.6%. Reps agree within 5% on every bucket. Per marker the C++ is
+1.9 ms (binary SKAT-O) / 1.0 ms (binary BURDEN) / 0.58 ms (quant BURDEN); prepare
+is 0.34-0.37 ms on every arm (read 0.19 + impute); a tested marker costs 1.7 ms
+(binary) / 0.65 ms (quant).
+
+**The surprise is the ultra-rare pass: 37% of the SKAT-O C++, of which the tests are
+a fifth.** BURDEN runs the same pass without P1/P2 rows, residualisation or a chunk
+save and it costs 0.9 ms per cell against ~7 ms. `sample` at 1 ms over the binary
+SKAT-O run (`harness/bench/profiles/region_skato_binary.txt`, main thread, direct
+children of `mainRegionInCPP`, 69,396 samples):
+
+| frame | share |
+|---|---|
+| `getMarkerPval`, all three call sites | 22.0% |
+| **`P1Mat`/`P2Mat` `resize` (90% of it `bzero`: Armadillo zero-fills the new matrix)** | **14.6%** |
+| reader `getOneMarker` | 11.3% |
+| `imputeGenoAndFlip` | 8.6% |
+| **chunk file load (`arma::Mat::load`, `fread`)** | **8.2%** |
+| **`P1Mat.row(i) = ...` / `P2Mat.col(i) = ...` (row fill is strided over 50k columns)** | **6.7%** |
+| **`P1Mat = P1Mat.rows(0, k)` / `P2Mat.cols` truncation copies** | **6.2%** |
+| **chunk file save** | **4.7%** |
+| `GVec.zeros()` per marker (400 KB x 41,824) | 3.1% |
+| XV residualisation of the collapsed columns | 2.2% |
+| **VarMat = P1Mat * P2Mat (dgemm)** | **1.6%** |
+| chunk file `remove`, large-block frees | 1.7% |
+
+**Matrix churn plus the chunk round trip is 42% of the region C++ -- ~20% of a
+SKAT-O run -- and the matrix product it all exists to feed is 1.6%.** The cause is
+the trap CLAUDE.md already records for the goldens: EVERY region takes the chunked
+path (`nchunks == 2`), because the ultra-rare collapse appends its own chunk. So per
+region the 100 x N `P1Mat` and N x 100 `P2Mat` are copied in from R (RcppArmadillo's
+`arma::mat&` input parameter is a copy), truncated to the tested rows (copy), written
+to `<prefix>_P1Mat_Chunk_0.bin`, resized back to 100 rows (allocate + zero 40 MB
+each), filled with the 15 collapsed rows by strided writes, truncated again, written
+as chunk 1, both chunks read back, multiplied, and the four files deleted. 8 GB
+written and read per 232 regions. None of it changes a byte: the chunk files are raw
+doubles, so an in-memory chunk list gives the same `dgemm` calls the same inputs.
+
+What this decides for the plan:
+- **Removing the chunk round trip and the churn is the first change**, ahead of the
+  restructure and the threading: ~20% of a SKAT-O run, byte-identical by
+  construction if the per-chunk `dgemm` shapes are kept (the K-blocking of one
+  43 x N x 43 product need not match two sub-products, so assemble VarMat from the
+  same sub-blocks the chunked path uses, in memory). It also deletes the
+  "chunk file name carries no thread or model identity" hazard before threading.
+- **Threading pass A** still has its prize: prepare + test + rareOther is 39% of
+  the SKAT-O C++ and 67-78% of BURDEN's, and BURDEN is 92-99% C++ at this N.
+- **Multi-model regions save the prepare bucket**: 18-23% of the SKAT-O C++, i.e.
+  ~10% of a SKAT-O run per additional model; 35-59% of BURDEN's, which is 92-99% of
+  the run, so P = 5 BURDEN predicts 1.4x (binary) / 1.8x (quant) over five serial
+  runs plus the genotype pass. SKAT-O's win from a manifest is the I/O pass, as
+  the plan said it would be if prepare came out under ~15%.
+- The `qfc` audit (same day, `docs/state/region-perf-handoff.md`) closes in-process
+  SKAT-O for good: Davies' routine is file-scope statics and a global `jmp_buf`.

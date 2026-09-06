@@ -142,15 +142,31 @@ worth much alone on the SKAT-O path, and together they are.
 
 Two things are unresolved and both must be settled BEFORE any code is written:
 
-1. **`qfc` thread-safety is unchecked.** `SKAT_davies` calls `.C("qfc")` in the
-   SKAT package, which this branch does not own. If the region loop is threaded
-   in-process and the SKAT-O side is also brought in-process, several threads
-   could be inside `qfc` at once. Nobody has read that code for global state.
-   This is a *read the source* task, not a *run it and see* task: a race in a
-   Fortran-style translated C routine with file-scope scratch will usually
-   produce a plausible wrong number rather than a crash, which is exactly the
-   failure class this branch keeps finding by accident.
-2. **The SKAT-O side would have to be reimplemented to run in-process.** Item
+1. **`qfc` is NOT thread-safe -- SETTLED 2026-09-06, from the binary.** No SKAT
+   source ships in the pixi env (SKAT 2.2.5, `libs/SKAT.so` only), so the
+   shipped Mach-O was read: `nm -m` on its `__bss` segment lists Davies' 1980
+   declaration list item for item as internal-linkage (`_ZL`-mangled, i.e.
+   file-scope `static`) objects -- `env` (a 148-byte `jmp_buf`), `r`, `lim`,
+   `c`, `n`, `lb`, `nc`, `count`, `intl`, `ersm`, `ndtsrt`, `fail`, `th`,
+   `sigsq`, `lmax`, `lmin`, `mean` -- with no thread-local storage anywhere in
+   the object. The disassembly shows the four hazards: `qfc_1` opens with
+   `setjmp(env)` and `counter()` `longjmp`s to it (a second caller overwrites
+   the buffer mid-integration); the landing pad `free`s the global `malloc`'d
+   workspace `th` and the entry re-`malloc`s it (double free / use after
+   free under concurrency); `lb`/`nc`/`n` are raw pointers into the CALLER's
+   `.C` copies, so a second caller makes the first compute over the wrong
+   eigenvalues -- silently; and `count`/`lim`/`fail`/`ndtsrt`/`intl`/`ersm`
+   are one shared budget and one shared accumulator for every caller.
+   **Consequence: SKAT-O can never run in-process on threads with this
+   dependency.** The fork pool (`R/SkatoParallel.R`) is correct precisely
+   because each forked worker has a private copy of the `.so` data segment. A
+   C++ port of `Met_SKAT_Get_Pvalue` that linked this `qfc` would be WRONG,
+   not merely 1.8% faster; the only in-process route is a reentrant
+   reimplementation of Davies with its state in a struct, gated on every
+   group golden. Not planned.
+2. **The SKAT-O side stays on the fork pool (see 1), so the shape is
+   "threaded C++ region call, then pooled R post-processing", alternating per
+   region.** Item
    3's design is a *fork pool driven from R between C++ calls*. That works only
    because the C++ region loop is serial and hands control back to R after each
    chunk. Threading the C++ loop means the R post-processing can no longer sit
