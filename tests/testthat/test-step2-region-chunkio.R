@@ -13,9 +13,18 @@
 # chunked path, which is not obvious from the group file. Each region has only
 # three or four non-ultra-rare markers, far under `markers_per_chunk_in_groupTest`,
 # so it looks like a single chunk -- but the ultra-rare collapse always appends
-# one more, so `nchunks == 2` and the disk round trip runs on every non-BURDEN
+# one more, so `nchunks == 2` and the chunked assembly runs on every non-BURDEN
 # group golden. `--markers_per_chunk_in_groupTest` therefore changes nothing
 # here; do not reach for it to "force" chunking.
+#
+# Since 2026-09-06 the chunks stay IN MEMORY (RegionChunkStore, src/Main.cpp)
+# and the .bin round trip runs only when their bytes exceed
+# SAIGE_REGION_CHUNK_MEMORY_MB (default 8192). At N = 50,000 the round trip plus
+# the resize/truncation churn around it was 42% of the region C++ time for a
+# 1.6% matrix product (harness/bench/NOTES.md). The tests below force the spill
+# with a budget of 0 so the disk path and its LEDGER #57 checks stay gated, and
+# prove the default path never touches the file system by planting a directory
+# where the chunk file would go and expecting the run to SUCCEED.
 
 CHUNK_G <- c("--bedFile=./input/genotype_100markers.bed",
              "--bimFile=./input/genotype_100markers.bim",
@@ -37,7 +46,7 @@ cli <- run_saige_cli
 P6 <- file.path(saige_goldens, "step2", "plink_group_nofast.txt")
 
 # Golden P6's command (group test, SKAT-O, is_fastTest=FALSE).
-chunk_run <- function(out) {
+chunk_run <- function(out, env = character()) {
   cli("step2_SPAtests.R", c(
     CHUNK_G, CHUNK_MODEL, CHUNK_SG,
     "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
@@ -45,8 +54,10 @@ chunk_run <- function(out) {
     "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
     "--maxMAF_in_groupTest=0.0001,0.001,0.01", "--is_fastTest=FALSE",
     paste0("--SAIGEOutputFile=", out)
-  ))
+  ), env = env)
 }
+# A budget of 0 MB forces every chunk to disk: the pre-2026-09-06 path.
+SPILL <- c(SAIGE_REGION_CHUNK_MEMORY_MB = "0")
 
 test_that("the bundled group fixture really does take the chunked VarMat path", {
   # Positive control for the failure test below: injecting a write failure at
@@ -69,6 +80,34 @@ test_that("the bundled group fixture really does take the chunked VarMat path", 
   expect_length(list.files(dirname(out), pattern = "_Chunk_[0-9]+\\.bin$"), 0L)
 })
 
+test_that("at the default budget the chunks never touch the file system", {
+  # Plant a DIRECTORY where chunk 0 would be written. On the disk path this is
+  # the failure the next test pins; on the in-memory path nothing is written,
+  # so the run must succeed and reproduce the golden byte for byte.
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+
+  out <- file.path(tempfile("step2_chunkio_mem_"), "out.txt")
+  dir.create(dirname(out), recursive = TRUE)
+  dir.create(paste0(out, "_P1Mat_Chunk_0.bin"))
+
+  st <- chunk_run(out)
+  expect_cli_ok(st)
+  expect_output_matches_golden(P6, out)
+})
+
+test_that("the forced spill to disk is byte-neutral and cleans up", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+
+  out <- file.path(tempfile("step2_chunkio_spill_"), "out.txt")
+  dir.create(dirname(out), recursive = TRUE)
+  st <- chunk_run(out, env = SPILL)
+  expect_cli_ok(st)
+  expect_output_matches_golden(P6, out)
+  expect_length(list.files(dirname(out), pattern = "_Chunk_[0-9]+\\.bin$"), 0L)
+})
+
 test_that("a chunk file that cannot be written stops the run instead of NA-ing a gene", {
   skip_unless_level("standard")
 
@@ -79,7 +118,7 @@ test_that("a chunk file that cannot be written stops the run instead of NA-ing a
   # exactly the step under test and nowhere earlier.
   dir.create(paste0(out, "_P1Mat_Chunk_0.bin"))
 
-  st <- chunk_run(out)
+  st <- chunk_run(out, env = SPILL)
   expect_false(identical(as.integer(st), 0L))
 
   lg <- readLines(attr(st, "log"), warn = FALSE)

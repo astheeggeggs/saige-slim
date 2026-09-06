@@ -20,6 +20,7 @@
 #include <mutex>
 #include "Main.hpp"
 #include <cstring>
+#include <cstdlib>
 #include "Binary_global.hpp"   // S6: SKATMainThread, the ER handback
 #include "Binary_HyperGeo.hpp" // lchoose_threadsafe, for its regression test
 #include "GenoReader.hpp"
@@ -1707,6 +1708,92 @@ static void loadChunkMatOrStop(arma::mat & t_mat, const std::string & t_file,
   }
 }
 
+// ---- step 2a: the chunk store (in-memory by default, spills above a budget) ----
+// Replaces the per-region round trip through <prefix>_P{1,2}Mat_Chunk_<i>.bin.
+// The chunk STRUCTURE is unchanged -- one (P1 rows, P2 cols) pair per chunk,
+// the ultra-rare block last -- so VarMat is assembled from exactly the same
+// sub-block products with exactly the same operands, which is what keeps every
+// group golden byte-identical: the .bin files held raw doubles, so a chunk read
+// back from disk and a chunk kept in memory are the same matrix.
+//
+// Budget: SAIGE_REGION_CHUNK_MEMORY_MB (default 8192). Chunks are kept in
+// memory while the running total of their bytes stays within it; a chunk that
+// would exceed it goes to disk under the old file name and is loaded on
+// demand, exactly as before. The tests force the spill with a budget of 0.
+namespace {
+
+class RegionChunkStore {
+public:
+  RegionChunkStore(const std::string & t_prefix, const std::string & t_region)
+    : m_prefix(t_prefix), m_region(t_region)
+  {
+    const char* e = std::getenv("SAIGE_REGION_CHUNK_MEMORY_MB");
+    double mb = 8192.0;
+    if(e != nullptr && e[0] != '\0'){
+      char* end = nullptr;
+      double v = std::strtod(e, &end);
+      if(end != e && v >= 0.0){ mb = v; }
+    }
+    m_budgetBytes = mb * 1024.0 * 1024.0;
+  }
+  ~RegionChunkStore(){ clear(); }
+
+  // Store chunk `ichunk` (called once per chunk, in order).
+  // By value: a `P1Mat.rows(0, k)` subview argument is materialised exactly
+  // once, into the matrix that is then moved into the slot.
+  void add(unsigned int t_ichunk, arma::mat t_P1, arma::mat t_P2)
+  {
+    double bytes = 8.0 * (double(t_P1.n_elem) + double(t_P2.n_elem));
+    Slot s;
+    if(m_usedBytes + bytes <= m_budgetBytes){
+      s.p1 = std::move(t_P1); s.p2 = std::move(t_P2); s.inMemory = true;
+      m_usedBytes += bytes;
+    }else{
+      saveChunkMatOrStop(t_P1, p1File(t_ichunk), m_region);
+      saveChunkMatOrStop(t_P2, p2File(t_ichunk), m_region);
+      s.inMemory = false;
+      m_spilled = true;
+    }
+    if(m_slots.size() <= t_ichunk){ m_slots.resize(t_ichunk + 1); }
+    m_slots[t_ichunk] = std::move(s);
+  }
+  // The chunk's P1 rows / P2 cols; a spilled chunk is (re)loaded into scratch.
+  const arma::mat & P1(unsigned int i, arma::mat & t_scratch)
+  {
+    if(m_slots.at(i).inMemory){ return m_slots[i].p1; }
+    loadChunkMatOrStop(t_scratch, p1File(i), m_region);
+    return t_scratch;
+  }
+  const arma::mat & P2(unsigned int i, arma::mat & t_scratch)
+  {
+    if(m_slots.at(i).inMemory){ return m_slots[i].p2; }
+    loadChunkMatOrStop(t_scratch, p2File(i), m_region);
+    return t_scratch;
+  }
+  bool spilled() const { return m_spilled; }
+  void clear()
+  {
+    for(unsigned int i = 0; i < m_slots.size(); i++){
+      if(!m_slots[i].inMemory){
+        std::remove(p1File(i).c_str());
+        std::remove(p2File(i).c_str());
+      }
+    }
+    m_slots.clear();
+    m_usedBytes = 0.0;
+  }
+private:
+  struct Slot { arma::mat p1, p2; bool inMemory = true; };
+  std::string p1File(unsigned int i) const { return m_prefix + "_P1Mat_Chunk_" + std::to_string(i) + ".bin"; }
+  std::string p2File(unsigned int i) const { return m_prefix + "_P2Mat_Chunk_" + std::to_string(i) + ".bin"; }
+  std::string m_prefix, m_region;
+  double m_budgetBytes = 0.0, m_usedBytes = 0.0;
+  bool m_spilled = false;
+  std::vector<Slot> m_slots;
+};
+
+}  // namespace
+
 //////// ---------- Main function for region-level analysis --------- ////////////
 // [[Rcpp::export]]
 Rcpp::List mainRegionInCPP(
@@ -1717,8 +1804,8 @@ Rcpp::List mainRegionInCPP(
                            std::string t_outputFile,
 			   std::string t_traitType,
                            unsigned int t_n,           // sample size  
-                           arma::mat & P1Mat,            // edited on 2021-08-19: to avoid repeated memory allocation of P1Mat and P2Mat
-                           arma::mat & P2Mat, 
+                           arma::mat & t_P1Mat_placeholder,  // 1 x 1 since 2026-09-06; the scratch is s_regionP1 below
+                           arma::mat & t_P2Mat_placeholder, 
 			   std::string t_regionTestType, 
 			   bool t_isImputation,
 			   arma::mat & t_weight,       // q0 x Kc custom (group-file) weight sets; 0-matrix sentinel when none
@@ -1926,6 +2013,28 @@ Rcpp::List mainRegionInCPP(
 
 
   unsigned int m1 = g_cfg.region_maxMarkers_cutoff;     // number of markers in all chunks expect for the last chunk
+
+  // 2026-09-06: the P1/P2 working scratch persists across region calls and is
+  // sized once, for the largest chunk a call can hold: m1 tested-marker rows,
+  // or the q_anno_maf_weight rows of the ultra-rare pass. It is NOT zeroed:
+  // every row/column is written in full before a chunk is stored, and a chunk
+  // holds only the rows/columns written for it. The matrices used to arrive as
+  // m1 x n copies from R on every call, be truncated, resized (zero-filled)
+  // back for the ultra-rare pass, truncated again and streamed through .bin
+  // files: 42% of the region C++ at N = 50,000 for a 1.6% matrix product
+  // (harness/bench/NOTES.md). Completed chunks now go to chunkStore, in memory
+  // unless SAIGE_REGION_CHUNK_MEMORY_MB says otherwise. R passes 1 x 1
+  // placeholders (R/SAIGE_SPATest_Region.R).
+  (void)t_P1Mat_placeholder; (void)t_P2Mat_placeholder;
+  static arma::mat s_regionP1, s_regionP2;
+  arma::mat & P1Mat = s_regionP1;
+  arma::mat & P2Mat = s_regionP2;
+  const unsigned int m1max = std::max(m1, q_anno_maf_weight);
+  RegionChunkStore chunkStore(t_outputFile, regionName);
+  if(t_regionTestType != "BURDEN"){
+    if(P1Mat.n_rows != m1max || P1Mat.n_cols != t_n){ P1Mat.set_size(m1max, t_n); }
+    if(P2Mat.n_rows != t_n || P2Mat.n_cols != m1max){ P2Mat.set_size(t_n, m1max); }
+  }
   // P2Mat should be of dimension: t_n * m1 
   // Suppose that 
   // n is the sample size in analysis 
@@ -2282,8 +2391,7 @@ Rcpp::List mainRegionInCPP(
       ProfileScope rpFlush(rp.enabled ? &rp.flush : nullptr, &rp.nFlush);
       std::cout << "In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and " << i1 << " markers are not ultra-rare." << std::endl;
       if(t_regionTestType != "BURDEN"){
-        saveChunkMatOrStop(P1Mat, t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin", regionName);
-        saveChunkMatOrStop(P2Mat, t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin", regionName);
+        chunkStore.add(ichunk, P1Mat.rows(0, i1InChunk - 1), P2Mat.cols(0, i1InChunk - 1));
       }
 
       mPassCVVec.push_back(m1);
@@ -2303,10 +2411,7 @@ Rcpp::List mainRegionInCPP(
     ProfileScope rpFlush2(rp.enabled ? &rp.flush : nullptr, &rp.nFlush);
     std::cout << "In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and " << i1 << " markers are not ultra-rare." << std::endl;
     if(t_regionTestType != "BURDEN"){	  
-      P1Mat = P1Mat.rows(0, i1InChunk - 1);
-      P2Mat = P2Mat.cols(0, i1InChunk - 1);
-      saveChunkMatOrStop(P1Mat, t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin", regionName);
-      saveChunkMatOrStop(P2Mat, t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin", regionName);
+      chunkStore.add(ichunk, P1Mat.rows(0, i1InChunk - 1), P2Mat.cols(0, i1InChunk - 1));
     }
     ichunk = ichunk + 1;
     //}
@@ -2326,10 +2431,8 @@ if(i2 > 0){
     //weightURMat.ones();    
   //}
 
-  if(t_regionTestType != "BURDEN"){
-    P1Mat.resize(m1new, P1Mat.n_cols);
-    P2Mat.resize(P2Mat.n_rows,m1new);
-  }
+  // (P1Mat/P2Mat already hold m1new = m1max rows/cols: sized once per call above)
+  (void)m1new;
 
   arma::mat XV, XXVX_inv;
   g_model->extract_XV_XXVX_inv(XV, XXVX_inv);
@@ -2612,11 +2715,7 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
   if(i1InChunk != 0){
     nchunks = nchunks + 1;
     if(t_regionTestType != "BURDEN"){
-      P1Mat = P1Mat.rows(0, i1InChunk - 1);
-      P2Mat = P2Mat.cols(0, i1InChunk - 1);
-//if(nchunks != 1){
-      saveChunkMatOrStop(P1Mat, t_outputFile + "_P1Mat_Chunk_" + std::to_string(ichunk) + ".bin", regionName);
-      saveChunkMatOrStop(P2Mat, t_outputFile + "_P2Mat_Chunk_" + std::to_string(ichunk) + ".bin", regionName);
+      chunkStore.add(ichunk, P1Mat.rows(0, i1InChunk - 1), P2Mat.cols(0, i1InChunk - 1));
     }
       ichunk = ichunk + 1;
 //    }
@@ -2634,86 +2733,74 @@ arma::mat VarMat;
 
 if(t_regionTestType != "BURDEN"){
   ProfileScope rpVm(rp.enabled ? &rp.varmat : nullptr, &rp.nVarmat);
-  VarMat.resize(i1, i1);	
-  if(nchunks == 1){
-    VarMat = P1Mat * P2Mat;
-  }
+  VarMat.resize(i1, i1);
 
-  // the region includes more markers than limitation, so P1Mat and P2Mat have been put in hard drive
-  if(nchunks > 1)
+  // VarMat is assembled from the SAME per-chunk sub-block products the disk
+  // path issued -- same shapes, same operands -- whether the chunks sit in
+  // memory or were spilled, which is what keeps every group golden byte-
+  // identical (the .bin files held raw doubles). A single-chunk region is the
+  // diagonal product alone, i.e. the old `VarMat = P1Mat * P2Mat` on the
+  // truncated scratch. The "Analyzing chunks" lines are kept for nchunks > 1
+  // (stdout only; LEDGER #57's tell was their count).
   {
     int first_row = 0, first_col = 0, last_row = 0, last_col = 0;
-    
+    arma::mat chunkP1, chunkP2;   // load targets for spilled chunks only
+
     for(unsigned int index1 = 0; index1 < nchunks; index1++)
     {
       last_row = first_row + mPassCVVec.at(index1) - 1;
-      
-      std::string P1MatFile = t_outputFile + "_P1Mat_Chunk_" + std::to_string(index1) + ".bin";
 
-      loadChunkMatOrStop(P1Mat, P1MatFile, regionName);
-
-       //P1Mat.print("P1Mat");
+      const arma::mat & P1c = chunkStore.P1(index1, chunkP1);
 
       // LEDGER #57: an empty chunk used to `continue` WITHOUT advancing
       // first_row, so every later chunk's submatrix landed in the wrong rows of
       // VarMat -- a wrong answer rather than a missing one. The cursor is
-      // advanced on the skip now. With the load checked above this is
-      // unreachable in practice (mPassCVVec never holds 0), but it is the kind
-      // of thing that must not be left armed.
-      if(P1Mat.n_cols == 0){
+      // advanced on the skip now. Unreachable in practice (mPassCVVec never
+      // holds 0), but it is the kind of thing that must not be left armed.
+      if(P1c.n_cols == 0){
         first_row = last_row + 1;
         first_col = 0;
         continue;
       }
 
-      // off-diagonal sub-matrix
+      // off-diagonal sub-matrices
       for(unsigned int index2 = 0; index2 < index1; index2++)
       {
         std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index2 << "/" << nchunks - 1 << ")........" << std::endl;
 
-        loadChunkMatOrStop(P2Mat, t_outputFile + "_P2Mat_Chunk_" + std::to_string(index2) + ".bin", regionName);
-       //P2Mat.print("P2Mat");
+        const arma::mat & P2c = chunkStore.P2(index2, chunkP2);
 
         // Computed BEFORE the skip below: the column cursor has to advance past
         // this chunk either way, for the same reason as the row cursor above.
         last_col = first_col + mPassCVVec.at(index2) - 1;
 
-        if(P2Mat.n_cols == 0){
+        if(P2c.n_cols == 0){
           first_col = last_col + 1;
           continue;
         }
-        arma::mat offVarMat = P1Mat * P2Mat;
+        arma::mat offVarMat = P1c * P2c;
 
         VarMat.submat(first_row, first_col, last_row, last_col) = offVarMat;
         VarMat.submat(first_col, first_row, last_col, last_row) = offVarMat.t();
         first_col = last_col + 1;
       }
-      
+
       // diagonal sub-matrix
       last_col = first_col + mPassCVVec.at(index1) - 1;
-      std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index1 << "/" << nchunks - 1 << ")........" << std::endl;
-      //std::cout << "P2Mat.n_cols " << P2Mat.n_cols << std::endl;
-      loadChunkMatOrStop(P2Mat, t_outputFile + "_P2Mat_Chunk_" + std::to_string(index1) + ".bin", regionName);
+      if(nchunks > 1){
+        std::cout << "Analyzing chunks (" << index1 << "/" << nchunks - 1 << ", " << index1 << "/" << nchunks - 1 << ")........" << std::endl;
+      }
+      const arma::mat & P2d = chunkStore.P2(index1, chunkP2);
 
-      arma::mat diagVarMat = P1Mat * P2Mat;
-      
+      arma::mat diagVarMat = P1c * P2d;
+
       VarMat.submat(first_row, first_col, last_row, last_col) = diagVarMat;
-      
+
       first_row = last_row + 1;
       first_col = 0;
       Rcpp::checkUserInterrupt();
     }
-     
-    for(unsigned int index1 = 0; index1 < nchunks; index1++)
-    {
-      std::string P1MatFile = t_outputFile + "_P1Mat_Chunk_" + std::to_string(index1) + ".bin";
-      std::string P2MatFile = t_outputFile + "_P2Mat_Chunk_" + std::to_string(index1) + ".bin";
-      const char* File1 = P1MatFile.c_str();
-      const char* File2 = P2MatFile.c_str();
-      std::remove(File1);
-      std::remove(File2);
-    }
-    
+    chunkStore.clear();   // removes any spilled files; a no-op in memory
   }
 }  //if(t_regionTestType != "BURDEN"){
 

@@ -1330,3 +1330,41 @@ What this decides for the plan:
   the plan said it would be if prepare came out under ~15%.
 - The `qfc` audit (same day, `docs/state/region-perf-handoff.md`) closes in-process
   SKAT-O for good: Davies' routine is file-scope statics and a global `jmp_buf`.
+
+### Step 2a: the chunks stay in memory (2026-09-06, same day)
+
+`RegionChunkStore` (`src/Main.cpp`): completed `(P1 rows, P2 cols)` chunks are kept in
+memory and VarMat is assembled from the SAME per-chunk sub-block products the disk path
+issued (same shapes, same operands: the `.bin` files held raw doubles), so nothing can
+move a byte. The P1/P2 working scratch is a static sized once per run
+(`max(markers_per_chunk, q_anno x q_maf x q_weight)` rows) and never zeroed -- every
+row is written in full before its chunk is stored -- and R passes 1 x 1 placeholders
+instead of an `m1 x n` pair copied on every call. Chunks spill to the old files only
+above `SAIGE_REGION_CHUNK_MEMORY_MB` (default 8192); the tests force a budget of 0 so
+the LEDGER #57 checks stay gated, and prove the default path never touches the file
+system by planting a directory where chunk 0 would go and requiring the run to succeed.
+
+Gate: every golden byte-identical (`compare_goldens.sh` all PASS), standard tier
+`[ FAIL 0 | PASS 2730 ]` byte / `[ PASS 2930 ]` numeric, `sim50k` SKAT-O and BURDEN
+outputs `cmp`-identical to the step-1 runs for both traits (12/12 files).
+
+Timing, `sim50k`, `--nThreads=1`, `SAIGE_PROFILE_REGION` buckets in seconds (before =
+mean of the two step-1 reps at `9cf9559a`; after = one rep at the same load, `SAIGE.so`
+md5 `db407289`):
+
+| arm | | real | user | sys | C++ | prepare | test | rareOther | flush | urPass | varmat |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| y_binary SKAT-O | before | 194.8 | 163.1 | 26.0 | 79.5 | 14.4 | 10.9 | 6.0 | 6.3 | 29.4 | 9.6 |
+| | after | **163.6** | **150.2** | 11.6 | **56.2** | 13.8 | 10.2 | 5.7 | 3.4 | 16.9 | 3.2 |
+| y_quant SKAT-O | before | 172.2 | 145.4 | 20.5 | 59.1 | 13.9 | 4.2 | 3.8 | 5.5 | 22.0 | 8.8 |
+| | after | **135.3** | **127.3** | 7.2 | **36.5** | 12.5 | 3.6 | 3.3 | 2.7 | 10.7 | 2.8 |
+
+Region C++ **-29% / -38%**, wall **-16% / -21%**, user CPU **-8% / -12%**, sys CPU
+halved or better. The prediction said "~20% less user CPU"; that over-counted, because
+a good part of the 42% was system time and page-cache waiting rather than user cycles
+-- the wall-clock saving is the one that matched. What is left of the churn, for step
+2's restructure: the `flush` bucket is now the truncation copy into the store (3 s), and
+`urPass` minus `urTest` (12 s binary, 9 s quant) still holds the strided `P1Mat.row`
+fills and the per-cell O(N) bookkeeping. An intermediate build that zeroed the scratch
+once per call (`zeros(m1max, n)`) measured C++ 67.8 / 46.5 s: the zero-fill alone was
+11-12 s, which is why the scratch is now persistent and unzeroed.

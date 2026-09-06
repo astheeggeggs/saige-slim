@@ -942,13 +942,13 @@ SAIGE.Region <- function(mu,
     }
   }
 
-  if (regionTestType != "BURDEN") {
-    P1Mat <- matrix(0, markers_per_chunk_in_groupTest, n)
-    P2Mat <- matrix(0, n, markers_per_chunk_in_groupTest)
-  } else {
-    P1Mat <- matrix(0, 1, 1)
-    P2Mat <- matrix(0, 1, 1)
-  }
+  # P1Mat/P2Mat used to be allocated here at markers_per_chunk x n and copied
+  # into C++ on EVERY region call (an arma::mat& parameter is a copy). The
+  # region loop now sizes its own scratch once per call and keeps the chunks in
+  # memory (see RegionChunkStore in src/Main.cpp), so the arguments are 1 x 1
+  # placeholders for both test types.
+  P1Mat <- matrix(0, 1, 1)
+  P2Mat <- matrix(0, 1, 1)
 
   chrom1 <- "FakeCHR"
 
