@@ -74,6 +74,22 @@ private:
   inline void getGenotype(const unsigned char c, const uint32_t pos, size_t& geno) const {
     geno = (c >> (pos << 1)) & 0x3;  // 0b11 = 0x3 
   }
+
+  // Item 3 (2026-09-05): true when the analysed samples are exactly the file's
+  // samples in file order (m_posSampleInPlink[i] == i for all i, m_N == m_N0),
+  // so a marker's 2-bit codes can be tallied a byte at a time.
+  bool m_isIdentityPos = false;
+
+  // The record's bytes: a pointer into the mmap, or a pread into t_buf on the
+  // fallback path. Shared by getOneMarker and countOneMarker so the two read
+  // the same bytes the same way.
+  const unsigned char* markerBytes(uint64_t t_gIndex, std::vector<unsigned char>& t_buf) const;
+
+  // The QC-gate quantities from the four code tallies: the arithmetic
+  // getOneMarker always performed, factored out so countOneMarker cannot drift
+  // from it by a bit (the gate decision must be identical either way).
+  void summariseCounts(const int t_counts[4], double& t_altFreq, double& t_altCounts,
+                       double& t_missingRate, double& t_imputeInfo) const;
   
 public:
   
@@ -119,6 +135,17 @@ public:
                          bool t_isTrueGenotype, // only used in PLINK. check m_genoMaps for details about the genotype mapping in PLINK
 			 arma::vec & OneMarkerG1) const;
 			 //std::vector<double>& OneMarkerG1);
+
+  // Item 3: one marker's metadata and QC-gate quantities from its 2-bit code
+  // tallies alone -- no genotype is written, no missing index built. Same
+  // bytes, same integer counts and the same arithmetic (summariseCounts) as
+  // getOneMarker, so the caller's QC decision is identical; a marker that
+  // passes is then read in full by getOneMarker exactly as before.
+  void countOneMarker(uint64_t t_gIndex,
+                      std::string& t_ref, std::string& t_alt, std::string& t_marker,
+                      uint32_t& t_pd, std::string& t_chr,
+                      double& t_altFreq, double& t_altCounts, double& t_missingRate,
+                      double& t_imputeInfo, uint32_t& t_numMissing) const;
 
   // True when the .bed is read through the mmap path (no per-read seek on
   // the shared FILE*), i.e. when reads are safe from forked children.

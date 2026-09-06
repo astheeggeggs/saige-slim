@@ -5,6 +5,8 @@
 #include <RcppArmadillo.h>
 
 #include <boost/algorithm/string.hpp>
+#include <array>
+#include <algorithm>
 #include "PLINK.hpp"
 #include "UTIL.hpp"
 #include <sys/mman.h>
@@ -236,6 +238,10 @@ void PlinkClass::setPosSampleInPlink(std::vector<std::string> & t_SampleInModel)
     m_posSampleInPlink.at(i) = posSampleInPlink.at(i) - 1;   // convert "starting from 1" to "starting from 0"
     //std::cout << "m_posSampleInPlink.at(i) " << i << " " << m_posSampleInPlink.at(i) << std::endl;
      }
+  m_isIdentityPos = (m_N == m_N0);
+  for(uint32_t i = 0; i < m_N && m_isIdentityPos; i++){
+    if(m_posSampleInPlink[i] != i) m_isIdentityPos = false;
+  }
 
 
 }
@@ -270,6 +276,144 @@ PlinkClass::~PlinkClass(){
 }
 
 
+const unsigned char* PlinkClass::markerBytes(uint64_t t_gIndex, std::vector<unsigned char>& t_buf) const
+{
+  // LEDGER #16 fix: seek unconditionally to the requested record. The old
+  // gate (if t_gIndex > 0) skipped the seek for bim row 0, so a mid-stream
+  // request for row 0 decoded whatever record the cursor sat on and reported
+  // it under row 0's marker ID (demonstrated via conditional analysis).
+  uint64_t posSeek = 3 + m_numBytesofEachMarker0 * t_gIndex;
+  // S5: the fallback was fseek + fread into the shared member buffer, which put
+  // TWO pieces of mutable state on every read -- the FILE*'s offset and the
+  // buffer. pread carries the offset as an argument and never touches the
+  // file description's own, so the fd can be shared; the buffer is a local. The
+  // bytes are identical (same offset, same length), and the mmap branch above
+  // is untouched.
+  if(m_map){
+    return m_map + posSeek;               // no syscalls, no copy
+  }
+  if(!m_fin)
+    Rcpp::stop("PlinkClass::getOneMarker called after the .bed file was closed.");
+  t_buf.resize(m_numBytesofEachMarker0);
+  ssize_t nread = pread(fileno(m_fin), (void*)t_buf.data(),
+                        (size_t)m_numBytesofEachMarker0, (off_t)posSeek);
+  if(nread != (ssize_t)m_numBytesofEachMarker0)
+    Rcpp::stop("Short read from the .bed file at marker index %s.",
+               std::to_string(t_gIndex));
+  return t_buf.data();
+}
+
+void PlinkClass::summariseCounts(const int t_counts[4], double& t_altFreq, double& t_altCounts,
+                                 double& t_missingRate, double& t_imputeInfo) const
+{
+  int numMissing = t_counts[MISSING];
+  int count = m_N - numMissing;
+  t_missingRate = (double)numMissing / (double)m_N;
+  t_imputeInfo = 1;
+  t_altCounts = (double)(t_counts[HET] + 2*t_counts[HOM_ALT]);
+
+  if(count > 0){
+        t_altFreq = t_altCounts/ (double)count / 2;
+  }else{
+        t_altFreq = 0;
+  }
+
+  // updated on 03/14/2021
+  if(m_AlleleOrder == "ref-first"){
+    // LEDGER #29 (first of two lossy steps): the ALT count used to be
+    // reconstructed FROM the frequency as 2*count*(1-f), a float round trip
+    // landing up to ~500 ulps off the true integer -- so under ref-first
+    // t_altCounts reached the QC gates already lossy. counts[] are integers and
+    // count is exact, so take the complement by exact integer arithmetic and
+    // derive the frequency from it, not the other way round.
+    if(count > 0){
+      t_altCounts = 2.0 * (double)count - t_altCounts;
+      t_altFreq = t_altCounts / (double)count / 2;
+    }else{
+      // Degenerate all-missing marker: preserved verbatim (altFreq 1-0 = 1,
+      // altCounts 0). Dropped by the missingRate gate long before this matters.
+      t_altFreq = 1 - t_altFreq;
+      t_altCounts = 2 * (double)count * t_altFreq;
+    }
+  }
+}
+
+void PlinkClass::countOneMarker(uint64_t t_gIndex,
+                                std::string& t_ref, std::string& t_alt, std::string& t_marker,
+                                uint32_t& t_pd, std::string& t_chr,
+                                double& t_altFreq, double& t_altCounts, double& t_missingRate,
+                                double& t_imputeInfo, uint32_t& t_numMissing) const
+{
+  // Item 3 (2026-09-05). On the N = 50,000 fixture 210,515 markers were decoded
+  // to doubles and 70,709 passed --minMAC=20; the decode was 15% of the binary
+  // scan's CPU and 60% of the quantitative one. QC gate 1 needs only the four
+  // code tallies, so tally first and let the caller decide whether to expand.
+  std::vector<unsigned char> oneMarkerG4;
+  const unsigned char* src = markerBytes(t_gIndex, oneMarkerG4);
+
+  t_marker = m_MarkerInPlink[t_gIndex];
+  t_pd = m_pd[t_gIndex];
+  t_chr = m_chr[t_gIndex];
+  if(m_AlleleOrder == "alt-first"){
+    t_ref = m_ref[t_gIndex];
+    t_alt = m_alt[t_gIndex];
+  }
+  if(m_AlleleOrder == "ref-first"){
+    t_ref = m_alt[t_gIndex];
+    t_alt = m_ref[t_gIndex];
+  }
+
+  int counts[] = {0, 0, 0, 0};
+  if(m_isIdentityPos){
+    // Whole file in file order: one table lookup and one add per byte. Each
+    // table word packs the byte's four code tallies in four 8-bit lanes, so a
+    // lane holds at most 4 per byte and 63 bytes can be summed before any lane
+    // could overflow; the block sum is unpacked into the 32-bit counts. The
+    // first version of this loop did four masked increments per byte and was
+    // no faster than the decode it replaces (quant scan 61 s vs 62 s).
+    // The last, partial byte is walked per sample so its padding bits (zero,
+    // which is HOM_ALT's code) are never counted.
+    static const std::array<uint32_t, 256> lanes = [](){
+      std::array<uint32_t, 256> t{};
+      for(int v = 0; v < 256; v++){
+        uint32_t w = 0;
+        for(int k = 0; k < 4; k++){
+          w += 1u << (8 * ((v >> (2 * k)) & 0x3));
+        }
+        t[v] = w;
+      }
+      return t;
+    }();
+    const uint32_t nFull = m_N / 4;
+    uint32_t b = 0;
+    while(b < nFull){
+      const uint32_t end = std::min(nFull, b + 63);
+      uint32_t acc = 0;
+      for(; b < end; b++){
+        acc += lanes[src[b]];
+      }
+      counts[0] += (int)(acc & 0xFF);
+      counts[1] += (int)((acc >> 8) & 0xFF);
+      counts[2] += (int)((acc >> 16) & 0xFF);
+      counts[3] += (int)((acc >> 24) & 0xFF);
+    }
+    for(uint32_t i = nFull * 4; i < m_N; i++){
+      size_t g;
+      getGenotype(src[i/4], i%4, g);
+      counts[g]++;
+    }
+  }else{
+    for(uint32_t i = 0; i < m_N; i++){
+      auto ind = m_posSampleInPlink[i];
+      size_t g;
+      getGenotype(src[ind/4], ind%4, g);
+      counts[g]++;
+    }
+  }
+  t_numMissing = counts[MISSING];
+  summariseCounts(counts, t_altFreq, t_altCounts, t_missingRate, t_imputeInfo);
+}
+
 void PlinkClass::getOneMarker(				uint64_t t_gIndex,        // different meanings for different genoType
                                    std::string& t_ref,       // REF allele
                                    std::string& t_alt,       // ALT allele (should probably be minor allele, otherwise, computation time will increase)
@@ -299,32 +443,9 @@ void PlinkClass::getOneMarker(				uint64_t t_gIndex,        // different meaning
       Rcpp::stop("Check PlinkClass::getOneMarker, if t_isTrueGenotype = FALSE, then t_isOnlyOutputNonZero should be FALSE.");
   }
 
-  // LEDGER #16 fix: seek unconditionally to the requested record. The old
-  // gate (if t_gIndex > 0) skipped the seek for bim row 0, so a mid-stream
-  // request for row 0 decoded whatever record the cursor sat on and reported
-  // it under row 0's marker ID (demonstrated via conditional analysis).
-  uint64_t posSeek = 3 + m_numBytesofEachMarker0 * t_gIndex;
-  const unsigned char* src;
-  // S5: the fallback was fseek + fread into the shared member buffer, which put
-  // TWO pieces of mutable state on every read -- the FILE*'s offset and the
-  // buffer. pread carries the offset as an argument and never touches the
-  // file description's own, so the fd can be shared; the buffer is a local. The
-  // bytes are identical (same offset, same length), and the mmap branch above
-  // is untouched.
+  // The record bytes come from markerBytes (LEDGER #16 seek, S5 pread fallback).
   std::vector<unsigned char> oneMarkerG4;
-  if(m_map){
-    src = m_map + posSeek;               // no syscalls, no copy
-  }else{
-    if(!m_fin)
-      Rcpp::stop("PlinkClass::getOneMarker called after the .bed file was closed.");
-    oneMarkerG4.resize(m_numBytesofEachMarker0);
-    ssize_t nread = pread(fileno(m_fin), (void*)oneMarkerG4.data(),
-                          (size_t)m_numBytesofEachMarker0, (off_t)posSeek);
-    if(nread != (ssize_t)m_numBytesofEachMarker0)
-      Rcpp::stop("Short read from the .bed file at marker index %s.",
-                 std::to_string(t_gIndex));
-    src = oneMarkerG4.data();
-  }
+  const unsigned char* src = markerBytes(t_gIndex, oneMarkerG4);
 
   t_indexForMissing.clear();
   t_indexForNonZero.clear();
@@ -387,38 +508,7 @@ void PlinkClass::getOneMarker(				uint64_t t_gIndex,        // different meaning
     }
   }
 
-  int numMissing = counts[MISSING];
-  
- //arma::vec timeoutput3 = getTime();
-  int count = m_N - numMissing;
-  t_missingRate = (double)numMissing / (double)m_N;
-  t_imputeInfo = 1;
-  t_altCounts = (double)(counts[HET] + 2*counts[HOM_ALT]);
-
-  if(count > 0){
-        t_altFreq = t_altCounts/ (double)count / 2;
-  }else{
-        t_altFreq = 0;
-  }
-  
-  // updated on 03/14/2021
-  if(m_AlleleOrder == "ref-first"){
-    // LEDGER #29 (first of two lossy steps): the ALT count used to be
-    // reconstructed FROM the frequency as 2*count*(1-f), a float round trip
-    // landing up to ~500 ulps off the true integer -- so under ref-first
-    // t_altCounts reached the QC gates already lossy. counts[] are integers and
-    // count is exact, so take the complement by exact integer arithmetic and
-    // derive the frequency from it, not the other way round.
-    if(count > 0){
-      t_altCounts = 2.0 * (double)count - t_altCounts;
-      t_altFreq = t_altCounts / (double)count / 2;
-    }else{
-      // Degenerate all-missing marker: preserved verbatim (altFreq 1-0 = 1,
-      // altCounts 0). Dropped by the missingRate gate long before this matters.
-      t_altFreq = 1 - t_altFreq;
-      t_altCounts = 2 * (double)count * t_altFreq;
-    }
-  }
+  summariseCounts(counts, t_altFreq, t_altCounts, t_missingRate, t_imputeInfo);
  
   if(t_isOnlyOutputNonZero){
     OneMarkerG1.resize(j);

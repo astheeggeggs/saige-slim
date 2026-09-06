@@ -114,6 +114,10 @@ parse_X_PARregion_token <- function(token) {
 #' @param is_output_markerList_in_groupTest logical. Whether to output the marker lists included in the set-based tests for each mask. By default, FALSE
 #' @param is_Firth_beta logical. Whether to estimate effect sizes using approx Firth, only for binary traits. By default, FALSE
 #' @param pCutoffforFirth numeric. p-value cutoff to use approx Firth to estiamte the effect sizes. Only for binary traits. The effect sizes of markers with p-value <= pCutoffforFirth will be estimated using approx Firth. By default, 0.01.
+#' @param firth_solver character. "closed" (default: 2x2 closed-form Fisher matrix and
+#'   hat values, no QR; ~2x faster per Firth fit) or "qr" (the QR-based hat values of
+#'   SAIGE 1.x). Same estimator; the two agree to <= 8e-13 relative, which does not reach
+#'   the printed digits. Only for binary traits with is_Firth_beta = TRUE.
 #' @param X_PARregion character. ranges of (pseudoautosomal) PAR region on chromosome X, which are seperated by comma and in the format start:end. By default: '60001-2699520,154931044-155260560' in the UCSC build hg19. For males, there are two X alleles in the PAR region, so PAR regions are treated the same as autosomes. In the NON-PAR regions (outside the specified PAR regions on chromosome X), for males, there is only one X allele. If is_rewrite_XnonPAR_forMales=TRUE, genotypes/dosages of all variants in the NON-PAR regions on chromosome X will be multiplied by 2 (Not activated).
 #' @param is_rewrite_XnonPAR_forMales logical. Whether to rewrite gentoypes or dosages of variants in the NON-PAR regions on chromosome X for males (multiply by 2). By default, FALSE. Only variants whose chromosome is X (X, x, 23, chrX, chr23) are rewritten; other chromosomes in the same file are left alone (LEDGER #69).
 #' @param sampleFile_male character. Path to the file containing one column for IDs of MALE samples in the bgen or vcf file with NO header. Order does not matter
@@ -169,6 +173,7 @@ SPAGMMATtest <- function(bedFile = "",
                          minGroupMAC_in_BurdenTest = 5,
                          is_Firth_beta = FALSE,
                          pCutoffforFirth = 0.01,
+                         firth_solver = "closed",
                          is_overwrite_output = TRUE,
                          is_single_in_groupTest = FALSE,
                          is_no_weight_in_groupTest = FALSE,
@@ -503,7 +508,7 @@ SPAGMMATtest <- function(bedFile = "",
   pushNullModelsToCPP(
     prepared, groupOf, SPAcutoff, impute_method, is_noadjCov,
     pval_cutoff_for_fastTest, isCondition, condition_genoIndex,
-    is_Firth_beta, pCutoffforFirth, cateVarRatioMinMACVecExclude
+    is_Firth_beta, pCutoffforFirth, firth_solver, cateVarRatioMinMACVecExclude
   )
   gc()
 

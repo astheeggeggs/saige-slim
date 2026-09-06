@@ -105,6 +105,7 @@ step2_single() {
     --pCutoffforFirth=0.1 \
     --is_fastTest=TRUE \
     --nThreads=$NT \
+    ${S2EXTRA:-} \
     --SAIGEOutputFile=${S2OUT:-$D/step2_single_$col.txt}
 }
 

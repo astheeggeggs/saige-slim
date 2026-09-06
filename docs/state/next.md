@@ -1,6 +1,6 @@
 # What is worth doing next (2026-09-03, updated 2026-09-05)
 
-**Current handoff: `docs/state/handoff-2026-09-05-review.md`** (then this
+**Current handoff: `docs/state/handoff-2026-09-05-binary-profile.md`** (then this
 file, then `python3 harness/tools/ledger.py open`). Handoffs are dated and
 never renamed; when several share the newest date `ls | tail -1` sorts them by
 name, not by time, so this line is the pointer and is updated with every new
@@ -353,13 +353,18 @@ built beside `strip` in its own pixi env pinned to the same R 4.4.3 / OpenBLAS
   step-1 with `--useSparseGRMforVarRatio=TRUE` whose `sparse` rows are invariant
   to y * 100 while its `null` rows scale by 1e-4, and whose `sparse` rows are ~1.
   No committed golden moved (none has quantitative `sparse` rows).
-- **The binary single-variant scan is NOT faster than upstream** (0.94x user CPU,
-  n = 3 paired, p = 0.15, not significant) while the quantitative scan is 1.28x,
-  step 1 is 1.34-1.37x and the gene tests 1.33-1.37x. Nothing in Phase 4 was
-  measured on a binary scan at N = 50,000 (the 09-01 comparison was `y_quant`).
-  Profile it before optimising anything else: the binary path adds SPA, ER and
-  Firth (10% of markers at `--pCutoffforFirth=0.1`) and the O(N) case/control
-  summary gather, and one of those got slower or none got faster.
+- **RESOLVED 2026-09-05 (evening): the binary single-variant scan's 0.94x was not
+  like-for-like, and its kernels were profiled and de-allocated.**
+  (`docs/state/handoff-2026-09-05-binary-profile.md`; `harness/bench/NOTES.md`.)
+  Firth is 56% of the binary scan's CPU on both arms; upstream's #28 made it skip
+  ~1,000 Firth fits and ~450 SPA corrections on AF > 0.5. A per-worker
+  `KernelWorkspace` (byte-identical at 1 and 4 threads, standard tier green) took
+  the 1-thread user CPU to 205 s (upstream 236) and the 4-thread sys time from
+  55 s to 11 s. `--firth_solver=closed` (-27% more, output byte-identical, P31 unmoved) is
+  now the DEFAULT with `qr` selectable; the warm start (118 non-converged fits)
+  was benchmarked and deleted. The PLINK reader now
+  decides QC gate 1 from 2-bit code tallies before expanding a marker
+  (quantitative 50k scan 62 -> 45 s, byte-identical).
 - Strip's step-2 peak RSS at N = 50,000 reads 2.3-2.8 GB against upstream's
   0.35-0.38 GB. Measured to be resident pages of the mmap'd 2.6 GB `.bed`, not
   allocations: `SAIGE_PLINK_NO_MMAP=1` gives 312 MB with byte-identical output.

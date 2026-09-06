@@ -546,6 +546,17 @@ option_list <- list(
     )
   ),
   make_option(
+    "--firth_solver",
+    type = "character",
+    default = "closed",
+    help = paste0(
+      "How the approx Firth fit computes its hat values: 'closed' (default: 2x2 ",
+      "closed-form Fisher matrix and hat values, no QR, ~2x faster per Firth fit) ",
+      "or 'qr' (the QR-based hat values of SAIGE 1.x). Same estimator; they agree ",
+      "to <= 8e-13 relative, below the printed digits. Binary traits only."
+    )
+  ),
+  make_option(
     "--is_fastTest",
     type = "logical",
     default = FALSE,
@@ -737,6 +748,7 @@ fixed_params <- list(
   dosage_zerod_MAC_cutoff = opt$dosage_zerod_MAC_cutoff,
   is_Firth_beta = opt$is_Firth_beta,
   pCutoffforFirth = opt$pCutoffforFirth,
+  firth_solver = opt$firth_solver,
   is_single_in_groupTest = opt$is_single_in_groupTest,
   is_no_weight_in_groupTest = opt$is_no_weight_in_groupTest,
   is_output_weight_column = opt$is_output_weight_column,

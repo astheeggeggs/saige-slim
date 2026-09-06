@@ -13,10 +13,16 @@
 #include <stdint.h>
 #include <boost/math/distributions/normal.hpp>
 #include "SPA_binary.hpp"
+#include "SPA.hpp"
 #include "UTIL.hpp"
 
 // [[Rcpp::export]]
 void SPA(const arma::vec & mu, const arma::vec & g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, double & pval, bool & isSPAConverge){
+        SPAWorkspace ws(mu.n_elem);
+        SPA_ws(mu, g, q, qinv, pval_noadj, tol, logp, traitType, pval, isSPAConverge, ws);
+}
+
+void SPA_ws(const arma::vec & mu, const arma::vec & g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, double & pval, bool & isSPAConverge, SPAWorkspace & ws){
         double p1, p2;
         bool Isconverge = true;
         if( traitType != "binary"){
@@ -34,8 +40,8 @@ void SPA(const arma::vec & mu, const arma::vec & g, double q, double qinv, doubl
         // gpos/gneg depend only on g, and both roots use the same g
         double gpos, gneg;
         getGPosNeg_Binom(g, gpos, gneg);
-        SPARoot outuni1 = getroot_K1_Binom_core(0, mu, g, q, tol, gpos, gneg);
-        SPARoot outuni2 = getroot_K1_Binom_core(0, mu, g, qinv, tol, gpos, gneg);
+        SPARoot outuni1 = getroot_K1_Binom_core(0, mu, g, q, tol, gpos, gneg, ws);
+        SPARoot outuni2 = getroot_K1_Binom_core(0, mu, g, qinv, tol, gpos, gneg, ws);
 
 /*
         double outuni1root = outuni1["root"];
@@ -51,8 +57,8 @@ void SPA(const arma::vec & mu, const arma::vec & g, double q, double qinv, doubl
 
         if(outuni1.Isconverge  && outuni2.Isconverge)
         {
-                SPASaddle getSaddle  = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp);
-                SPASaddle getSaddle2 = Get_Saddle_Prob_Binom_core(outuni2.root, mu, g, qinv, logp);
+                SPASaddle getSaddle  = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp, ws);
+                SPASaddle getSaddle2 = Get_Saddle_Prob_Binom_core(outuni2.root, mu, g, qinv, logp, ws);
 
 
                 if(getSaddle.isSaddle){
@@ -101,6 +107,11 @@ void SPA(const arma::vec & mu, const arma::vec & g, double q, double qinv, doubl
 
 // [[Rcpp::export]]
 void SPA_fast(const arma::vec & mu, const arma::vec & g, double q, double qinv, double pval_noadj, bool logp, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, double tol, std::string traitType, double & pval, bool & isSPAConverge){
+        SPAWorkspace ws(gNB.n_elem);
+        SPA_fast_ws(mu, g, q, qinv, pval_noadj, logp, gNA, gNB, muNA, muNB, NAmu, NAsigma, tol, traitType, pval, isSPAConverge, ws);
+}
+
+void SPA_fast_ws(const arma::vec & mu, const arma::vec & g, double q, double qinv, double pval_noadj, bool logp, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, double tol, std::string traitType, double & pval, bool & isSPAConverge, SPAWorkspace & ws){
 
         double p1, p2;
         bool Isconverge = true;
@@ -126,9 +137,9 @@ void SPA_fast(const arma::vec & mu, const arma::vec & g, double q, double qinv, 
         // gpos/gneg depend only on g, and both roots use the same g
         double gpos, gneg;
         getGPosNeg_Binom(g, gpos, gneg);
-        SPARoot outuni1 = getroot_K1_fast_Binom_core(0, mu, g, q, gNA,gNB,muNA,muNB,NAmu, NAsigma, tol, gpos, gneg);
+        SPARoot outuni1 = getroot_K1_fast_Binom_core(0, mu, g, q, gNA,gNB,muNA,muNB,NAmu, NAsigma, tol, gpos, gneg, ws);
         //double qinv = -1*q;
-        SPARoot outuni2 = getroot_K1_fast_Binom_core(0, mu, g, qinv, gNA,gNB,muNA,muNB,NAmu, NAsigma, tol, gpos, gneg);
+        SPARoot outuni2 = getroot_K1_fast_Binom_core(0, mu, g, qinv, gNA,gNB,muNA,muNB,NAmu, NAsigma, tol, gpos, gneg, ws);
 
 /*	double outuni1root = outuni1["root"];
         double outuni2root = outuni2["root"];
@@ -143,8 +154,8 @@ void SPA_fast(const arma::vec & mu, const arma::vec & g, double q, double qinv, 
 
         if(outuni1.Isconverge  && outuni2.Isconverge)
         {
-                SPASaddle getSaddle  = Get_Saddle_Prob_fast_Binom_core(outuni1.root, mu, g, q, gNA,gNB,muNA,muNB,NAmu, NAsigma, logp);
-                SPASaddle getSaddle2 = Get_Saddle_Prob_fast_Binom_core(outuni2.root, mu, g, qinv, gNA,gNB,muNA,muNB,NAmu, NAsigma, logp);
+                SPASaddle getSaddle  = Get_Saddle_Prob_fast_Binom_core(outuni1.root, mu, g, q, gNA,gNB,muNA,muNB,NAmu, NAsigma, logp, ws);
+                SPASaddle getSaddle2 = Get_Saddle_Prob_fast_Binom_core(outuni2.root, mu, g, qinv, gNA,gNB,muNA,muNB,NAmu, NAsigma, logp, ws);
                 if(getSaddle.isSaddle){
                         p1 = getSaddle.pval;
                 }else{
@@ -192,6 +203,7 @@ void SPA_fast(const arma::vec & mu, const arma::vec & g, double q, double qinv, 
 // [[Rcpp::export]]
 double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, bool & isSPAConverge){
        double pval;
+        SPAWorkspace ws(mu.n_elem);
         double p1, p2;
         bool Isconverge = true;
         if( traitType != "binary"){
@@ -209,8 +221,8 @@ double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv
         // gpos/gneg depend only on g, and both roots use the same g
         double gpos, gneg;
         getGPosNeg_Binom(g, gpos, gneg);
-        SPARoot outuni1 = getroot_K1_Binom_core(0, mu, g, q, tol, gpos, gneg);
-        SPARoot outuni2 = getroot_K1_Binom_core(0, mu, g, qinv, tol, gpos, gneg);
+        SPARoot outuni1 = getroot_K1_Binom_core(0, mu, g, q, tol, gpos, gneg, ws);
+        SPARoot outuni2 = getroot_K1_Binom_core(0, mu, g, qinv, tol, gpos, gneg, ws);
 
 
         double outuni1root = outuni1.root;
@@ -227,8 +239,8 @@ double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv
 
         if(outuni1.Isconverge  && outuni2.Isconverge)
         {
-                SPASaddle getSaddle  = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp);
-                SPASaddle getSaddle2 = Get_Saddle_Prob_Binom_core(outuni2.root, mu, g, qinv, logp);
+                SPASaddle getSaddle  = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp, ws);
+                SPASaddle getSaddle2 = Get_Saddle_Prob_Binom_core(outuni2.root, mu, g, qinv, logp, ws);
 
                 if(getSaddle.isSaddle){
                         p1 = getSaddle.pval;

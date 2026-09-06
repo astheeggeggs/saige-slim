@@ -173,3 +173,16 @@ in `next.md`. Binary traits are untouched (s = 1).
   `cmp_summary.txt` -- the comparator's printed summaries; `plots/*.png`; `cmp/*.tsv.gz`
   -- per-row comparisons; `logs/` -- every run log (outputs themselves are not
   committed: 7 MB each, regenerable).
+
+## Addendum (2026-09-05, later): the binary single-variant row is not like-for-like
+
+Profiled the same day (`harness/bench/NOTES.md`, "The binary single-variant scan at
+N = 50,000"). Firth is 56% of the binary scan's CPU on both arms (33 ms per
+Firth-eligible marker, from a per-chunk regression of the logs above, upstream R^2 =
+0.96). On AF <= 0.5 the two arms fire Firth on 6,258 and SPA on 3,192 markers,
+identically; on AF > 0.5 strip fires Firth on 1,633 / SPA on 730 against upstream's
+569 / 276, because #28 deflates upstream's own p-values there. Strip therefore did
+~1,000 more Firth fits and ~450 more SPA corrections (~22 s) than the arm it was
+timed against; like-for-like the arms are at parity, and after the kernel workspace
+change of the same evening strip's 1-thread binary scan is 205 s user against
+upstream's 236.

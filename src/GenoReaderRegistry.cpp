@@ -54,6 +54,13 @@ public:
     return true;
   }
 
+  bool countOneMarker(uint64_t t_gIndex, MarkerMeta& t_meta, uint32_t& t_numMissing) override {
+    impl().countOneMarker(t_gIndex, t_meta.ref, t_meta.alt, t_meta.id, t_meta.pos, t_meta.chr,
+                          t_meta.altFreq, t_meta.altCounts, t_meta.missingRate,
+                          t_meta.imputeInfo, t_numMissing);
+    return true;
+  }
+
   // Releases THIS owner's reference. The .bed is unmapped and closed when the
   // last owner goes away, so a clone that is still reading keeps working.
   void close() override { m_impl.reset(); }

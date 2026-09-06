@@ -395,6 +395,39 @@ static int prepareOneMarker(Geno::GenoReader & t_reader,
   t_scratch.indexNonZeroVec.clear();
   t_scratch.indexForMissing.clear();
 
+  // Item 3 (2026-09-05): QC gate 1 from the code tallies, before any genotype is
+  // expanded. The reader hands back exactly the quantities the full read would
+  // (same bytes, same integer counts, same arithmetic), so the decision below
+  // is the decision the gate after the read would have made; a marker that
+  // passes is then read in full as before, and a marker that fails leaves the
+  // rows as the full path left them (basic info set, pval "NA", never written).
+  // Skipped when the male X non-PAR rewrite is on: it runs after the read and
+  // recomputes altCounts/altFreq from the rewritten genotypes.
+  if(!g_cfg.is_rewrite_XnonPAR_forMales){
+    Geno::MarkerMeta pre;
+    uint32_t numMissingPre = 0;
+    if(t_reader.countOneMarker(gIndex, pre, numMissingPre)){
+      double MAFpre = std::min(pre.altFreq, 1 - pre.altFreq);
+      double nNonMissingPre = (double)(n - (int)numMissingPre);
+      double MACpre = std::min(pre.altCounts, 2*nNonMissingPre - pre.altCounts);
+      if((pre.missingRate > g_cfg.missingRate_cutoff) || (MAFpre < g_cfg.marker_minMAF_cutoff) || (MACpre < g_cfg.marker_minMAC_cutoff || pre.imputeInfo < g_cfg.marker_minINFO_cutoff)){
+        std::string pdsPre = std::to_string(pre.pos);
+        for(std::size_t r = 0; r < t_rows.size(); r++){
+          Marker::MarkerResult & t_res = *t_rows[r];
+          t_res.chr = pre.chr;
+          t_res.pos = pdsPre;
+          t_res.ref = pre.ref;
+          t_res.alt = pre.alt;
+          t_res.marker = pre.id;
+          t_res.altFreq = pre.altFreq;
+          t_res.missingRate = pre.missingRate;
+          t_res.imputationInfo = pre.imputeInfo;
+        }
+        return 0;
+      }
+    }
+  }
+
   bool isReadMarker = getOneMarkerThrough(t_reader, t_genoType, gIndex, ref, alt, marker, pd, chr,
                                           altFreq, altCounts, missingRate, imputeInfo,
                                           isOutputIndexForMissing, // bool t_isOutputIndexForMissing,
@@ -561,12 +594,12 @@ static void testOneModel(const SAIGE::SAIGEClass & t_model,
     t_model.getMarkerPval(
                   t_scratch.GVec,
                         t_scratch.indexNonZeroVec_arma, t_scratch.indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,
-                        altFreq, Tstat, gy, varT, isSPAConverge, t_scratch.gtildeVec, is_gtilde, is_region, t_scratch.P2Vec, t_isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, t_scratch.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
+                        altFreq, Tstat, gy, varT, isSPAConverge, t_scratch.gtildeVec, is_gtilde, is_region, t_scratch.P2Vec, t_isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, t_scratch.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx, &t_scratch.ws);
   }else{
     t_model.getMarkerPval(
                   t_scratch.GVec,
                         t_scratch.indexNonZeroVec_arma, t_scratch.indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,
-                        altFreq, Tstat, gy, varT, isSPAConverge, t_scratch.gtildeVec, is_gtilde, is_region, t_scratch.P2Vec, t_isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, t_scratch.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
+                        altFreq, Tstat, gy, varT, isSPAConverge, t_scratch.gtildeVec, is_gtilde, is_region, t_scratch.P2Vec, t_isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, t_scratch.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx, &t_scratch.ws);
   }
 
   const double pval_num = parsePrintedPval(pval); // the one guarded parse (LEDGER #72)
@@ -590,7 +623,7 @@ static void testOneModel(const SAIGE::SAIGEClass & t_model,
       t_model.getMarkerPval(
                     t_scratch.GVec,
                           t_scratch.indexNonZeroVec_arma, t_scratch.indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,
-                          altFreq, Tstat, gy, varT, isSPAConverge, t_scratch.gtildeVec, is_gtilde, is_region, t_scratch.P2Vec, t_isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, t_scratch.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctxRetest);
+                          altFreq, Tstat, gy, varT, isSPAConverge, t_scratch.gtildeVec, is_gtilde, is_region, t_scratch.P2Vec, t_isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, t_scratch.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctxRetest, &t_scratch.ws);
      }
   }//if((t_traitType == "binary" && MAC > g_cfg.MACCutoffforER) || t_traitType != "binary"){
 
@@ -1400,6 +1433,7 @@ void addSAIGEobjInCPP(arma::mat & t_XVX,
 	std::vector<uint32_t> & t_condition_genoIndex,
 	bool t_is_Firth_beta,
 	double t_pCutoffforFirth,
+	std::string t_firthSolver,
 	arma::vec & t_offset,
 	arma::vec & t_resout,
 	int t_groupIndex);
@@ -1440,6 +1474,7 @@ void setSAIGEobjInCPP(arma::mat & t_XVX,
 	std::vector<uint32_t> & t_condition_genoIndex,
 	bool t_is_Firth_beta,
 	double t_pCutoffforFirth,
+	std::string t_firthSolver,
 	arma::vec & t_offset,
 	arma::vec & t_resout)
 {
@@ -1479,6 +1514,7 @@ void setSAIGEobjInCPP(arma::mat & t_XVX,
         t_condition_genoIndex,
         t_is_Firth_beta,
         t_pCutoffforFirth,
+        t_firthSolver,
         t_offset,
         t_resout,
         0);
@@ -1518,6 +1554,7 @@ void addSAIGEobjInCPP(arma::mat & t_XVX,
 	std::vector<uint32_t> & t_condition_genoIndex,
 	bool t_is_Firth_beta,
 	double t_pCutoffforFirth,
+	std::string t_firthSolver,
 	arma::vec & t_offset,
 	arma::vec & t_resout,
 	int t_groupIndex)
@@ -1561,6 +1598,7 @@ void addSAIGEobjInCPP(arma::mat & t_XVX,
 	t_condition_genoIndex,
 	t_is_Firth_beta,
         t_pCutoffforFirth,
+        t_firthSolver,
 	t_offset,
 	t_resout)));
   g_modelGroup.push_back(t_groupIndex);

@@ -47,6 +47,15 @@ public:
                             std::vector<uint>& t_indexForNonZero,
                             arma::vec& t_GVec) = 0;
 
+  // Item 3: the marker's metadata and QC-gate quantities (altFreq, altCounts,
+  // missingRate, imputeInfo, and the missing count) from the genotype codes
+  // alone, without writing t_GVec. Optional: a reader that cannot do this
+  // cheaper than a full read returns false and the caller reads in full. A
+  // reader that returns true MUST produce the same values getOneMarker would,
+  // bit for bit -- the caller's QC decision is made from them.
+  virtual bool countOneMarker(uint64_t /*t_gIndex*/, MarkerMeta& /*t_meta*/,
+                              uint32_t& /*t_numMissing*/) { return false; }
+
   virtual void close() = 0;
 
   // True when the reader carries no mutable per-read stream state that would

@@ -22,7 +22,16 @@
 // [[Rcpp::export]]
 double Korg_Binom(double t1, const arma::vec & mu, const arma::vec & g)
 {
-	arma::vec temp = arma::log(1 - mu + mu % arma::exp(g * t1));
+	SPAWorkspace ws(mu.n_elem);
+	return Korg_Binom_ws(t1, mu, g, ws);
+}
+
+double Korg_Binom_ws(double t1, const arma::vec & mu, const arma::vec & g, SPAWorkspace & ws)
+{
+	const arma::uword n = mu.n_elem;
+	ws.ensure(n);
+	arma::vec temp(ws.a.memptr(), n, false, true);
+	temp = arma::log(1 - mu + mu % arma::exp(g * t1));
         double out = arma::sum(temp);
 	return(out);
 }
@@ -31,9 +40,17 @@ double Korg_Binom(double t1, const arma::vec & mu, const arma::vec & g)
 // [[Rcpp::export]]
 double K1_adj_Binom(double t1, const arma::vec & mu, const arma::vec & g, double q)
 {
-	arma::vec temp1;
-	arma::vec temp2;
-	arma::vec temp3;
+	SPAWorkspace ws(mu.n_elem);
+	return K1_adj_Binom_ws(t1, mu, g, q, ws);
+}
+
+double K1_adj_Binom_ws(double t1, const arma::vec & mu, const arma::vec & g, double q, SPAWorkspace & ws)
+{
+	const arma::uword n = mu.n_elem;
+	ws.ensure(n);
+	arma::vec temp1(ws.a.memptr(), n, false, true);
+	arma::vec temp2(ws.b.memptr(), n, false, true);
+	arma::vec temp3(ws.c.memptr(), n, false, true);
 
 	temp1 = (1 - mu) % arma::exp(-g * t1) + mu;
 	temp2 = mu % g;
@@ -46,10 +63,18 @@ double K1_adj_Binom(double t1, const arma::vec & mu, const arma::vec & g, double
 // [[Rcpp::export]]
 double K2_Binom(double t1, const arma::vec & mu, const arma::vec & g)
 {
-        arma::vec temp0;
-        arma::vec temp1;
-        arma::vec temp2;
-        arma::vec temp3;
+	SPAWorkspace ws(mu.n_elem);
+	return K2_Binom_ws(t1, mu, g, ws);
+}
+
+double K2_Binom_ws(double t1, const arma::vec & mu, const arma::vec & g, SPAWorkspace & ws)
+{
+	const arma::uword n = mu.n_elem;
+	ws.ensure(n);
+        arma::vec temp0(ws.a.memptr(), n, false, true);
+        arma::vec temp1(ws.b.memptr(), n, false, true);
+        arma::vec temp2(ws.c.memptr(), n, false, true);
+        arma::vec temp3(ws.d.memptr(), n, false, true);
 		
 	temp0 = arma::exp(-g * t1);
         temp1 = (1 - mu) % temp0 + mu;
@@ -78,7 +103,8 @@ void getGPosNeg_Binom(const arma::vec & g, double & gpos, double & gneg){
 Rcpp::List getroot_K1_Binom(double init, const arma::vec & mu, const arma::vec & g, double q, double tol, int maxiter){
 	double gpos, gneg;
 	getGPosNeg_Binom(g, gpos, gneg);
-	SPARoot out = getroot_K1_Binom_core(init, mu, g, q, tol, gpos, gneg, maxiter);
+	SPAWorkspace ws(mu.n_elem);
+	SPARoot out = getroot_K1_Binom_core(init, mu, g, q, tol, gpos, gneg, ws, maxiter);
 	Rcpp::List result;
 	result["root"]	= out.root;
 	result["niter"] = out.niter;
@@ -86,7 +112,7 @@ Rcpp::List getroot_K1_Binom(double init, const arma::vec & mu, const arma::vec &
 	return(result);
 }
 
-SPARoot getroot_K1_Binom_core(double init, const arma::vec & mu, const arma::vec & g, double q, double tol, double gpos, double gneg, int maxiter){
+SPARoot getroot_K1_Binom_core(double init, const arma::vec & mu, const arma::vec & g, double q, double tol, double gpos, double gneg, SPAWorkspace & ws, int maxiter){
 	SPARoot result;
 	double root;
 	int niter;
@@ -107,12 +133,12 @@ SPARoot getroot_K1_Binom_core(double init, const arma::vec & mu, const arma::vec
 		Isconverge = false;
 	} else{	
 		t = init;
-		K1_eval = K1_adj_Binom(t,mu,g,q);
+		K1_eval = K1_adj_Binom_ws(t,mu,g,q,ws);
 		prevJump = std::numeric_limits<double>::infinity();
 		int rep = 1;
 		bool conv = true;
 		while(rep <= maxiter){
-			K2_eval = K2_Binom(t,mu,g);
+			K2_eval = K2_Binom_ws(t,mu,g,ws);
 			tnew = t-K1_eval/K2_eval;
 			if(std::isnan(tnew)){ // LEDGER #45: NA_REAL is a NaN and == NaN is always false; ISNAN was meant
 				conv = false;
@@ -131,13 +157,13 @@ SPARoot getroot_K1_Binom_core(double init, const arma::vec & mu, const arma::vec
                                 break;
                         }
 
-			newK1 = K1_adj_Binom(tnew,mu,g,q);
+			newK1 = K1_adj_Binom_ws(tnew,mu,g,q,ws);
                         if((K1_eval * newK1) < 0) // LEDGER #46 FIXED: the fast kernel's test; sign(0) made an exact root look like a sign change
                         {
                                 if(std::abs(tnew-t) > (prevJump-tol))
                                 {
                                         tnew = t + (arma::sign(newK1-K1_eval))*prevJump/2;
-                                        newK1 = K1_adj_Binom(tnew,mu,g,q);
+                                        newK1 = K1_adj_Binom_ws(tnew,mu,g,q,ws);
                                         prevJump = prevJump/2;
                                 } else {
                                         prevJump = std::abs(tnew-t);
@@ -166,7 +192,8 @@ SPARoot getroot_K1_Binom_core(double init, const arma::vec & mu, const arma::vec
 // [[Rcpp::export]]
 Rcpp::List Get_Saddle_Prob_Binom(double zeta,  const arma::vec & mu, const arma::vec & g, double q, bool logp)
 {
-	SPASaddle out = Get_Saddle_Prob_Binom_core(zeta, mu, g, q, logp);
+	SPAWorkspace ws(mu.n_elem);
+	SPASaddle out = Get_Saddle_Prob_Binom_core(zeta, mu, g, q, logp, ws);
 	Rcpp::List result;
 	result["pval"] = out.pval;
 	result["isSaddle"] = out.isSaddle;
@@ -174,10 +201,10 @@ Rcpp::List Get_Saddle_Prob_Binom(double zeta,  const arma::vec & mu, const arma:
 }
 
 
-SPASaddle Get_Saddle_Prob_Binom_core(double zeta,  const arma::vec & mu, const arma::vec & g, double q, bool logp)
+SPASaddle Get_Saddle_Prob_Binom_core(double zeta,  const arma::vec & mu, const arma::vec & g, double q, bool logp, SPAWorkspace & ws)
 {
-	double k1 = Korg_Binom(zeta, mu, g);
-	double k2 = K2_Binom(zeta, mu, g);
+	double k1 = Korg_Binom_ws(zeta, mu, g, ws);
+	double k2 = K2_Binom_ws(zeta, mu, g, ws);
 	double temp1, w, v, Ztest, pval;
 	double negative_infinity = - std::numeric_limits<double>::infinity();
 
@@ -313,7 +340,16 @@ Rcpp::List SPA_binary(const arma::vec & mu, const arma::vec & g, double q, doubl
 // [[Rcpp::export]]
 double Korg_fast_Binom(double t1, const arma::vec & mu, const arma::vec & g,  const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB, double NAmu, double NAsigma)
 {
-	arma::vec temp = arma::log(1 - muNB + muNB % (arma::exp(gNB * t1)));
+	SPAWorkspace ws(gNB.n_elem);
+	return Korg_fast_Binom_ws(t1, gNB, muNB, NAmu, NAsigma, ws);
+}
+
+double Korg_fast_Binom_ws(double t1, const arma::vec & gNB, const arma::vec & muNB, double NAmu, double NAsigma, SPAWorkspace & ws)
+{
+	const arma::uword m = gNB.n_elem;
+	ws.ensure(m);
+	arma::vec temp(ws.a.memptr(), m, false, true);
+	temp = arma::log(1 - muNB + muNB % (arma::exp(gNB * t1)));
         double out = arma::sum(temp) + NAmu*t1+ 0.5*NAsigma*pow(t1,2);
 	return(out);
 }
@@ -322,10 +358,18 @@ double Korg_fast_Binom(double t1, const arma::vec & mu, const arma::vec & g,  co
 // [[Rcpp::export]]
 double K1_adj_fast_Binom(double t1, const arma::vec & mu, const arma::vec & g, double q, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma)
 {
-	arma::vec temp1;
-	arma::vec temp2;
+	SPAWorkspace ws(gNB.n_elem);
+	return K1_adj_fast_Binom_ws(t1, q, gNB, muNB, NAmu, NAsigma, ws);
+}
+
+double K1_adj_fast_Binom_ws(double t1, double q, const arma::vec & gNB, const arma::vec & muNB, double NAmu, double NAsigma, SPAWorkspace & ws)
+{
+	const arma::uword m = gNB.n_elem;
+	ws.ensure(m);
+	arma::vec temp1(ws.a.memptr(), m, false, true);
+	arma::vec temp2(ws.b.memptr(), m, false, true);
 	double temp3;
-	arma::vec temp4;
+	arma::vec temp4(ws.c.memptr(), m, false, true);
 
 	temp1 = (1 - muNB) % arma::exp(-gNB * t1) + muNB;
 	temp2 = muNB % gNB;
@@ -340,10 +384,18 @@ double K1_adj_fast_Binom(double t1, const arma::vec & mu, const arma::vec & g, d
 // [[Rcpp::export]]
 double K2_fast_Binom(double t1, const arma::vec & mu, const arma::vec & g, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma)
 {
-        arma::vec temp0;
-        arma::vec temp1;
-        arma::vec temp2;
-        arma::vec temp3;
+	SPAWorkspace ws(gNB.n_elem);
+	return K2_fast_Binom_ws(t1, gNB, muNB, NAsigma, ws);
+}
+
+double K2_fast_Binom_ws(double t1, const arma::vec & gNB, const arma::vec & muNB, double NAsigma, SPAWorkspace & ws)
+{
+	const arma::uword m = gNB.n_elem;
+	ws.ensure(m);
+        arma::vec temp0(ws.a.memptr(), m, false, true);
+        arma::vec temp1(ws.b.memptr(), m, false, true);
+        arma::vec temp2(ws.c.memptr(), m, false, true);
+        arma::vec temp3(ws.d.memptr(), m, false, true);
 		
 	temp0 = arma::exp(-gNB * t1);
         temp1 = (1 - muNB) % temp0 + muNB;
@@ -363,7 +415,8 @@ double K2_fast_Binom(double t1, const arma::vec & mu, const arma::vec & g, const
 Rcpp::List getroot_K1_fast_Binom(double init, const arma::vec & mu, const arma::vec & g, double q, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, double tol, int maxiter){
 	double gpos, gneg;
 	getGPosNeg_Binom(g, gpos, gneg);
-	SPARoot out = getroot_K1_fast_Binom_core(init, mu, g, q, gNA, gNB, muNA, muNB, NAmu, NAsigma, tol, gpos, gneg, maxiter);
+	SPAWorkspace ws(gNB.n_elem);
+	SPARoot out = getroot_K1_fast_Binom_core(init, mu, g, q, gNA, gNB, muNA, muNB, NAmu, NAsigma, tol, gpos, gneg, ws, maxiter);
 	Rcpp::List result;
 	result["root"]	= out.root;
 	result["niter"] = out.niter;
@@ -371,7 +424,7 @@ Rcpp::List getroot_K1_fast_Binom(double init, const arma::vec & mu, const arma::
 	return(result);
 }
 
-SPARoot getroot_K1_fast_Binom_core(double init, const arma::vec & mu, const arma::vec & g, double q, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, double tol, double gpos, double gneg, int maxiter){
+SPARoot getroot_K1_fast_Binom_core(double init, const arma::vec & mu, const arma::vec & g, double q, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, double tol, double gpos, double gneg, SPAWorkspace & ws, int maxiter){
 	SPARoot result;
 	double root;
 	int niter;
@@ -389,12 +442,12 @@ SPARoot getroot_K1_fast_Binom_core(double init, const arma::vec & mu, const arma
 		Isconverge = false;
 	} else{	
 		t = init;
-		K1_eval = K1_adj_fast_Binom(t,mu,g,q,gNA,gNB,muNA,muNB,NAmu, NAsigma);
+		K1_eval = K1_adj_fast_Binom_ws(t,q,gNB,muNB,NAmu, NAsigma,ws);
 		prevJump = std::numeric_limits<double>::infinity();
 		int rep = 1;
 		bool conv = true;
 		while(rep <= maxiter){
-			K2_eval = K2_fast_Binom(t,mu,g, gNA,gNB,muNA,muNB,NAmu, NAsigma);
+			K2_eval = K2_fast_Binom_ws(t,gNB,muNB,NAsigma,ws);
 			tnew = t-K1_eval/K2_eval;
 			if(std::isnan(tnew)){ // LEDGER #45: NA_REAL is a NaN and == NaN is always false; ISNAN was meant
 				conv = false;
@@ -413,13 +466,13 @@ SPARoot getroot_K1_fast_Binom_core(double init, const arma::vec & mu, const arma
                                 break;
                         }
 
-			newK1 = K1_adj_fast_Binom(tnew,mu,g,q, gNA,gNB,muNA,muNB,NAmu, NAsigma);
+			newK1 = K1_adj_fast_Binom_ws(tnew,q,gNB,muNB,NAmu, NAsigma,ws);
                         if((K1_eval * newK1) < 0)
                         {
                                 if(std::abs(tnew-t) > (prevJump-tol))
                                 {
                                         tnew = t + (arma::sign(newK1-K1_eval))*prevJump/2;
-                                        newK1 = K1_adj_fast_Binom(tnew,mu,g,q, gNA,gNB,muNA,muNB,NAmu, NAsigma);
+                                        newK1 = K1_adj_fast_Binom_ws(tnew,q,gNB,muNB,NAmu, NAsigma,ws);
                                         prevJump = prevJump/2;
                                 } else {
                                         prevJump = std::abs(tnew-t);
@@ -445,7 +498,8 @@ SPARoot getroot_K1_fast_Binom_core(double init, const arma::vec & mu, const arma
 // [[Rcpp::export]]
 Rcpp::List Get_Saddle_Prob_fast_Binom(double zeta,  const arma::vec & mu, const arma::vec & g, double q, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, bool logp)
 {
-	SPASaddle out = Get_Saddle_Prob_fast_Binom_core(zeta, mu, g, q, gNA, gNB, muNA, muNB, NAmu, NAsigma, logp);
+	SPAWorkspace ws(gNB.n_elem);
+	SPASaddle out = Get_Saddle_Prob_fast_Binom_core(zeta, mu, g, q, gNA, gNB, muNA, muNB, NAmu, NAsigma, logp, ws);
 	Rcpp::List result;
 	result["pval"] = out.pval;
 	result["isSaddle"] = out.isSaddle;
@@ -453,10 +507,10 @@ Rcpp::List Get_Saddle_Prob_fast_Binom(double zeta,  const arma::vec & mu, const 
 }
 
 
-SPASaddle Get_Saddle_Prob_fast_Binom_core(double zeta,  const arma::vec & mu, const arma::vec & g, double q, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, bool logp)
+SPASaddle Get_Saddle_Prob_fast_Binom_core(double zeta,  const arma::vec & mu, const arma::vec & g, double q, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, bool logp, SPAWorkspace & ws)
 {
-	double k1 = Korg_fast_Binom(zeta, mu, g,  gNA,gNB,muNA,muNB,NAmu, NAsigma);
-	double k2 = K2_fast_Binom(zeta, mu, g,  gNA,gNB,muNA,muNB,NAmu, NAsigma);
+	double k1 = Korg_fast_Binom_ws(zeta, gNB, muNB, NAmu, NAsigma, ws);
+	double k2 = K2_fast_Binom_ws(zeta, gNB, muNB, NAsigma, ws);
 	double temp1, w, v, Ztest, pval;
 	double negative_infinity = - std::numeric_limits<double>::infinity();
 	temp1 = zeta * q - k1;

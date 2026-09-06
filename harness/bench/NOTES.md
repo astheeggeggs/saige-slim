@@ -1040,3 +1040,126 @@ path and the escalated sparse re-test: quantitative gene-test `Pvalue` moves by 
 0.6 in -log10 on this fixture, `SE_Burden^2` strip/upstream = s^2 exactly on the cells
 that use the row. No committed quantitative golden has `sparse` rows, which is why
 the tier stayed green. One-line fix, test named in the row.
+
+## The binary single-variant scan at N = 50,000: profile, and what it bought (2026-09-05)
+
+Why: the strip-vs-upstream table above has the binary scan at 0.94x while the
+quantitative one is 1.28x, and the binary scan's user CPU grew 48% under 4 threads
+against 27% for the quantitative one. Same fixture (`sim50k`, frozen `step1_y_binary`,
+`--minMAC=20 --is_Firth_beta=TRUE --pCutoffforFirth=0.1 --is_fastTest=TRUE`),
+macOS `sample` at 1 ms over the whole R process (`pgrep -f step2_SPAtests.R`, comm
+== R), 245,658 samples at 1 thread; a quantitative run as the control. Load was
+3.7-4.5 throughout (Chrome, WindowServer), so shares and paired ratios are what is
+trusted here, not absolute seconds.
+
+**Where the CPU goes, 1 thread, binary** (inclusive; children summed by symbol):
+
+| frame | share | per marker |
+|---|---|---|
+| `fast_logistf_fit_simple` (Firth) | **56.1%** | 17.5 ms x 7,891 fits, 9 Newton iterations each |
+| `PlinkClass::getOneMarker` | 15.1% | 0.18 ms x 210,515 decoded |
+| SPA: dense `SPA()` 6.4% + `SPA_fast()` 3.8% | 10.2% | 15.6 ms / 3.2 ms per corrected marker |
+| `imputeGenoAndFlip` | 5.6% | |
+| score tests + fastTest re-test + `getadjGFast` | 7.6% | |
+| case/control gather | ~1.5% | |
+| `writeOutfile_single` | 0.09% | |
+
+The quantitative control is decode 60%, impute 22%, `getMarkerPval` 13%; its decode
+and impute sample counts match the binary run's to 0.3%, so the entire binary
+excess is `getMarkerPval`. Inside Firth: `exp` 16%, `qr_econ` 12%, three `dgemv`
+15%, Fisher `syrk` 8%, column fills and zeroing 16%, allocator 4%. A per-chunk
+regression of the existing timing logs (user CPU on markers tested and Firth count,
+21 chunks x 3 reps) gives **33 ms per Firth-eligible marker on BOTH arms** (upstream
+R^2 = 0.96) and ~0 per other marker, so this is a shared cost, not a strip regression.
+
+**Why the binary comparison read 0.94x: it was not like-for-like.** On AF <= 0.5 both
+arms fire Firth on 6,258 markers and SPA on 3,192, identically. On AF > 0.5 strip
+fires Firth on 1,633 and SPA on 730 against upstream's 569 and 276 -- upstream's
+LEDGER #28 deflates its own p-values there (0.7% below 0.05 on `y_null` against 5%
+expected). Strip therefore did ~1,000 more Firth fits and ~450 more SPA corrections,
+roughly 22 s of work upstream skips; like-for-like the arms are at parity, and the
+Phase 4 gains that show on `y_quant` are diluted because 71% of the binary CPU was
+in Firth/SPA code strip had never touched.
+
+**Four threads.** Pure-compute leaves inflate uniformly 1.3-1.4x (`exp` 1.43x, decode
+1.27x, impute 1.36x): this 4-core i5's turbo and hyperthreading, and the whole of the
+quantitative scan's +27%. Above that baseline sat only allocation paths:
+`mach_vm_deallocate` 6.8x, `bzero` 2.9x, Armadillo temporary constructors 2.2-2.6x,
+`memmove` 2.25x, sys time 19 s -> 61 s. Allocations over 127 KB go through mach VM on
+macOS and serialise on the task's map lock: the Firth fitter built ~10 n-length
+temporaries per iteration and each SPA kernel evaluation 3-4, i.e. ~90 map/unmap
+pairs per Firth marker and ~80 per dense-SPA marker.
+
+**Done, byte-neutral (items 1 and 2): per-worker kernel workspace.**
+`SAIGE::KernelWorkspace` on `Marker::MarkerScratch` (SAIGE_test.hpp), handed to
+`getMarkerPval` through a trailing pointer that defaults to null (region-path callers
+untouched; they get one lazily built instance per call). The Firth fitter keeps its
+n x 2 design, weighted design, Q and the five n-vectors across iterations and
+markers; the `Korg/K1/K2` kernels write into strict views of four shared buffers
+(`SPAWorkspace`); every expression is the original verbatim. Gate: 1- and 4-thread
+50k outputs `cmp`-identical to the pre-change run (7,891 Firth + 3,922 SPA rows
+exercised), fast tier 0 failures, standard tier 0 failures / 2,718 passes.
+
+| run | real s | user s | sys s |
+|---|---|---|---|
+| before, 1 thread (3 reps, earlier today) | 255-285 | 240-268 | 13-15 |
+| after, 1 thread | 214 | **205** | **5.0** |
+| before, 4 threads (2 reps) | 111-118 | 363-382 | 49-55 |
+| after, 4 threads | **83.5** | 297 | **10.9** |
+
+Wall speedup at 4 threads is now 2.56x (was 2.35x); the 4-thread sys time is a fifth
+of what it was. Microbenchmark of the fitter alone (Rcpp, n = 50,000, 6 markers x 20
+reps): 11.1 -> 8.5 ms per fit, bit-identical BETA/SE.
+
+**Benchmarked behind flags, NOT default (items 5 and 6), same fixture, 1 thread, one
+batch, base first (load 6.0 at its start, 3.7-5.1 for the rest):**
+
+| flags | user s | vs base | output vs base |
+|---|---|---|---|
+| default (`qr`, cold start) | 235.5 | -- | byte-identical to pre-change |
+| `--firth_solver=closed` | 170.8 | **-27%** | **byte-identical**, all 70,709 rows, 7,891/7,891 converged |
+| `--firth_warm_start=TRUE` | 172.4 | -27% | 137 rows differ; 118 fits NOT converged (7,773/7,891); BETA moves up to 4x, sign flips, MAC 20-88 |
+| both | 138.8 | -41% | same 137 rows as warm start alone |
+
+`closed` replaces the QR of the n x 2 weighted design with the 2 x 2 Fisher matrix
+and `h_i = w_i x_i' F^-1 x_i` in closed form; the microbenchmark put its rounding
+difference at <= 8e-13 relative, which never reaches the 6 printed digits here. The
+warm start (intercept at logit(mean(y)) = -4.60, the offset being centred) is
+harmful: from the null intercept the weights are ~0.01 instead of 0.25, the first
+slope step on a MAC 20-90 marker saturates at `maxstep` and the iteration lands in
+the wrong basin or oscillates to `maxit`. Recommendation: keep `closed` as an
+opt-in (or promote it once the owner accepts a flag-gated path), delete the warm
+start. Neither flag can move a golden: every golden runs the defaults.
+
+**Done, byte-neutral (item 3): QC gate 1 from the code tallies, before any decode.**
+`PlinkClass::countOneMarker` (src/PLINK.cpp) tallies a marker's four 2-bit codes
+and returns the metadata and the gate quantities through the SAME arithmetic the
+full read uses (`summariseCounts`, factored out of `getOneMarker` so the two cannot
+drift); `prepareOneMarker` (src/Main.cpp) asks for it first through
+`GenoReader::countOneMarker` (default: unsupported, PGEN unchanged) and only reads
+the marker in full when it passes. Skipped when the male X non-PAR rewrite is on,
+since that runs after the read. When the analysed samples are the file's samples
+in file order the tally is one table lookup and one add per byte (four 8-bit
+lanes, unpacked every 63 bytes); otherwise it is the per-sample loop without the
+double store, the missing index or the genotype map. **The first version did
+four masked increments per byte and bought nothing** (quant 61.4 s against
+62-65 s): a scalar per-sample loop is the decode's cost whatever it stores.
+
+| run (1 thread, 50k) | before | after |
+|---|---|---|
+| quantitative, user / sys | 60-65 s / 3 s | **45.3 s** / 3.3 s |
+| quantitative, last chunk's `prepare` bucket (515 markers) | 0.180 s | 0.095 s |
+| binary, user | 197-205 s (items 1+2 build) | 203 s (noise; decode was 15%) |
+
+210,515 markers tallied, 70,709 expanded. Both branches are gated: the 50k
+fixture's model is in fam order (table branch) and every bundled golden runs
+1,000 of 10,000 samples (subset branch). Outputs `cmp`-identical for both traits;
+`prepush.sh` green in both modes (byte 2,718 / numeric 2,918 passes).
+
+**Decided 2026-09-06: `--firth_solver=closed` is the default; the warm start is
+deleted.** P31 is byte-identical under the new default, so no golden moved; the 50k
+binary output is byte-identical to the pre-session run; `prepush.sh` green in both
+modes. `test-step2-firth-solver.R` pins `qr` against P31 at 1e-10 (parsed) and the
+refusal of an unknown solver. The adoption run's timings (542 s wall for the scan,
+40 min for the standard tier) are NOT benchmarks: the machine was at load 100 from
+VS Code's C++ indexer, Docker and a second session; the -27% above is the number.

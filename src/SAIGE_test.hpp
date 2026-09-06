@@ -4,9 +4,31 @@
 
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
-
+#include "SPA_binary.hpp"
 
 namespace SAIGE{
+
+// Per-worker scratch for the two n-length kernels the binary marker path runs
+// after the score test: the saddlepoint kernels (SPAWorkspace, SPA_binary.hpp)
+// and the Firth penalised fit, which used to allocate ~10 n-length temporaries
+// per Newton iteration (9 iterations at 1% prevalence, 7,891 fits on the
+// N = 50,000 binary scan, 56% of its CPU). Sized lazily on first use, so a scan
+// that reaches neither (every quantitative scan) allocates nothing. Owned by
+// Marker::MarkerScratch on the marker path, one per worker (S4); a caller that
+// has none passes nullptr to getMarkerPval and gets one local instance per
+// call, which is still one allocation set per marker rather than per iteration.
+struct KernelWorkspace {
+        SPAWorkspace spa;
+        arma::mat x, XW2, Q, R;
+        arma::vec pi_0, pi, W2, h, ypih;
+        void ensureFirth(arma::uword n) {
+                if(x.n_rows != n){
+                        x.set_size(n, 2); XW2.set_size(n, 2);
+                        pi_0.set_size(n); pi.set_size(n); W2.set_size(n); h.set_size(n); ypih.set_size(n);
+                }
+        }
+};
+
 
 // Everything the per-marker test needs that used to live in mutable members of
 // SAIGEClass (S3 in docs/design/step2-threading-verdict.md). Both loops wrote
@@ -106,6 +128,13 @@ class SAIGEClass
       bool m_isCondition;
       bool m_is_Firth_beta;
       double m_pCutoffforFirth;
+      // --firth_solver: 1 = "closed" (the default since 2026-09-06: 2x2 closed-form
+      // Fisher matrix and hat values, no QR), 0 = "qr" (upstream's QR-based hat
+      // values). Same estimator; the two differ in rounding only (<= 8e-13
+      // relative at n = 50,000, never reaching the printed digits there).
+      // A warm start at the null intercept was benchmarked and REJECTED: 118 of
+      // 7,891 fits stopped converging and BETA moved up to 4x (NOTES.md).
+      int m_firthSolver = 1;
      arma::vec  m_offset;	
       bool m_isVarPsadj;
       bool m_islog10p;
@@ -151,6 +180,7 @@ class SAIGEClass
         std::vector<uint32_t> & t_condition_genoIndex,
 	bool t_is_Firth_beta,
         double t_pCutoffforFirth,
+        std::string t_firthSolver,
 	arma::vec & t_offset,
 	arma::vec & t_resout);
 
@@ -240,7 +270,8 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
                                 bool & t_isFirthConverge, 
 				bool t_isER,
 				bool t_flip,
-				const TestContext & t_ctx) const;
+				const TestContext & t_ctx,
+				KernelWorkspace * t_ws = nullptr) const;
 
     void getindices(arma::uvec & t_case_indices,
       arma::uvec & t_ctrl_indices);
@@ -275,7 +306,10 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
 
     void extract_XV_XXVX_inv(arma::mat & t_XV, arma::mat & t_XXVX_inv);
 
-    void fast_logistf_fit_simple(arma::mat & x,
+    // The Firth fit over [1, t_g] with the workspace's buffers; t_ws.ensureFirth
+    // is called inside. Same operations in the same order as the original,
+    // proved bit-identical on the N = 50,000 binary scan (2026-09-05).
+    void fast_logistf_fit_simple(const arma::vec & t_g,
                 const arma::vec & y,
                 const arma::vec & offset,
                 bool firth,
@@ -288,7 +322,25 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
         double xconv,
         double & beta_G,
         double & sebeta_G,
-	bool & isfirthconverge) const;	
+	bool & isfirthconverge,
+	KernelWorkspace & t_ws) const;	
+
+    // --firth_solver=closed: the same penalised Newton iteration with the 2x2
+    // Fisher matrix and the hat values in closed form (h_i = w_i x_i' F^-1 x_i),
+    // no design matrix, no QR. Not bit-identical to the QR path.
+    void fast_logistf_fit_closed(const arma::vec & t_g,
+                const arma::vec & y,
+                const arma::vec & offset,
+                bool firth,
+        arma::vec init,
+        int maxit,
+        int maxstep,
+        double gconv,
+        double xconv,
+        double & beta_G,
+        double & sebeta_G,
+	bool & isfirthconverge,
+	KernelWorkspace & t_ws) const;
 
 
      arma::vec getPCG1ofSigmaAndGtilde(arma::vec& bVec, int maxiterPCG, double tolPCG) const;

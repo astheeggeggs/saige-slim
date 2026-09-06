@@ -341,6 +341,7 @@ pushNullModelsToCPP <- function(prepared, groupOf, SPAcutoff, impute_method,
                                 is_noadjCov, pval_cutoff_for_fastTest,
                                 isCondition, condition_genoIndex,
                                 is_Firth_beta, pCutoffforFirth,
+                                firth_solver,
                                 cateVarRatioMinMACVecExclude) {
   for (k in seq_along(prepared)) {
     p <- prepared[[k]]
@@ -377,6 +378,7 @@ pushNullModelsToCPP <- function(prepared, groupOf, SPAcutoff, impute_method,
       t_condition_genoIndex = condition_genoIndex,
       t_is_Firth_beta = is_Firth_beta,
       t_pCutoffforFirth = pCutoffforFirth,
+      t_firthSolver = firth_solver,
       t_offset = obj.model$offset,
       t_resout = as.integer(obj.model$obj_cc$res.out)
     )

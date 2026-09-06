@@ -5,6 +5,7 @@
 #include <RcppArmadillo.h>
 #include <string>
 #include <vector>
+#include "SAIGE_test.hpp"
 
 // S4: the step-2 marker loop's per-marker state, split into what belongs to the
 // MARKER (one slot per index, written once, read by the writer) and what belongs
@@ -103,6 +104,9 @@ struct MarkerScratch {
   std::vector<uint> indexForMissing;
   arma::uvec indexZeroVec_arma;
   arma::uvec indexNonZeroVec_arma;
+  // Buffers for the SPA and Firth kernels (SAIGE_test.hpp). Per worker like the
+  // rest of this struct; sized on first use, so unused on a quantitative scan.
+  SAIGE::KernelWorkspace ws;
 
   MarkerScratch(int t_n, int t_numMarkerCond)
     : GVec(t_n), gtildeVec(t_n), G1tilde_P_G2tilde_Vec(t_numMarkerCond)
