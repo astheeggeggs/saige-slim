@@ -2009,7 +2009,7 @@ Rcpp::List mainRegionInCPP(
   std::vector<double> gyVec(q, arma::datum::nan);
   std::vector<double> varTVec(q, arma::datum::nan);
   std::vector<std::string> pvalNAVec(q, "NA");  
-  std::vector<bool>  isSPAConvergeVec(q);
+  std::vector<unsigned char> isSPAConvergeVec(q, 0);   // not vector<bool>: bit-packed writes race across markers
 
 
   unsigned int m1 = g_cfg.region_maxMarkers_cutoff;     // number of markers in all chunks expect for the last chunk
@@ -2078,49 +2078,80 @@ Rcpp::List mainRegionInCPP(
 
   double cctpval;
   double cctpval_cond;
-  // cycle for q0 markers
-  for(unsigned int i = 0; i < q0; i++)
+  // ---- pass A, restructured 2026-09-06 (step 2 of the region plan) ----------
+  // Each marker's work is split the way the marker path's was in S4:
+  //   prepareAndTest(i, k, scratch, reader)  read + impute/flip + QC + weights,
+  //       then (rare markers) the test context and getMarkerPval, writing its
+  //       OWN slot i of the per-index vectors and column k of blockP1/blockP2.
+  //       Reads the model, never writes it; touches no cross-marker state.
+  //   accumulate(i, k)  the serial part, in marker order: the running chunk
+  //       index, the P1/P2 row copy, the float `+=` into genoSumMat (order-
+  //       dependent), the max-collapse into genoURMat, the group counters,
+  //       the anno x MAF indicator row and the chunk flush.
+  // Markers are processed in blocks of m1 (= markers_per_chunk): phase 1 over
+  // the block, then phase 2 over the same block in order. Every expression in
+  // phase 2 is the pre-restructure one over the values phase 1 stored, so the
+  // output is byte-identical; the point of the split is that phase 1 can run
+  // one marker per worker (step 3) and one model per prepared marker (step 4).
+  struct RegionPrep {
+    bool readFailed = false;
+    bool passQC = false;
+    bool isRare = false;
+    bool tested = false;      // slot i and blockP1/P2 column k carry a test
+    bool flip = false;
+    double MAF = 0.0;
+    double MAC = 0.0;
+    double MACcasegroup = 0.0;
+    double MACcontrolgroup = 0.0;
+    arma::uvec nz;            // nonzero sample indices after impute/flip
+    arma::vec gnz;            // their genotype values (all phase 2 needs of GVec)
+    arma::vec w0;             // per weight set
+  };
+  const bool doSingleTests = (t_regionTestType != "BURDEN" || t_isSingleinGroupTest);
+  const bool keepP1P2 = (t_regionTestType != "BURDEN");
+  const unsigned int blockSize = std::max(1u, m1);
+  std::vector<RegionPrep> preps(blockSize);
+  arma::mat blockP1, blockP2;   // n x blockSize: column k = sqrt(vr) * gtilde / sqrt(vr) * P2Vec of marker k
+  if(keepP1P2){
+    blockP1.set_size(t_n, blockSize);
+    blockP2.set_size(t_n, blockSize);
+  }
+  Marker::MarkerScratch scratchA(t_n, q_cond);
+
+  auto prepareAndTest = [&](unsigned int i, unsigned int k, Marker::MarkerScratch & sc, Geno::GenoReader & reader)
   {
-    // marker-level information
+    RegionPrep & pr = preps[k];
+    pr = RegionPrep();
     double altFreq, altCounts, missingRate, imputeInfo;
-    std::vector<uint32_t> indexForMissing;
     std::string chr, ref, alt, marker;
     uint32_t pd;
     bool flip = false;
-    bool isOutputIndexForMissing = true;
-    bool isOnlyOutputNonZero = false;
 
     ProfileScope rpPrep(rp.enabled ? &rp.prepare : nullptr, &rp.nPrepare);
-    GVec.resize(t_n);
-    GVec.zeros();
+    sc.GVec.resize(t_n);
+    sc.GVec.zeros();
 
     std::string t_genoIndex_str = t_genoIndex.at(i);
     char* end;
     uint64_t gIndex = std::strtoull( t_genoIndex_str.c_str(), &end,10 );
 
-
-
-    bool isReadMarker = Unified_getOneMarker(t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
-                                          isOutputIndexForMissing, // bool t_isOutputIndexForMissing,
-                                          indexForMissing,
-                                          isOnlyOutputNonZero, // bool t_isOnlyOutputNonZero,
-                                          indexNonZeroVec,
-					  GVec,
-					  t_isImputation);
-
-   //arma::vec timeoutput2a = getTime();
-   //printTime(timeoutput1a, timeoutput2a, "Unified_getOneMarker");
-
-   if(!isReadMarker){
-      std::cout << "ERROR: Reading " <<  i << "th marker failed." << std::endl;
-      break;
-    }	    
+    bool isReadMarker = getOneMarkerThrough(reader, t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
+                                          true,   // t_isOutputIndexForMissing
+                                          sc.indexForMissing,
+                                          false,  // t_isOnlyOutputNonZero
+                                          sc.indexNonZeroVec,
+                                          sc.GVec,
+                                          t_isImputation);
+    if(!isReadMarker){
+      pr.readFailed = true;
+      return;
+    }
     std::string pds = std::to_string(pd);
     std::string info = chr+":"+std::to_string(pd)+":"+ref+":"+alt;
 
     double MAF = std::min(altFreq, 1 - altFreq);
     double MAC = MAF * 2 * t_n * (1 - missingRate);   // checked on 08-10-2021
-    flip = imputeGenoAndFlip(GVec, altFreq, altCounts, indexForMissing, g_cfg.impute_method, g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC, indexZeroVec, indexNonZeroVec);
+    flip = imputeGenoAndFlip(sc.GVec, altFreq, altCounts, sc.indexForMissing, g_cfg.impute_method, g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC, sc.indexZeroVec, sc.indexNonZeroVec);
     MAF = std::min(altFreq, 1 - altFreq);
     MAC = std::min(altCounts, t_n *2 - altCounts);
     chrVec.at(i) = chr;
@@ -2136,177 +2167,129 @@ Rcpp::List mainRegionInCPP(
     MAFVec.at(i) = MAF;
     imputationInfoVec.at(i) = imputeInfo;
 
-//arma::vec timeoutput3a = getTime();
-    //printTime(timeoutput2a, timeoutput3a, "Unified_getOneMarker 2");
-   if((missingRate > g_cfg.missingRate_cutoff) || (MAF > g_cfg.maxMAFLimit) || (MAF < g_cfg.marker_minMAF_cutoff) || (MAC < g_cfg.marker_minMAC_cutoff) || (imputeInfo < g_cfg.marker_minINFO_cutoff)){
-      continue;
-   }else{ 
+    if((missingRate > g_cfg.missingRate_cutoff) || (MAF > g_cfg.maxMAFLimit) || (MAF < g_cfg.marker_minMAF_cutoff) || (MAC < g_cfg.marker_minMAC_cutoff) || (imputeInfo < g_cfg.marker_minINFO_cutoff)){
+      return;
+    }
+    pr.passQC = true;
+    pr.flip = flip;
+    pr.MAF = MAF;
+    pr.MAC = MAC;
 
+    pr.w0.set_size(q_weight);
     for(unsigned int r = 0; r < q_weight; r++){
       if(setKindVec[r] == SET_CUSTOM){
-        w0_vec(r) = t_weight(i, setColVec[r]);
+        pr.w0(r) = t_weight(i, setColVec[r]);
       }else if(setKindVec[r] == SET_BETA){
-        w0_vec(r) = boost::math::pdf(betaDistVec[setColVec[r]], MAF);
+        pr.w0(r) = boost::math::pdf(betaDistVec[setColVec[r]], MAF);
       }else{
-        w0_vec(r) = 1.0;
+        pr.w0(r) = 1.0;
       }
     }
 
-    indexNonZeroVec_arma = arma::conv_to<arma::uvec>::from(indexNonZeroVec);
-    uint nNonZero = indexNonZeroVec_arma.n_elem;
+    sc.indexNonZeroVec_arma = arma::conv_to<arma::uvec>::from(sc.indexNonZeroVec);
+    pr.nz = sc.indexNonZeroVec_arma;
+    pr.gnz = sc.GVec.elem(pr.nz);
     rpPrep.stop();
 
-    if(MAC > g_cfg.region_minMAC_cutoff){  // not Ultra-Rare Variants
-      ProfileScope rpRare(rp.enabled ? &rp.rareArm : nullptr, &rp.nRareArm);
-
-      indicatorVec.at(i) = 1;      
-      if(i1InChunk == 0){
-        std::cout << "Start analyzing chunk " << ichunk << "....." << std::endl;
-      }
-
-      // S12: this marker's test context, derived and consumed here. Same two
-      // steps as before -- a common marker uses the non-sparse variance ratio,
-      // a rare one follows the model -- but nothing is parked on g_model, so no
-      // later read can pick up a marker's choice by accident (LEDGER #27/#50)
-      // and two markers could be tested at once without racing.
-      SAIGE::TestContext ctx;
-      ctx.useSparseGRM = (MAC > g_model->m_cateVarRatioMinMACVecExclude.back())
-                           ? false : g_model->m_flagSparseGRM;
-      ctx.noadjCov = false;
-      if(!isSingleVarianceRatio){
-        ctx.varRatioVal = g_model->selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
-      }else{
-        ctx.varRatioVal = g_model->selectSingleVarianceRatio(ctx.useSparseGRM, false);
-      }
-
-
-      if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){ //perform single-variant assoc tests 
- 
-        indexZeroVec_arma = arma::conv_to<arma::uvec>::from(indexZeroVec);
-        ProfileScope rpTest(rp.enabled ? &rp.test : nullptr, &rp.nTest);
-        if(MAC <=  g_cfg.MACCutoffforER && t_traitType == "binary"){	
-          Unified_getMarkerPval(
-                    GVec,
-                    false, // bool t_isOnlyOutputNonZero,
-          indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
-
-	}else{	
-          Unified_getMarkerPval(
-                    GVec,
-                    false, // bool t_isOnlyOutputNonZero,
-          indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
-	}
-        rpTest.stop();
-
-
-	BetaVec.at(i) = Beta * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true       
-        seBetaVec.at(i) = seBeta;       
-        pvalVec.at(i) = pval;
-	//pvalVec_val.at(i) = std::stod(pval);
-        pvalNAVec.at(i) = pval_noSPA;
-        TstatVec.at(i) = Tstat * (1 - 2*flip);
-        TstatVec_flip.at(i) = Tstat;
-        gyVec.at(i) = gy;
-        varTVec.at(i) = varT;
-        isSPAConvergeVec.at(i) = isSPAConverge;
-
-        if(isCondition){ 	
-      	  Beta_cVec.at(i) = Beta_c * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true
-      	  seBeta_cVec.at(i) = seBeta_c;
-      	  pval_cVec.at(i) = pval_c;
-      	  pvalNA_cVec.at(i) = pval_noSPA_c;
-      	  Tstat_cVec.at(i) = Tstat_c * (1 - 2*flip);
-      	  varT_cVec.at(i) = varT_c;
-	  if(q_weight == 1){
-	    // the legacy baked row: G2-side conditioning weights times this
-	    // marker's single-set weight w0
-	    G1tilde_P_G2tilde_Weighted_Mat.row(i) = G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t() * w0_vec(0);
-	  }else{
-	    // design D7 (C11): at K>1 the exported matrix is G1-raw -- still
-	    // scaled by the (set-independent) G2 conditioning weights, but with
-	    // NO per-row w0 baked in. region_postprocess applies set r's weight
-	    // per (anno, max_MAF, set) cell.
-	    G1tilde_P_G2tilde_Weighted_Mat.row(i) = G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t();
-	  }
-        }
-
-
-        if(t_regionTestType != "BURDEN"){
-          P1Mat.row(i1InChunk) = sqrt(ctx.varRatioVal)*gtildeVec.t();
-          P2Mat.col(i1InChunk) = sqrt(ctx.varRatioVal)*P2Vec;
-	}
-     }//if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){ 
-
-     i1 += 1;
-     i1InChunk += 1;
-     //arma::vec timeoutput3aa = getTime();
-     //printTime(timeoutput3a, timeoutput3aa, "Unified_getOneMarker 3a");
-     arma::vec dosage_case, dosage_ctrl;
-     if(t_traitType == "binary"){
-        dosage_case = GVec.elem(g_model->m_case_indices);
-        dosage_ctrl = GVec.elem(g_model->m_ctrl_indices);
-        MACcasegroup = arma::accu(dosage_case);
-        MACcontrolgroup = arma::accu(dosage_ctrl);	
+    if(!(MAC > g_cfg.region_minMAC_cutoff)){
+      return;   // ultra-rare: collapsed in accumulate()
     }
-      //arma::vec timeoutput3ab = getTime();
-      //printTime(timeoutput3aa, timeoutput3ab, "Unified_getOneMarker 3b");
-      //arma::vec MAFIndicatorVec(maxMAFVec.n_elem);
-      MAFIndicatorVec.zeros();
-      MAFIndicatorVec.elem( find(maxMAFVec >= MAF) ).ones();	
-      annoMAFIndicatorVec.zeros();
-      for(unsigned int j = 0; j < q_anno; j++){
-        if(annoIndicatorMat(i,j) == 1){
-		maxMAFperAnno(j) = std::max(maxMAFperAnno(j), MAF);
-		for(unsigned int m = 0; m < q_maf; m++){
-			if(MAFIndicatorVec(m) == 1){
-  				//arma::vec timeoutput3ab0 = getTime();
-				jm = j*q_maf + m;
-				for(unsigned int r = 0; r < q_weight; r++){
-				jmr = jm*q_weight + r;
-				annoMAFIndicatorVec(jmr) = 1;
-				MAC_GroupVec(jmr) = MAC_GroupVec(jmr) + MAC;
+    pr.isRare = true;
+    ProfileScope rpRare(rp.enabled ? &rp.rareArm : nullptr, &rp.nRareArm);
 
-				if(t_traitType == "binary"){
-					MACCase_GroupVec(jmr) = MACCase_GroupVec(jmr) + MACcasegroup;
-					MACControl_GroupVec(jmr) = MACControl_GroupVec(jmr) + MACcontrolgroup;
-					//genoSumMat.col(jm) = genoSumMat.col(jm) + w0*GVec;
-				}
-				for(unsigned int k = 0; k < nNonZero; k++){
-					genoSumMat(indexNonZeroVec_arma(k), jmr) = genoSumMat(indexNonZeroVec_arma(k), jmr) + w0_vec(r)*GVec(indexNonZeroVec_arma(k));
+    // S12: this marker's test context, derived and consumed here. A common
+    // marker uses the non-sparse variance ratio, a rare one follows the model;
+    // nothing is parked on g_model, so two markers can be tested at once.
+    SAIGE::TestContext ctx;
+    ctx.useSparseGRM = (MAC > g_model->m_cateVarRatioMinMACVecExclude.back())
+                         ? false : g_model->m_flagSparseGRM;
+    ctx.noadjCov = false;
+    if(!isSingleVarianceRatio){
+      ctx.varRatioVal = g_model->selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
+    }else{
+      ctx.varRatioVal = g_model->selectSingleVarianceRatio(ctx.useSparseGRM, false);
+    }
 
-					// jm-indexed, weight-independent: accumulate once per (j,m)
-					if(r == 0){
-					genoSumcount_noweight(jm) = genoSumcount_noweight(jm) + GVec(indexNonZeroVec_arma(k));
-					}
-				}
+    if(doSingleTests){ //perform single-variant assoc tests
+      std::string pval, pval_noSPA, pval_c, pval_noSPA_c;
+      double Beta, seBeta, Tstat, varT, gy;
+      double Beta_c, seBeta_c, Tstat_c, varT_c;
+      bool isSPAConverge, is_gtilde, is_Firth, is_FirthConverge;
 
-  //arma::vec timeoutput3ab2 = getTime();
-   //      printTime(timeoutput3ab1, timeoutput3ab2, "Unified_getOneMarker 3b2");
-				NumRare_GroupVec(jmr) = NumRare_GroupVec(jmr) + 1;
-				}
-			}
+      sc.indexZeroVec_arma = arma::conv_to<arma::uvec>::from(sc.indexZeroVec);
+      ProfileScope rpTest(rp.enabled ? &rp.test : nullptr, &rp.nTest);
+      if(MAC <=  g_cfg.MACCutoffforER && t_traitType == "binary"){
+        Unified_getMarkerPval(
+                  sc.GVec,
+                  false, // bool t_isOnlyOutputNonZero,
+        sc.indexNonZeroVec_arma, sc.indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
+      }else{
+        Unified_getMarkerPval(
+                  sc.GVec,
+                  false, // bool t_isOnlyOutputNonZero,
+        sc.indexNonZeroVec_arma, sc.indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, Tstat, gy, varT, altFreq, isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
+      }
+      rpTest.stop();
 
-		}	
+      BetaVec.at(i) = Beta * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true
+      seBetaVec.at(i) = seBeta;
+      pvalVec.at(i) = pval;
+      pvalNAVec.at(i) = pval_noSPA;
+      TstatVec.at(i) = Tstat * (1 - 2*flip);
+      TstatVec_flip.at(i) = Tstat;
+      gyVec.at(i) = gy;
+      varTVec.at(i) = varT;
+      isSPAConvergeVec.at(i) = isSPAConverge;
+
+      if(isCondition){
+        Beta_cVec.at(i) = Beta_c * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true
+        seBeta_cVec.at(i) = seBeta_c;
+        pval_cVec.at(i) = pval_c;
+        pvalNA_cVec.at(i) = pval_noSPA_c;
+        Tstat_cVec.at(i) = Tstat_c * (1 - 2*flip);
+        varT_cVec.at(i) = varT_c;
+        if(q_weight == 1){
+          // the legacy baked row: G2-side conditioning weights times this
+          // marker's single-set weight w0
+          G1tilde_P_G2tilde_Weighted_Mat.row(i) = sc.G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t() * pr.w0(0);
+        }else{
+          // design D7 (C11): at K>1 the exported matrix is G1-raw -- still
+          // scaled by the (set-independent) G2 conditioning weights, but with
+          // NO per-row w0 baked in. region_postprocess applies set r's weight
+          // per (anno, max_MAF, set) cell.
+          G1tilde_P_G2tilde_Weighted_Mat.row(i) = sc.G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t();
         }
       }
-  //arma::vec timeoutput3ac = getTime();
-   //    printTime(timeoutput3ab, timeoutput3ac, "Unified_getOneMarker 3c");
-     annoMAFIndicatorMat.row(i) = annoMAFIndicatorVec.t();
-     if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
+
+      if(keepP1P2){
+        blockP1.col(k) = sqrt(ctx.varRatioVal)*sc.gtildeVec;
+        blockP2.col(k) = sqrt(ctx.varRatioVal)*sc.P2Vec;
+      }
+      pr.tested = true;
+    }//if(doSingleTests)
+
+    arma::vec dosage_case, dosage_ctrl;
+    if(t_traitType == "binary"){
+      dosage_case = sc.GVec.elem(g_model->m_case_indices);
+      dosage_ctrl = sc.GVec.elem(g_model->m_ctrl_indices);
+      pr.MACcasegroup = arma::accu(dosage_case);
+      pr.MACcontrolgroup = arma::accu(dosage_ctrl);
+    }
+
+    if(doSingleTests){
       if(t_traitType == "binary"){
-        AF_case = arma::mean(dosage_case) /2;
-        AF_ctrl = arma::mean(dosage_ctrl) /2;
+        double AF_case = arma::mean(dosage_case) /2;
+        double AF_ctrl = arma::mean(dosage_ctrl) /2;
         if(flip){
           AF_case = 1-AF_case;
-           AF_ctrl = 1-AF_ctrl;
+          AF_ctrl = 1-AF_ctrl;
         }
         AF_caseVec.at(i) = AF_case;
         AF_ctrlVec.at(i) = AF_ctrl;
-	N_case = dosage_case.n_elem;
-	N_ctrl = dosage_ctrl.n_elem;
+        uint32_t N_case = dosage_case.n_elem;
+        uint32_t N_ctrl = dosage_ctrl.n_elem;
         N_caseVec.at(i) = N_case;
         N_ctrlVec.at(i) = N_ctrl;
-
 
         arma::uvec N_case_ctrl_het_hom0;
         if(t_isMoreOutput){
@@ -2325,84 +2308,152 @@ Rcpp::List mainRegionInCPP(
         }
       }else if(t_traitType == "quantitative"){
         N_Vec.at(i) = t_n;
-      }      
-     } //if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
+      }
+    } //if(doSingleTests)
+  };
 
-      //arma::vec timeoutput4a = getTime();
-      //printTime(timeoutput3ab, timeoutput4a, "Unified_getOneMarker 3");
+  auto accumulate = [&](unsigned int i, unsigned int k)
+  {
+    const RegionPrep & pr = preps[k];
+    if(!pr.passQC){
+      return;
+    }
+    const uint nNonZero = pr.nz.n_elem;
+    if(pr.isRare){  // not Ultra-Rare Variants
+      ProfileScope rpRare(rp.enabled ? &rp.rareArm : nullptr, &rp.nRareArm);
+      indicatorVec.at(i) = 1;
+      if(i1InChunk == 0){
+        std::cout << "Start analyzing chunk " << ichunk << "....." << std::endl;
+      }
+      if(pr.tested && keepP1P2){
+        P1Mat.row(i1InChunk) = blockP1.col(k).t();
+        P2Mat.col(i1InChunk) = blockP2.col(k);
+      }
+      i1 += 1;
+      i1InChunk += 1;
 
-    }else{   // Ultra-Rare Variants (URV)
-      ProfileScope rpUrc(rp.enabled ? &rp.urCollapse : nullptr, &rp.nUrCollapse);
-      indicatorVec.at(i) = 2;
-      arma::vec MAFIndicatorVec(maxMAFVec.n_elem);
       MAFIndicatorVec.zeros();
-      MAFIndicatorVec.elem( find(maxMAFVec >= MAF) ).ones();
+      MAFIndicatorVec.elem( find(maxMAFVec >= pr.MAF) ).ones();
       annoMAFIndicatorVec.zeros();
       for(unsigned int j = 0; j < q_anno; j++){
         if(annoIndicatorMat(i,j) == 1){
-		maxMAFperAnno(j) = std::max(maxMAFperAnno(j), MAF);
-		for(unsigned int m = 0; m < q_maf; m++){
-                        if(MAFIndicatorVec(m) == 1){
-                        	jm = j*q_maf + m;
-				for(unsigned int r = 0; r < q_weight; r++){
-				jmr = jm*q_weight + r;
-				annoMAFIndicatorVec(jmr) = 2;
-				if(setKindVec[r] != SET_CUSTOM){
-				  // beta / No_Weights sets: unweighted collapse (per-kind table above)
-				  for(unsigned int k = 0; k < nNonZero; k++){
-					genoURMat(indexNonZeroVec_arma(k), jmr) = std::max(genoURMat(indexNonZeroVec_arma(k), jmr), GVec(indexNonZeroVec_arma(k)));
-				  }
-					//genoURMat.col(jm) = arma::max(genoURMat.col(jm), GVec);
-				  if(q_weight > 1){
-				    // keep the jm-indexed unweighted collapse authoritative for
-				    // every set composition (beta-only included): the once-per-jm
-				    // genoSumcount_noweight accumulation reads its support. At
-				    // q_weight == 1 this never runs -- legacy leaves the matrix
-				    // untouched on the beta path (max is idempotent, so repeats
-				    // across sets are exact).
-				    for(unsigned int k = 0; k < nNonZero; k++){
-					genoURMat_noweights(indexNonZeroVec_arma(k), jm) = std::max(genoURMat_noweights(indexNonZeroVec_arma(k), jm) , (GVec(indexNonZeroVec_arma(k))));
-				    }
-				  }
-				}else{
-				  // custom set: collapse the w_r-weighted genotypes; the jm-indexed
-				  // unweighted collapse is kept for the count accumulators (max is
-				  // idempotent, so repeating it per custom set is exact)
-                                  for(unsigned int k = 0; k < nNonZero; k++){
-					genoURMat(indexNonZeroVec_arma(k), jmr) = std::max(genoURMat(indexNonZeroVec_arma(k), jmr) , t_weight(i, setColVec[r]) * (GVec(indexNonZeroVec_arma(k))));
-					genoURMat_noweights(indexNonZeroVec_arma(k), jm) = std::max(genoURMat_noweights(indexNonZeroVec_arma(k), jm) , (GVec(indexNonZeroVec_arma(k))));
-					//weightURMat_cnt(indexNonZeroVec_arma(k), jm) = weightURMat_cnt(indexNonZeroVec_arma(k), jm) + 1;
-				  }
-				}
-				NumUltraRare_GroupVec(jmr) = NumUltraRare_GroupVec(jmr) + 1;
-				}
-			}
-		}
-	}
+          maxMAFperAnno(j) = std::max(maxMAFperAnno(j), pr.MAF);
+          for(unsigned int m = 0; m < q_maf; m++){
+            if(MAFIndicatorVec(m) == 1){
+              jm = j*q_maf + m;
+              for(unsigned int r = 0; r < q_weight; r++){
+                jmr = jm*q_weight + r;
+                annoMAFIndicatorVec(jmr) = 1;
+                MAC_GroupVec(jmr) = MAC_GroupVec(jmr) + pr.MAC;
+                if(t_traitType == "binary"){
+                  MACCase_GroupVec(jmr) = MACCase_GroupVec(jmr) + pr.MACcasegroup;
+                  MACControl_GroupVec(jmr) = MACControl_GroupVec(jmr) + pr.MACcontrolgroup;
+                }
+                for(unsigned int k2 = 0; k2 < nNonZero; k2++){
+                  genoSumMat(pr.nz(k2), jmr) = genoSumMat(pr.nz(k2), jmr) + pr.w0(r)*pr.gnz(k2);
+                  // jm-indexed, weight-independent: accumulate once per (j,m)
+                  if(r == 0){
+                    genoSumcount_noweight(jm) = genoSumcount_noweight(jm) + pr.gnz(k2);
+                  }
+                }
+                NumRare_GroupVec(jmr) = NumRare_GroupVec(jmr) + 1;
+              }
+            }
+          }
+        }
       }
       annoMAFIndicatorMat.row(i) = annoMAFIndicatorVec.t();
-
+    }else{   // Ultra-Rare Variants (URV)
+      ProfileScope rpUrc(rp.enabled ? &rp.urCollapse : nullptr, &rp.nUrCollapse);
+      indicatorVec.at(i) = 2;
+      arma::vec MAFIndicatorVecUR(maxMAFVec.n_elem);
+      MAFIndicatorVecUR.zeros();
+      MAFIndicatorVecUR.elem( find(maxMAFVec >= pr.MAF) ).ones();
+      annoMAFIndicatorVec.zeros();
+      for(unsigned int j = 0; j < q_anno; j++){
+        if(annoIndicatorMat(i,j) == 1){
+          maxMAFperAnno(j) = std::max(maxMAFperAnno(j), pr.MAF);
+          for(unsigned int m = 0; m < q_maf; m++){
+            if(MAFIndicatorVecUR(m) == 1){
+              jm = j*q_maf + m;
+              for(unsigned int r = 0; r < q_weight; r++){
+                jmr = jm*q_weight + r;
+                annoMAFIndicatorVec(jmr) = 2;
+                if(setKindVec[r] != SET_CUSTOM){
+                  // beta / No_Weights sets: unweighted collapse (per-kind table above)
+                  for(unsigned int k2 = 0; k2 < nNonZero; k2++){
+                    genoURMat(pr.nz(k2), jmr) = std::max(genoURMat(pr.nz(k2), jmr), pr.gnz(k2));
+                  }
+                  if(q_weight > 1){
+                    // keep the jm-indexed unweighted collapse authoritative for
+                    // every set composition (beta-only included): the once-per-jm
+                    // genoSumcount_noweight accumulation reads its support. At
+                    // q_weight == 1 this never runs -- legacy leaves the matrix
+                    // untouched on the beta path (max is idempotent, so repeats
+                    // across sets are exact).
+                    for(unsigned int k2 = 0; k2 < nNonZero; k2++){
+                      genoURMat_noweights(pr.nz(k2), jm) = std::max(genoURMat_noweights(pr.nz(k2), jm) , (pr.gnz(k2)));
+                    }
+                  }
+                }else{
+                  // custom set: collapse the w_r-weighted genotypes; the jm-indexed
+                  // unweighted collapse is kept for the count accumulators (max is
+                  // idempotent, so repeating it per custom set is exact)
+                  for(unsigned int k2 = 0; k2 < nNonZero; k2++){
+                    genoURMat(pr.nz(k2), jmr) = std::max(genoURMat(pr.nz(k2), jmr) , t_weight(i, setColVec[r]) * (pr.gnz(k2)));
+                    genoURMat_noweights(pr.nz(k2), jm) = std::max(genoURMat_noweights(pr.nz(k2), jm) , (pr.gnz(k2)));
+                  }
+                }
+                NumUltraRare_GroupVec(jmr) = NumUltraRare_GroupVec(jmr) + 1;
+              }
+            }
+          }
+        }
+      }
+      annoMAFIndicatorMat.row(i) = annoMAFIndicatorVec.t();
       i2 += 1;
     }
- }//else if((missingRate > g_cfg.missingRate_cutoff) || (MAF > g_cfg.maxMAFLimit) || (MAF < g_cfg.marker_minMAF_cutoff) || (MAC < g_cfg.marker_minMAC_cutoff) || (imputeInfo < g_cfg.marker_minINFO_cutoff)){
-//
-    
+
     if(i1InChunk == m1 ){
       ProfileScope rpFlush(rp.enabled ? &rp.flush : nullptr, &rp.nFlush);
       std::cout << "In chunks 0-" << ichunk << ", " << i2 << " markers are ultra-rare and " << i1 << " markers are not ultra-rare." << std::endl;
       if(t_regionTestType != "BURDEN"){
         chunkStore.add(ichunk, P1Mat.rows(0, i1InChunk - 1), P2Mat.cols(0, i1InChunk - 1));
       }
-
       mPassCVVec.push_back(m1);
       ichunk += 1;
       i1InChunk = 0;
       nchunks = nchunks + 1;
     }
-    Rcpp::checkUserInterrupt();
+  };
 
-
-} //  for(unsigned int i = 0; i < q0; i++)
+  // The block driver. A failed read stops the region at that marker exactly
+  // where the serial loop's `break` did: nothing after it is prepared, tested
+  // or accumulated, and the rest of the call proceeds on what it has.
+  {
+    bool shortRead = false;
+    unsigned int iStart = 0;
+    while(iStart < q0 && !shortRead){
+      const unsigned int iEnd = std::min(q0, iStart + blockSize);
+      unsigned int nPrepared = 0;
+      for(unsigned int i = iStart; i < iEnd; i++){
+        prepareAndTest(i, i - iStart, scratchA, *g_reader);
+        if(preps[i - iStart].readFailed){
+          break;
+        }
+        nPrepared++;
+      }
+      for(unsigned int i = iStart; i < iStart + nPrepared; i++){
+        accumulate(i, i - iStart);
+      }
+      if(nPrepared < iEnd - iStart){
+        std::cout << "ERROR: Reading " << (iStart + nPrepared) << "th marker failed." << std::endl;
+        shortRead = true;
+      }
+      Rcpp::checkUserInterrupt();
+      iStart = iEnd;
+    }
+  }
 
 
 
@@ -4176,7 +4227,7 @@ int writeOutfile_singleInGroup(bool t_isMoreOutput,
                         std::vector<double> & varTVec,
                         std::vector<std::string> & pvalVec,
                         std::vector<std::string> & pvalNAVec,
-                        std::vector<bool>  & isSPAConvergeVec,
+                        std::vector<unsigned char> & isSPAConvergeVec,
                         std::vector<double> & Beta_cVec,
                         std::vector<double> & seBeta_cVec,
                         std::vector<double> & Tstat_cVec,
@@ -4244,7 +4295,7 @@ int writeOutfile_singleInGroup(bool t_isMoreOutput,
                 if(t_traitType == "binary"){
                         t_OutFile_singleInGroup << pvalNAVec.at(k);
                         t_OutFile_singleInGroup << "\t";
-                        t_OutFile_singleInGroup << std::boolalpha << isSPAConvergeVec.at(k);
+                        t_OutFile_singleInGroup << std::boolalpha << (isSPAConvergeVec.at(k) != 0);
                         t_OutFile_singleInGroup << "\t";
                 }
                 if(t_isCondition){
