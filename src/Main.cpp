@@ -2509,6 +2509,77 @@ Rcpp::List mainRegionInCPP(
     regionPool.reset(new MarkerStatePool(regionGroups, nThreadsRegion));
   }
   const std::function<void(unsigned int, unsigned int, Marker::MarkerScratch&, Geno::GenoReader&)> prepareFn = prepareAndTest;
+  // ---- per-cell tests of passes B and D (step 3b, 2026-09-06) --------------
+  // The ultra-rare pass and the BURDEN emitter each end in one getMarkerPval
+  // per (anno x max_MAF x weight) cell. The cells are independent until their
+  // outputs are written -- each reads its own column of genoURMat/genoSumMat
+  // and the const model -- so the tests run on the pass-A pool, one cell per
+  // range, and everything order-dependent (the residualisation and genoSumMat
+  // updates that feed them, the running chunk index, the output slots and the
+  // BURDEN carry-forward) stays serial on either side. Same protocol as the
+  // marker loop: a failure is recorded in the cell's own record and the main
+  // thread acts on the lowest index; the ER arm is deferred and re-run on the
+  // main thread (ComputeExact re-seeds at entry, so the order is immaterial).
+  struct CellOutcome {
+    bool deferredToMainThread = false;
+    bool hasError = false;
+    std::string errMsg;
+  };
+  struct RegionCellWorker : public RcppParallel::Worker {
+    RegionCellWorker(MarkerStatePool & t_pool, std::vector<CellOutcome> & t_out,
+                     const std::function<void(unsigned int, Marker::MarkerScratch&)> & t_fn)
+      : m_pool(t_pool), m_out(t_out), m_fn(t_fn) {}
+    void operator()(std::size_t t_begin, std::size_t t_end) override {
+      std::unique_ptr<MarkerWorkerState> state = m_pool.checkout();
+      RefuseMainThreadGuard noRAPI;
+      for(std::size_t k = t_begin; k < t_end; k++){
+        try {
+          m_fn((unsigned int)k, *state->scratch[0]);
+        } catch (const SKATMainThread::NeedsMainThread&) {
+          m_out[k] = CellOutcome();
+          m_out[k].deferredToMainThread = true;
+        } catch (const std::exception& e) {
+          m_out[k] = CellOutcome();
+          m_out[k].hasError = true;
+          m_out[k].errMsg = e.what();
+        }
+      }
+      m_pool.checkin(std::move(state));
+      SAIGE_TSAN_HAPPENS_BEFORE(&m_pool);
+    }
+    MarkerStatePool & m_pool;
+    std::vector<CellOutcome> & m_out;
+    const std::function<void(unsigned int, Marker::MarkerScratch&)> & m_fn;
+  };
+  // Runs fn over cells [0, nCells): literally serial at one thread (no pool,
+  // no guard, ER inline), on the pool otherwise with the marker loop's
+  // post-passes (lowest-index error rethrown, deferred cells re-run here).
+  auto runCellTests = [&](unsigned int nCells, const std::function<void(unsigned int, Marker::MarkerScratch&)> & fn)
+  {
+    if(nCells == 0){
+      return;
+    }
+    if(nThreadsRegion == 1){
+      for(unsigned int k = 0; k < nCells; k++){
+        fn(k, scratchA);
+      }
+      return;
+    }
+    std::vector<CellOutcome> outcomes(nCells);
+    RegionCellWorker worker(*regionPool, outcomes, fn);
+    RcppParallel::parallelFor(0, (std::size_t)nCells, worker, 1, nThreadsRegion);
+    SAIGE_TSAN_HAPPENS_AFTER(regionPool.get());
+    for(unsigned int k = 0; k < nCells; k++){
+      if(outcomes[k].hasError){
+        throw std::runtime_error(outcomes[k].errMsg);
+      }
+    }
+    for(unsigned int k = 0; k < nCells; k++){
+      if(outcomes[k].deferredToMainThread){
+        fn(k, scratchA);
+      }
+    }
+  };
 
   // The block driver. A failed read stops the region at that marker exactly
   // where the serial loop's `break` did: nothing after it is accumulated, and
@@ -2606,6 +2677,48 @@ if(i2 > 0){
   arma::mat XV, XXVX_inv;
   g_model->extract_XV_XXVX_inv(XV, XXVX_inv);
   //the last chunk for UR
+  // Step 3b (2026-09-06): the per-cell getMarkerPval calls are split out of
+  // this loop. The loop below (B1) is the pre-existing per-cell body minus the
+  // test and the writes that consume its outputs; it fills one URCell per
+  // tested cell. The tests then run over those cells (B2: serial at one
+  // thread, on the pass-A pool otherwise) and a serial replay (B3) writes the
+  // outputs in cell order. Every expression is the pre-split one over the
+  // same values, so the output is byte-identical whatever the thread count.
+  struct URCell {
+    bool tested = false;
+    unsigned int i = 0;            // output slot q0 + jmr
+    unsigned int rowInChunk = 0;   // P1Mat row / P2Mat column
+    arma::vec genoURVec;           // the collapsed pseudo-marker after imputeGenoAndFlip
+    std::vector<arma::uword> nz, zero;   // its nonzero / zero sample indices
+    double altFreq = 0.0;
+    bool flip = false;
+    bool isER = false;
+    double w0 = 0.0;
+    SAIGE::TestContext ctx;
+    // test outputs
+    double Beta = 0.0, seBeta = 0.0, Tstat = 0.0, varT = 0.0, gy = 0.0;
+    std::string pval, pval_noSPA;
+    bool isSPAConverge = false;
+    double Beta_c = 0.0, seBeta_c = 0.0, Tstat_c = 0.0, varT_c = 0.0;
+    std::string pval_c, pval_noSPA_c;
+    arma::rowvec G1;               // G1tilde_P_G2tilde_Vec, conditional runs only
+  };
+  // The records persist across regions (a function static, like the P1/P2
+  // scratch): the collapsed vector is copied into an existing N-length
+  // buffer and the index vectors into std::vectors that keep their capacity,
+  // so a region allocates nothing N-sized here. Fifteen fresh 400 KB blocks
+  // per pass per region measured as doubled sys time (macOS hands every
+  // allocation above 127 KB to mach VM, and that many live at once defeat
+  // malloc's large-block cache that two cycling locals had been hitting).
+  static std::vector<URCell> s_urCells;
+  if(s_urCells.size() != q_anno_maf_weight){
+    s_urCells.assign(q_anno_maf_weight, URCell());
+  }
+  std::vector<URCell> & urCells = s_urCells;
+  for(unsigned int k = 0; k < q_anno_maf_weight; k++){
+    urCells[k].tested = false;   // persistent records: a cell tested in an earlier region is not tested in this one
+  }
+  std::vector<unsigned int> urTested;   // jmr of the tested cells, in cell order
   unsigned int i;
   for(unsigned int j = 0; j < q_anno; j++){
      for(unsigned int m = 0; m < q_maf; m++){
@@ -2755,47 +2868,11 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
             indexNonZeroVec_arma = arma::conv_to<arma::uvec>::from(indexNonZeroVec);
 
 
-	    ProfileScope rpUrTest(rp.enabled ? &rp.urTest : nullptr, &rp.nUrTest);
-	    if(MAC <= g_cfg.MACCutoffforER && t_traitType == "binary" && erAllowedVec[r]){
-              g_model->getMarkerPval(genoURVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
-	    }else{
-              g_model->getMarkerPval(genoURVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
-	    }
-	    rpUrTest.stop();
-
-            BetaVec.at(i) = Beta* (1 - 2*flip);
-            seBetaVec.at(i) = seBeta;
-            pvalVec.at(i) = pval;
-	    //pvalVec_val.at(i) = std::stod(pval);
-            pvalNAVec.at(i) = pval_noSPA;
-            TstatVec.at(i) = Tstat * (1 - 2*flip);
-            TstatVec_flip.at(i) = Tstat;
-            gyVec.at(i) = gy;
-            varTVec.at(i) = varT;
-            isSPAConvergeVec.at(i) = isSPAConverge;
-            if(isCondition){
-              Beta_cVec.at(i) = Beta_c * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true
-              seBeta_cVec.at(i) = seBeta_c;
-              pval_cVec.at(i) = pval_c;
-              pvalNA_cVec.at(i) = pval_noSPA_c;
-              Tstat_cVec.at(i) = Tstat_c * (1 - 2*flip);
-              varT_cVec.at(i) = varT_c;
-              if(q_weight == 1){
-                // w0 is assigned on every branch above (LEDGER #17 was that the
-                // custom branch did not assign it and this line read garbage;
-                // fixed, with 1.0 -- see the comment there for why 1 and not
-                // w_r). Reachable only at q_weight == 1: a K>1 run takes the
-                // raw-export branch below, which reads no w0.
-                G1tilde_P_G2tilde_Weighted_Mat.row(i) = G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t() * w0;
-              }else{
-                // design D7 (C11): G1-raw row at K>1, per-set weight applied
-                // in region_postprocess (1 for custom sets -- their collapse
-                // already baked w_r into genoURVec -- and pdf(beta_r, MAF)
-                // for beta sets, matching what the baked path would use)
-                G1tilde_P_G2tilde_Weighted_Mat.row(i) = G1tilde_P_G2tilde_Vec % w0G2Vec_cond.t();
-              }
-            }
-
+	    // Step 3b: the getMarkerPval call and the writes that read its
+	    // outputs (BetaVec..varTVec, the conditional columns, the G1 row,
+	    // the P1/P2 row) run in B2/B3 below; everything that follows in this
+	    // branch is test-independent and stays in cell order, and the cell's
+	    // operands are handed to its record at the end of the branch.
     	    chrVec.at(i) = "UR";
     	    posVec.at(i) = "UR";
     	    refVec.at(i) = "UR";
@@ -2853,13 +2930,26 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
         }else if(t_traitType == "quantitative"){
           N_Vec.at(i) = n;
         }
-      if(t_regionTestType != "BURDEN"){	
-        P1Mat.row(i1InChunk) = sqrt(ctx.varRatioVal)*gtildeVec.t();
-	//gtildeVec.print("gtildeVec");
-        P2Mat.col(i1InChunk) = sqrt(ctx.varRatioVal)*P2Vec;
-	//P2Vec.print("P2Vec");
-
-      } //if(t_regionTestType != "BURDEN"){
+      // Hand this cell's operands to its record (persistent storage, see
+      // its declaration): the copy into c.genoURVec is a memcpy into an
+      // existing N-length buffer, and the index copies reuse capacity. The
+      // values are exactly what conv_to produced above from the same
+      // std::vector<uint>s.
+      {
+        URCell & c = urCells[jmr];
+        c.tested = true;
+        c.i = i;
+        c.rowInChunk = i1InChunk;
+        c.genoURVec = genoURVec;
+        c.nz.assign(indexNonZeroVec.begin(), indexNonZeroVec.end());
+        c.zero.assign(indexZeroVec.begin(), indexZeroVec.end());
+        c.altFreq = altFreq;
+        c.flip = flip;
+        c.w0 = w0;
+        c.ctx = ctx;
+        c.isER = (MAC <= g_cfg.MACCutoffforER && t_traitType == "binary" && erAllowedVec[r]);
+        urTested.push_back(jmr);
+      }
     }else{//if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
             MAC_GroupVec(jmr) = MAC_GroupVec(jmr) + MAC;
 	                arma::vec dosage_case, dosage_ctrl;
@@ -2878,6 +2968,80 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
     }
     }// for r (weight sets)
    }
+  }
+  // B2: the per-cell tests, over the cells B1 prepared -- in cell order at
+  // one thread, one cell per range on the pass-A pool otherwise. Each cell
+  // reads its own record and the const model and writes its own record plus
+  // its own P1Mat row / P2Mat column, so two cells never touch the same
+  // memory; the per-worker scratch supplies gtildeVec, P2Vec and the
+  // conditional row exactly as prepareAndTest's does.
+  {
+    const std::function<void(unsigned int, Marker::MarkerScratch&)> urTestFn =
+      [&](unsigned int k, Marker::MarkerScratch & sc)
+    {
+      URCell & c = urCells[urTested[k]];
+      bool is_gtilde, is_Firth, is_FirthConverge;
+      // strict, non-owning views: getMarkerPval never resizes its index
+      // arguments (a strict view would throw if it tried). The worker's
+      // KernelWorkspace goes in too: without it every Firth/SPA temporary is
+      // a fresh N-length allocation on a worker thread, and the 4-thread
+      // profile showed those large frees at ~1.6x the step-3 share.
+      arma::uvec nzView(c.nz.data(), c.nz.size(), false, true);
+      arma::uvec zeroView(c.zero.data(), c.zero.size(), false, true);
+      ProfileScope rpUrTest(rp.enabled ? &rp.urTest : nullptr, &rp.nUrTest);
+      if(c.isER){
+        g_model->getMarkerPval(c.genoURVec, nzView, zeroView, c.Beta, c.seBeta, c.pval, c.pval_noSPA, c.altFreq, c.Tstat, c.gy, c.varT, c.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, c.Beta_c, c.seBeta_c, c.pval_c, c.pval_noSPA_c, c.Tstat_c, c.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, c.flip, c.ctx, &sc.ws);
+      }else{
+        g_model->getMarkerPval(c.genoURVec, nzView, zeroView, c.Beta, c.seBeta, c.pval, c.pval_noSPA, c.altFreq, c.Tstat, c.gy, c.varT, c.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, c.Beta_c, c.seBeta_c, c.pval_c, c.pval_noSPA_c, c.Tstat_c, c.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, c.flip, c.ctx, &sc.ws);
+      }
+      rpUrTest.stop();
+      if(isCondition){
+        c.G1 = sc.G1tilde_P_G2tilde_Vec;
+      }
+      if(t_regionTestType != "BURDEN"){
+        P1Mat.row(c.rowInChunk) = sqrt(c.ctx.varRatioVal)*sc.gtildeVec.t();
+        P2Mat.col(c.rowInChunk) = sqrt(c.ctx.varRatioVal)*sc.P2Vec;
+      }
+    };
+    runCellTests((unsigned int)urTested.size(), urTestFn);
+  }
+
+  // B3: the outputs the tests feed, in cell order -- the pre-split writes
+  // over the values the records hold.
+  for(unsigned int k = 0; k < urTested.size(); k++){
+    const URCell & c = urCells[urTested[k]];
+    const unsigned int ic = c.i;
+    const bool flip = c.flip;
+    BetaVec.at(ic) = c.Beta* (1 - 2*flip);
+    seBetaVec.at(ic) = c.seBeta;
+    pvalVec.at(ic) = c.pval;
+    pvalNAVec.at(ic) = c.pval_noSPA;
+    TstatVec.at(ic) = c.Tstat * (1 - 2*flip);
+    TstatVec_flip.at(ic) = c.Tstat;
+    gyVec.at(ic) = c.gy;
+    varTVec.at(ic) = c.varT;
+    isSPAConvergeVec.at(ic) = c.isSPAConverge;
+    if(isCondition){
+      Beta_cVec.at(ic) = c.Beta_c * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true
+      seBeta_cVec.at(ic) = c.seBeta_c;
+      pval_cVec.at(ic) = c.pval_c;
+      pvalNA_cVec.at(ic) = c.pval_noSPA_c;
+      Tstat_cVec.at(ic) = c.Tstat_c * (1 - 2*flip);
+      varT_cVec.at(ic) = c.varT_c;
+      if(q_weight == 1){
+        // w0 is assigned on every branch of B1: 1.0 for custom sets (LEDGER
+        // #17 -- their collapse already baked w_r into genoURVec),
+        // pdf(beta_r, MAF) for beta sets, 1.0 for No_Weights. Reachable only
+        // at q_weight == 1: a K>1 run takes the raw-export branch below,
+        // which reads no w0.
+        G1tilde_P_G2tilde_Weighted_Mat.row(ic) = c.G1 % w0G2Vec_cond.t() * c.w0;
+      }else{
+        // design D7 (C11): G1-raw row at K>1, per-set weight applied in
+        // region_postprocess (1 for custom sets, pdf(beta_r, MAF) for beta
+        // sets, matching what the baked path would use)
+        G1tilde_P_G2tilde_Weighted_Mat.row(ic) = c.G1 % w0G2Vec_cond.t();
+      }
+    }
   }
 
 
@@ -3013,6 +3177,113 @@ unsigned int q_maf_m;
 std::string AnnoName;
 double maxMAFName;
 if(t_regionTestType == "BURDEN"){
+     // Step 3b (2026-09-06): the per-cell getMarkerPval is split out of the
+     // emitter. D1 walks the cells in order and prepares one BurdenCell for
+     // every cell the emitter would test (the same predicate over the same
+     // operands); D2 runs those tests, serially at one thread and one cell
+     // per range on the pass-A pool otherwise; D3 is the pre-split emitter
+     // loop reading each cell's result instead of computing it, so the
+     // carry-forward cache sees exactly the sequence it always did.
+     struct BurdenCell {
+       bool tested = false;
+       arma::vec genoSumVec;
+       std::vector<arma::uword> nz, zero;
+       double altFreq = 0.0;
+       bool isER = false;
+       SAIGE::TestContext ctx;
+       // test outputs
+       double Beta = 0.0, seBeta = 0.0, Tstat = 0.0, varT = 0.0, gy = 0.0;
+       std::string pval, pval_noSPA;
+       bool isSPAConverge = false;
+       double Beta_c = 0.0, seBeta_c = 0.0, Tstat_c = 0.0, varT_c = 0.0;
+       std::string pval_c, pval_noSPA_c;
+     };
+     // persistent across regions, for the same reason as the URCells
+     static std::vector<BurdenCell> s_burdenCells;
+     if(s_burdenCells.size() != q_anno_maf_weight){
+       s_burdenCells.assign(q_anno_maf_weight, BurdenCell());
+     }
+     std::vector<BurdenCell> & burdenCells = s_burdenCells;
+     // Reset per region: D3 reads c.tested for every cell, and a record that
+     // persists across regions would otherwise re-emit an earlier region's
+     // result for a cell this region does not test (found by the sim50k
+     // byte gate; the bundled BURDEN golden did not reach it).
+     for(unsigned int k = 0; k < q_anno_maf_weight; k++){
+       burdenCells[k].tested = false;
+     }
+     std::vector<unsigned int> burdenTested;   // jmr of the tested cells, in cell order
+     // D1
+     for(unsigned int j = 0; j < q_anno; j++){
+       q_maf_m = q_maf_for_anno(j);
+       for(unsigned int m = 0; m < q_maf; m++){
+	jm = j*q_maf+m;
+	for(unsigned int r = 0; r < q_weight; r++){
+	jmr = jm*q_weight + r;
+      if(m <= q_maf_m){
+        arma::vec genoSumVec = genoSumMat.col(jmr);
+        arma::uvec indexNonZeroVec_arma = arma::find(genoSumVec != 0);
+	arma::uvec indexZeroVec_arma = arma::find(genoSumVec == 0);
+	double altCounts =  genoSumcount_noweight(jm);   // weight-independent count
+	double altFreq = altCounts/(2*t_n);
+	double MAC, MAF;
+	if(altFreq > 1){
+		MAF = 1;
+		MAC = t_n;
+	}else{
+		MAF = std::min(altFreq, 1 - altFreq);
+		MAC = MAF*2*t_n;
+	}
+        if(indexNonZeroVec_arma.n_elem > 0 && MAC >= g_cfg.min_gourpmac_for_burdenonly){
+      // S12: this marker's test context, derived and consumed here. Same two
+      // steps as before -- a common marker uses the non-sparse variance ratio,
+      // a rare one follows the model -- but nothing is parked on g_model, so no
+      // later read can pick up a marker's choice by accident (LEDGER #27/#50)
+      // and two markers could be tested at once without racing.
+      SAIGE::TestContext ctx;
+      ctx.useSparseGRM = (MAC > g_model->m_cateVarRatioMinMACVecExclude.back())
+                           ? false : g_model->m_flagSparseGRM;
+      ctx.noadjCov = false;
+      if(!isSingleVarianceRatio){
+        ctx.varRatioVal = g_model->selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
+      }else{
+        ctx.varRatioVal = g_model->selectSingleVarianceRatio(ctx.useSparseGRM, false);
+      }
+          BurdenCell & c = burdenCells[jmr];
+          c.tested = true;
+          c.genoSumVec = genoSumVec;   // memcpy into the persistent N-length buffer
+          c.nz.assign(indexNonZeroVec_arma.begin(), indexNonZeroVec_arma.end());
+          c.zero.assign(indexZeroVec_arma.begin(), indexZeroVec_arma.end());
+          c.altFreq = altFreq;
+          c.ctx = ctx;
+          c.isER = (MAC <= g_cfg.MACCutoffforER && t_traitType == "binary" && erAllowedVec[r]);
+          burdenTested.push_back(jmr);
+        }
+      }
+	} // for r (weight sets)
+       }
+     }
+
+     // D2: the tests. flip is false on this path, as it always was.
+     {
+       const std::function<void(unsigned int, Marker::MarkerScratch&)> burdenTestFn =
+         [&](unsigned int k, Marker::MarkerScratch & sc)
+       {
+         BurdenCell & c = burdenCells[burdenTested[k]];
+         bool is_gtilde, is_Firth, is_FirthConverge;
+         bool flip = false;
+         arma::uvec nzView(c.nz.data(), c.nz.size(), false, true);
+         arma::uvec zeroView(c.zero.data(), c.zero.size(), false, true);
+         ProfileScope rpEmitTest(rp.enabled ? &rp.emitTest : nullptr, &rp.nEmitTest);
+         if(c.isER){
+           g_model->getMarkerPval(c.genoSumVec, nzView, zeroView, c.Beta, c.seBeta, c.pval, c.pval_noSPA, c.altFreq, c.Tstat, c.gy, c.varT, c.isSPAConverge, sc.gtildeVec, is_gtilde, isregion, sc.P2Vec, isCondition, c.Beta_c, c.seBeta_c, c.pval_c, c.pval_noSPA_c, c.Tstat_c, c.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, c.ctx, &sc.ws);
+         }else{
+           g_model->getMarkerPval(c.genoSumVec, nzView, zeroView, c.Beta, c.seBeta, c.pval, c.pval_noSPA, c.altFreq, c.Tstat, c.gy, c.varT, c.isSPAConverge, sc.gtildeVec, is_gtilde, isregion, sc.P2Vec, isCondition, c.Beta_c, c.seBeta_c, c.pval_c, c.pval_noSPA_c, c.Tstat_c, c.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, c.ctx, &sc.ws);
+         }
+       };
+       runCellTests((unsigned int)burdenTested.size(), burdenTestFn);
+     }
+
+     // D3: the emitter loop, reading the cells.
      // Carry-forward cache for maxMAF cutoffs beyond q_maf_for_anno(j): those
      // cutoffs add no markers, so the last tested (j,*,r) result is re-emitted.
      // With the weight dimension the cache and the isPolyMarker flag are per
@@ -3034,89 +3305,31 @@ if(t_regionTestType == "BURDEN"){
 	jmr = jm*q_weight + r;
 	i = jmr;
       if(m <= q_maf_m){
-        arma::vec genoSumVec = genoSumMat.col(jmr);
-        int n = genoSumVec.size();
-        arma::uvec indexNonZeroVec_arma = arma::find(genoSumVec != 0);
-	arma::uvec indexZeroVec_arma = arma::find(genoSumVec == 0);
-        //double altFreq = arma::mean(genoSumVec)/2;
-        //double altCounts = arma::accu(genoSumVec);
-	double altCounts =  genoSumcount_noweight(jm);   // weight-independent count
-	double altFreq = altCounts/(2*t_n);
-	double MAC, MAF;
-	if(altFreq > 1){
-		MAF = 1;
-		MAC = t_n;
-	}else{
-		MAF = std::min(altFreq, 1 - altFreq);
-		MAC = MAF*2*t_n;
-	}
-	//std::cout << "altCounts " << altCounts << std::endl;
-	//std::cout << "altFreq " << altCounts << std::endl;
-        double missingRate = 0;
-        double imputeInfo = 1;
-        std::string chr, ref, alt, marker;
-        bool flip = false;
-        std::string info = "UR";
-        //double MAF = std::min(altFreq, 1 - altFreq);
-        double w0;
-        //double MAC = MAF * 2 * t_n * (1 - missingRate);
-        if(indexNonZeroVec_arma.n_elem > 0 && MAC >= g_cfg.min_gourpmac_for_burdenonly){
-	  //if(MAC >= g_cfg.min_gourpmac_for_burdenonly){
+        const BurdenCell & c = burdenCells[jmr];
+        if(c.tested){
           isPolyMarkerVec[r] = true;
-	  std::vector<uint32_t> indexForMissing;
-
-      // S12: this marker's test context, derived and consumed here. Same two
-      // steps as before -- a common marker uses the non-sparse variance ratio,
-      // a rare one follows the model -- but nothing is parked on g_model, so no
-      // later read can pick up a marker's choice by accident (LEDGER #27/#50)
-      // and two markers could be tested at once without racing.
-      SAIGE::TestContext ctx;
-      ctx.useSparseGRM = (MAC > g_model->m_cateVarRatioMinMACVecExclude.back())
-                           ? false : g_model->m_flagSparseGRM;
-      ctx.noadjCov = false;
-      if(!isSingleVarianceRatio){
-        ctx.varRatioVal = g_model->selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
-      }else{
-        ctx.varRatioVal = g_model->selectSingleVarianceRatio(ctx.useSparseGRM, false);
-      }
-          //if(!isSingleVarianceRatio){
-           // (the duplicate variance-ratio selection this used to repeat is above)
-          //}
-
-
-	  //arma::vec timeoutput_getp = getTime();
-	  ProfileScope rpEmitTest(rp.enabled ? &rp.emitTest : nullptr, &rp.nEmitTest);
-	  if(MAC <= g_cfg.MACCutoffforER && t_traitType == "binary" && erAllowedVec[r] ){
-          g_model->getMarkerPval(genoSumVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, isregion, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
-	  }else{
-          g_model->getMarkerPval(genoSumVec, indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, isregion, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx);
-	  }	  
-	  rpEmitTest.stop();
-	  //arma::vec timeoutput_getp2 = getTime();
-	  //printTime(timeoutput_getp, timeoutput_getp2, "get p  done");
-	  
 	  if(isCondition){
-	    BURDEN_pval_cVec.at(i) = pval_c;
-	    BURDEN_Beta_cVec.at(i) = Beta_c;
-	    BURDEN_seBeta_cVec.at(i) = seBeta_c;
+	    BURDEN_pval_cVec.at(i) = c.pval_c;
+	    BURDEN_Beta_cVec.at(i) = c.Beta_c;
+	    BURDEN_seBeta_cVec.at(i) = c.seBeta_c;
           }
 
 	   BURDEN_AnnoName_Vec.at(i) = AnnoName;
 	   std::string str = std::to_string(maxMAFName);
 	   str.erase ( str.find_last_not_of('0') + 1, std::string::npos );
 	   BURDEN_maxMAFName_Vec.at(i) = str;
-	   BURDEN_pval_Vec.at(i) = pval;
-	   BURDEN_Beta_Vec.at(i) = Beta;
-	   BURDEN_seBeta_Vec.at(i) = seBeta;
+	   BURDEN_pval_Vec.at(i) = c.pval;
+	   BURDEN_Beta_Vec.at(i) = c.Beta;
+	   BURDEN_seBeta_Vec.at(i) = c.seBeta;
 
 	   // cache this set's result for the m > q_maf_for_anno(j) carry-forward
-	   carry_pval[r] = pval;
-	   carry_Beta[r] = Beta;
-	   carry_seBeta[r] = seBeta;
+	   carry_pval[r] = c.pval;
+	   carry_Beta[r] = c.Beta;
+	   carry_seBeta[r] = c.seBeta;
 	   if(isCondition){
-	     carry_pval_c[r] = pval_c;
-	     carry_Beta_c[r] = Beta_c;
-	     carry_seBeta_c[r] = seBeta_c;
+	     carry_pval_c[r] = c.pval_c;
+	     carry_Beta_c[r] = c.Beta_c;
+	     carry_seBeta_c[r] = c.seBeta_c;
 	   }
 
          }else{

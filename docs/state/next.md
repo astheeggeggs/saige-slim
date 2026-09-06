@@ -1,6 +1,6 @@
-# What is worth doing next (2026-09-03, updated 2026-09-05)
+# What is worth doing next (2026-09-03, updated 2026-09-06)
 
-**Current handoff: `docs/state/handoff-2026-09-06-writer-bench.md`** (then this
+**Current handoff: `docs/state/handoff-2026-09-06-region-cells.md`** (then this
 file, then `python3 harness/tools/ledger.py open`). Handoffs are dated and
 never renamed; when several share the newest date `ls | tail -1` sorts them by
 name, not by time, so this line is the pointer and is updated with every new

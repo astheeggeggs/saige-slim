@@ -94,8 +94,12 @@ d = "*m_pool.m_plantShared, rows);"
 # prepares and tests its markers in the first state's scratch.
 e = "m_fn(m_iStart + k, k, *state->scratch[0], *state->readers[0]);"
 f = "m_fn(m_iStart + k, k, *m_pool.m_plantShared, *state->readers[0]);"
-assert s.count(a) == 1 and s.count(c) == 1 and s.count(e) == 1, "plant anchors drifted; fix harness/tsan.sh"
-open(p, 'w').write(s.replace(a, b).replace(c, d).replace(e, f))
+# The per-cell test worker of passes B and D (step 3b, 2026-09-06): same
+# defect, every cell's test in the first state's scratch.
+g = "m_fn((unsigned int)k, *state->scratch[0]);"
+h = "m_fn((unsigned int)k, *m_pool.m_plantShared);"
+assert s.count(a) == 1 and s.count(c) == 1 and s.count(e) == 1 and s.count(g) == 1, "plant anchors drifted; fix harness/tsan.sh"
+open(p, 'w').write(s.replace(a, b).replace(c, d).replace(e, f).replace(g, h))
 PY
 fi
 

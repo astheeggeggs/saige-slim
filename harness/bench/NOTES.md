@@ -1417,3 +1417,99 @@ of the run; 1/(0.45 + 0.55 x 1.39/4) = 1.55x predicted against 1.57x measured, t
 itself went 26 -> ~9 s. The next lever on BURDEN is therefore the per-cell tests of
 passes B and D (15 independent cells, order-free until their outputs are written),
 not the marker loop.
+
+## Step 3b: the per-cell tests of passes B and D threaded (2026-09-06, same day)
+
+Step 3 left BURDEN at 1.57x / 1.64x on 4 threads because the ultra-rare pass
+(B) and the BURDEN emitter (D) each end in 15 serial `getMarkerPval` calls, one
+per (anno x max_MAF x weight) cell -- 9.7 s (binary) / 2.5 s (quant) of the
+1-thread BURDEN run by the step-1 buckets (`urTest` + `emitTest`). Each pass is
+now three phases: B1/D1 serial in cell order (everything order-dependent or
+feeding the test: the `genoSumMat` / `genoSumcount_noweight` updates, the
+residualisation, the running chunk index, the test context, plus the
+test-independent writes), then `runCellTests` over the tested cells -- serial
+with the frame scratch at `--nThreads=1`, one cell per range on the pass-A
+`MarkerStatePool` otherwise, the ER arm deferred and re-run on the main thread,
+the lowest-index error rethrown -- then B3/D3 serial replays of the pre-split
+output writes (D3 is the old emitter loop verbatim, so the carry-forward cache
+sees exactly its old sequence). Each cell writes its own record and, in B2, its
+own `P1Mat` row / `P2Mat` column. Byte-identical at any thread count.
+
+Gate, on the committed build: `test-step2-region-threads.R` 27/27; `sim50k`
+SKAT-O and BURDEN at 1 and 4 threads, both traits, every file identical to
+step 3's 1-thread outputs (12/12 + 16/16; the first build 24/24); goldens all
+PASS; `prepush.sh` FAIL 0 both modes; `tsan.sh` on the `region` workload clean
+0 / 0 at 4 / 8 threads, plant (a fourth anchor on the cell worker) 102 / 103
+races with differing bytes. SKAT-O wall at 4 threads unchanged (104 / 81 s).
+Predicted before the run, from the buckets and the 1.39x inflation floor:
+BURDEN ~2.1x (binary) / ~2.3x (quant).
+
+**First measurement missed, and the reason was in the new code, not the box.**
+The unpaired gate runs read 1.77x / 1.69x. A paired A/B against a scratch
+install of `3eeb554e` (its `SAIGE.so` md5-identical to the one step 3's gate
+loaded), arms alternated, 2 reps, showed the 3b build with sys time DOUBLED at
+both thread counts (+1.4 s at 1 thread, +2.5 s at 4), user CPU +12-23% at 4
+threads, and wall no better than step 3's on quantitative. The first version
+COPIED each tested cell's collapsed vector and its zero-index vector (each ~N
+long) into a fresh record: 30 x 400 KB allocations per pass per region, every
+one above macOS malloc's 127 KB large threshold and so a `mach_vm_allocate` /
+`mach_vm_deallocate` pair; moving instead of copying removed the 1-thread user
+cost but not the sys cost, because 30 such blocks alive at once defeat the
+large-block cache that two cycling locals had been hitting (per main-thread
+sample: `free_large` 7.4% vs 4.1%, `mach_vm_deallocate` 4.8% vs 2.1% on the
+step-3 build, `harness/work/region_profile/profile_burden_binary_t4_*.txt`).
+The committed version keeps the records in a function static across regions:
+the collapsed vector is copied into an existing N-length buffer (a memcpy) and
+the index vectors into `std::vector`s that keep their capacity, handed to the
+test as strict non-owning `arma::uvec` views. A region allocates nothing
+N-sized in B or D.
+
+Two more things the paired runs settled. The version without a per-region
+reset of the records' `tested` flags re-emitted an earlier region's BURDEN row
+for a cell the current region did not test: `sim50k` caught it (34 differing
+lines, all a later region's untested cells carrying an earlier region's
+p-value with the current region's MAC), the bundled BURDEN golden did not
+(both its regions test the same cells), and `test-step2-region-threads.R` now
+pins region-order independence with a present-but-untested cell (red on that
+build, green after). And the cell tests on the workers ran `getMarkerPval`
+WITHOUT the per-worker `KernelWorkspace` (the region path never passed one),
+so every Firth/SPA temporary was a fresh N-length allocation on a worker
+thread: passing `&sc.ws` took the large-free share from 6.6% to 5.6% of
+main-thread samples (step 3: 4.1%) and is what the table below measures.
+
+**Paired A/B, `sim50k` BURDEN (`--r.corr=1`), 4 threads, arms alternated, 2
+reps** (step-3 scratch install `bc6b04b4` vs the committed build `8d9dcb70`;
+`harness/work/region_profile/results_s3b_ab5.tsv`; load 5.7-7.7 throughout --
+VS Code's C++ indexer held a full core all afternoon and Spotlight another
+0.6, so absolute seconds are depressed for BOTH arms and the ratio is the
+number):
+
+| arm | step 3 wall | 3b wall | 3b / step 3 | user 3 -> 3b | sys 3 -> 3b |
+|---|---|---|---|---|---|
+| y_binary rep 1 | 36.3 | **31.2** | 0.86 | 56.3 -> 64.0 | 5.4 -> 6.4 |
+| y_binary rep 2 | 35.5 | **30.2** | 0.85 | 55.8 -> 63.2 | 5.2 -> 6.3 |
+| y_quant rep 1 | 19.5 | **18.4** | 0.94 | 34.0 -> 37.6 | 3.8 -> 4.4 |
+| y_quant rep 2 | 18.9 | 18.5 | 0.98 | 33.9 -> 37.8 | 3.8 -> 4.5 |
+| 1 thread, binary (2 reps each) | 51.0 / 51.4 | 52.4 / 51.3 | 1.01 | equal | equal |
+| 1 thread, quant (2 reps each) | 31.5 / 31.2 | 31.2 / 30.1 | 0.98 | equal | equal |
+
+**Against the 1.57x / 1.64x baseline and the 2.2x prediction.** In this
+session, under this load, the step-3 build itself measures 1.43x (binary) /
+1.63x (quant) at 4 threads and the 3b build 1.69x / 1.66x; scaling step 3's
+recorded 1.57x / 1.64x by the paired ratios gives **~1.84x / ~1.71x**. The 2.2x
+is not reached, and the shortfall is accounted for rather than mysterious:
+the per-cell tests were 22% (binary) / 9% (quant) of the 1-thread BURDEN run,
+so the most their threading can remove at 4 threads with the 1.39x inflation
+floor is 14% / 6% of the wall -- which is what the pairs show (14-15% /
+2-6%). The prediction's other 0.4x assumed step 3's 1.57x was reproducible
+today; it is 1.43x on a box with ~1.6 cores taken by other processes. The
++12% user CPU is the price of running the cell tests on workers (allocation
+contention that the workspace only partly removes, plus TBB spin between the
+now three parallel regions per gene); at 1 thread the build is
+indistinguishable from step 3 in wall, user and sys.
+
+What is left serial in BURDEN at 4 threads, from the buckets: B1/D1 (the
+`genoURMat` column extractions, `imputeGenoAndFlip`, the residualisation and
+`genoSumMat` updates, ~3.8 s binary), accumulate (~2.3 s), the R side (~2 s).
+The next lever, if BURDEN at scale matters, is the one the previous handoff
+named: thread across REGIONS, which puts all of that on workers too.
