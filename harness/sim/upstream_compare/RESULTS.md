@@ -96,11 +96,13 @@ was not -- LEDGER #97, found here.
 
 ### What moves and why (own models, all five traits)
 
-**This table is the 2026-09-05 state, taken before LEDGER #97 was fixed.** The
-`y_quant` own-model step 2 was re-run against the fixed models on 2026-09-07 and the
-four rows marked *(pre-#97)* below no longer describe it; the post-fix numbers are in
-"After the #97 fix" at the end of this section. `y_quant_pc` and `y_null` own models
-were not refitted, so their rows still stand as written.
+**This table is the 2026-09-05 state, taken before LEDGER #97 was fixed.** All three
+quantitative traits have since been re-run against models refitted after the fix --
+`y_quant` on 2026-09-07 morning, `y_quant_pc` and `y_null` later the same day -- so the
+four rows marked *(pre-#97)* below no longer describe ANY trait's own-model comparison.
+They are kept as the record of what #97 did. The post-fix numbers are in the two
+"After the #97 fix" subsections at the end of this section. The `frozen` tables are
+unaffected either way: both arms read the fixture's committed models there.
 
 | where | rows | cause | how it was pinned |
 |---|---|---|---|
@@ -173,6 +175,60 @@ provoked it is.
 No row became `UNPREDICTED`. The one `UNPREDICTED` in `cmp_summary.txt` is the
 `20:17775656:A:T` fast-test straddle on `y_quant_pc` documented above, in a trait this
 re-run did not touch.
+
+### After the #97 fix: `y_quant_pc` and `y_null` own models re-run (2026-09-07)
+
+[Measured. These two were the last own models still predating the fix. Full chain per
+trait -- `MODELS=own run_arm.sh strip {step1,s2single,s2group} <trait> 1`, then
+`compare_all.sh 1 1`; strip HEAD `96f16942`, upstream arm untouched, so the `main`
+models and outputs are the same 2026-09-05 files the earlier tables used. The strip
+build carries the LEDGER #102 fix that the `y_quant` re-run did not; #102 deleted a
+dead value and moved no golden, so the two re-runs are output-equivalent builds.]
+
+**Negative control on the procedure.** The comparison summary was snapshotted before
+and after. Of its 22 blocks, exactly the **six** belonging to the two re-run traits
+changed; every `frozen` block and every block of the three traits not re-run
+(`y_binary`, `y_quant`, `y_binary_pc`) reproduced its previous text byte-for-byte.
+
+**Prediction, recorded before the runs, and the outcome.** The `sparse` variance-ratio
+quotient strip/upstream was predicted to go to 1 from the 1/s² factors LEDGER #97
+measured independently, and it did, in both MAC categories, with the `null` rows
+unmoved:
+
+| trait | `sparse` before | `sparse` after | `null` / `null_noXadj` (unmoved) |
+|---|---|---|---|
+| `y_quant_pc` | 1.11979 | **1.00000** | 1.00030 / 1.00032, 1.00590 / 1.00614 |
+| `y_null` | 1.11169 | **1.00000** | 1.00198 / 1.00202, 1.00515 / 1.00538 |
+
+| table | `y_quant_pc` before → after | `y_null` before → after |
+|---|---|---|
+| gene, `Pvalue` | 0.999716 → **0.999995**, max\|d\| 0.609 → **0.180** | 0.999143 → **0.999966**, max\|d\| 0.218 → **0.116** |
+| gene, `Pvalue_Burden` | 0.999226 → **0.999996**, max\|d\| 0.609 → **0.078** | 0.999249 → **0.999997**, max\|d\| 0.201 → **0.014** |
+| gene, `Pvalue_SKAT` | 0.999749 → **0.999998** | 0.999116 → **0.999990** |
+| gene, cells matching a VR row / between rows | 1626 / 1455 → **2421 / 677** (of 3111) | 1625 / 1466 → **2617 / 490** (of 3120) |
+| gene tags | `VR` 1615 → **1895**, `VR-mix` 1360 → **619**, `tiny` 0 → **468**, `Cauchy=1` 1 → **0**, `SKATO=1` 4 → **0** | `VR` 1610 → **2096**, `VR-mix` 1351 → **441**, `tiny` 0 → **431**, `SKATO=1` 1 → **0**, `Cauchy=1` 4 → **2** |
+| single-in-group, `p.value` | 0.998439 → **0.999996**, max\|d\| 0.923 → **0.019** | 0.998715 → **0.999997**, max\|d\| 0.437 → **0.015** |
+| single-in-group, `var` quotient at MAC ≤ 20.5 | median 1.1197910 → **1.0000000** | median 1.1116919 → **1.0000000** |
+| single, `p.value` (barely moves) | 0.997830 → 0.997831 | 0.953439 → 0.953528 |
+| single, `var` quotient at MAC ≤ 20.5 | range [1.0003262, **1.1197954**] → [**1.0000000**, 1.0003266] | [1.0020140, **1.1116958**] → [**1.0000000**, 1.0020157] |
+
+Same shape as `y_quant`, including the part that is easy to state wrongly: the
+`VR`/`VR-mix` mass **resolves** rather than vanishes. `VR-mix` falls 54% and 67% while
+`VR` RISES on both traits, because a cell tagged `VR-mix` had a quotient lying between
+the two arms' variance-ratio rows; with the `sparse` row no longer displaced by 1/s²
+those cells match a single row cleanly. The reconciliation counts say it directly.
+The single-variant tables barely move, for the same reason as `y_quant`: their residual
+is the `null` row quotient (#65/#53), which #97 never touched.
+
+`SKATO=1` goes to zero on both and `Cauchy=1` to zero on `y_quant_pc` and 4 → 2 on
+`y_null` -- LEDGER #86 was reached *because* #97 had displaced those cells, and #86
+itself is unchanged.
+
+**The one `UNPREDICTED` row survives.** `20:17775656:A:T` on `y_quant_pc` is still the
+only cell the tagger cannot reconcile, before and after: it is a fast-test cutoff
+straddle (strip's fast p is 0.0500066 and is not re-tested), not a variance-ratio
+effect, so #97 was never expected to move it. No new `UNPREDICTED` row appeared on
+either trait.
 
 ### Frozen models (step 2 isolated; `y_binary`, `y_quant`)
 

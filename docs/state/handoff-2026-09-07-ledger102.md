@@ -125,14 +125,46 @@ gate ran twice at `96f16942`, once by hand and once from `.githooks/pre-push`,
 green both times; it was NOT bypassed. The byte counts are +12 on the previous
 green (2889): 4 from `test-step1-loco-oob.R`, 8 from `test-meta-timeout.R`.
 
+## 3. `y_quant_pc` and `y_null` own models refitted -- the table is now uniformly post-#97
+
+Item 3 of the previous handoff, done after the push. `MODELS=own run_arm.sh strip
+{step1,s2single,s2group} <trait> 1` for both traits, then `compare_all.sh 1 1`;
+only the strip arm needs it, since #97 is a strip-only fix. Predictions were
+written down first (`sparse` quotient → 1 in both MAC categories, `null` rows
+unmoved, gene agreement up ~2 orders of magnitude in max|d|, `VR-mix` resolving
+INTO `VR` rather than vanishing, the single-variant tables barely moving) and
+all of them held.
+
+**The negative control on the procedure**: of the 22 blocks in
+`cmp_summary.txt`, exactly the six belonging to the two re-run traits changed;
+every `frozen` block and every block of `y_binary`, `y_quant` and `y_binary_pc`
+reproduced byte-for-byte.
+
+| | `y_quant_pc` | `y_null` |
+|---|---|---|
+| `sparse` VR quotient strip/upstream | 1.11979 -> **1.00000** | 1.11169 -> **1.00000** |
+| gene `Pvalue` Pearson, max\|d\| | 0.999716 -> **0.999995**, 0.609 -> **0.180** | 0.999143 -> **0.999966**, 0.218 -> **0.116** |
+| gene `Pvalue_Burden` | 0.999226 -> **0.999996**, 0.609 -> **0.078** | 0.999249 -> **0.999997**, 0.201 -> **0.014** |
+| gene cells matching a VR row / between | 1626/1455 -> **2421/677** | 1625/1466 -> **2617/490** |
+| single-in-group `var` quotient MAC<=20.5 | median 1.1197910 -> **1.0000000** | 1.1116919 -> **1.0000000** |
+
+The `20:17775656:A:T` fast-test straddle on `y_quant_pc` is still the only
+`UNPREDICTED` row, before and after -- it is a cutoff straddle, not a
+variance-ratio effect, so #97 was never expected to move it, and none appeared.
+
+`RESULTS.md` gains a second "After the #97 fix" subsection and its preamble now
+says all three quantitative traits are post-fix; the *(pre-#97)* row labels stay
+as the record of what #97 did.
+
+One thing to know when reading the two subsections together: the `y_quant`
+re-run was on the pre-#102 build and these two on the post-#102 build. #102
+deleted a dead value and moved no golden, so the builds are output-equivalent,
+but the `so_md5` recorded in `results.tsv` differs between them (`29e41ccd...`
+against `decbe51d...`) and that is why.
+
 ## Still open
 
-1. **`y_quant_pc` and `y_null` own models are still pre-#97 fits** (item 3 of
-   the previous handoff). `harness/sim/upstream_compare/RESULTS.md` labels those
-   rows *(pre-#97)*; a uniformly post-#97 own-model table needs
-   `MODELS=own run_arm.sh strip step1 <trait> 1` for both traits, then
-   `s2single` and `s2group`, then `compare_all.sh`. Not started.
-2. LEDGER #91's `WHERE` cites `src/SAIGE_fitGLMM_fast.cpp:2504`/`:2533`; the
+1. LEDGER #91's `WHERE` cites `src/SAIGE_fitGLMM_fast.cpp:2504`/`:2533`; the
    two floors are now at `:2508`/`:2536`. It was already stale before this
    session's deletion shifted it by one, and was left alone rather than churn a
    row that is not being fixed.
