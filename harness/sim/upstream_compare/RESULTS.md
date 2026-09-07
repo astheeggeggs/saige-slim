@@ -96,16 +96,22 @@ was not -- LEDGER #97, found here.
 
 ### What moves and why (own models, all five traits)
 
+**This table is the 2026-09-05 state, taken before LEDGER #97 was fixed.** The
+`y_quant` own-model step 2 was re-run against the fixed models on 2026-09-07 and the
+four rows marked *(pre-#97)* below no longer describe it; the post-fix numbers are in
+"After the #97 fix" at the end of this section. `y_quant_pc` and `y_null` own models
+were not refitted, so their rows still stand as written.
+
 | where | rows | cause | how it was pinned |
 |---|---|---|---|
 | single, 8 markers only in strip, every trait | 8 / 70,709 | **#29** upstream drops MAC exactly 20 | all 8 have MAC = 20 = `--minMAC` |
 | single, `AF_Allele2 > 0.5` | 11,671 / 70,701 per trait, every one differs | **#28** upstream's variance on that path is 2-7x too large, marker by marker | hand recomputation from the raw `.bed` + null model reproduces strip's `var` = Σ(g-ḡ)²·VR exactly on BOTH allele sides; upstream's does not. Negative control: on `y_null` upstream's AF>0.5 p-values have median 0.76 and 0.7% below 0.05 (expect 0.50 / 5%); strip's are 0.54 / 4.0%, matching its own AF≤0.5 side band by band |
 | single, `AF ≤ 0.5`, binary traits | ~59,000 per trait, all `|Δlog10 p| < 0.05` | **#53** (step-1 decode): upstream's category-1 variance ratio is 0.14% off, category-2 0.005% | the ratio of the arms' reported `var` equals the ratio of their `null_noXadj` rows to 7 digits (0.99864 / 1.00022); a chi-square rescale by it predicts strip's p to 1e-3 in log10 on every row |
-| single, `AF ≤ 0.5`, quantitative traits | ~59,000 per trait | **#65** standardisation moved the `null` rows 0.2-0.6% (rounding on theta 1e-5, coefficients 1e-4, plus the absolute PCG stop #6 now acting in standardised units `[ASSUMPTION: consistent, not isolated]`), and **#97** on the ~35 MAC-20 markers that escalate to the sparse re-test (`var` quotient exactly 1.11126 = 1/s²) | same reconciliation as above, every row |
+| single, `AF ≤ 0.5`, quantitative traits  *(pre-#97)* | ~59,000 per trait | **#65** standardisation moved the `null` rows 0.2-0.6% (rounding on theta 1e-5, coefficients 1e-4, plus the absolute PCG stop #6 now acting in standardised units `[ASSUMPTION: consistent, not isolated]`), and **#97** on the ~35 MAC-20 markers that escalate to the sparse re-test (`var` quotient exactly 1.11126 = 1/s²) | same reconciliation as above, every row |
 | gene tests, binary traits | max `|Δlog10 P|` 0.018 | #53 variance-ratio shift | `SE_Burden²` quotient = variance-ratio quotient |
-| gene tests, quantitative traits | up to 0.61 in -log10; 15% of cells | **#97**: cells whose markers use the `sparse` row have `SE_Burden²` strip/upstream = 0.8999 = s² exactly (459 cells for `y_quant`); the rest 1/1.0053 (the `null` row) or in between (mixed MAC categories) | bimodal quotient table; all cells inside [min, max] of the row quotients |
-| gene tests, cells with a SKAT-O p of exactly 1 | 1-4 per quantitative trait (e.g. GENE0119, one rare marker, 0.86 → 1.0) | **#86**: SKAT's own saturation at 1, reached once #97 shifts the cell | flagged `SKATO=1` |
-| gene tests, `Cauchy` rows | 7-10 per trait at exactly 1.0 on strip | **#86** (documented decision): SAIGE's CCT falls back to Bonferroni when any cell's p is exactly 1, and #97 pushed cells to 1 | flagged `Cauchy=1` |
+| gene tests, quantitative traits  *(pre-#97)* | up to 0.61 in -log10; 15% of cells | **#97**: cells whose markers use the `sparse` row have `SE_Burden²` strip/upstream = 0.8999 = s² exactly (459 cells for `y_quant`); the rest 1/1.0053 (the `null` row) or in between (mixed MAC categories) | bimodal quotient table; all cells inside [min, max] of the row quotients |
+| gene tests, cells with a SKAT-O p of exactly 1  *(pre-#97)* | 1-4 per quantitative trait (e.g. GENE0119, one rare marker, 0.86 → 1.0) | **#86**: SKAT's own saturation at 1, reached once #97 shifts the cell | flagged `SKATO=1` |
+| gene tests, `Cauchy` rows  *(pre-#97)* | 7-10 per trait at exactly 1.0 on strip | **#86** (documented decision): SAIGE's CCT falls back to Bonferroni when any cell's p is exactly 1, and #97 pushed cells to 1 | flagged `Cauchy=1` |
 | single-in-group (`.singleAssoc.txt`), binary | 965 rows upstream lacks, in exactly 22 regions | **#50**: upstream loses an escalated region's single-variant rows through a temp file the next region truncates | upstream's log has exactly 22 "Non-fast test is performed" lines; the 22 regions coincide |
 | one row | `20:17775656:A:T`, `y_quant_pc`, p 0.037 → 0.050 | fast-test cutoff straddle: strip's fast p is 0.0500066 (not re-tested), upstream's was below 0.05 (re-tested on the sparse path) | the only row on 5 traits x 3 tables the tagger could not reconcile; d = 0.13 at p ≈ 0.05 |
 
@@ -114,6 +120,59 @@ traits (16 in the top 21) and within two places on the quantitative ones (5 and 
 the top 21; `y_null` 2-3, chance). **Negative control** (`y_null`): both arms are
 near-uniform on AF ≤ 0.5 (KS D 0.014-0.015, 4.4% below 0.05); the AF > 0.5 split is
 above.
+
+### After the #97 fix: `y_quant` own models re-run (2026-09-07)
+
+[Measured. `MODELS=own run_arm.sh strip {s2single,s2group} y_quant 1` against the
+models refitted after the #97 fix, then `compare_all.sh 1 1`; strip HEAD `30832166`,
+upstream arm untouched. Logs `harness/work/region_profile/overnight/3*`; the summary
+before and after is snapshotted there beside them.]
+
+The `sparse` variance-ratio quotient strip/upstream is now **1.00000** where it was
+**1.11126**; the other four rows are unmoved (`1.00195 1.00199 … 1.00530 1.00553`).
+Both `sparse` categories move, and nothing else in `cmp_summary.txt` changes -- the
+re-run's diff is five hunks, all inside the three `y_quant models=own` blocks, so every
+`frozen` table and every other trait reproduced its previous text exactly.
+
+| table | before | after |
+|---|---|---|
+| gene, `Pvalue` | Pearson 0.998997, Spearman 0.997843, max\|d\| 0.389 | **0.999991 / 0.999980, max\|d\| 0.027** |
+| gene, `Pvalue_Burden` | 0.999224, max\|d\| 0.235 | **0.999995, max\|d\| 0.051** |
+| gene, `Pvalue_SKAT` | 0.999116 | **0.999933** |
+| gene, cells matching a VR row / lying between rows | 1630 / 1452 of 3115 | **2547 / 552** |
+| gene tags | `VR` 1618, `VR-mix` 1330, `Cauchy` 151, `Cauchy=1` 7, `SKATO=1` 1, `small` 23 | **`VR` 1987, `VR-mix` 495, `tiny` 471, `Cauchy` 158, `small` 19** |
+| single-in-group, `p.value` | Pearson 0.998771, identical 0/8669, max\|d\| 0.309 | **0.999996, identical 244/8669, max\|d\| 0.022** |
+| single-in-group, `var` quotient at MAC ≤ 20.5 | median 1.11126, range [1.1112519, 1.1112676] | **median 1.0000000, range [1.0000000, 1.0000089]** |
+| single-in-group tags | `VR` 8630, `AF>0.5` 39 | **`VR` 5908, `tiny` 2479, `none` 244, `AF>0.5` 38** |
+| single, `var` quotient at MAC ≤ 20.5 | range [1.0021371, **1.1112647**] | **[1.0000000, 1.0021427]** |
+
+What this says, and what it does not. The prediction in `next.md` was that the own
+`gene y_quant` tags "lose their `VR`/`VR-mix` mass". Directionally that is what
+happened -- `VR-mix` fell 1330 → 495 (-63%) and 471 cells became `tiny`
+(rounding-level) -- but the mass did not go to zero: it largely **resolved** from
+`VR-mix` into clean `VR` (1618 → 1987), which is the sharper statement. `VR-mix` means
+a cell's quotient lay *between* the two arms' variance-ratio rows because its markers
+straddle MAC categories; with the `sparse` row no longer displaced by 1/s², cells that
+had been a mixture of a wrong row and a right one now match a single row. The count
+that says this directly is the reconciliation line: cells matching a VR row 1630 →
+2547, cells between rows 1452 → 552.
+
+The residual `VR` mass is a **different** discrepancy and is untouched by #97: it is
+the `null` / `null_noXadj` row quotient 1.00530 / 1.00553, i.e. #65/#53 rounding on the
+step-1 fit, which is why the single-variant table barely moves (Pearson 0.973418 →
+0.973446) while the gene and single-in-group tables move by two orders of magnitude in
+max\|d\|. #97 lived in the `sparse` row, and the `sparse` row is what the low-MAC
+gene-test path uses.
+
+Two tags disappeared entirely: `Cauchy=1` (7) and `SKATO=1` (1). Those were LEDGER #86
+-- SKAT's saturation at p = 1 and SAIGE's CCT Bonferroni fallback -- reached *because*
+#97 had displaced the cells. With the displacement gone, no cell reaches p = 1, so #86
+is no longer triggered on `y_quant`. #86 itself is unchanged; only the input that
+provoked it is.
+
+No row became `UNPREDICTED`. The one `UNPREDICTED` in `cmp_summary.txt` is the
+`20:17775656:A:T` fast-test straddle on `y_quant_pc` documented above, in a trait this
+re-run did not touch.
 
 ### Frozen models (step 2 isolated; `y_binary`, `y_quant`)
 

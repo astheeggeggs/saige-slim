@@ -170,7 +170,7 @@ AF<=0.5: differing 59012/59030   AF>0.5: differing 11671/11671
   AF_Allele2  max|rel diff| 0.000e+00  n differing 0
 wrote /Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/cmp/single_y_binary_own.tsv (70701 rows)
 
-variance-ratio quotients strip/main: 1.11126 1.00195 1.00199 1.11126 1.00530 1.00553 
+variance-ratio quotients strip/main: 1.00000 1.00195 1.00199 1.00000 1.00530 1.00553 
 == single y_quant models=own single ==
 rows  main 70701  strip 70709
 only main 0 | only strip 8 | shared 70701
@@ -178,17 +178,17 @@ strip-only MAC table (LEDGER #29 predicts all == minMAC):
 m
 20 
  8 
-p.value        Pearson 0.973418 Spearman 0.946046 | identical 2/70701 (0.00%) | max|d| 3.225e+00 | n(|d|>1) 386 | NA main 0 strip 0
+p.value        Pearson 0.973446 Spearman 0.946048 | identical 4/70701 (0.01%) | max|d| 3.225e+00 | n(|d|>1) 386 | NA main 0 strip 0
 tags: tag
-AF>0.5   none  small     VR 
- 11670      2     17  59012 
-AF<=0.5: differing 59029/59030   AF>0.5: differing 11670/11671
-  var_strip/var_main non-SPA AF<=0.5 MAC<=20.5 n=   643 median 1.0021427  range [1.0021371, 1.1112647]
+AF>0.5   none  small   tiny     VR 
+ 11670      4     17     30  58980 
+AF<=0.5: differing 59027/59030   AF>0.5: differing 11670/11671
+  var_strip/var_main non-SPA AF<=0.5 MAC<=20.5 n=   643 median 1.0021427  range [1.0000000, 1.0021427]
   var_strip/var_main non-SPA AF<=0.5 MAC>20.5  n= 58387 median 1.0055315  range [1.0040921, 1.0107846]
-  BETA        max|rel diff| 9.999e-01  n differing 70701
-  SE          max|rel diff| 9.897e-01  n differing 70701
+  BETA        max|rel diff| 9.999e-01  n differing 70674
+  SE          max|rel diff| 9.897e-01  n differing 70667
   Tstat       max|rel diff| 4.005e-02  n differing 32274
-  var         max|rel diff| 9.999e-01  n differing 70701
+  var         max|rel diff| 9.999e-01  n differing 70669
   AF_Allele2  max|rel diff| 0.000e+00  n differing 0
 wrote /Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/cmp/single_y_quant_own.tsv (70701 rows)
 
@@ -271,17 +271,17 @@ Cauchy   none  small   tiny     VR
    145   1713     19    931    530 
 wrote /Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/cmp/gene_y_binary_own.tsv (3338 rows)
 
-variance-ratio quotients strip/main: 1.11126 1.00195 1.00199 1.11126 1.00530 1.00553 
+variance-ratio quotients strip/main: 1.00000 1.00195 1.00199 1.00000 1.00530 1.00553 
 == gene y_quant models=own gene ==
 rows  main 3338  strip 3338
 only main 0 | only strip 0 | shared 3338
-Pvalue         Pearson 0.998997 Spearman 0.997843 | identical 208/3338 (6.23%) | max|d| 3.894e-01 | n(|d|>1) 0 | NA main 0 strip 0
-Pvalue_Burden  Pearson 0.999224 Spearman 0.999614 | identical 19/3338 (0.57%) | max|d| 2.353e-01 | n(|d|>1) 0 | NA main 0 strip 0
-Pvalue_SKAT    Pearson 0.999116 Spearman 0.999075 | identical 53/3338 (1.59%) | max|d| 2.693e-01 | n(|d|>1) 0 | NA main 0 strip 0
-gene cells whose SE_Burden^2 quotient matches a variance-ratio row: 1630 ; lies between the rows (mixed MAC categories): 1452 of 3115 
+Pvalue         Pearson 0.999991 Spearman 0.999980 | identical 208/3338 (6.23%) | max|d| 2.704e-02 | n(|d|>1) 0 | NA main 0 strip 0
+Pvalue_Burden  Pearson 0.999995 Spearman 0.999982 | identical 19/3338 (0.57%) | max|d| 5.100e-02 | n(|d|>1) 0 | NA main 0 strip 0
+Pvalue_SKAT    Pearson 0.999933 Spearman 0.999646 | identical 58/3338 (1.74%) | max|d| 2.770e-01 | n(|d|>1) 0 | NA main 0 strip 0
+gene cells whose SE_Burden^2 quotient matches a variance-ratio row: 2547 ; lies between the rows (mixed MAC categories): 552 of 3115 
 tags: tag
-  Cauchy Cauchy=1     none  SKATO=1    small       VR   VR-mix 
-     151        7      208        1       23     1618     1330 
+Cauchy   none  small   tiny     VR VR-mix 
+   158    208     19    471   1987    495 
 wrote /Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/cmp/gene_y_quant_own.tsv (3338 rows)
 
 variance-ratio quotients strip/main: 1.00000 0.99719 0.99721 1.00000 1.00002 1.00010 
@@ -371,7 +371,7 @@ AF<=0.5: differing 5806/8048   AF>0.5: differing 33/36
   AF_Allele2  max|rel diff| 0.000e+00  n differing 0
 wrote /Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/cmp/gene_single_y_binary_own.tsv (8084 rows)
 
-variance-ratio quotients strip/main: 1.11126 1.00195 1.00199 1.11126 1.00530 1.00553 
+variance-ratio quotients strip/main: 1.00000 1.00195 1.00199 1.00000 1.00530 1.00553 
 == gene_single y_quant models=own single ==
 rows  main 8669  strip 9049
 only main 0 | only strip 380 | shared 8669
@@ -389,17 +389,17 @@ m
   3   3   4   1   1   1   3   1   1   3   1   1   3   1   1   1   1   1   1   3 
 350 379 382 447 470 504 526 560 568 678 685 686 736 760 782 818 928 931 
   1   1   3   1   1   1   3   3   3   1   1   1   1   1   2   3   1   1 
-p.value        Pearson 0.998771 Spearman 0.999586 | identical 0/8669 (0.00%) | max|d| 3.091e-01 | n(|d|>1) 0 | NA main 0 strip 0
+p.value        Pearson 0.999996 Spearman 0.999999 | identical 244/8669 (2.81%) | max|d| 2.238e-02 | n(|d|>1) 0 | NA main 0 strip 0
 tags: tag
-AF>0.5     VR 
-    39   8630 
-AF<=0.5: differing 8630/8630   AF>0.5: differing 39/39
-  var_strip/var_main non-SPA AF<=0.5 MAC<=20.5 n=  2818 median 1.1112600  range [1.1112519, 1.1112676]
+AF>0.5   none   tiny     VR 
+    38    244   2479   5908 
+AF<=0.5: differing 8387/8630   AF>0.5: differing 38/39
+  var_strip/var_main non-SPA AF<=0.5 MAC<=20.5 n=  2818 median 1.0000000  range [1.0000000, 1.0000089]
   var_strip/var_main non-SPA AF<=0.5 MAC>20.5  n=  5812 median 1.0053001  range [1.0052923, 1.0053089]
-  BETA        max|rel diff| 1.009e-01  n differing 8669
-  SE          max|rel diff| 5.138e-02  n differing 8669
+  BETA        max|rel diff| 6.684e-03  n differing 6860
+  SE          max|rel diff| 2.648e-03  n differing 5926
   Tstat       max|rel diff| 1.419e-03  n differing 3587
-  var         max|rel diff| 1.001e-01  n differing 8669
+  var         max|rel diff| 5.281e-03  n differing 5955
   AF_Allele2  max|rel diff| 0.000e+00  n differing 0
 wrote /Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/cmp/gene_single_y_quant_own.tsv (8669 rows)
 
