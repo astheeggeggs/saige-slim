@@ -165,6 +165,23 @@ deleted a dead value and moved no golden, so the builds are output-equivalent,
 but the `so_md5` recorded in `results.tsv` differs between them (`29e41ccd...`
 against `decbe51d...`) and that is why.
 
+## Updating this pointer: do NOT `git add docs/state/next.md`
+
+`next.md` has carried another session's uncommitted section since 2026-09-06, so
+staging the file wholesale sweeps that in. Stage the pointer line ALONE:
+`harness/work/region_profile/drivers/stage_next_pointer.sh` rebuilds HEAD's
+`next.md` with only the header date and line 3 changed, hashes it, and
+`git update-index --cacheinfo`s it, leaving the working tree untouched. Edit its
+`sed` to name the new handoff before running it -- it currently names this file,
+and it asserts nothing, so a stale pattern silently stages unchanged content.
+
+That script is under `harness/work/`, which is **gitignored**: it exists on this
+machine only and will not survive a fresh clone. It was described in
+`handoff-2026-09-06-region-skato-batch.md` and
+`handoff-2026-09-06-region-multimodel.md`, both of which the pointer chain no
+longer reaches -- hence this note. If it is gone, hand-stage the single line
+(`git add -p`); the technique matters, the script does not.
+
 ## Still open
 
 1. LEDGER #91's `WHERE` cites `src/SAIGE_fitGLMM_fast.cpp:2504`/`:2533`; the
