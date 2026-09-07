@@ -1,6 +1,6 @@
 # What is worth doing next (2026-09-03, updated 2026-09-07)
 
-**Current handoff: `docs/state/handoff-2026-09-07-ledger102.md`** (then this
+**Current handoff: `docs/state/diag-2026-09-07-region-burden-variance.md`** (then this
 file, then `python3 harness/tools/ledger.py open`). Handoffs are dated and
 never renamed; when several share the newest date `ls | tail -1` sorts them by
 name, not by time, so this line is the pointer and is updated with every new
@@ -520,6 +520,133 @@ and the variance ratios could have used. Carrying dosages properly means a
 second storage path through `genoClass` and touches the GRM kernels, LOCO and
 every step-1 golden -- deliberately out of scope, and worth measuring (does the
 GRM actually move?) before being attempted.
+
+## REFUTED: port the repo to a faster language (2026-09-06)
+
+[Grounded; `harness/bench/NOTES.md` profiles of 2026-09-04/05 and the
+2026-09-06 writer-bench handoff. Owner decision: no port, recorded here so it
+is not re-opened.]
+
+The owner asked whether the clean branch should now be rewritten in a faster
+language. The measurements already in NOTES say the CPU is in compiled code:
+- Binary single-variant scan, N = 50k, 1 thread: Firth 56.1%, `getOneMarker`
+  15.1%, SPA 10.2%, impute 5.6%, score tests 7.6%, R writer 0.09%. All C++.
+- SKAT-O gene tests: the 45% under `region_postprocess` is `.C("qfc")` (93.9 s
+  self against 3.9 s of R glue), so R is ~1.8% of the run; BURDEN is 93.7% C++.
+- The N = 1,000 benches are ~90% process startup, the one term a compiled
+  binary would remove, and it is gone at 50k.
+- Thread-scaling loss at T = 8 is the turbo/HT floor, not a serial R section.
+- `src/` is ~20k lines of C++; `R/` is ~10k lines of CLI, orchestration,
+  step-1 glue and region post-processing. The split a port would produce
+  already exists.
+
+What a port would cost: the byte-exact goldens and every ledger row of
+bug-for-bug behaviour would have to be re-argued under a different BLAS, libm
+and reduction order, and the SKAT-package parity on the region goldens would
+have no reference. That is the branch's whole verification method.
+
+The two levers that remain if speed is wanted, neither scheduled: the Firth
+fit (33 ms per eligible marker, 9 Newton iterations each -- warm start, QR
+reuse or a cheaper convergence rule inside the existing C++), and threading
+SKAT-O cells in-process, which needs a C++ port of ONE routine
+(`SKAT_Optimal_PValue_Davies` + `qfc`, gated by bit-identity against the SKAT
+package), not of the repo. [Qualified the same day by the `qfc` audit in
+`docs/state/region-perf-handoff.md`: SKAT's `qfc` cannot be LINKED on threads
+-- file-scope statics, one global `jmp_buf` -- so that port would be a
+reentrant reimplementation of Davies, not a copy. Not planned.]
+
+## The region path (2026-09-06): measured, de-churned, split, threaded
+
+[Measured; `docs/state/handoff-2026-09-06-region-threads.md`, the last four
+sections of `harness/bench/NOTES.md`; plan
+`~/.claude/plans/can-you-summarise-what-shimmering-snail.md`.] Four commits
+after `7a9efcb8`: `SAIGE_PROFILE_REGION`; P1/P2 chunks in memory (42% of the
+region C++ had been churn and a disk round trip, the VarMat dgemm is 1.6%);
+pass A split into prepare-and-test / serial accumulate; `--nThreads` threads
+the region marker loop, byte-identical at any count, TSAN clean + plant. At 4
+threads on `sim50k`: SKAT-O 1.69x / 1.93x wall, BURDEN 1.57x / 1.64x. The
+`qfc` audit closed in-process SKAT-O for good (see the port section below).
+
+Decided order for what remains:
+* **Step 3b, next:** thread the per-cell tests of the ultra-rare pass and the
+  BURDEN emitter (15 independent cells each; they are ~45% of a BURDEN run
+  with accumulate and R, which is exactly why BURDEN reads 1.57x and not the
+  3.36x once projected). Predicted ~2.2x at 4 threads on this machine.
+* **Step 4, then:** several null models per region (`--groupFile` with a
+  manifest). Step 1's buckets size it: the shared prepare is 18-23% of the
+  SKAT-O C++ (~10% of a run per extra model) and 35-59% of BURDEN's.
+* Step 5 (batch the SKAT-O cells) is independent and small.
+* Later, if BURDEN at scale matters: thread across REGIONS rather than
+  markers, which approaches the hardware ceiling (~2.9x at 4 threads here).
+
+## FlexRV: planned, not implemented (2026-09-07)
+
+[Planned; `docs/design/flexrv-plan.md`, owner's decisions recorded there.]
+The repo's "flexRV" label on Phase 5 names the multi-weight ENGINE, not the
+method. FlexRV (Schwartzentruber et al., bioRxiv 2025.11.04.686320) is 192
+fixed weight vectors per gene (16 pathogenicity-score transforms x 12 MAF/MAC
+transforms), a burden test per vector, Cauchy-combined; nothing on this branch
+builds those vectors. The plan adds a `score:NAME` group-file line and a
+`transform` set kind that C++ expands from the in-sample MAF/MAC it already
+has per marker (`src/Main.cpp:2012-2044`), custom-set semantics throughout,
+one computation exported to R. Two things verified in code before planning,
+recorded so they are not re-derived: the default `beta(1,25)` never multiplies
+a custom set on the unconditional path (implicit beta set composed only when no
+other set exists, `R/SAIGE_SPATest_Region.R:917-927`); it DOES reach the
+conditioning markers' weights when `--weights_for_condition` is absent
+(`src/Main.cpp:1852-1860`), so FlexRV + `--condition` without that flag is a
+hard error in the plan. Memory scales as N x K x cells x ~4 arrays (9 GB per
+array at N = 500k with 192 sets and the default 12 cells), so the plan's F5
+stage measures at N = 50,000 on `sim50k` before anything is called done; the
+sim's latent score `a_lat` is not written by `02_build_dataset.py`, which F5
+has to fix or work around.
+
+## LEDGER #104/#105/#106: the SKAT-O burden variance (2026-09-07)
+
+[Diagnosed, reconciled two ways, fix verified;
+`docs/state/diag-2026-09-07-region-burden-variance.md`, scripts and
+reproduction in `harness/diag/region_burden_variance/`; the rows hold the
+authoritative story. Companion measurement by the other 2026-09-07 session,
+`docs/state/diag-2026-09-07-region-vs-burden-exact.md`: both burden
+constructions against the exact model variance, the region path's excess on
+multi-marker cells being entirely #106's truncation.] #104 and #105 are ONE mechanism and not the "which
+variance ratio" question the rows first posed: on binary traits the R-side
+`Phi` adjustment computes its burden p-value on the naive variance and the
+clamp `r = min(VarQ/VarQ_2, 1)` then forbids the burden variance to go below
+naive, so wherever the GRM and the ratio reduce it (every cell of P6) the
+SKAT-O path reports the no-GRM, no-ratio burden test and inflates all of `Phi`
+with it. That is a p-value defect (all three columns), not only an effect-size
+one. The published SAIGE-GENE method has no such step. #106 is new and
+separate: step 2's sparse `Sigma` is one triangle of the symmetric .mtx and
+its PCG stops after one or two iterations on an absolute tolerance.
+
+Decisions for the owner:
+* **Apply fix A** (four lines in `get_newPhi_scaleFactor_traitType`, reference
+  `fixes.R` `phi_a`): standardise the burden statistic by `1'Phi 1` before
+  the `|z| < 2` test and the saddlepoint, the marker SPA's own device. One
+  commit for #104 + #105 with the characterization the row describes; the
+  predicted golden movement is in the row (every binary SKAT-O group golden,
+  every cell, plus the conditional group goldens; nothing else). Fix B
+  (delete the `r` step, the published method) is identical under the null on
+  this fixture but its `SE_Burden` understates the estimator's spread by 9 %
+  under a planted effect, where A's matches; that is why A.
+* **Then #106 as its own row and commit** (symmetrise the triplets in
+  `setSparseSigma_new`, relative PCG tolerance), characterized on a P27 marker
+  first; moves every sparse-GRM step-2 golden by up to ~0.5 % in variance.
+* **Do not re-open** the "which ratio should scale a burden statistic" framing:
+  with both modes on the sparse arm they still differ by the discarded GRM,
+  4.4-4.9 %; the real per-row category mix is 1.5-2.3 % on the quantitative
+  goldens and is the selector working as defined.
+
+Two observations outside the ledger, recorded so the planted-effect table is
+not misread: the step-1 refit recovers tau2 = 0.71 of a true 4.0 (0.19 of
+0.33 at the model's own value) over hundreds of simulated replicates, the
+known downward bias of the penalised quasi-likelihood fit for binary traits,
+which bounds what any step-2 variance fix can achieve under strong
+relatedness; and the score-test `BETA` overshoots by 16 % at a per-allele
+log-odds near 1 (maximum likelihood with the true random effects recovers
+0.97), on the marker path as much as in the region path. Neither is a code
+defect on this branch.
 
 ## Deliberately not listed
 
