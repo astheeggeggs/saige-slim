@@ -329,7 +329,16 @@ public:
 	//vector<int> chromosomeStartIndex;
 	//vector<int> chromosomeEndIndex;
 	//vector<int> chromosomeVec;
-        size_t Msub;
+	// LEDGER #102: the `Msub` member and its `getMsub()` accessor were deleted
+	// here. `setStartEndIndex` recomputed `Msub` by looping over `M` (every
+	// marker in the plink file) while indexing `alleleFreqVec`, which is sized
+	// to the QC-passing count, so it read past the end on every LOCO fit with a
+	// marker under `minMAFforGRM`; the two index spaces are not the same space
+	// either, so the in-bounds reads were the wrong markers. Nothing read the
+	// result -- `CorssProd_LOCO::m_Msub` was assigned and never used and
+	// `getDiagOfSigma_LOCO`'s local was unused -- so bounding the loop would
+	// have kept a wrong number alive. `startIndex`/`endIndex`/`chromIndex`,
+	// which the LOCO cross-product does read, stay.
         int startIndex;
         int endIndex;
 	int chromIndex;
@@ -1265,9 +1274,6 @@ public:
 	//	return(Mmafge1perc);
  	//}
 
-	int getMsub() const{
-                return(Msub);
-        }
 
 	int getStartIndex() const{
 		return(startIndex);
@@ -1722,7 +1728,6 @@ struct CorssProd_LOCO : public Worker
         // source vectors
         arma::fcolvec & m_bVec;
         unsigned int m_N;
-        unsigned int m_Msub;
         unsigned int m_M;
 	int startIndex;
 	int endIndex;
@@ -1734,7 +1739,6 @@ struct CorssProd_LOCO : public Worker
         CorssProd_LOCO(arma::fcolvec & y)
                 : m_bVec(y) {
 
-                m_Msub = geno.getMsub(); //LOCO
 		startIndex = geno.getStartIndex();
 		endIndex = geno.getEndIndex();
                 m_M = geno.getM(); //LOCO
@@ -1749,7 +1753,6 @@ struct CorssProd_LOCO : public Worker
 
                 m_N = CorssProd_LOCO.m_N;
                 m_M = CorssProd_LOCO.m_M;
-		m_Msub = CorssProd_LOCO.m_Msub;
 		startIndex = geno.getStartIndex();
                 endIndex = geno.getEndIndex();
                 m_bout.zeros(m_N);
@@ -2517,7 +2520,6 @@ arma::fvec getDiagOfSigma(arma::fvec& wVec, arma::fvec& tauVec){
 arma::fvec getDiagOfSigma_LOCO(arma::fvec& wVec, arma::fvec& tauVec){
 
         int Nnomissing = geno.getNnomissing();
-        int Msub = geno.getMsub();
         //cout << "N=" << N << endl;
         arma::fvec diagVec(Nnomissing);
         float diagElement;
@@ -3310,18 +3312,7 @@ void setChromosomeIndicesforLOCO(vector<int> chromosomeStartIndexVec, vector<int
 void setStartEndIndex(int startIndex, int endIndex, int chromIndex){
   geno.startIndex = startIndex;
   geno.endIndex = endIndex;
-  geno.Msub = 0;
   geno.chromIndex = chromIndex;
-
-  for(size_t i=0; i< geno.M; i++){
-	if(i < startIndex || i > endIndex){
-  		if(geno.alleleFreqVec[i] >= minMAFtoConstructGRM && geno.alleleFreqVec[i] <= 1-minMAFtoConstructGRM){
-      
-			geno.Msub = geno.Msub + 1;
-  		}
-	}
-  }
-  //geno.Msub = geno.M - (endIndex - startIndex + 1);
 }
 
 
@@ -4108,7 +4099,6 @@ struct CorssProd_usingSubMarker : public Worker
         CorssProd_usingSubMarker(arma::fcolvec & y)
                 : m_bVec(y) {
 
-                //m_Msub = geno.getMsub();
                 subMarkerIndex = getSubMarkerIndex();
                 m_M_Submarker = subMarkerIndex.n_elem;
                 m_N = geno.getNnomissing();

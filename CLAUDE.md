@@ -154,8 +154,9 @@ PGEN fixtures (`linux-64`/`osx-64` only, hence the per-platform split in
   data-invariant checks over the goldens, and the suite's own comparator
   self-tests (`test-meta-comparators.R`, null + positive controls).
 - **standard** (~1.5-2.5 min, default): fast + the step-1 genotype-store checks
-  (`test-step1-genostore.R`, `test-step1-pgen.R`), every step-2 CLI run against
-  `harness/goldens/step2/` (goldens, marker paths, multi-weight, Firth, PGEN
+  (`test-step1-genostore.R`, `test-step1-pgen.R`), the Guard Malloc pass over a
+  step-1 LOCO fit (`test-step1-loco-oob.R`, macOS only), every step-2 CLI run
+  against `harness/goldens/step2/` (goldens, marker paths, multi-weight, Firth, PGEN
   mirrors, threads, escalation, file integrity), and the characterization tests.
 - **full** (~20+ min, same-platform only): standard + golden regeneration,
   step-1 determinism double-run, permuted-phenotype negative control.
@@ -248,6 +249,17 @@ ARE captured. Baseline at C8: R 55.2%, live step-2 C++ 72.2% line / 42.9% branch
   Check `otool -L .../SAIGE.so | grep plink2` names the instrumented archive
   under `harness/work/tsan`; `libtbb` is not instrumented, so main-vs-worker
   races are expected and annotated under `SAIGE_TSAN_ANNOTATIONS`.
+- `bash harness/guardmalloc.sh [clean|plant|both]` -- Guard Malloc
+  (`/usr/lib/libgmalloc.dylib`, macOS only) over a two-chromosome step-1 LOCO
+  fit: every allocation on its own page with an unmapped page after it, so a
+  read past the end faults on the instruction that does it. This is what
+  characterizes LEDGER #102; a bounds-checked (`ARMA_NO_DEBUG`-less) build does
+  NOT, because armadillo's `operator[]` is unchecked in every build. **Always
+  run the plant arm** (a deliberate out-of-range read at the same program
+  point): `Rscript` routes through a SIP-protected binary that strips `DYLD_*`,
+  so the GuardMalloc banner can print from the pre-exec process while the R
+  process that runs the fit allocates from ordinary malloc -- the banner proves
+  nothing, only the plant does. `test-step1-loco-oob.R` drives both arms.
 - `bash harness/make_controls.sh <dir>` -- permuted-phenotype negative control
   through the full pipeline + KS uniformity check, through both readers.
 - `bash harness/prepush.sh` -- the pre-push gate (Rules).
