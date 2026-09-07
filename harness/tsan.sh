@@ -17,6 +17,14 @@
 #             SAIGE_TSAN_WORKLOADS=pgen; on a PLINK workload it plants nothing
 #             (PLINK clones share one reader BY DESIGN -- its reads are const).
 #
+# SAIGE_TSAN_TIMEOUT caps each ARM (default 3600s). It exists because a plant is
+# licensed to misbehave arbitrarily: on 2026-09-07 the planted `region t=4` arm
+# segfaulted, R's segfault handler printed its banner and then blocked on the
+# interactive abort prompt, and this script sat on it for 4h32m before it was
+# killed by hand. An arm that dies or times out is reported as its own outcome,
+# distinct from races=0 -- under `plant` that is the mode working, under `clean`
+# it is a failure.
+#
 # SAIGE_TSAN_MAX_MARKERS caps every arm at the first N markers of the fixture,
 # via an --idstoIncludeFile written here. It defaults to 2000 in `plantreader`
 # and to the whole fixture otherwise, because the planted defect is not merely
@@ -51,6 +59,8 @@ set -euo pipefail
 MODE="${1:-clean}"
 case "$MODE" in clean|plant|plantreader) ;; *) echo "usage: tsan.sh [clean|plant|plantreader]" >&2; exit 2 ;; esac
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+source "$REPO/harness/timeout.sh"
+LIMIT="${SAIGE_TSAN_TIMEOUT:-3600}"
 WORK="${SAIGE_TSAN_WORK:-$REPO/harness/work/tsan}"
 PKG="$WORK/pkg"; LIB="$WORK/lib"; RUNS="$WORK/runs.$MODE"
 PREFIX="$REPO/.pixi/envs/default"
@@ -241,16 +251,32 @@ tsan_run() { # tsan_run <workload> <threads>
     fi
     include="--idstoIncludeFile=$inc"
   fi
-  TSAN_OPTIONS="halt_on_error=0 history_size=7 exitcode=0 log_path=$base.tsan" \
-  RCPP_PARALLEL_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
+  # `env` rather than a bare VAR=... prefix: these are arguments to a shell
+  # FUNCTION, and a prefix on a function call leaks into the shell afterwards.
+  run_with_timeout "$LIMIT" "$base.log" env \
+    TSAN_OPTIONS="halt_on_error=0 history_size=7 exitcode=0 log_path=$base.tsan" \
+    RCPP_PARALLEL_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
     pixi run --manifest-path "$REPO/pixi.toml" bash "$WORK/run_r.sh" -f step2_SPAtests.R --args \
     $bed --minMAF=0 --minMAC=1 --LOCO=FALSE --markers_per_chunk=10000 --nThreads=$nt $include $args \
     --GMMATmodelFile="$modeldir/$model.rda" \
     --varianceRatioFile="$modeldir/$model.varianceRatio.txt" \
-    --SAIGEOutputFile="$base.txt" > "$base.log" 2>&1 || true
-  local races threaded
+    --SAIGEOutputFile="$base.txt"
+  local st="$RWT_STATUS" races threaded
   races=$(cat "$base".tsan.[0-9]* 2>/dev/null | grep -c "WARNING: ThreadSanitizer: data race" || true)
   threaded=$(grep -c "in-process threads" "$base.log" || true)
+  # A dead or hung arm is its own outcome. Its output file is partial, so the
+  # byte comparison would be meaningless; say what happened instead of
+  # comparing. Under `plant` this is the defect being as bad as it is licensed
+  # to be; under `clean` it is a failure however many races were reported.
+  if [ "$st" -ne 0 ]; then
+    local how="died (exit $st)"
+    [ "$st" -eq 124 ] && how="TIMED OUT after ${LIMIT}s"
+    printf '  %-14s t=%-2s races=%-4s %s\n' "$wl" "$nt" "$races" "$how"
+    # Only under `clean` is this a failure of the script: a plant is licensed to
+    # crash, and that is the whole point of running one.
+    [ "$MODE" = clean ] && DIED=1
+    return
+  fi
   # A threaded arm that quietly ran serially reports zero races and proves
   # nothing -- the LEDGER #30 shape, and the reason the standing test asserts
   # this same line.
@@ -264,18 +290,22 @@ tsan_run() { # tsan_run <workload> <threads>
   printf '  %-14s t=%-2s races=%-4s bytes-vs-serial=%s\n' "$wl" "$nt" "$races" "$ident"
 }
 
+DIED=0
 echo "=== TSAN runs ($MODE); ${MAXMK:-128,868} markers each"
 for wl in ${SAIGE_TSAN_WORKLOADS:-binary binary_sparse quant region}; do
   for nt in 1 4 8; do tsan_run "$wl" "$nt"; done
 done
 echo
 if [ "$MODE" = clean ]; then
-  echo "Expected: races=0 everywhere and bytes-vs-serial=identical."
+  echo "Expected: races=0 everywhere, bytes-vs-serial=identical, and no arm died."
 elif [ "$MODE" = plantreader ]; then
   echo "Expected (on SAIGE_TSAN_WORKLOADS=pgen): races>0 at t>1 and bytes-vs-serial=DIFFERS."
   echo "If this mode reports races=0, the CLEAN pgen result above gates nothing."
 else
   echo "Expected: races>0 at t>1 (worker-vs-worker) and bytes-vs-serial=DIFFERS."
   echo "If this mode reports races=0, the CLEAN result above gates nothing."
+  echo "An arm that died or TIMED OUT is also the plant working -- a shared"
+  echo "MarkerScratch may crash before it finishes reporting."
 fi
 echo "reports and outputs: $RUNS"
+exit $DIED

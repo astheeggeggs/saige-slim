@@ -248,7 +248,12 @@ ARE captured. Baseline at C8: R 55.2%, live step-2 C++ 72.2% line / 42.9% branch
   report races, because every macOS setup mistake fails by reporting NO races.
   Check `otool -L .../SAIGE.so | grep plink2` names the instrumented archive
   under `harness/work/tsan`; `libtbb` is not instrumented, so main-vs-worker
-  races are expected and annotated under `SAIGE_TSAN_ANNOTATIONS`.
+  races are expected and annotated under `SAIGE_TSAN_ANNOTATIONS`. Each arm runs
+  under `SAIGE_TSAN_TIMEOUT` (default 3600s, `harness/timeout.sh`) and an arm
+  that dies or times out is reported as that, not as `races=0` -- licensed under
+  `plant`, and under `clean` it makes the script exit non-zero. Without it a
+  crashed arm hangs on R's interactive abort prompt indefinitely (once for
+  4h32m).
 - `bash harness/guardmalloc.sh [clean|plant|both]` -- Guard Malloc
   (`/usr/lib/libgmalloc.dylib`, macOS only) over a two-chromosome step-1 LOCO
   fit: every allocation on its own page with an unmapped page after it, so a
