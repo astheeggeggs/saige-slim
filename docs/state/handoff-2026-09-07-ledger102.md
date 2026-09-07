@@ -8,8 +8,11 @@ push the pre-push gate refused.
 | | |
 |---|---|
 | start | `9347f8e7`, `slim/strip` at `b11e6b07` |
-| end | `96f16942`, pushed: `b11e6b07..96f16942 strip -> strip` |
-| CI | run `34101270841` (`gh run list --repo astheeggeggs/saige-slim`) |
+| end | code at `96f16942`, comparison at `99541489`, plus this file's own commits; pushed from `b11e6b07` in steps |
+| CI | all green: `34101270841` (the two code commits), `34102287183` (this handoff), `34104489021` (section 3). `gh run list --repo astheeggeggs/saige-slim` |
+
+Sections 1 and 2 were written and pushed before section 3 existed, so this table
+names commits later than the file's first version.
 
 ## 1. `cca6b497` -- LEDGER #102, the out-of-bounds read in `setStartEndIndex`
 
