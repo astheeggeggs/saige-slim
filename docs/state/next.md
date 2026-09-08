@@ -718,6 +718,36 @@ phenotypes at K = 0.01, not another single arm; that is the next calibration job
 if anyone wants one, and it is a question about SAIGE-GENE+ on rare binary traits
 rather than about this branch's fixes.
 
+## DECISION (2026-09-08): incompatible flag combinations should be REFUSED
+
+The owner's call, recorded here because it is a policy rather than a single fix:
+**where two options cannot both be honoured, the CLI should refuse the
+combination rather than silently reconcile it.** The motivating case is LOCO
+with a sparse GRM -- LOCO leaves one chromosome out of a full GRM and a sparse
+GRM has no chromosomes to leave out, so the two do not make sense together.
+Today `R/SAIGE_fitGLMM_fast.R:836` quietly assigns `LOCO <- FALSE` and says
+nothing. LEDGER #111 and #112 carry the detail.
+
+Two things to settle before implementing, both measured:
+
+* **A hard error breaks the DEFAULT invocation.** `--LOCO` defaults to TRUE in
+  BOTH CLIs, so `--useSparseGRMtoFitNULL=TRUE` with no `--LOCO` at all is the
+  recommended workflow's default command; refusing it means every existing
+  sparse-GRM script must add `--LOCO=FALSE`. The alternatives are to make
+  `--LOCO`'s default depend on the GRM choice, or to warn loudly and continue.
+  This is the choice of who breaks, not whether to fix.
+* **LOCO is the ONLY silent override in `fitNULLGLMM`**, so this is one site and
+  not a pattern. Every other in-body reassignment of a user-supplied option
+  announces itself: `skipVarianceRatioEstimation` (:802),
+  `useSparseGRMforVarRatio` (:830), `isCovariateOffset` (:960) and `minInfo`
+  (`R/SAIGE_Test_main.R:451`). The neighbour `nThreads <- 1` is announced only
+  `if (bedFile != "")`, so a `--plink2File` sparse fit silently overrides both
+  LOCO and nThreads with no output at all -- measured on the golden logs, PLINK
+  prints the notice once and the PGEN twin zero times.
+
+Whatever is chosen, step 2's remedy sentence ("please run Step 1 using LOCO")
+needs the sparse-GRM case added, because on that path it cannot be carried out.
+
 ## Golden coverage audit (2026-09-08)
 
 [Measured, not estimated: the 38 step-2 golden commands parsed out of
@@ -791,6 +821,29 @@ What the audit found and is NOT done:
   byte-identical to its PLINK twin, which no earlier identity check covered.
   Found LEDGER #110 on the way. Still uncovered: `--isLowMemLOCO` has no GOLDEN
   (only `test-step1-lowmem-loco.R`), and no REGION test runs under LOCO.
+* **`--isLowMemLOCO` was assessed 2026-09-08 and a golden was DECIDED AGAINST.**
+  It is a memory-layout switch: with LOCO it writes `<prefix>_noLOCO.rda` plus
+  one `<prefix>_chr<j>.rda` per chromosome instead of one file holding all 22
+  refits, so only one refit is in memory at a time. It is dead on the RECOMMENDED
+  path -- a sparse-GRM fit forces LOCO off -- and on the dense path it changes
+  binary answers for chromosomes 2+ through the known warm-start divergence
+  above, which this session measured reaching **BETA 3.1% and p-value 5.6%** in
+  step-2 OUTPUT (the existing record measured model fields at ~1e-5; the larger
+  figure is [ASSUMPTION: not tested on a balanced fixture] because
+  `plinkforGRM_1000samples_10kMarkers` is 9,988 markers on chr1 against 12 on
+  chr2, so chr1's refit -- the warm start -- sits far from the base). Measured
+  layout on that fixture: 11 s and three files totalling 789 KB, against 7 s and
+  one 677 KB file, so on two chromosomes it is SLOWER and BIGGER; the win is peak
+  memory and scales with chromosome count (~204 KB per refit at N = 1,000,
+  O(N) content, so [ASSUMPTION: linear extrapolation] ~2 GB at N = 500,000).
+  Step 2 has no logic to derive `_chr<j>.rda` -- the name is built in exactly one
+  place, the step-1 writer -- so the user must pair the file with `--chrom` by
+  hand; a mismatch dies with `Not compatible with requested type: [type=NULL;
+  target=double]`, which names nothing relevant (the writer stubs other entries
+  with `list(NULL)`, and `is.null(list(NULL))` is FALSE, so the guard at
+  `R/readInGLMM.R:248` passes and reads NULL fitted values out of a stub). Exit
+  1, so no wrong answer escapes. Worth a row if anyone decides to support the
+  flag properly; not written, because the flag is dead on the recommended path.
 * **`r.corr` only ever takes 0 or 1**, so no fixed-rho SKAT between them.
 * **`binary_denseGRM` is a step-1 golden that is never a step-2 model.**
 * Quantitative still has no `fastTest`, multi-weight or conditional REGION
