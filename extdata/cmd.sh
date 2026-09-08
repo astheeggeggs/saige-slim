@@ -22,7 +22,8 @@
 #
 #   * PLINK and PGEN key group-file markers on the VARIANT ID -- bim column 2,
 #     pvar column 3 -- so the group file is `group_new_snpid.txt` and
-#     `--condition` takes rs IDs. `group_new_chrposa1a2.txt` names markers as
+#     `--condition` takes rs IDs. `group_new_chrposa1a2.txt` (moved to
+#     `harness/goldens_retired/inputs/` by LEDGER #113) names markers as
 #     CHR:POS:A1:A2 and matches nothing here.
 #   * `--AlleleOrder=alt-first` (the default) counts bim column 5, `ref-first`
 #     counts column 6. It has no effect on PGEN.

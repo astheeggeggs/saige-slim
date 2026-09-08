@@ -923,8 +923,23 @@ What the audit found and is NOT done:
   continuum that does not exist (and misspells "between") -- #111's family, not
   written up as its own row.
 * **`binary_denseGRM` is a step-1 golden that is never a step-2 model.**
-* Quantitative still has no `fastTest`, multi-weight or conditional REGION
-  golden (binary has 14, 9 and 9 respectively).
+* **Quantitative had no `fastTest`, multi-weight or conditional REGION golden
+  (binary has 14, 9 and 9) -- two of the three CLOSED 2026-09-08.** Goldens P56
+  (`plink_group_multiweight_quant`, K=2) and P57 (`plink_group_cond_quant`), both
+  on `quant_sparseGRM_vr`, the only quantitative model with `sparse`
+  variance-ratio rows, so they run the same sparse-GRM region path #106 was
+  first-order on. P56 brings the K>1 schema (`Weight`, `Pvalue_ACATV`,
+  `Pvalue_ACATO`; 26 rows against P38's 14) and P57 the five `_cond` columns --
+  neither existed on any quantitative golden.
+  **The third was deliberately NOT added, and the measurement is the reason:**
+  a quantitative `--is_fastTest=TRUE` region run is BYTE-IDENTICAL to P38, just
+  as the binary `plink_group_fastTest`/`plink_group_nofast` pair is, because the
+  region path never reads the flag (LEDGER #51). A third file carrying P38's
+  bytes would gate nothing, so that invariant is asserted in
+  `tests/testthat/test-step2-group-quant.R` instead, where it states for the
+  quantitative path what #51 records for the binary one. Still missing on the
+  quantitative side: PGEN mirrors of P56/P57 (reader parity for the quantitative
+  region path is covered by P41 alone), and the BURDEN-mode twins.
 * Step-1 options with neither golden nor test, mostly numerical knobs:
   `tolPCG`, `maxiterPCG`, `maxiter`, `tauInit`, `nrun`, `traceCVcutoff`,
   `ratioCVcutoff`, `isCovariateTransform`, `isCovariateOffset`,

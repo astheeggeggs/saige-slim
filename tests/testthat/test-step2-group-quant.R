@@ -226,3 +226,47 @@ test_that("LEDGER #86: SKAT-O p saturates at 1 and reroutes the Cauchy row to Bo
   expect_equal(cauchy, min(1, length(rc) * min(rc)), tolerance = 1e-12)
   expect_false(isTRUE(all.equal(cauchy, acat(rc), tolerance = 1e-8)))
 })
+
+# ---------------------------------------------------------------------------
+# LEDGER #51 on the QUANTITATIVE region path.
+#
+# #51 records that `--is_fastTest` is pure cost on a group run and returns
+# byte-identical output, because the region path never reads the flag. That is
+# pinned for BINARY by the deliberate golden pair plink_group_fastTest /
+# plink_group_nofast, whose bytes are identical and whose commands differ only
+# in --is_fastTest. No quantitative golden pair states it, and adding a third
+# file carrying P38's bytes would gate nothing -- so it is asserted here.
+
+test_that("--is_fastTest leaves the QUANTITATIVE region result byte-identical (#51)", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  out <- file.path(tempfile("quant_fast_"), "out.txt")
+  dir.create(dirname(out), recursive = TRUE)
+  sgm <- paste0("--sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_",
+                "1000_randomMarkersUsed.sparseGRM.mtx")
+  sgi <- paste0("--sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_",
+                "1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt")
+  args <- c("--bedFile=./input/genotype_100markers.bed",
+            "--bimFile=./input/genotype_100markers.bim",
+            "--famFile=./input/genotype_100markers.fam",
+            "--AlleleOrder=alt-first",
+            paste0("--GMMATmodelFile=",
+                   file.path(saige_goldens, "step1", "quant_sparseGRM_vr.rda")),
+            paste0("--varianceRatioFile=",
+                   file.path(saige_goldens, "step1",
+                             "quant_sparseGRM_vr.varianceRatio.txt")),
+            sgm, sgi,
+            "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
+            "--groupFile=./input/group_new_snpid.txt",
+            "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+            "--maxMAF_in_groupTest=0.0001,0.001,0.01",
+            "--is_fastTest=TRUE",
+            paste0("--SAIGEOutputFile=", out))
+  status <- run_saige_cli("step2_SPAtests.R", args)
+  expect_cli_ok(status)
+  # P38 is the same command with --is_fastTest=FALSE. Byte-identity is the
+  # right gate here despite the rule against comparing two paths, for the same
+  # reason the binary pair is: there is only ONE path -- the flag is never read.
+  p38 <- file.path(saige_goldens, "step2", "plink_group_nofast_quant_sparse.txt")
+  expect_output_matches_golden(p38, out)
+})

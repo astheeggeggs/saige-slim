@@ -335,3 +335,34 @@ test_that("step2 region test under LOCO, chromosome 2, matches golden", {
   run_step2_case("plink_group_loco_chr2.txt", args,
                  extra_outputs = ".singleAssoc.txt")
 })
+
+# ---------------------------------------------------------------------------
+# P56-P57: the quantitative region path's multi-weight and conditional shapes.
+# Binary had 14 fastTest, 9 multi-weight and 9 conditional region goldens and
+# quantitative had none of the three; these close two of them. Both use the only
+# quantitative model with `sparse` variance-ratio rows, so they run the same
+# sparse-GRM region path LEDGER #106 was first-order on.
+QUANT_VR_MODEL <- function() {
+  c(paste0("--GMMATmodelFile=",
+           file.path(saige_goldens, "step1", "quant_sparseGRM_vr.rda")),
+    paste0("--varianceRatioFile=",
+           file.path(saige_goldens, "step1", "quant_sparseGRM_vr.varianceRatio.txt")))
+}
+QUANT_GRP_COMMON <- c("--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
+                      "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+                      "--maxMAF_in_groupTest=0.0001,0.001,0.01",
+                      "--is_fastTest=TRUE")
+
+test_that("step2 quantitative multi-weight region test (K=2) matches golden", {
+  args <- c(PLINK_ARGS(), QUANT_VR_MODEL(), SG_ARGS, QUANT_GRP_COMMON,
+            "--groupFile=./input/group_new_snpid_multiWeights.txt")
+  run_step2_case("plink_group_multiweight_quant.txt", args,
+                 extra_outputs = c(".singleAssoc.txt", ".singleAssoc.txt_temp"))
+})
+
+test_that("step2 quantitative conditional region test matches golden", {
+  args <- c(PLINK_ARGS(), QUANT_VR_MODEL(), SG_ARGS, QUANT_GRP_COMMON,
+            "--groupFile=./input/group_new_snpid.txt", "--condition=rs30,rs79")
+  run_step2_case("plink_group_cond_quant.txt", args,
+                 extra_outputs = ".singleAssoc.txt")
+})

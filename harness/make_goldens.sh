@@ -437,7 +437,8 @@ PLINK_G="--bedFile=./input/genotype_100markers.bed --bimFile=./input/genotype_10
 
 # --- PLINK runs (must survive the strip byte-identically). PLINK keys markers on
 # bim column 2 (rs IDs): group file is group_new_snpid.txt (verified identical to
-# group_new_chrposa1a2.txt for GENE1/GENE2), conditions are rsNN.
+# group_new_chrposa1a2.txt for GENE1/GENE2, now in
+# harness/goldens_retired/inputs/ -- LEDGER #113), conditions are rsNN.
 
 # P1: single-variant, binary, minMAC=1 so the ER path is exercised
 run step2_plink_marker_binary.log R2 step2_SPAtests.R \
@@ -1250,7 +1251,7 @@ run step2_plink_marker_loco_chr2.log R2 step2_SPAtests.R \
 # use, against the two-chromosome genotypes: its GENE1 is entirely on chr1 while
 # GENE2 has 40 markers on chr1 and 10 on chr2, so GENE2 SPANS THE BOUNDARY and
 # is tested against a different refit in each run. (The repo's
-# `group_new_chrposa1a2_2chr.txt` cannot be used here: PLINK group files key on
+# `group_new_chrposa1a2_2chr.txt` could not be used here: PLINK group files key on
 # bim column 2, and that file's chr:pos:A1:A2 ids match nothing in this .bim --
 # "100 markers in 'RegionFile' are not in 'GenoFile'", a zero-byte output at
 # exit 0. It was built for the retired bgen/vcf fixtures.)
@@ -1275,6 +1276,50 @@ run step2_plink_group_loco_chr1.log R2 step2_SPAtests.R \
 run step2_plink_group_loco_chr2.log R2 step2_SPAtests.R \
   $LOCO_G2 --SAIGEOutputFile="$GOLD/step2/plink_group_loco_chr2.txt" \
   --chrom=2 $LOCO_R_COMMON $LOCO_R_MODEL $SG
+
+# P56-P57 (2026-09-08): the QUANTITATIVE region path's two remaining shapes.
+# The coverage audit's largest surviving asymmetry: binary had 14 fastTest, 9
+# multi-weight and 9 conditional region goldens and quantitative had NONE of the
+# three. Both of these use $QUANT_VR_MODEL, the only quantitative model with
+# `sparse` variance-ratio rows, so they exercise the same sparse-GRM region path
+# LEDGER #106 was first-order on.
+#
+# There is deliberately NO quantitative fastTest golden. Measured first: the
+# quantitative `--is_fastTest=TRUE` run is BYTE-IDENTICAL to P38, exactly as the
+# binary pair plink_group_fastTest/plink_group_nofast is, because the region path
+# never reads the flag (LEDGER #51). A third file with P38's bytes would gate
+# nothing, so that invariant is asserted in tests/testthat/test-step2-group-quant.R
+# instead -- where it also states, for the quantitative path, the fact #51
+# records for the binary one.
+#
+# Both were checked to DIFFER from P38 before being accepted, and both bring a
+# schema no quantitative golden had: P56 the K>1 multi-weight columns
+# (`Weight`, `Pvalue_ACATV`, `Pvalue_ACATO`; 26 rows against P38's 14) and P57
+# the five `_cond` columns.
+
+# P56: multi-weight (K=2) SKAT-O on a quantitative model. The quantitative twin
+# of plink_group_multiweight.
+run step2_plink_group_multiweight_quant.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_multiweight_quant.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $QUANT_VR_MODEL $SG \
+  --groupFile=./input/group_new_snpid_multiWeights.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --is_fastTest=TRUE
+
+# P57: conditional region test on a quantitative model, the quantitative twin of
+# plink_group_cond_binary. Conditioning markers are rsIDs (bim column 2).
+run step2_plink_group_cond_quant.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_cond_quant.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $QUANT_VR_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --condition=rs30,rs79 --is_fastTest=TRUE
 
 ############ PGEN-vs-PLINK byte identity, checked in the candidate dir #########
 # The step-0 and step-1 PGEN runs above are NOT committed as separate goldens:
