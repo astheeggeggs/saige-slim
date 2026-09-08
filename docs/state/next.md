@@ -1,9 +1,12 @@
 # What is worth doing next (2026-09-03, updated 2026-09-08)
 
-**Current handoff: `docs/state/handoff-2026-09-08-burden-variance-fixes.md`**
-(its RESUME HERE section first; the diagnosis it acts on is
-`docs/state/diag-2026-09-07-region-burden-variance.md`) -- then this
-file, then `python3 harness/tools/ledger.py open`. Handoffs are dated and
+**Current handoff: `docs/state/handoff-2026-09-08-ledger-zero-and-coverage.md`**
+(its "NEXT UP" section first -- the named next job is the N = 50,000 null region
+control). Two handoffs share 2026-09-08 and `ls | tail -1` sorts by NAME, so
+this line is the pointer: the other one,
+`handoff-2026-09-08-burden-variance-fixes.md`, is the earlier session (#103,
+#106, #104/#105) and the coverage one supersedes it. Then this file, then
+`python3 harness/tools/ledger.py open`, which now reports 0 open. Handoffs are dated and
 never renamed; when several share the newest date `ls | tail -1` sorts them by
 name, not by time, so this line is the pointer and is updated with every new
 handoff. `docs/state/handoff-2026-09-04.md` is where CI lives.
