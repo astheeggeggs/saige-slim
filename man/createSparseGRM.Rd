@@ -5,7 +5,14 @@
 \title{Construct a sparse GRM for a given data set}
 \usage{
 createSparseGRM(
+  bedFile = "",
+  bimFile = "",
+  famFile = "",
   plinkFile = "",
+  plink2File = "",
+  pgenFile = "",
+  pvarFile = "",
+  psamFile = "",
   outputPrefix = "",
   numRandomMarkerforSparseKin = 1000,
   relatednessCutoff = 0.125,
@@ -19,7 +26,26 @@ createSparseGRM(
 )
 }
 \arguments{
-\item{plinkFile}{character. Path to plink file to be used for calculating the sparse GRM}
+\item{bedFile}{character. Path to plink file (bed) to be used for calculating the sparse GRM}
+
+\item{bimFile}{character. Path to plink file (bim) to be used for calculating the sparse GRM}
+
+\item{famFile}{character. Path to plink file (fam) to be used for calculating the sparse GRM}
+
+\item{plinkFile}{character. Prefix for the plink bed/bim/fam files. Mutually
+exclusive with the PGEN input}
+
+\item{plink2File}{character. Prefix for the plink2 pgen/pvar/psam files.
+Mutually exclusive with the PLINK input}
+
+\item{pgenFile}{character. Path to plink2 file (pgen) to be used for
+calculating the sparse GRM}
+
+\item{pvarFile}{character. Path to plink2 file (pvar) to be used for
+calculating the sparse GRM}
+
+\item{psamFile}{character. Path to plink2 file (psam) to be used for
+calculating the sparse GRM}
 
 \item{outputPrefix}{character. Path to the output files with prefix}
 
@@ -34,6 +60,12 @@ createSparseGRM(
 \item{nThreads}{integer. Number of threads to be used. By default, 1}
 
 \item{minMAFforGRM}{numeric. Minimum MAF for markers (in the Plink file) used for construcing the sparse GRM. By default, 0.01}
+
+\item{maxMissingRateforGRM}{numeric. Maximum missing rate of the markers used for the GRM. By default, 0.15}
+
+\item{isSetGeno}{logical. Whether to read the genotypes into the global genotype object before computing the GRM. By default, TRUE; FALSE reuses whatever a previous call left in place}
+
+\item{isWritetoFiles}{logical. Whether to write the sparse GRM and its sample-ID file to disk. By default, TRUE; FALSE returns the matrix and writes nothing}
 }
 \value{
 a file ended with sampleIDs.txt that contains sample IDs for the sparse GRM and a file ended with .sparseGRM.mtx that contains the sparse GRM

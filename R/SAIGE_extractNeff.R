@@ -62,6 +62,8 @@
 #' @param noEstFixedEff logical. Whether to estimate fixed effect coeffciets. By default, FALSE.
 #' @return a file ended with .rda that contains the glmm model information, a file ended with .varianceRatio.txt that contains the variance ratio values, and a file ended with #markers.SPAOut.txt that contains the SPAGMMAT tests results for the markers used for estimating the variance ratio.
 #' @export
+#' @param isCateVarianceRatio logical. Whether to estimate the variance ratio separately for each MAC category, corresponding to cateVarRatioMinMACVecExclude and cateVarRatioMaxMACVecInclude. If TRUE then LOCO=FALSE. By default, FALSE
+#' @param skipVarianceRatioEstimation logical. Whether to skip variance ratio estimation. By default, FALSE
 getNeff <- function(plinkFile = "",
                     bedFile = "",
                     bimFile = "",

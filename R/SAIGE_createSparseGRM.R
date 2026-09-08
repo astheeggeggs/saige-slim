@@ -22,6 +22,9 @@
 #' @param minMAFforGRM numeric. Minimum MAF for markers (in the Plink file) used for construcing the sparse GRM. By default, 0.01
 #' @return a file ended with sampleIDs.txt that contains sample IDs for the sparse GRM and a file ended with .sparseGRM.mtx that contains the sparse GRM
 #' @export
+#' @param maxMissingRateforGRM numeric. Maximum missing rate of the markers used for the GRM. By default, 0.15
+#' @param isSetGeno logical. Whether to read the genotypes into the global genotype object before computing the GRM. By default, TRUE; FALSE reuses whatever a previous call left in place
+#' @param isWritetoFiles logical. Whether to write the sparse GRM and its sample-ID file to disk. By default, TRUE; FALSE returns the matrix and writes nothing
 createSparseGRM <- function(bedFile = "",
                             bimFile = "",
                             famFile = "",

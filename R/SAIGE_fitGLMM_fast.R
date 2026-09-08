@@ -674,6 +674,17 @@ solveSpMatrixUsingArma <- function(sparseGRMtest) {
 #' @param isCovariateOffset logical. Whether to estimate fixed effect coeffciets. By default, FALSE.
 #' @return a file ended with .rda that contains the glmm model information, a file ended with .varianceRatio.txt that contains the variance ratio values, and a file ended with #markers.SPAOut.txt that contains the SPAGMMAT tests results for the markers used for estimating the variance ratio.
 #' @export
+#' @param seed integer. Random seed for the run; also decouples variance-ratio marker selection from model-fitting convergence. By default, 1 (LEDGER #8)
+#' @param bedFile character. Path to bed file. If plinkFile is specified, 'plinkFile'.bed is used
+#' @param bimFile character. Path to bim file. If plinkFile is specified, 'plinkFile'.bim is used
+#' @param famFile character. Path to fam file. If plinkFile is specified, 'plinkFile'.fam is used
+#' @param isLowMemLOCO logical. Whether to write the model file by chromosome when LOCO=TRUE. If TRUE, memory use in Step 1 and Step 2 is lower. By default, FALSE
+#' @param isCateVarianceRatio logical. Whether to estimate the variance ratio separately for each MAC category, corresponding to cateVarRatioMinMACVecExclude and cateVarRatioMaxMACVecInclude. If TRUE then LOCO=FALSE. By default, FALSE
+#' @param maxMissingRateforGRM numeric. Maximum missing rate of the markers used for the GRM. By default, 0.15
+#' @param SampleIDIncludeFile character. Path to a file with one column of IDs of the samples to include in the null model fit
+#' @param skipVarianceRatioEstimation logical. Whether to skip variance ratio estimation. By default, FALSE
+#' @param nrun numeric. Number of runs in the trace estimation. By default, 30
+#' @param releaseGenoAtEnd logical. Whether to free the in-memory genotype object when the fit finishes. By default, TRUE; set FALSE only when another call in the same process reuses it
 fitNULLGLMM <- function(plinkFile = "",
                         plink2File = "",
                         pgenFile = "",

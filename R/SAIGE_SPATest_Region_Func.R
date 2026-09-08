@@ -78,7 +78,7 @@ checkGroupFile <- function(groupFile, detail = FALSE) {
   Check_File_Exist(groupFile, "RegionFile")
 
   # the 2nd field of a weight line is 'weight' (set name "WEIGHT"),
-  #' weight:NAME' or 'weight,NAME' (set name NAME); returns NULL for
+  # 'weight:NAME' or 'weight,NAME' (set name NAME); returns NULL for
   # non-weight lines
   parse_weight_type <- function(type) {
     type_parts <- strsplit(type, split = "[,:]")[[1]]

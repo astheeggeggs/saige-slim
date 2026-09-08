@@ -6,6 +6,14 @@
 \usage{
 fitNULLGLMM(
   plinkFile = "",
+  plink2File = "",
+  pgenFile = "",
+  pvarFile = "",
+  psamFile = "",
+  seed = 1,
+  bedFile = "",
+  bimFile = "",
+  famFile = "",
   phenoFile = "",
   phenoCol = "",
   traitType = "binary",
@@ -24,6 +32,7 @@ fitNULLGLMM(
   memoryChunk = 2,
   tauInit = c(0, 0),
   LOCO = TRUE,
+  isLowMemLOCO = FALSE,
   traceCVcutoff = 0.0025,
   ratioCVcutoff = 0.001,
   outputPrefix = "",
@@ -43,6 +52,7 @@ fitNULLGLMM(
   minMAFforGRM = 0.01,
   maxMissingRateforGRM = 0.15,
   useSparseGRMtoFitNULL = FALSE,
+  usePCGwithSparseGRM = FALSE,
   useSparseGRMforVarRatio = FALSE,
   includeNonautoMarkersforVarRatio = FALSE,
   sexCol = "",
@@ -52,11 +62,33 @@ fitNULLGLMM(
   MaleOnly = FALSE,
   SampleIDIncludeFile = "",
   isCovariateOffset = FALSE,
-  skipVarianceRatioEstimation = FALSE
+  skipVarianceRatioEstimation = FALSE,
+  nrun = 30,
+  releaseGenoAtEnd = TRUE
 )
 }
 \arguments{
 \item{plinkFile}{character. Path to plink file to be used for calculating elements of the genetic relationship matrix (GRM). minMAFforGRM can be used to specify the minimum MAF of markers in the plink file to be used for constructing GRM. Genetic markers are also randomly selected from the plink file to estimate the variance ratios}
+
+\item{plink2File}{character. Prefix for plink2 pgen/pvar/psam files, used in
+place of plinkFile. Mutually exclusive with the PLINK input}
+
+\item{pgenFile}{character. Path to plink2 file (pgen). If plink2File is
+specified, 'plink2File'.pgen will be used}
+
+\item{pvarFile}{character. Path to plink2 file (pvar). If plink2File is
+specified, 'plink2File'.pvar will be used}
+
+\item{psamFile}{character. Path to plink2 file (psam). If plink2File is
+specified, 'plink2File'.psam will be used}
+
+\item{seed}{integer. Random seed for the run; also decouples variance-ratio marker selection from model-fitting convergence. By default, 1 (LEDGER #8)}
+
+\item{bedFile}{character. Path to bed file. If plinkFile is specified, 'plinkFile'.bed is used}
+
+\item{bimFile}{character. Path to bim file. If plinkFile is specified, 'plinkFile'.bim is used}
+
+\item{famFile}{character. Path to fam file. If plinkFile is specified, 'plinkFile'.fam is used}
 
 \item{phenoFile}{character. Path to the phenotype file. The file can be either tab or space delimited. The phenotype file has a header and contains at least two columns. One column is for phentoype and the other column is for sample IDs. Additional columns can be included in the phenotype file for covariates in the null model. Please specify the names of the covariates using the argument covarColList and specify categorical covariates using the argument qCovarCol. All categorical covariates must also be included in covarColList.}
 
@@ -90,9 +122,11 @@ fitNULLGLMM(
 
 \item{memoryChunk}{integer or float. The size (Gb) for each memory chunk. By default, 2}
 
-\item{tauInit}{vector of numbers. e.g. c(1,1), Initial values for tau. For binary traits, the first element will be always be set to 1. If the tauInit is 0,0, the second element will be 0.5 for binary traits and the initial tau vector for quantitative traits is 1,0}
+\item{tauInit}{vector of numbers. e.g. c(1,1), Initial values for tau. For binary traits, the first element will be always be set to 1. If the tauInit is 0,0, the second element will be 0.5 for binary traits and the initial tau vector for quantitative traits is 1,0. For quantitative traits the whole of step 1 runs on the phenotype divided by the sd of its covariate-adjusted values and the saved model and variance ratios are scaled back (LEDGER #65), so tauInit is given in phenotype units, the convergence and divergence rules are scale-free, and the old stop() on a phenotype variance below 0.1 is gone; only a constant phenotype stops}
 
 \item{LOCO}{logical. Whether to apply the leave-one-chromosome-out (LOCO) option. By default, TRUE}
+
+\item{isLowMemLOCO}{logical. Whether to write the model file by chromosome when LOCO=TRUE. If TRUE, memory use in Step 1 and Step 2 is lower. By default, FALSE}
 
 \item{traceCVcutoff}{numeric. The threshold for coefficient of variation (CV) for the trace estimator to increase nrun. By default, 0.0025}
 
@@ -112,9 +146,11 @@ fitNULLGLMM(
 
 \item{relatednessCutoff}{float. The threshold for coefficient of relatedness to treat two samples as unrelated in the sparse GRM.}
 
+\item{isCateVarianceRatio}{logical. Whether to estimate the variance ratio separately for each MAC category, corresponding to cateVarRatioMinMACVecExclude and cateVarRatioMaxMACVecInclude. If TRUE then LOCO=FALSE. By default, FALSE}
+
 \item{cateVarRatioIndexVec}{vector of integer 0 or 1. The length of cateVarRatioIndexVec is the number of MAC categories for variance ratio estimation. 1 indicates variance ratio in the MAC category is to be estimated, otherwise 0. By default, NULL. If NULL, variance ratios corresponding to all specified MAC categories will be estimated. This argument is only activated when isCateVarianceRatio=TRUE}
 
-\item{cateVarRatioMinMACVecExclude}{vector of float. Lower bound of MAC for MAC categories. The length equals to the number of MAC categories for variance ratio estimation. By default, c(10.5,20.5). This argument is only activated when isCateVarianceRatio=TRUE}
+\item{cateVarRatioMinMACVecExclude}{vector of float. Exclusive lower bound of MAC for MAC categories; its minimum is also the MAC floor for markers entering the variance-ratio pool (mac >= min). The length equals to the number of MAC categories for variance ratio estimation. By default, c(10,20.5), the same as step 2 and as both CLI drivers. This argument is only activated when isCateVarianceRatio=TRUE}
 
 \item{cateVarRatioMaxMACVecInclude}{vector of float. Higher bound of MAC for MAC categories. The length equals to the number of MAC categories for variance ratio estimation minus 1. By default, c(20.5). This argument is only activated when isCateVarianceRatio=TRUE}
 
@@ -126,7 +162,11 @@ fitNULLGLMM(
 
 \item{minMAFforGRM}{numeric. Minimum MAF for markers (in the Plink file) used for construcing the sparse GRM. By default, 0.01}
 
+\item{maxMissingRateforGRM}{numeric. Maximum missing rate of the markers used for the GRM. By default, 0.15}
+
 \item{useSparseGRMtoFitNULL}{logical. Whether to use sparse GRM to fit the null model. By default, FALSE}
+
+\item{usePCGwithSparseGRM}{logical. Whether to use PCG for inverse of the sparse GRM, if useSparseGRMtoFitNULL is TRUE. By default, FALSE}
 
 \item{useSparseGRMforVarRatio}{logical. Whether to use sparse GRM to estimate the variance Ratios. If TRUE, the variance ratios will be estimated using the full GRM (numerator) and the sparse GRM (denominator). By default, FALSE}
 
@@ -142,7 +182,15 @@ fitNULLGLMM(
 
 \item{MaleOnly}{logical. Whether to run Step 1 for males only. If TRUE, sexCol and MaleCode need to be specified. By default, FALSE}
 
+\item{SampleIDIncludeFile}{character. Path to a file with one column of IDs of the samples to include in the null model fit}
+
 \item{isCovariateOffset}{logical. Whether to estimate fixed effect coeffciets. By default, FALSE.}
+
+\item{skipVarianceRatioEstimation}{logical. Whether to skip variance ratio estimation. By default, FALSE}
+
+\item{nrun}{numeric. Number of runs in the trace estimation. By default, 30}
+
+\item{releaseGenoAtEnd}{logical. Whether to free the in-memory genotype object when the fit finishes. By default, TRUE; set FALSE only when another call in the same process reuses it}
 }
 \value{
 a file ended with .rda that contains the glmm model information, a file ended with .varianceRatio.txt that contains the variance ratio values, and a file ended with #markers.SPAOut.txt that contains the SPAGMMAT tests results for the markers used for estimating the variance ratio.

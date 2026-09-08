@@ -2,20 +2,15 @@
 % Please edit documentation in R/SAIGE_Test_main.R
 \name{SPAGMMATtest}
 \alias{SPAGMMATtest}
-\title{Run single variant or gene- or region-based score tests with SPA based on the linear/logistic mixed model.}
+\title{Run single variant or gene- or region-based score tests with SPA based on the linear/logistic mixed model}
 \usage{
 SPAGMMATtest(
-  bgenFile = "",
-  bgenFileIndex = "",
-  sampleFile = "",
-  vcfFile = "",
-  vcfFileIndex = "",
-  vcfField = "DS",
-  savFile = "",
-  savFileIndex = "",
   bedFile = "",
   bimFile = "",
   famFile = "",
+  pgenFile = "",
+  pvarFile = "",
+  psamFile = "",
   AlleleOrder = "alt-first",
   idstoIncludeFile = "",
   rangestoIncludeFile = "",
@@ -29,7 +24,7 @@ SPAGMMATtest(
   GMMATmodelFile = "",
   LOCO = TRUE,
   varianceRatioFile = "",
-  cateVarRatioMinMACVecExclude = c(10.5, 20.5),
+  cateVarRatioMinMACVecExclude = c(10, 20.5),
   cateVarRatioMaxMACVecInclude = c(20.5),
   SPAcutoff = 2,
   SAIGEOutputFile = "",
@@ -47,6 +42,9 @@ SPAGMMATtest(
   dosage_zerod_cutoff = 0.2,
   dosage_zerod_MAC_cutoff = 10,
   is_output_moreDetails = FALSE,
+  X_PARregion = "60001-2699520,154931044-155270560",
+  is_rewrite_XnonPAR_forMales = FALSE,
+  sampleFile_male = "",
   MACCutoff_to_CollapseUltraRare = 10,
   annotation_in_groupTest = c("lof", "missense;lof", "missense;lof;synonymous"),
   maxMAF_in_groupTest = c(0.01),
@@ -54,44 +52,51 @@ SPAGMMATtest(
   minGroupMAC_in_BurdenTest = 5,
   is_Firth_beta = FALSE,
   pCutoffforFirth = 0.01,
+  firth_solver = "closed",
   is_overwrite_output = TRUE,
-  is_single_in_groupTest = TRUE,
+  is_single_in_groupTest = FALSE,
   is_no_weight_in_groupTest = FALSE,
-  is_output_markerList_in_groupTest = FALSE
+  is_output_markerList_in_groupTest = FALSE,
+  is_fastTest = FALSE,
+  pval_cutoff_for_fastTest = 0.05,
+  max_MAC_use_ER = 4,
+  subSampleFile = "",
+  is_noadjCov = TRUE,
+  is_output_weight_column = FALSE,
+  nThreads = 1,
+  GMMATmodel_varianceRatio_multiTraits_File = ""
 )
 }
 \arguments{
-\item{bgenFile}{character. Path to bgen file. Currently version 1.2 with 8 bit compression is supported}
-
-\item{bgenFileIndex}{character. Path to the .bgi file (index of the bgen file)}
-
-\item{sampleFile}{character. Path to the file that contains one column for IDs of samples in the bgen file. The file does not contain header lines.}
-
-\item{vcfFile}{character. Path to vcf file}
-
-\item{vcfFileIndex}{character. Path to vcf index file. Indexed by tabix. Path to index for vcf file by tabix, .csi file using 'tabix --csi -p vcf file.vcf.gz'}
-
-\item{vcfField}{character. genotype field in vcf file to use. "DS" for dosages or "GT" for genotypes. By default, "DS".}
-
-\item{savFile}{character. Path to sav file}
-
-\item{savFileIndex}{character. Path to index for sav file .s1r}
-
 \item{bedFile}{character. Path to bed file (PLINK)}
 
 \item{bimFile}{character. Path to bim file (PLINK)}
 
 \item{famFile}{character. Path to fam file (PLINK)}
 
-\item{AlleleOrder}{character. alt-first or ref-first for bgen or PLINK files. By default, alt-first}
+\item{pgenFile}{character. Path to pgen file (PGEN/plink2). Mutually exclusive with bedFile}
+
+\item{pvarFile}{character. Path to pvar file (PGEN/plink2)}
+
+\item{psamFile}{character. Path to psam file (PGEN/plink2)}
+
+\item{AlleleOrder}{character. alt-first or ref-first, for PLINK bed/bim/fam input. alt-first (the default) counts bim column 5, ref-first counts column 6. Ignored for PGEN: a pvar is always REF/ALT-ordered.}
 
 \item{idstoIncludeFile}{character. Path to a file containing variant ids to be included from the dosage file. The file does not have a header and each line is for a marker ID. Variant ids are in the format chr:pos_ref/alt}
 
-\item{rangestoIncludeFile}{character. Path to a file containing genome regions to be included from the dosage file. The file contains three columns for chromosome, start, and end respectively with no header. Note for vcf and sav files, only the first line in the file will be used.}
+\item{rangestoIncludeFile}{character. Path to a file containing genome regions to be included from the dosage file. The file contains three columns for chromosome, start, and end respectively with no header.}
 
-\item{chrom}{character. If LOCO is specified, chrom is required. chrom is also required for VCF/BCF/SAV input. Note: the string needs to exactly match the chromosome string in the vcf/sav file. For example, 1 does not match chr1.}
+\item{chrom}{character. If LOCO is specified, chrom is required. Note: the string needs to exactly match the chromosome string in the genotype file. For example, 1 does not match chr1.}
+
+\item{max_missing}{numeric. Maximum missing rate for markers to be tested. By default, 0.15}
 
 \item{impute_method}{character. Imputation method for missing dosages. best_guess, mean or minor. best_guess: missing dosages imputed as best guessed genotyes round(2*allele frequency). mean: missing dosages are imputed as mean (2*allele frequency). minor: missing dosages are imputed as minor allele homozygotes. By default, minor}
+
+\item{min_MAC}{numeric. Minimum minor allele count for markers to be tested. The higher threshold between min_MAC and min_MAF will be used. By default, 0.5}
+
+\item{min_MAF}{numeric. Minimum minor allele frequency for markers to be tested. The higher threshold between min_MAC and min_MAF will be used. By default, 0}
+
+\item{min_Info}{numeric. Minimum imputation info for markers to be tested if is_imputed_data=TRUE. By default, 0}
 
 \item{is_imputed_data}{logical. Whether the dosages/genotypes imputed are imputed. If TRUE, the program will output the imputed info score. By default, FALSE.}
 
@@ -101,11 +106,11 @@ SPAGMMATtest(
 
 \item{varianceRatioFile}{character. Path to the input file containing the variance ratio, which is output from the previous step}
 
-\item{cateVarRatioMinMACVecExclude}{vector of float. Lower bound of MAC for MAC categories. The length equals to the number of MAC categories for variance ratio estimation. By default, c(10.5,20.5). If groupFile="", only one variance ratio corresponding to MAC >= 20 is used}
+\item{cateVarRatioMinMACVecExclude}{vector of float. Exclusive lower bound of MAC for MAC categories (a marker with MAC equal to the bound is in the category BELOW it). The length equals to the number of MAC categories for variance ratio estimation. By default, c(10,20.5), the same as step 1 and as both CLI drivers. If groupFile="", only one variance ratio corresponding to MAC >= 20 is used}
 
 \item{cateVarRatioMaxMACVecInclude}{vector of float. Higher bound of MAC for MAC categories. The length equals to the number of MAC categories for variance ratio estimation minus 1. By default, c(20.5). If groupFile="", only one variance ratio corresponding to MAC >= 20 is used}
 
-\item{SPAcutoff}{by default = 2 (SPA test would be used when p value < 0.05 under the normal approximation)}
+\item{SPAcutoff}{by default = 2 (SPA test would be used when p value < 0.05 under the normal approximation). The output column Is.SPA is true whenever the reported SE was back-derived from the reported p-value rather than from 1/sqrt(var): after the saddlepoint approximation and also after the exact resampling test on MAC <= max_MAC_use_ER markers, which has no saddlepoint (LEDGER #80).}
 
 \item{SAIGEOutputFile}{character. Prefix of the output files containing assoc test results}
 
@@ -115,7 +120,7 @@ SPAGMMATtest(
 
 \item{markers_per_chunk_in_groupTest}{numeric. Number of markers in each chunk when calculating the variance covariance matrix in the set/group-based tests. By default, 100.}
 
-\item{condition}{character. For conditional analysis. Variant ids are in the format chr:pos_ref/alt and seperated by by comma. e.g."chr3:101651171_C/T,chr3:101651186_G/A".}
+\item{condition}{character. For conditional analysis. Variant ids are in the format chr:pos_ref/alt and seperated by by comma. e.g."chr3:101651171:C:T,chr3:101651186:G:A".}
 
 \item{sparseGRMFile}{character. Path to the pre-calculated sparse GRM file that was used in Step 1}
 
@@ -123,11 +128,13 @@ SPAGMMATtest(
 
 \item{relatednessCutoff}{float. The threshold for coefficient of relatedness to treat two samples as unrelated in the sparse GRM. By default, 0}
 
-\item{groupFile}{character. Path to the file containing the group information for gene-based tests. Each gene/set has 2 or 3 lines in the group file. The first element is the gene/set name. The second element in the first line is to indicate whether this line contains variant IDs (var), annotations (anno), or weights (weight). The line for weights is optional. If not specified, the default weights will be generated based on beta(MAF, 1, 25). Use weights.beta to change the parameters for the Beta distribution. The variant ids must be in the format chr:pos_ref/alt. Elements are seperated by tab or space.}
+\item{groupFile}{character. Path to the file containing the group information for gene-based tests. Each gene/set has 2 + K lines in the group file (K >= 0 weight lines). The first element of each line is the gene/set name. The second element indicates whether the line contains variant IDs (var), annotations (anno), or weights. A weight line's second element is 'weight' (weight set named "WEIGHT"), or 'weight:NAME' / 'weight,NAME' to name the weight set NAME. Weight lines are optional; with none, the default weights are generated based on beta(MAF, 1, 25) (use weights.beta to change the parameters). With more than one weight line per gene/set (each named, same names and order in every gene/set), each weight line defines one weight set and results are output per (annotation, max MAF, weight set) with a Weight column labeling the set (plus Pvalue_ACATV/Pvalue_ACATO columns for SKAT-O). The variant ids must match the genotype input's marker IDs (bim column 2 for PLINK). Elements are seperated by tab or space.}
 
-\item{weights.beta}{vector of numeric with two elements. parameters for the beta distribution to weight genetic markers in gene-based tests. By default, "c(1,25)".}
+\item{weights.beta}{parameters for the beta distribution(s) to weight genetic markers in gene-based tests: a numeric vector with two elements c(a, b), a Kb x 2 numeric matrix with one (a, b) pair per row, or a string "a1,b1;a2,b2;..." (semicolon-separated pairs, comma within a pair). By default, c(1,25). The first pair keeps the legacy roles (single-variant weighting and the conditioning-weight default). When more than one pair is given, each pair becomes one beta(MAF; a, b) weight set in the group test, named "Beta_a_b" (e.g. "Beta_1_25"), appended after any group-file weight sets; results are then output per weight set with a Weight column. With a single pair, group-file weights (if present) take precedence, exactly as before.}
 
-\item{r.corr}{numeric. bewteen 0 and 1. parameters for gene-based tests. If r.corr = 1, only Burden tests will be performed. If r.corr = 0, SKAT-O tests will be performed and results for Burden tests and SKAT tests will be output too.  By default, 0.}
+\item{weights_for_condition}{character. Weights for the conditioning markers in gene- or region-based tests, delimited by comma, one per conditioning marker, e.g. '1,2,3'. If not specified, weights are generated from beta(MAF, 1, 25); use weights.beta to change those parameters}
+
+\item{r.corr}{numeric. bewteen 0 and 1. parameters for gene-based tests. If r.corr = 1, only Burden tests will be performed. If r.corr = 0, SKAT-O tests will be performed and results for Burden tests and SKAT tests will be output too.  By default, 0. The per-region Cauchy row is the ACAT of the cells' SKAT-O Pvalue, except that when any cell's Pvalue is exactly 1 (the SKAT package saturates its SKAT-O integral to 1 when the smallest per-rho p exceeds ~0.78) the row is min(1, n_cells * min(Pvalue)), a Bonferroni under the Cauchy label; see LEDGER #86.}
 
 \item{dosage_zerod_cutoff}{numeric. If is_imputed_data = TRUE, For variants with MAC <= dosage_zerod_MAC_cutoff, dosages <= dosageZerodCutoff with be set to 0. By derault, 0.2}
 
@@ -135,7 +142,19 @@ SPAGMMATtest(
 
 \item{is_output_moreDetails}{logical. Whether to output heterozygous and homozygous counts in cases and controls. By default, FALSE. If True, the columns homN_Allele2_cases, hetN_Allelelogical2_cases, homN_Allele2_ctrls, hetN_Allele2_ctrls will be output. By default, FALSE}
 
+\item{X_PARregion}{character. ranges of (pseudoautosomal) PAR region on chromosome X, which are seperated by comma and in the format start:end. By default: '60001-2699520,154931044-155260560' in the UCSC build hg19. For males, there are two X alleles in the PAR region, so PAR regions are treated the same as autosomes. In the NON-PAR regions (outside the specified PAR regions on chromosome X), for males, there is only one X allele. If is_rewrite_XnonPAR_forMales=TRUE, genotypes/dosages of all variants in the NON-PAR regions on chromosome X will be multiplied by 2 (Not activated).}
+
+\item{is_rewrite_XnonPAR_forMales}{logical. Whether to rewrite gentoypes or dosages of variants in the NON-PAR regions on chromosome X for males (multiply by 2). By default, FALSE. Only variants whose chromosome is X (X, x, 23, chrX, chr23) are rewritten; other chromosomes in the same file are left alone (LEDGER #69).}
+
+\item{sampleFile_male}{character. Path to the file containing one column for IDs of MALE samples, with NO header. Order does not matter}
+
 \item{MACCutoff_to_CollapseUltraRare}{numeric. MAC cutoff to collpase the ultra rare variants (<= MACCutoff_to_CollapseUltraRare) in the set-based association tests. By default, 10.}
+
+\item{annotation_in_groupTest}{character. Annotations of markers to be tested in the set-based tests, separated by comma; use ; to combine several annotations in one test. e.g. 'lof,missense;lof,missense;lof;synonymous' tests lof only, then missense+lof, then missense+lof+synonymous. By default, 'lof,missense;lof,missense;lof;synonymous'}
+
+\item{maxMAF_in_groupTest}{character. Max MAF for markers tested in the group test, separated by comma, e.g. '0.0001,0.001,0.01'. By default, '0.0001,0.001,0.01'}
+
+\item{maxMAC_in_groupTest}{character. Max MAC for markers tested in the group test, separated by comma, e.g. '1,2'. Combined with maxMAF_in_groupTest. By default, '0', i.e. no maxMAC cutoff}
 
 \item{minGroupMAC_in_BurdenTest}{numeric. Only applied when only Burden tests are performed (r.corr=1). Minimum minor allele count in the Burden test for the psueodo marker. By default, 5}
 
@@ -143,43 +162,38 @@ SPAGMMATtest(
 
 \item{pCutoffforFirth}{numeric. p-value cutoff to use approx Firth to estiamte the effect sizes. Only for binary traits. The effect sizes of markers with p-value <= pCutoffforFirth will be estimated using approx Firth. By default, 0.01.}
 
+\item{firth_solver}{character. "closed" (default: 2x2 closed-form Fisher matrix and
+hat values, no QR; ~2x faster per Firth fit) or "qr" (the QR-based hat values of
+SAIGE 1.x). Same estimator; the two agree to <= 8e-13 relative, which does not reach
+the printed digits. Only for binary traits with is_Firth_beta = TRUE.}
+
 \item{is_overwrite_output}{logical. Whether to overwrite the output file if it exists. If FALSE, the program will continue the unfinished analysis instead of starting over from the beginining. By default, TRUE}
 
-\item{is_single_in_groupTest}{logical.  Whether to output single-variant assoc test results when perform group tests. Note, single-variant assoc test results will always be output when SKAT and SKAT-O tests are conducted with r.corr=0. This parameter should only be used when only Burden tests are condcuted with r.corr=1. By default, TRUE}
+\item{is_single_in_groupTest}{logical.  Whether to output single-variant assoc test results when perform group tests. Note, single-variant assoc test results will always be output when SKAT and SKAT-O tests are conducted with r.corr=0. This parameter should only be used when only Burden tests are condcuted with r.corr=1. By default, FALSE (the same as the command line since LEDGER #18; it was TRUE before 2026-09-05)}
 
-\item{is_no_weight_in_groupTest}{logical. Whether no weights are used in group Test. If FALSE, weights will be calcuated based on MAF from the Beta distribution with paraemters weights.beta or weights will be extracted from the group File if available. By default, FALSE}
+\item{is_no_weight_in_groupTest}{logical. Whether no weights (all-ones) are used in the group test. If FALSE, weights will be calcuated based on MAF from the Beta distribution with paraemters weights.beta or weights will be extracted from the group File if available. If TRUE and the run has no other weight sets (unweighted group file, single weights.beta pair), the all-ones weights simply replace the beta weights, exactly as before. If TRUE and the run does have other weight sets (weight lines in the group file, or more than one weights.beta pair), an all-ones weight set named "No_Weights" is appended as the last weight set (this replaces the previous hard error for weighted group files). By default, FALSE}
 
 \item{is_output_markerList_in_groupTest}{logical. Whether to output the marker lists included in the set-based tests for each mask. By default, FALSE}
 
-\item{minMAC}{numeric. Minimum minor allele count of markers to test. By default, 0.5. The higher threshold between minMAC and minMAF will be used}
+\item{is_fastTest}{logical. Whether to use the fast mode for tests. By default, FALSE}
 
-\item{minMAF}{numeric. Minimum minor allele frequency of markers to test. By default 0. The higher threshold between minMAC and minMAF will be used}
+\item{pval_cutoff_for_fastTest}{numeric. Only when is_fastTest=TRUE and groupFile is specified: a region whose Cauchy p-value from the fast pass is below this cutoff is re-tested with the sparse GRM, and that second result is the one reported. No effect on single-variant runs. By default, 0.05}
 
-\item{minInfo}{numeric. Minimum imputation info of markers to test. By default, 0.}
+\item{max_MAC_use_ER}{numeric. p-values of genetic variants with MAC <= max_MAC_use_ER are calculated by efficient resampling (the exact test). Such markers report Is.SPA = TRUE and their SE is back-derived from the exact p. By default, 4}
 
-\item{maxMissing}{numeric. Maximum missing rate for markers to be tested. By default, 0.15}
+\item{subSampleFile}{character. Path to a file with one column of IDs of samples that were included in Step 1 and are also to be included in Step 2, for when a Step-1 sample has no genotypes in Step 2. Not fully evaluated; if more than 5 percent of the Step-1 samples are missing in Step 2, re-run Step 1}
 
-\item{maxMAF_in_groupTest.}{vector of numeric. Max MAF for markers tested in group test seperated by comma. e.g. c(0.0001,0.001,0.01). By default, c(0.01)}
+\item{is_noadjCov}{logical. Whether to SKIP the covariate adjustment of the tested genotype in the single-variant score test. TRUE (the default, matching the command line) uses the unadjusted, allele-frequency-centred genotype with the null_noXadj variance ratio; FALSE regresses the covariates out of the genotype first and uses the null variance ratio. The two are different score tests and give different p-values (LEDGER #82: the API used to default to FALSE while the command line defaulted to TRUE). Ignored for group tests and for the sparse-GRM marker test, which always adjust. Under condition the conditioning terms are always built from the ADJUSTED genotype, so at TRUE the _c columns mix an unadjusted marginal score with adjusted conditioning terms (a marker in the conditioning set keeps a non-zero var_c and a finite p.value_c; a correlated marker's conditional variance is slightly overstated); use FALSE for exact conditional columns (LEDGER #82, settled). By default, TRUE}
 
-\item{maxMAC_in_groupTest.}{vector of numeric. Max MAC for markers tested in group test seperated by comma. This vector will be combined with maxMAF_in_groupTest. e.g. c(1) to only test singletons. By default, c(0) and no Max MAC cutoffs are applied.}
+\item{is_output_weight_column}{logical. Whether to force the multi-weight output schema even when only a single weight set is in play: the Weight column (labeled with the set's name) right after max_MAF, and for SKAT-O the additive Pvalue_ACATV/Pvalue_ACATO columns and an always-emitted Cauchy row. Useful for a stable schema across runs with different weight configurations. With more than one weight set the schema is always on and this flag is redundant. By default, FALSE}
 
-\item{annotation_in_groupTest.}{vector of character. annotations of markers to be tested in the set-based tests. using ; to combine multiple annotations in the same test. e.g. c("lof","missense;lof","missense;lof;synonymous")  will test lof variants only, missense+lof variants, and missense+lof+synonymous variants. By default:  c("lof","missense;lof","missense;lof;synonymous")}
+\item{nThreads}{integer. Number of threads for the single-variant marker scan. The C++ marker loop is threaded in place, so there is one process, one copy of the null model and one output file; the result is byte-identical to a one-thread run, which is the gate in tests/testthat/test-step2-threads-inprocess.R. Restarting an interrupted run works exactly as it does serially. For a GROUP test the marker loop stays on one thread, but `nThreads` is not wasted there: it drives the SKAT-O post-processing, which Rprof puts at 45\% of a group run at N = 50,000 (measured 1.29x at 4 workers, byte-identical -- see harness/bench/NOTES.md). Unix only; on other platforms a group run stays serial. A genotype reader that cannot be cloned (PLINK when the .bed could not be memory mapped) falls back to one thread with a warning. PGEN threads too, since S8. By default, 1}
 
-\item{weights_for_condition.}{vector of numeric. weights for conditioning markers for gene- or region-based tests. The length equals to the number of conditioning markers, e.g. c(1,2,3). If not specified, the default weights will be generated based on beta(MAF, 1, 25). Use weights.beta to change the parameters for the Beta distribution.}
-
-\item{IsOutputlogPforSingle}{logical. Whether to output log(Pvalue) for single-variant assoc tests. By default, FALSE. If TRUE, the log(Pvalue) instead of original P values will be output (Not activated)}
-
-\item{X_PARregion}{character. ranges of (pseudoautosomal) PAR region on chromosome X, which are seperated by comma and in the format start:end. By default: '60001-2699520,154931044-155260560' in the UCSC build hg19. For males, there are two X alleles in the PAR region, so PAR regions are treated the same as autosomes. In the NON-PAR regions (outside the specified PAR regions on chromosome X), for males, there is only one X allele. If is_rewrite_XnonPAR_forMales=TRUE, genotypes/dosages of all variants in the NON-PAR regions on chromosome X will be multiplied by 2 (Not activated).}
-
-\item{is_rewrite_XnonPAR_forMales}{logical. Whether to rewrite gentoypes or dosages of variants in the NON-PAR regions on chromosome X for males (multiply by 2). By default, FALSE. Note, only use is_rewrite_XnonPAR_forMales=TRUE when the specified VCF or Bgen file only has variants on chromosome X. When is_rewrite_XnonPAR_forMales=TRUE, the program does not check the chromosome value by assuming all variants are on chromosome X (Not activated)}
-
-\item{sampleFile_male}{character. Path to the file containing one column for IDs of MALE samples in the bgen or vcf file with NO header. Order does not matter}
-
-\item{nThreads}{integer. Number of threads for the single-variant marker scan. The C++ marker loop is threaded in place, so there is one process, one copy of the null model and one output file; the result is byte-identical to a one-thread run. Restarting an interrupted run works exactly as it does serially. Group tests always run on one thread, and a genotype reader that cannot be cloned (PLINK when the .bed could not be memory mapped) falls back to one thread with a warning. PGEN threads too, since S8. By default, 1}
+\item{GMMATmodel_varianceRatio_multiTraits_File}{character. Path to a manifest of null models to test in ONE marker scan, sharing the genotype read. Three whitespace-separated columns, no header: a name, the step-1 .rda, and that model's variance ratio file. Mutually exclusive with GMMATmodelFile/varianceRatioFile. Output goes to <SAIGEOutputFile>_<name> per model, each with its own .index -- except for a single-row manifest, which writes the unsuffixed <SAIGEOutputFile> and is byte- and name-identical to the equivalent GMMATmodelFile run. Models whose step-1 sample IDs are identical share one genotype reader and one decode per marker; models with different sample sets each get their own. Single-variant tests only: a groupFile with more than one model is an error. By default, ""}
 }
 \value{
 SAIGEOutputFile
 }
 \description{
-Run single variant or gene- or region-based score tests with SPA based on the linear/logistic mixed model.
+Run single variant or gene- or region-based score tests with SPA based on the linear/logistic mixed model
 }
