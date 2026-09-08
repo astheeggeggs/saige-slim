@@ -587,7 +587,7 @@ Decided order for what remains:
 * Later, if BURDEN at scale matters: thread across REGIONS rather than
   markers, which approaches the hardware ceiling (~2.9x at 4 threads here).
 
-## FlexRV: planned, not implemented (2026-09-07)
+## FlexRV: F1 landed, F0/F2 blocked on the paper (2026-09-07, upd. 2026-09-08)
 
 [Planned; `docs/design/flexrv-plan.md`, owner's decisions recorded there.]
 The repo's "flexRV" label on Phase 5 names the multi-weight ENGINE, not the
@@ -608,6 +608,30 @@ array at N = 500k with 192 sets and the default 12 cells), so the plan's F5
 stage measures at N = 50,000 on `sim50k` before anything is called done; the
 sim's latent score `a_lat` is not written by `02_build_dataset.py`, which F5
 has to fix or work around.
+
+**Updated 2026-09-08.** **F1 is LANDED** (`97db5a88`): the group file parses an
+optional `GENE score:NAME v1 v2 ...` line per region, validates it (numeric,
+non-NA, inside [0, 1], one value per marker, the same name in every region) and
+carries it into `RegionData` as `SAIGESC_1` and each region entry as `$SCORE`.
+Nothing consumes it. Proved inert three ways: every golden byte-identical in
+BOTH compare modes; an end-to-end region run with a score line byte-identical to
+one without; and a planted out-of-range value exiting 1 through the real CLI --
+that last is what shows the parser runs in the CLI path and not only in unit
+tests. Two decisions NARROWED the plan and are recorded in it: the score line's
+position is FIXED (immediately after `anno`), and `scoreName` is appended to the
+`detail = TRUE` return ONLY when a score line exists -- because FOUR existing
+tests pin the historical returns and messages, where the plan said two.
+
+**The real blocker is not `a_lat`, it is the PAPER.** F0 and F2 need the FlexRV
+PDF supplied by hand (bioRxiv blocks fetches) so the 16x12 transform table can
+be pinned VERBATIM before the kernels can be written or tested against closed
+forms; `a_lat` only gates F5 and the plan already carries a cheap workaround
+(anno class plus seeded jitter, no 65-minute rebuild). F3 is the commit that
+wants review: it changes `mainRegionInCPP`'s signature, which pulls in
+`RcppExports`, the stale `Main.hpp`, `src/Makevars` and the delete-`src/*.o`
+rule. **The plan's line references were re-resolved on 2026-09-08 and are now
+SYMBOL-anchored** with the line number as a dated hint; they had drifted by up
+to ~145 lines within a day.
 
 ## LEDGER #104/#105/#106: the SKAT-O burden variance (2026-09-07) -- DONE 2026-09-08
 
