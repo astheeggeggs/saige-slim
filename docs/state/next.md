@@ -691,10 +691,32 @@ Three things in there that outlive the run:
   6.1 % and made 91-93 % of moved p-values SMALLER -- the pre-registered sign --
   while leaving `lambda_GC` to move only 0.721 -> 0.726, also pre-registered.
 
-Not covered by it: the BINARY SKAT-O path, where #104/#105 live (they are gated
-behind `traitType == "binary"` at `R/SAIGE_SPATest_Region.R:363` and provably
-cannot fire on a quantitative trait) and where the measured golden movement was
-12.6 %. Running `y_binary` on the same fixture is the obvious follow-on.
+The BINARY SKAT-O path, where #104/#105 live, is covered by the follow-on
+`docs/state/null50k-binary-2026-09-08.md`. Four arms verified at source level,
+every falsifiable prediction held (#103 moves zero p-values; #106 with #104 still
+present moves `SE_Burden` but not `BETA_Burden`; #104/#105 leaves
+`.singleAssoc.txt` byte-identical), positive control intact (16/20 causal in the
+top 20, ladder Spearman 0.682, both arms). Two things worth carrying forward:
+
+* **#106 is ~20x smaller on binary than on quantitative** at the same N, GRM and
+  genotypes -- burden-variance factor min 0.99685 against 0.9387. That is exactly
+  what #106's own WHAT cell argues from `1/W ~ 11` dominating `tau2 x kinship`,
+  now measured rather than argued.
+* **#104/#105's `r` is 0.9878 median at 50k against 0.945-0.953 on the bundled
+  fixture**, so the p-value movement is a median of 0.4 %, not the 12.6 % the
+  goldens showed -- the golden headline is the maximum (the tail here still
+  reaches 12.9 %), not the typical case. Predicted before the run from where `r`
+  comes from, and held.
+
+**Open, and NOT caused by the fixes: the binary tail at K = 0.01.** The 210
+independent Cauchy rows of the binary null give 6 at p <= 0.01 against 2.1
+expected (one-sided binomial p = 0.020) -- and 6 at `cca6b497` as well, so none of
+it is attributable to #103/#104/#105/#106. The quantitative null gives 0/210 and
+`y_binary`'s non-causal genes 1/189 on the same genotypes. Three realisations
+reading 6, 0, 1 against ~2 is suggestive and no more. Settling it needs REPLICATE
+phenotypes at K = 0.01, not another single arm; that is the next calibration job
+if anyone wants one, and it is a question about SAIGE-GENE+ on rare binary traits
+rather than about this branch's fixes.
 
 ## Golden coverage audit (2026-09-08)
 
