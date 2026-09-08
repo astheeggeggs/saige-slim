@@ -2504,8 +2504,18 @@ arma::fvec getDiagOfSigma(arma::fvec& wVec, arma::fvec& tauVec){
 //	if(i < 100){
 //		std::cout << i << "th element of diag of sigma and wVec " << diagVec(i) << " " << wVec(i) << std::endl;
 //	}
-  		if(diagVec(i) < 1e-4){
-  			diagVec(i) = 1e-4 ;
+  	// LEDGER #91 FIXED. Was an absolute clamp to 1e-4, a quantity in phenotype
+  	// units (see gen_sp_Sigma). This vector is only ever consumed as
+  	// `minvVec = 1/getDiagOfSigma(...)`, the Jacobi PRECONDITIONER, which
+  	// cannot change the solution of a converged PCG -- but SAIGE's PCG stops on
+  	// an ABSOLUTE residual (LEDGER #6), so where it stops, and hence the
+  	// answer, did depend on this clamp. All the reciprocal needs is a positive
+  	// finite divisor: a small POSITIVE diagonal is the correct preconditioner
+  	// for a small-scaled trait and is now left alone. A non-positive or
+  	// non-finite entry falls back to 1, i.e. no preconditioning for that
+  	// sample, which is neutral and scale-free.
+  		if(!(diagVec(i) > 0) || !arma::is_finite(diagVec(i))){
+  			diagVec(i) = 1.0 ;
   		}
   	}
   
@@ -2532,8 +2542,11 @@ arma::fvec getDiagOfSigma_LOCO(arma::fvec& wVec, arma::fvec& tauVec){
 	diagVec = diagVec/(Msub_MAFge_minMAFtoConstructGRM_in_b - Msub_MAFge_minMAFtoConstructGRM_singleVar_b) + tauVec(0)/wVec;
         //diagVec = tauVec(1)* (*geno.Get_Diagof_StdGeno_LOCO()) /(Msub_MAFge_minMAFtoConstructGRM) + tauVec(0)/wVec;
         for(unsigned int i=0; i< Nnomissing; i++){
-                if(diagVec(i) < 1e-4){
-                        diagVec(i) = 1e-4 ;
+                // LEDGER #91 FIXED, same reasoning as getDiagOfSigma above: this
+                // is the Jacobi preconditioner, so it needs a positive finite
+                // divisor and nothing more.
+                if(!(diagVec(i) > 0) || !arma::is_finite(diagVec(i))){
+                        diagVec(i) = 1.0 ;
                 }
         }
 
@@ -2650,9 +2663,22 @@ arma::sp_mat gen_sp_Sigma(arma::fvec& wVec,  arma::fvec& tauVec){
 //       std::cout << "i: " << i << " " << valueVecNew(i) << std::endl;
        valueVecNew(i) = valueVecNew(i) + dtVec(locationMat(0,i));
 //       std::cout << "i: " << i << " " << valueVecNew(i) << std::endl;
-        if(valueVecNew(i) < 1e-4){
-                        valueVecNew(i) = 1e-4 ;
-                }
+       // LEDGER #91 FIXED. This diagonal used to be clamped up to an absolute
+       // 1e-4. That is a quantity in PHENOTYPE UNITS, so whether it fired
+       // depended on the scale of the trait and on nothing about the model: a
+       // quantitative trait whose covariate-adjusted sd was below ~0.01 had
+       // tau0/W + tau1*GRM under the floor on EVERY sample and was handed a
+       // completely different Sigma, silently -- variance ratios 33% out and
+       // step-2 p-values 57% out (measured 2026-09-05, LEDGER #91).
+       //
+       // Nothing here needs a floor. Sigma's diagonal is a sum of non-negative
+       // terms, so the only value it cannot take is a non-positive one, and
+       // that means the variance components have collapsed -- which the caller
+       // must be told, not have papered over. gen_spsolve_v4, the only caller,
+       // ALREADY says so: a Sigma that will not factorise throws
+       // "spsolve(): solution not found". The clamp is exactly what stopped
+       // that from being reached, by perturbing the diagonal until a matrix
+       // that is NOT the model's Sigma factorised.
 
 
      }
