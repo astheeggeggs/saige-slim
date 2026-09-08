@@ -70,9 +70,12 @@ check_close <- function(groupFile) {
 # check Group file format and count the number of regions
 # With detail = FALSE (the default) the return value is exactly
 # list(nRegions, is_weight_included), the historical contract.
-# With detail = TRUE two fields are appended: nWeightSets (K, the number of
-# weight lines per region, defined by region 1) and weightSetNames (character
-# vector of length K; a bare 'weight' type is named "WEIGHT").
+# With detail = TRUE three fields are appended: nWeightSets (K, the number of
+# weight lines per region, defined by region 1), weightSetNames (character
+# vector of length K; a bare 'weight' type is named "WEIGHT"). A fourth,
+# scoreName, is appended ONLY when the file carries a FlexRV score line (a bare
+# 'score' type is named "SCORE"); a file without one returns the historical
+# four fields unchanged.
 checkGroupFile <- function(groupFile, detail = FALSE) {
   cat("Start extracting marker-level information from 'groupFile' of", groupFile, "....\n")
   Check_File_Exist(groupFile, "RegionFile")
@@ -91,6 +94,28 @@ checkGroupFile <- function(groupFile, detail = FALSE) {
     "WEIGHT"
   }
 
+  # the 2nd field of a SCORE line is 'score' (name "SCORE"), 'score:NAME' or
+  # 'score,NAME'; returns NULL for non-score lines. FlexRV (F1) reads one
+  # per-marker pathogenicity score in [0, 1] per region and expands it into
+  # weight sets in C++; nothing consumes it yet.
+  #
+  # POSITION IS FIXED: immediately after the anno line, before any weight
+  # lines. The plan allowed "before or among" the weight lines; pinning it is
+  # a deliberate tightening, because relaxing a position later is backward
+  # compatible for existing files and tightening later would not be. It also
+  # keeps every line offset in this parser and in SAIGE.getRegionList_new a
+  # constant rather than a lookup into a per-region layout vector.
+  parse_score_type <- function(type) {
+    type_parts <- strsplit(type, split = "[,:]")[[1]]
+    if (length(type_parts) == 0 || type_parts[1] != "score") {
+      return(NULL)
+    }
+    if (length(type_parts) >= 2 && nzchar(type_parts[2])) {
+      return(type_parts[2])
+    }
+    "SCORE"
+  }
+
   # region 1 defines the format: a var line, an anno line, then K >= 0
   # consecutive weight lines; every region must follow the same layout
   gf <- file(groupFile, "r")
@@ -98,6 +123,21 @@ checkGroupFile <- function(groupFile, detail = FALSE) {
   marker_group_line <- readLines(gf, n = 1)
   is_weight_included <- FALSE
   weightSetNames <- character(0)
+  scoreName <- character(0)
+  # region 1's third line decides whether this file carries a score line
+  peek <- readLines(gf, n = 1)
+  if (length(peek) > 0) {
+    peek_list <- strsplit(peek, split = "[\ \t]+")[[1]]
+    if (length(peek_list) >= 3) {
+      scoreName <- parse_score_type(peek_list[2])
+      if (is.null(scoreName)) {
+        scoreName <- character(0)
+        pushBack(peek, gf)
+      }
+    } else {
+      pushBack(peek, gf)
+    }
+  }
   repeat {
     marker_group_line <- readLines(gf, n = 1)
     if (length(marker_group_line) == 0) {
@@ -106,6 +146,11 @@ checkGroupFile <- function(groupFile, detail = FALSE) {
     marker_group_line_list <- strsplit(marker_group_line, split = "[\ \t]+")[[1]]
     if (length(marker_group_line_list) < 3) {
       break
+    }
+    if (!is.null(parse_score_type(marker_group_line_list[2]))) {
+      stop("Error! A second 'score' line in region 1 of the group file, or a",
+           " score line after a weight line: exactly one score line is allowed",
+           " and it must come immediately after the anno line\n")
     }
     setName <- parse_weight_type(marker_group_line_list[2])
     if (is.null(setName)) {
@@ -126,7 +171,9 @@ checkGroupFile <- function(groupFile, detail = FALSE) {
   if ("Cauchy" %in% weightSetNames) {
     stop("Error! 'Cauchy' is a reserved weight set name and cannot be used in the group file\n")
   }
-  a <- 2 + nWeightSets
+  # one optional score line sits between anno and the weight lines
+  nScoreSets <- length(scoreName)
+  a <- 2 + nScoreSets + nWeightSets
 
   gf <- file(groupFile, "r")
   line <- 0
@@ -185,9 +232,51 @@ checkGroupFile <- function(groupFile, detail = FALSE) {
       stop("The length of annotations for markers in region ", geneID, " is not equal to the length of marker IDs\n")
     }
 
+    if (nScoreSets > 0) {
+      marker_group_line_list <- strsplit(marker_group_line[3], split = "[\ \t]+")[[1]]
+      line <- line + 1
+      if (length(marker_group_line_list) < 3) {
+        stop("Error, group file line:", line, " is incomplete.\n")
+      }
+      geneID <- marker_group_line_list[1]
+      thisScore <- parse_score_type(marker_group_line_list[2])
+      if (is.null(thisScore)) {
+        stop("Error! No score is specified for ", geneID0,
+             ": region 1 has a score line, so every region must have one",
+             " immediately after its anno line\n")
+      }
+      if (geneID != geneID0) {
+        stop("score for ", geneID0, " is missing.\n")
+      }
+      if (thisScore != scoreName) {
+        stop("Error! Score name '", thisScore, "' in region ", geneID0,
+             " does not match score name '", scoreName,
+             "' in region 1: every region must carry the same score\n")
+      }
+      numScores <- length(marker_group_line_list) - 2
+      if (numScores != numMarkers) {
+        stop("The length of scores for markers in region ", geneID,
+             " is not equal to the length of marker IDs\n")
+      }
+      scoreValues <- suppressWarnings(as.numeric(marker_group_line_list[-c(1:2)]))
+      if (anyNA(scoreValues)) {
+        stop("Error! Non-numeric or NA score values in score '", scoreName,
+             "' for region ", geneID, "\n")
+      }
+      # FlexRV's score transforms assume a normalised pathogenicity score;
+      # cbrt/sbeta of a value outside [0, 1] is not defined by the method, so
+      # reject at parse time with the region named rather than produce weights
+      # nobody can interpret.
+      if (any(scoreValues < 0 | scoreValues > 1)) {
+        stop("Error! Score values outside [0, 1] in score '", scoreName,
+             "' for region ", geneID, "\n")
+      }
+    }
+
     if (nWeightSets > 0) {
       for (k in 1:nWeightSets) {
-        marker_group_line_list <- strsplit(marker_group_line[2 + k], split = "[\ \t]+")[[1]]
+        marker_group_line_list <- strsplit(marker_group_line[2 + nScoreSets + k],
+                                           split = "[\ \t]+")[[1]]
         line <- line + 1
         if (length(marker_group_line_list) < 3) {
           stop("Error, group file line:", line, " is incomplete.\n")
@@ -234,6 +323,16 @@ checkGroupFile <- function(groupFile, detail = FALSE) {
   if (detail) {
     res$nWeightSets <- nWeightSets
     res$weightSetNames <- weightSetNames
+    # scoreName is appended ONLY when the file has a score line. Three tests
+    # pin the historical detail = TRUE return as exactly
+    # list(nRegions, is_weight_included, nWeightSets, weightSetNames), and the
+    # FlexRV plan requires those to stay verbatim -- so a scoreless file must
+    # keep returning four elements, not five with an empty fifth. Callers read
+    # it as `region_list$scoreName`, which is NULL when absent, and
+    # length(NULL) == 0 is exactly the arithmetic they want.
+    if (nScoreSets > 0) {
+      res$scoreName <- scoreName
+    }
   }
   res
 }

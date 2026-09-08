@@ -147,7 +147,24 @@ per-cell Cauchy-over-sets rows are a follow-up decision, not in scope.
   re-pinned VERBATIM from the PDF (bioRxiv blocks fetches; the user supplies
   the PDF), closed forms with their derivations, the collapse difference, the
   ER rule, the memory formula. No code.
-- **F1 score line.** `checkGroupFile` (`R/SAIGE_SPATest_Region_Func.R:76-239`)
+- **F1 score line. DONE 2026-09-08.** Two decisions taken during
+  implementation, both recorded because they narrow the design above:
+  (1) **the score line's position is FIXED** -- immediately after `anno`,
+  before any weight line -- where this plan said "before/among weight lines".
+  Relaxing a position later is backward compatible for existing files and
+  tightening later is not, and it keeps every offset in the parser and in
+  `getRegionList_new` a constant instead of a per-region layout vector. A
+  second score line, or one after a weight line, is a named error.
+  (2) **`scoreName` is appended to the `detail = TRUE` return ONLY when the
+  file has a score line.** Three existing tests pin that return as exactly
+  four elements, not two as this plan assumed, and they had to stay verbatim;
+  callers read `region_list$scoreName`, which is NULL when absent, and
+  `length(NULL) == 0` is the arithmetic they want. The same rule applies to
+  `RegionList[[r]]$SCORE` and to the `nline_per_gene` mismatch message, which
+  keeps its historical wording when no score is in play (`test-unit-regionlist.R`
+  pins it). Line references below had drifted by ~145 lines and were
+  re-resolved.
+- **F1 (original text).** `checkGroupFile` (`R/SAIGE_SPATest_Region_Func.R:76-239`)
   parses `score:NAME`, `detail=TRUE` adds `scoreName`; the two pinned
   `expect_identical` returns stay verbatim. `SAIGE.getRegionList_new` carries
   `SCORE`. Unit tests in `test-unit-groupfile.R` (parse, [0,1] validation, name

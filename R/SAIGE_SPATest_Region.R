@@ -853,6 +853,11 @@ SAIGE.Region <- function(mu,
   is_weight_included <- region_list$is_weight_included
   nWeightSets <- region_list$nWeightSets
   weightSetNames <- region_list$weightSetNames
+  # FlexRV (F1): one optional per-marker score line per region. Parsed and
+  # carried into RegionData as SAIGESC_1; NOTHING consumes it yet -- the
+  # transform sets that expand it are F3. character(0) for every group file
+  # with no score line, which is every bundled one, so this is inert.
+  scoreName <- region_list$scoreName
 
   # ---- weight-set composition (design D5/D10) ------------------------------
   # The composed per-run weight-set list, in the NORMATIVE order shared with
@@ -951,7 +956,7 @@ SAIGE.Region <- function(mu,
     }
   }
 
-  nline_per_gene <- 2 + nWeightSets
+  nline_per_gene <- 2 + length(scoreName) + nWeightSets
 
   # Per-set labels handed to mainRegionInCPP; consumed by C++ only for
   # per-set output labels when the Weight column is emitted, and by
@@ -1363,7 +1368,8 @@ SAIGE.Region <- function(mu,
         markerInfo,
         chrom,
         nWeightSets,
-        weightSetNames
+        weightSetNames,
+        scoreName
       )
       # print(RegionList)
       cat(
@@ -1693,7 +1699,8 @@ SAIGE.getRegionList_new <- function(marker_group_line,
                                     markerInfo,
                                     chrom = "",
                                     nWeightSets = NULL,
-                                    weightSetNames = NULL) {
+                                    weightSetNames = NULL,
+                                    scoreName = character(0)) {
   if (is.null(nWeightSets)) {
     # legacy callers: infer the weight layout from nline_per_gene
     # (2 -> no weights; 3 -> one bare weight line, set name "WEIGHT")
@@ -1707,10 +1714,22 @@ SAIGE.getRegionList_new <- function(marker_group_line,
       stop("nWeightSets must be provided when nline_per_gene is not 2 or 3\n")
     }
   }
-  if (nline_per_gene != 2 + nWeightSets) {
+  # one optional FlexRV score line sits between anno and the weight lines
+  nScoreSets <- length(scoreName)
+  if (nline_per_gene != 2 + nScoreSets + nWeightSets) {
+    # the historical message is kept verbatim when no score line is in play
+    # (test-unit-regionlist.R pins it), and only mentions scores when they
+    # are actually part of the layout
+    if (nScoreSets == 0) {
+      stop(
+        "nline_per_gene (", nline_per_gene,
+        ") must equal 2 + nWeightSets (nWeightSets = ", nWeightSets, ")\n"
+      )
+    }
     stop(
       "nline_per_gene (", nline_per_gene,
-      ") must equal 2 + nWeightSets (nWeightSets = ", nWeightSets, ")\n"
+      ") must equal 2 + nScoreSets + nWeightSets (nScoreSets = ", nScoreSets,
+      ", nWeightSets = ", nWeightSets, ")\n"
     )
   }
   if (nWeightSets > 0 & length(weightSetNames) != nWeightSets) {
@@ -1727,6 +1746,10 @@ SAIGE.getRegionList_new <- function(marker_group_line,
   } else {
     character(0)
   }
+  # the score rides the same sanitized-internal-name path as the weights, for
+  # the same reason: it must survive every merge/filter/sort below without
+  # colliding with a markerInfo column. Nothing reads it yet (FlexRV F1).
+  scoreColNames <- if (nScoreSets > 0) "SAIGESC_1" else character(0)
   chrom_nochr <- gsub("CHR", "", chrom, ignore.case = TRUE)
   # read group file
   ngroup <- length(marker_group_line) / nline_per_gene
@@ -1743,20 +1766,33 @@ SAIGE.getRegionList_new <- function(marker_group_line,
     marker_group_line_list_anno <- strsplit(marker_group_line[2 + (i -
       1) * nline_per_gene], split = "[\ \t]+")[[1]]
     anno <- marker_group_line_list_anno[3:length(marker_group_line_list_anno)]
+    score <- NULL
+    if (nScoreSets > 0) {
+      idxScore <- 3 + (i - 1) * nline_per_gene
+      marker_group_line_list_score <- strsplit(marker_group_line[idxScore],
+        split = "[\ \t]+"
+      )[[1]]
+      score <- cbind(
+        marker_group_line_list_score[3:length(marker_group_line_list_score)]
+      )
+      colnames(score) <- scoreColNames
+    }
     if (nWeightSets > 0) {
       weight <- NULL
       for (k in 1:nWeightSets) {
-        marker_group_line_list_weight <- strsplit(marker_group_line[2 + k + (i - 1) *
-          nline_per_gene], split = "[\ \t]+")[[1]]
+        idxWeight <- 2 + nScoreSets + k + (i - 1) * nline_per_gene
+        marker_group_line_list_weight <- strsplit(marker_group_line[idxWeight],
+          split = "[\ \t]+"
+        )[[1]]
         weight <- cbind(
           weight,
           marker_group_line_list_weight[3:length(marker_group_line_list_weight)]
         )
       }
       colnames(weight) <- weightColNames
-      RegionData <- rbind(RegionData, cbind(rep(gene, length(var)), var, anno, weight))
+      RegionData <- rbind(RegionData, cbind(rep(gene, length(var)), var, anno, score, weight))
     } else {
-      RegionData <- rbind(RegionData, cbind(rep(gene, length(var)), var, anno))
+      RegionData <- rbind(RegionData, cbind(rep(gene, length(var)), var, anno, score))
     }
 
     if (gene %in% geneList) {
@@ -1765,7 +1801,7 @@ SAIGE.getRegionList_new <- function(marker_group_line,
       geneList <- c(geneList, gene)
     }
   }
-  colnames(RegionData) <- c("REGION", "SNP", "ANNO", weightColNames)
+  colnames(RegionData) <- c("REGION", "SNP", "ANNO", scoreColNames, weightColNames)
   RegionData <- as.data.frame(RegionData)
   setDT(RegionData)
   uRegion0 <- unique(RegionData$REGION)
@@ -1861,6 +1897,10 @@ SAIGE.getRegionList_new <- function(marker_group_line,
           # character matrix, one column per weight set, rows aligned to SNP
           WEIGHT <- as.matrix(RegionData[posSNP, weightColNames, with = FALSE])
         }
+        if (nScoreSets > 0) {
+          # one per-marker score, rows aligned to SNP, subset with them below
+          SCORE <- RegionData[posSNP, scoreColNames, with = FALSE][[1]]
+        }
 
         if (any(duplicated(SNP))) {
           stop(
@@ -1922,6 +1962,9 @@ SAIGE.getRegionList_new <- function(marker_group_line,
           if (nWeightSets > 0) {
             WEIGHT <- WEIGHT[-annoIndicatorMat_rmind, , drop = FALSE]
           }
+          if (nScoreSets > 0) {
+            SCORE <- SCORE[-annoIndicatorMat_rmind]
+          }
 
           annoIndicatorMat <- annoIndicatorMat[-annoIndicatorMat_rmind, ,
             drop =
@@ -1954,6 +1997,11 @@ SAIGE.getRegionList_new <- function(marker_group_line,
             #                           chrom = uchrom,
             annoVec = annoVecNew
           )
+          # appended only when the group file carries a score line, so the
+          # entry shape is byte-for-byte what it was for every existing file
+          if (nScoreSets > 0) {
+            RegionList[[r]]$SCORE <- as.numeric(SCORE)
+          }
         }
       } else {
         # if(length(posSNP) > 0){

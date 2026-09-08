@@ -177,3 +177,160 @@ test_that("negative weights are rejected only in multi-weight mode", {
   expect_error(checkGroupFile(f2),
                "Negative weight values in weight set 'CADD' for region GENE1")
 })
+
+# ---------------------------------------------------------------------------
+# FlexRV F1: the optional `score:NAME` line. One per region, values in [0, 1],
+# fixed position (immediately after anno, before any weight line). Parsed and
+# carried into RegionData as SAIGESC_1; NOTHING consumes it yet, so a file
+# without one must behave exactly as before.
+
+# build a group file from the bundled one with a score line spliced in, and
+# optionally K weight lines after it
+gf_with_score <- function(scoreType = "score:PAI3D", vals = NULL,
+                          weights = 0L, vals2 = NULL) {
+  lines <- readLines(groupfile())
+  n1 <- length(strsplit(lines[1], "[ \t]+")[[1]]) - 2
+  n2 <- length(strsplit(lines[3], "[ \t]+")[[1]]) - 2
+  s1 <- if (is.null(vals)) rep("0.5", n1) else vals
+  s2 <- if (is.null(vals2)) rep("0.25", n2) else vals2
+  wl <- function(gene, n) {
+    if (weights == 0L) {
+      return(character(0))
+    }
+    mk <- function(k) {
+      paste(c(gene, paste0("weight:W", k), rep("1", n)), collapse = " ")
+    }
+    vapply(seq_len(weights), mk, character(1))
+  }
+  out <- c(lines[1:2], paste(c("GENE1", scoreType, s1), collapse = " "), wl("GENE1", n1),
+           lines[3:4], paste(c("GENE2", scoreType, s2), collapse = " "), wl("GENE2", n2))
+  f <- tempfile()
+  writeLines(out, f)
+  f
+}
+
+test_that("a score line is parsed and named, and the detail=FALSE contract is unchanged", {
+  f <- gf_with_score()
+  # the historical return must stay EXACTLY list(nRegions, is_weight_included):
+  # a score line is not a weight line, so is_weight_included stays FALSE
+  expect_identical(checkGroupFile(f), list(nRegions = 2, is_weight_included = FALSE))
+  d <- checkGroupFile(f, detail = TRUE)
+  expect_identical(d$scoreName, "PAI3D")
+  expect_identical(d$nWeightSets, 0L)
+  # a bare `score` type is named SCORE, like a bare `weight` is named WEIGHT
+  expect_identical(checkGroupFile(gf_with_score("score"), detail = TRUE)$scoreName, "SCORE")
+  # comma form, as for weight lines
+  expect_identical(checkGroupFile(gf_with_score("score,PAI3D"), detail = TRUE)$scoreName,
+                   "PAI3D")
+})
+
+test_that("a file with no score line keeps the historical detail=TRUE return", {
+  d <- checkGroupFile(groupfile(), detail = TRUE)
+  # NOT character(0): the field is absent entirely, so the four-element
+  # contract that three older tests pin is preserved. length(NULL) == 0 is
+  # what the callers need.
+  expect_null(d$scoreName)
+  expect_identical(names(d), c("nRegions", "is_weight_included",
+                               "nWeightSets", "weightSetNames"))
+  expect_identical(d$nRegions, 2)
+})
+
+test_that("score lines coexist with weight lines, which keep their own names", {
+  f <- gf_with_score(weights = 2L)
+  d <- checkGroupFile(f, detail = TRUE)
+  expect_identical(d$scoreName, "PAI3D")
+  expect_identical(d$nWeightSets, 2L)
+  expect_identical(d$weightSetNames, c("W1", "W2"))
+  expect_true(d$is_weight_included)
+})
+
+test_that("score values are validated: numeric, non-NA, and inside [0, 1]", {
+  n1 <- length(strsplit(readLines(groupfile())[1], "[ \t]+")[[1]]) - 2
+  bad <- function(v) {
+    vals <- rep("0.5", n1)
+    vals[1] <- v
+    gf_with_score(vals = vals)
+  }
+  expect_error(checkGroupFile(bad("1.5")), "outside \\[0, 1\\]")
+  expect_error(checkGroupFile(bad("-0.1")), "outside \\[0, 1\\]")
+  expect_error(checkGroupFile(bad("NA")), "Non-numeric or NA score")
+  expect_error(checkGroupFile(bad("abc")), "Non-numeric or NA score")
+  # the boundaries themselves are allowed
+  vals <- rep("0.5", n1)
+  vals[1] <- "0"
+  vals[2] <- "1"
+  expect_identical(checkGroupFile(gf_with_score(vals = vals), detail = TRUE)$scoreName,
+                   "PAI3D")
+})
+
+test_that("every region must carry the same score, of the same length", {
+  lines <- readLines(groupfile())
+  n1 <- length(strsplit(lines[1], "[ \t]+")[[1]]) - 2
+  n2 <- length(strsplit(lines[3], "[ \t]+")[[1]]) - 2
+  # region 2 names a different score
+  mixed <- c(lines[1:2], paste(c("GENE1", "score:A", rep("0.5", n1)), collapse = " "),
+             lines[3:4], paste(c("GENE2", "score:B", rep("0.5", n2)), collapse = " "))
+  f <- tempfile()
+  writeLines(mixed, f)
+  expect_error(checkGroupFile(f), "does not match score name")
+  # region 2 has no score line at all
+  missing <- c(lines[1:2], paste(c("GENE1", "score:A", rep("0.5", n1)), collapse = " "),
+               lines[3:4])
+  f2 <- tempfile()
+  writeLines(missing, f2)
+  expect_error(checkGroupFile(f2))
+  # wrong number of scores
+  short <- c(lines[1:2], paste(c("GENE1", "score:A", rep("0.5", n1 - 1)), collapse = " "),
+             lines[3:4], paste(c("GENE2", "score:A", rep("0.5", n2)), collapse = " "))
+  f3 <- tempfile()
+  writeLines(short, f3)
+  expect_error(checkGroupFile(f3), "length of scores")
+})
+
+test_that("only one score line is allowed, and it must precede the weight lines", {
+  lines <- readLines(groupfile())
+  n1 <- length(strsplit(lines[1], "[ \t]+")[[1]]) - 2
+  n2 <- length(strsplit(lines[3], "[ \t]+")[[1]]) - 2
+  two <- c(lines[1:2],
+           paste(c("GENE1", "score:A", rep("0.5", n1)), collapse = " "),
+           paste(c("GENE1", "score:B", rep("0.5", n1)), collapse = " "),
+           lines[3:4],
+           paste(c("GENE2", "score:A", rep("0.5", n2)), collapse = " "),
+           paste(c("GENE2", "score:B", rep("0.5", n2)), collapse = " "))
+  f <- tempfile()
+  writeLines(two, f)
+  expect_error(checkGroupFile(f), "exactly one score line")
+  # a score line AFTER a weight line is rejected by the same guard
+  after <- c(lines[1:2],
+             paste(c("GENE1", "weight", rep("1", n1)), collapse = " "),
+             paste(c("GENE1", "score:A", rep("0.5", n1)), collapse = " "),
+             lines[3:4],
+             paste(c("GENE2", "weight", rep("1", n2)), collapse = " "),
+             paste(c("GENE2", "score:A", rep("0.5", n2)), collapse = " "))
+  f2 <- tempfile()
+  writeLines(after, f2)
+  expect_error(checkGroupFile(f2), "exactly one score line")
+})
+
+test_that("getRegionList_new carries the score into RegionData as SAIGESC_1", {
+  f <- gf_with_score()
+  d <- checkGroupFile(f, detail = TRUE)
+  lines <- readLines(f)
+  rl <- SAIGE.getRegionList_new(lines, 2 + length(d$scoreName) + d$nWeightSets,
+                                c("lof", "missense", "synonymous"), mi100(),
+                                nWeightSets = d$nWeightSets,
+                                weightSetNames = d$weightSetNames,
+                                scoreName = d$scoreName)
+  expect_identical(names(rl), c("GENE1", "GENE2"))
+  # the score reached the per-region structure and kept its values
+  g1 <- rl[["GENE1"]]
+  expect_identical(g1$SCORE, rep(0.5, length(g1$SNP)))
+  # and a scoreless file must not gain the field at all
+  d0 <- checkGroupFile(groupfile(), detail = TRUE)
+  rl0 <- SAIGE.getRegionList_new(readLines(groupfile()), 2,
+                                 c("lof", "missense", "synonymous"), mi100(),
+                                 nWeightSets = d0$nWeightSets,
+                                 weightSetNames = d0$weightSetNames,
+                                 scoreName = d0$scoreName)
+  expect_null(rl0[["GENE1"]]$SCORE)
+})
