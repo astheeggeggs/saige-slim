@@ -22,6 +22,16 @@
 #include <boost/math/distributions/normal.hpp>
 #include <boost/math/distributions/chi_squared.hpp>
 
+// LEDGER #106 fix: the sparse-GRM PCG stops on a RELATIVE residual,
+// ||r||^2 <= kSparsePCGRelTol * ||b||^2, so the solve no longer depends on the
+// scale of the vector it is handed (on the old absolute 0.02 an unweighted rare
+// variant, ||b||^2 ~ MAC, stopped after ONE iteration and the same vector times
+// its beta weight after two). Measured against a converged Cholesky at
+// N = 1,000 and N = 50,000: 2-3 iterations, variance error <= 1.2e-8, from one
+// iteration and errors up to 0.3 %.
+static const int kSparsePCGMaxIter = 100;
+static const double kSparsePCGRelTol = 1e-8;
+
 namespace SAIGE {
 
 // See the declaration in SAIGE_test.hpp for why this is a named function.
@@ -184,6 +194,41 @@ static inline bool varianceCollapsed(double t_var2, double t_termScale, int t_n)
   return std::fabs(t_var2) <= double(t_n) * std::numeric_limits<double>::epsilon() * t_termScale;
 }
 
+
+// LEDGER #44, THIRD shape, surfaced by the #106 fix. `scoreTest`'s sparse arm
+// used to report var == 0 EXACTLY on a covariate-collinear marker, so the
+// absolute `var1 <= DBL_MIN` guard fired -- but that zero was an ACCIDENT of
+// the old absolute PCG stopping rule: with gtilde ~ 1e-16 componentwise,
+// ||b||^2 ~ 1e-29 was already below the old absolute tolerance 1e-8, so the
+// solver returned x = 0 without taking a single step. Under the relative rule
+// (#106) it converges and returns the true, genuinely tiny variance
+// (6.8e-29 for rs20), ~279 orders of magnitude ABOVE DBL_MIN, and BETA =
+// S/var1 became a ratio of two noise quantities: -4.4e13 with SE 1.2e14 and
+// p = 0.72 on a marker the covariates explain exactly.
+//
+// `varianceCollapsed` cannot catch this one: there is no cancellation here.
+// P2Vec and gtilde are both ~1e-16 componentwise, so var2 is a sum of ~1e-32
+// terms that all have the same sign -- it is small because its INPUT is
+// nothing, not because the sum destroyed itself. So ask the question one level
+// up: did the covariate projection annihilate the genotype? gtilde is
+// g - X (X'WX)^-1 X'W g, whose componentwise rounding error is bounded by
+// about n*eps times the scale of g, so ||gtilde||^2 <= (n*eps)^2 ||g||^2 says
+// "what is left of g after the projection is entirely roundoff". Scale-free by
+// construction: it is a ratio of two norms of the same vector's scale.
+//
+// MEASURED on the P27 configuration, all 70 markers: rs20 and rs22 give
+// 9.1e-31 and 7.5e-31; EVERY other marker gives >= 0.328. That is 29.5 orders
+// of separation, with the threshold (n*eps)^2 = 4.9e-26 sitting ~5e4 above the
+// collapse and ~25 orders below the smallest real marker.
+static inline bool projectionCollapsed(const arma::vec & t_gtilde,
+                                       const arma::vec & t_GVec, int t_n)
+{
+  double g2 = arma::dot(t_GVec, t_GVec);
+  if(!(g2 > 0)) return false;
+  double rel = double(t_n) * std::numeric_limits<double>::epsilon();
+  return arma::dot(t_gtilde, t_gtilde) <= rel * rel * g2;
+}
+
 void SAIGEClass::scoreTest(arma::vec & t_GVec,
                      double& t_Beta,
                      double& t_seBeta,
@@ -224,7 +269,7 @@ void SAIGEClass::scoreTest(arma::vec & t_GVec,
       //t_P2Vec = arma::spsolve(m_SigmaMat_sp, t_gtilde);
       //double var2m_test = dot(t_P2Vec , t_gtilde);
       //std::cout << "var2m_test " << var2m_test << std::endl;
-      t_P2Vec = getPCG1ofSigmaAndGtilde(t_gtilde, 100, 0.02); 
+      t_P2Vec = getPCG1ofSigmaAndGtilde(t_gtilde, kSparsePCGMaxIter, kSparsePCGRelTol); 
       var2m = dot(t_P2Vec , t_gtilde);
       //std::cout << "var2m " << var2m << std::endl;
       if(m_isVarPsadj){
@@ -235,8 +280,13 @@ void SAIGEClass::scoreTest(arma::vec & t_GVec,
     var2 = var2m(0,0);
     double var1 = var2 * t_ctx.varRatioVal;
 
+    // LEDGER #44: the absolute guard catches the exactly-zero variance; the
+    // projection test catches the marker whose covariate-adjusted genotype is
+    // pure roundoff, whose variance is tiny but nowhere near DBL_MIN.
+    const bool collapsed = (var1 <= std::numeric_limits<double>::min()) ||
+                           projectionCollapsed(t_gtilde, t_GVec, m_n);
     double stat = S*S/var1;
-    if (var1 <= std::numeric_limits<double>::min()){
+    if (collapsed){
           t_pval = 1;
     }else{
       if(!std::isnan(stat) && std::isfinite(stat)){
@@ -281,7 +331,7 @@ void SAIGEClass::scoreTest(arma::vec & t_GVec,
     // NaN as "-nan" where macOS writes "nan"), which is what made these rows
     // non-byte-portable and cost two red CI runs. A row that says NA says the
     // same thing everywhere.
-    if(var1 <= std::numeric_limits<double>::min()){
+    if(collapsed){
       t_Beta = NA_REAL;
       t_seBeta = NA_REAL;
     }else{
@@ -1191,7 +1241,7 @@ if(!t_isER){
       }else{
         //arma::sp_mat m_SigmaMat_sp = gen_sp_SigmaMat();
         //t_P2Vec = arma::spsolve(m_SigmaMat_sp, t_gtilde);
-	t_P2Vec = getPCG1ofSigmaAndGtilde(t_gtilde, 100, 0.02);
+	t_P2Vec = getPCG1ofSigmaAndGtilde(t_gtilde, kSparsePCGMaxIter, kSparsePCGRelTol);
       }
     }
 }
@@ -1519,7 +1569,8 @@ arma::vec SAIGEClass::getPCG1ofSigmaAndGtilde(arma::vec& bVec, int maxiterPCG, d
     // Preconditioner: m_diagSigmaInv is 1.0 / m_diagSigma, built once with the
     // model instead of once per call (see the constructor).
     zVec = m_diagSigmaInv % rVec; // Apply preconditioner
-    double sumr2 = arma::dot(rVec, rVec); // Initial residual norm
+    double sumr2 = arma::dot(rVec, rVec); // Initial residual norm, ||b||^2
+    const double stopAt = tolPCG * sumr2;  // relative: tolPCG is a fraction of ||b||^2
     arma::vec pVec = zVec; // Search direction
 
     // Hoisted out of the loop: each of these was a fresh n-double allocation on
@@ -1529,7 +1580,7 @@ arma::vec SAIGEClass::getPCG1ofSigmaAndGtilde(arma::vec& bVec, int maxiterPCG, d
     arma::vec ApVec, r1Vec, z1Vec;
 
     int iter = 0;
-    while (sumr2 > tolPCG && iter < maxiterPCG) {
+    while (sumr2 > stopAt && iter < maxiterPCG) {
         iter++;
         ApVec = m_spSigmaMat * pVec; // Sparse matrix-vector multiplication
         double alpha = arma::dot(rVec, zVec) / arma::dot(pVec, ApVec); // Step size

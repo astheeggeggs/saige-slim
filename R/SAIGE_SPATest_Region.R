@@ -59,6 +59,12 @@ setSparseSigma_new <- function(sparseGRMFile,
   print(head(mergeID))
   indexIDofGRM <- mergeID$IndexGRM
   sparseGRM <- sparseGRM[indexIDofGRM, indexIDofGRM]
+  # LEDGER #106 fix: readMM returns the `symmetric` .mtx as a dsTMatrix whose
+  # @i/@j/@x hold ONE triangle (Matrix 1.7.6 keeps it symmetric through the
+  # subset), and C++ builds arma::sp_mat from exactly those triplets, so the
+  # PCG used to solve against a lower-triangular Sigma. Expand to a general
+  # triplet matrix first: both triangles, each diagonal entry once.
+  sparseGRM <- as(as(sparseGRM, "generalMatrix"), "TsparseMatrix")
   if (length(indexIDofGRM) < nrow(sampleInModel)) {
     stop(
       nrow(sampleInModel) - length(indexIDofGRM),
