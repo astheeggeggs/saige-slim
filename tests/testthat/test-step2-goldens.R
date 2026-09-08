@@ -197,3 +197,58 @@ test_that("step2 group composed sets (2 beta pairs + No_Weights) matches golden"
       "--is_fastTest=TRUE"),
     extra_outputs = c(".singleAssoc.txt", ".singleAssoc.txt_temp"))
 })
+
+# ---------------------------------------------------------------------------
+# P42-P48: missing genotype calls. The step-2 tier re-runs goldens from THIS
+# EXPLICIT LIST, not by globbing harness/goldens/step2, so a golden that is not
+# named here gates nothing however carefully it was generated.
+MISSING_ARGS <- function() c(
+  "--bedFile=./input/genotype_100markers_missing.bed",
+  "--bimFile=./input/genotype_100markers_missing.bim",
+  "--famFile=./input/genotype_100markers_missing.fam",
+  "--AlleleOrder=alt-first"
+)
+MISSING_PGEN_ARGS <- function() c(
+  "--pgenFile=./input/genotype_100markers_missing.pgen",
+  "--pvarFile=./input/genotype_100markers_missing.pvar",
+  "--psamFile=./input/genotype_100markers_missing.psam",
+  "--AlleleOrder=alt-first"
+)
+MISSING_COMMON <- c("--chrom=1", "--minMAF=0", "--minMAC=1", "--LOCO=FALSE",
+                    "--is_output_moreDetails=TRUE")
+
+test_that("step2 marker path with missing calls, CLI defaults, matches golden", {
+  run_step2_case("plink_marker_missing.txt",
+    c(MISSING_ARGS(), MISSING_COMMON, bin_model()))
+})
+
+test_that("step2 --impute_method=mean matches golden", {
+  run_step2_case("plink_marker_missing_mean.txt",
+    c(MISSING_ARGS(), MISSING_COMMON, bin_model(), "--impute_method=mean"))
+})
+
+test_that("step2 --impute_method=minor matches golden", {
+  run_step2_case("plink_marker_missing_minor.txt",
+    c(MISSING_ARGS(), MISSING_COMMON, bin_model(), "--impute_method=minor"))
+})
+
+test_that("step2 --maxMissing=1 (gate off) matches golden", {
+  run_step2_case("plink_marker_missing_maxmiss1.txt",
+    c(MISSING_ARGS(), MISSING_COMMON, bin_model(), "--maxMissing=1"))
+})
+
+test_that("step2 mean imputation with --dosage_zerod_cutoff=0 matches golden", {
+  run_step2_case("plink_marker_missing_meannozerod.txt",
+    c(MISSING_ARGS(), MISSING_COMMON, bin_model(),
+      "--impute_method=mean", "--dosage_zerod_cutoff=0"))
+})
+
+test_that("step2 PGEN mirror under missing calls matches golden", {
+  run_step2_case("pgen_marker_missing.txt",
+    c(MISSING_PGEN_ARGS(), MISSING_COMMON, bin_model()))
+})
+
+test_that("step2 --is_imputed_data=TRUE matches golden", {
+  run_step2_case("plink_marker_missing_imputed.txt",
+    c(MISSING_ARGS(), MISSING_COMMON, bin_model(), "--is_imputed_data=TRUE"))
+})

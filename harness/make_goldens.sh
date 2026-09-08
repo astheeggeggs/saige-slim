@@ -967,6 +967,87 @@ run step2_pgen_group_nofast_quant_sparse.log R2 step2_SPAtests.R \
   --maxMAF_in_groupTest=0.0001,0.001,0.01 \
   --is_fastTest=FALSE
 
+# P42-P48 (2026-09-08): MISSING GENOTYPE CALLS, which no fixture had.
+# Every bundled .bed carries EXACTLY ZERO missing calls -- 7 files, ~150 million
+# calls, verified by decoding them -- so `--maxMissing`, `--impute_method`,
+# `--dosage_zerod_cutoff`, `--dosage_zerod_MAC_cutoff` and `--is_imputed_data`
+# had no golden AND no test. The fixture is generated, not hand-made:
+#   python3 harness/tools/make_missing_fixture.py \
+#       extdata/input/genotype_100markers extdata/input/genotype_100markers_missing
+#   plink2 --bfile <that> --make-pgen --out <that>
+# and it is byte-reproducible from that script alone (two runs, cmp).
+#
+# The ladder is on the marker index, sized against the MODEL's 1,000 samples
+# (fam rows 1..1000) because `missingRate = numMissing / N` is computed over the
+# analysed SUBSET, not the .fam's 10,000 rows:
+#   j%10 :   0     1      2      3     4     5     6      7      8     9
+#   rate :   0.0   0.001  0.005  0.01  0.05  0.10  0.15   0.151  0.30  0.60
+# `j%10 == 6` sits EXACTLY on the --maxMissing default and must PASS, because
+# the gate is a strict `>`. Every marker also carries 500 missing calls OUTSIDE
+# the analysed subset which must never reach the output.
+#
+# All seven runs are P1's command with one thing changed, so the comparisons are
+# one-variable. Measured differences, checked BEFORE these were accepted as
+# goldens -- a golden that cannot differ from its twin gates nothing:
+#   P42 vs P44 : exactly 6 markers (rs23 rs26 rs64 rs66 rs94 rs97), the ones
+#                with AF >= 0.25 where best_guess imputes 1 and minor imputes 0
+#   P42 vs P45 : 48 markers against 70; the 22 above the cutoff come back
+#   P43 vs P46 : exactly the 20 passing markers with MAC <= 10, where
+#                --dosage_zerod_cutoff=0.2 zeroes what `mean` just imputed
+#   P42 vs P47 : BYTE-IDENTICAL by design (reader parity under missingness)
+#   P42 vs P48 : column 8 SWAPPED, MissingRate -> imputationInfo (always 1); the
+#                other 22 columns identical. P48 is SMALLER than P42, which is how
+#                the swap was noticed at all -- an added column cannot shrink a file
+MISS_G="--bedFile=./input/genotype_100markers_missing.bed --bimFile=./input/genotype_100markers_missing.bim --famFile=./input/genotype_100markers_missing.fam --AlleleOrder=alt-first"
+MISS_PGEN_G="--pgenFile=./input/genotype_100markers_missing.pgen --pvarFile=./input/genotype_100markers_missing.pvar --psamFile=./input/genotype_100markers_missing.psam --AlleleOrder=alt-first"
+MISS_COMMON="--chrom=1 --minMAF=0 --minMAC=1 --LOCO=FALSE --is_output_moreDetails=TRUE"
+
+# P42: the base -- CLI defaults, so impute_method=best_guess and maxMissing=0.15.
+run step2_plink_marker_missing.log R2 step2_SPAtests.R \
+  $MISS_G --SAIGEOutputFile="$GOLD/step2/plink_marker_missing.txt" \
+  $MISS_COMMON $BIN_MODEL
+
+# P43: mean imputation. imputeG = 2*AF rather than round(2*AF).
+run step2_plink_marker_missing_mean.log R2 step2_SPAtests.R \
+  $MISS_G --SAIGEOutputFile="$GOLD/step2/plink_marker_missing_mean.txt" \
+  $MISS_COMMON $BIN_MODEL --impute_method=mean
+
+# P44: minor imputation, imputeG = 0. Differs from P42 only where round(2*AF)
+# is 1, i.e. on the six markers with AF >= 0.25 that pass the missing-rate gate.
+run step2_plink_marker_missing_minor.log R2 step2_SPAtests.R \
+  $MISS_G --SAIGEOutputFile="$GOLD/step2/plink_marker_missing_minor.txt" \
+  $MISS_COMMON $BIN_MODEL --impute_method=minor
+
+# P45: the missing-rate gate switched off, so the 0.151/0.30/0.60 markers come
+# back. This is the only golden where a marker above the default cutoff is
+# tested at all.
+run step2_plink_marker_missing_maxmiss1.log R2 step2_SPAtests.R \
+  $MISS_G --SAIGEOutputFile="$GOLD/step2/plink_marker_missing_maxmiss1.txt" \
+  $MISS_COMMON $BIN_MODEL --maxMissing=1
+
+# P46: mean imputation with the dosage-zeroing switched OFF. Against P43 this
+# isolates `t_GVec.clean(t_dosage_zerod_cutoff)` (src/UTIL.cpp:108-112), which
+# on hard calls silently undoes mean imputation for every marker with
+# MAC <= --dosage_zerod_MAC_cutoff: 2*AF is ~0.003 there, below the 0.2 default.
+run step2_plink_marker_missing_meannozerod.log R2 step2_SPAtests.R \
+  $MISS_G --SAIGEOutputFile="$GOLD/step2/plink_marker_missing_meannozerod.txt" \
+  $MISS_COMMON $BIN_MODEL --impute_method=mean --dosage_zerod_cutoff=0
+
+# P47: PGEN mirror of P42. Byte-identical to it, which is the point: no earlier
+# PGEN mirror had a single missing call to disagree about.
+run step2_pgen_marker_missing.log R2 step2_SPAtests.R \
+  $MISS_PGEN_G --SAIGEOutputFile="$GOLD/step2/pgen_marker_missing.txt" \
+  $MISS_COMMON $BIN_MODEL
+
+# P48: --is_imputed_data=TRUE. It does NOT add a column -- it EXCHANGES
+# `MissingRate` for `imputationInfo`, which on this branch can only ever read 1,
+# because both readers assign `t_imputeInfo = 1` unconditionally
+# (src/PLINK.cpp:312, src/PGEN.cpp:585). So the flag costs the user a real column
+# and returns a constant. LEDGER #107/#108.
+run step2_plink_marker_missing_imputed.log R2 step2_SPAtests.R \
+  $MISS_G --SAIGEOutputFile="$GOLD/step2/plink_marker_missing_imputed.txt" \
+  $MISS_COMMON $BIN_MODEL --is_imputed_data=TRUE
+
 ############ PGEN-vs-PLINK byte identity, checked in the candidate dir #########
 # The step-0 and step-1 PGEN runs above are NOT committed as separate goldens:
 # each is byte-identical to its PLINK twin, so committing them would double the

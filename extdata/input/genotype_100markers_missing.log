@@ -1,0 +1,22 @@
+PLINK v2.0.0-a.6.9 64-bit (29 Jan 2025)
+Options in effect:
+  --bfile extdata/input/genotype_100markers_missing
+  --make-pgen
+  --out extdata/input/genotype_100markers_missing
+
+Hostname: Duncans-MacBook-Pro.local
+Working directory: /Users/dpalmer/Repositories/SAIGE
+Start time: Tue Sep  8 18:03:30 2026
+
+Random number seed: 1788887010
+16384 MiB RAM detected; reserving 8192 MiB for main workspace.
+Using up to 8 compute threads.
+10000 samples (0 females, 0 males, 10000 ambiguous; 10000 founders) loaded from
+extdata/input/genotype_100markers_missing.fam.
+100 variants loaded from extdata/input/genotype_100markers_missing.bim.
+Note: No phenotype data present.
+Writing extdata/input/genotype_100markers_missing.psam ... done.
+Writing extdata/input/genotype_100markers_missing.pvar ... done.
+Writing extdata/input/genotype_100markers_missing.pgen ... done.
+
+End time: Tue Sep  8 18:03:30 2026
