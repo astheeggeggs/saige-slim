@@ -1048,6 +1048,64 @@ run step2_plink_marker_missing_imputed.log R2 step2_SPAtests.R \
   $MISS_G --SAIGEOutputFile="$GOLD/step2/plink_marker_missing_imputed.txt" \
   $MISS_COMMON $BIN_MODEL --is_imputed_data=TRUE
 
+# P49-P51 (2026-09-08): DOSAGES, which only the pgen reader can carry and which
+# no golden touched. `--dosage_zerod_cutoff`/`--dosage_zerod_MAC_cutoff` zero
+# every dosage below the cutoff when the marker's MAC is at or below the MAC
+# cutoff (src/UTIL.cpp:108-112). On hard calls the only sub-threshold values are
+# the ones `--impute_method=mean` writes (LEDGER #109, goldens P43/P46); on
+# dosages the option reaches the DATA, and the pgen dosage decode path
+# (`PgrGet1D` + `Dosage16ToDoubles`, src/PGEN.cpp:485-489) runs for the first
+# time in a golden.
+#
+# extdata/input/dosage_20markers_100samples.* already carried real dosages but
+# has 100 samples and is wired only to test-step1-pgen.R; the bundled models
+# carry 1,000, so step 2 needed a dosage pgen over THAT sample set. Two steps,
+# both deterministic:
+#   python3 harness/tools/make_dosage_fixture.py \
+#       extdata/input/genotype_100markers <scratch>/dosfix
+#   plink2 --import-dosage <scratch>/dosfix.dosage noheader format=1 ref-last \
+#          --fam <scratch>/dosfix.fam --map <scratch>/dosfix.map \
+#          --hard-call-threshold 0.499 --make-pgen \
+#          --out extdata/input/genotype_100markers_dosage
+# The .dosage/.map intermediates are NOT committed (2 MB of text that the script
+# reproduces byte-identically); the .pgen/.pvar/.psam are, at 228 KB total.
+# --hard-call-threshold 0.499 is deliberate: every dosage then also gets a hard
+# call, so the fixture introduces no missing genotypes and varies ONE thing.
+#
+# Every sample keeps its exact hard call except twelve hom-ref samples per
+# marker, which take a ladder straddling the 0.2 default:
+#   0.02 0.05 0.10 0.15 0.19 0.199 | 0.21 0.25 0.30 0.50 0.80 1.30
+# Only hom-ref samples are overwritten, so MAC can only rise, and by at most
+# sum = 4.069 -- which is what keeps 59 markers at or below the MAC gate and 41
+# above it. All 100 markers are emitted (against 70 for the hard-call fixture)
+# because the 30 monomorphic ones become polymorphic.
+#
+# Measured before these were accepted, and both differ-sets are IDENTICAL to the
+# MAC band rather than merely overlapping it:
+#   P49 vs P50 : exactly the 59 markers with MAC <= 10
+#   P49 vs P51 : exactly the 17 markers with 10 < MAC <= 100
+# All 100 AC_Allele2 values are fractional, which is the proof the dosages
+# reached the statistics rather than being hard-called on the way in.
+DOSAGE_G="--pgenFile=./input/genotype_100markers_dosage.pgen --pvarFile=./input/genotype_100markers_dosage.pvar --psamFile=./input/genotype_100markers_dosage.psam --AlleleOrder=alt-first"
+DOSAGE_COMMON="--chrom=1 --minMAF=0 --minMAC=1 --LOCO=FALSE --is_output_moreDetails=TRUE"
+
+# P49: CLI defaults -- dosage_zerod_cutoff=0.2, dosage_zerod_MAC_cutoff=10.
+run step2_pgen_marker_dosage.log R2 step2_SPAtests.R \
+  $DOSAGE_G --SAIGEOutputFile="$GOLD/step2/pgen_marker_dosage.txt" \
+  $DOSAGE_COMMON $BIN_MODEL
+
+# P50: the zeroing switched off. Against P49 this isolates `clean()` on real
+# dosages, on exactly the markers the MAC gate admits.
+run step2_pgen_marker_dosage_nozerod.log R2 step2_SPAtests.R \
+  $DOSAGE_G --SAIGEOutputFile="$GOLD/step2/pgen_marker_dosage_nozerod.txt" \
+  $DOSAGE_COMMON $BIN_MODEL --dosage_zerod_cutoff=0
+
+# P51: the MAC gate widened from 10 to 100, so the clean reaches 17 more
+# markers. This is the only golden that moves --dosage_zerod_MAC_cutoff at all.
+run step2_pgen_marker_dosage_mac100.log R2 step2_SPAtests.R \
+  $DOSAGE_G --SAIGEOutputFile="$GOLD/step2/pgen_marker_dosage_mac100.txt" \
+  $DOSAGE_COMMON $BIN_MODEL --dosage_zerod_MAC_cutoff=100
+
 ############ PGEN-vs-PLINK byte identity, checked in the candidate dir #########
 # The step-0 and step-1 PGEN runs above are NOT committed as separate goldens:
 # each is byte-identical to its PLINK twin, so committing them would double the

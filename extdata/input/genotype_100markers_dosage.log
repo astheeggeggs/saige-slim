@@ -1,0 +1,30 @@
+PLINK v2.0.0-a.6.9 64-bit (29 Jan 2025)
+Options in effect:
+  --hard-call-threshold 0.499
+  --import-dosage /tmp/dosfix.dosage noheader format=1 ref-last
+  --make-pgen
+  --map /tmp/dosfix.map
+  --out extdata/input/genotype_100markers_dosage
+  --psam /tmp/dosfix.fam
+
+Hostname: Duncans-MacBook-Pro.local
+Working directory: /Users/dpalmer/Repositories/SAIGE
+Start time: Tue Sep  8 18:42:58 2026
+
+Random number seed: 1788889378
+16384 MiB RAM detected; reserving 8192 MiB for main workspace.
+Using up to 8 compute threads.
+--import-dosage: 100 variants scanned.
+--import-dosage: extdata/input/genotype_100markers_dosage-temporary.pgen +
+extdata/input/genotype_100markers_dosage-temporary.pvar +
+extdata/input/genotype_100markers_dosage-temporary.psam written.
+10000 samples (0 females, 0 males, 10000 ambiguous; 10000 founders) loaded from
+extdata/input/genotype_100markers_dosage-temporary.psam.
+100 variants loaded from
+extdata/input/genotype_100markers_dosage-temporary.pvar.
+Note: No phenotype data present.
+Writing extdata/input/genotype_100markers_dosage.psam ... done.
+Writing extdata/input/genotype_100markers_dosage.pvar ... done.
+Writing extdata/input/genotype_100markers_dosage.pgen ... done.
+
+End time: Tue Sep  8 18:42:58 2026

@@ -252,3 +252,30 @@ test_that("step2 --is_imputed_data=TRUE matches golden", {
   run_step2_case("plink_marker_missing_imputed.txt",
     c(MISSING_ARGS(), MISSING_COMMON, bin_model(), "--is_imputed_data=TRUE"))
 })
+
+# ---------------------------------------------------------------------------
+# P49-P51: dosages. Only the pgen reader can carry them, and before these no
+# golden ran the dosage decode path at all.
+DOSAGE_ARGS <- function() {
+  c("--pgenFile=./input/genotype_100markers_dosage.pgen",
+    "--pvarFile=./input/genotype_100markers_dosage.pvar",
+    "--psamFile=./input/genotype_100markers_dosage.psam",
+    "--AlleleOrder=alt-first")
+}
+DOSAGE_COMMON <- c("--chrom=1", "--minMAF=0", "--minMAC=1", "--LOCO=FALSE",
+                   "--is_output_moreDetails=TRUE")
+
+test_that("step2 dosage pgen, CLI defaults, matches golden", {
+  run_step2_case("pgen_marker_dosage.txt",
+    c(DOSAGE_ARGS(), DOSAGE_COMMON, bin_model()))
+})
+
+test_that("step2 dosage pgen with --dosage_zerod_cutoff=0 matches golden", {
+  run_step2_case("pgen_marker_dosage_nozerod.txt",
+    c(DOSAGE_ARGS(), DOSAGE_COMMON, bin_model(), "--dosage_zerod_cutoff=0"))
+})
+
+test_that("step2 dosage pgen with --dosage_zerod_MAC_cutoff=100 matches golden", {
+  run_step2_case("pgen_marker_dosage_mac100.txt",
+    c(DOSAGE_ARGS(), DOSAGE_COMMON, bin_model(), "--dosage_zerod_MAC_cutoff=100"))
+})

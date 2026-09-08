@@ -746,12 +746,23 @@ What the audit found and is NOT done:
   `--dosage_zerod_cutoff` at its 0.2 default silently turns
   `--impute_method=mean` into `minor` on every `MAC <= 10` marker, which is the
   interaction the documentation promises is gated on `is_imputed_data` and is
-  not. **Still open: DOSAGES in step 2.** `dosage_20markers_100samples.*` exists
-  and carries real fractional dosages, but it has 100 samples and is wired only
-  to `test-step1-pgen.R`'s hard-call rounding check; the bundled step-1 models
-  have 1,000 samples, so a step-2 dosage golden needs a dosage PGEN over that
-  sample set. That is where `--dosage_zerod_cutoff` stops being a hard-call
-  curiosity and does what it was written for.
+  not. DOSAGES are closed too, with
+  `extdata/input/genotype_100markers_dosage.{pgen,pvar,psam}` (228 KB;
+  `harness/tools/make_dosage_fixture.py` + one `plink2 --import-dosage`, the
+  2 MB text intermediate reproduced rather than committed) and goldens P49-P51.
+  That fixture is the only place the pgen DOSAGE DECODE path
+  (`PgrGet1D`/`Dosage16ToDoubles`) runs in a golden at all, and the only place
+  `--dosage_zerod_MAC_cutoff` is moved. Both contrasts were measured before the
+  goldens were accepted and each differing set is IDENTICAL to its MAC band, not
+  merely inside it: cutoff 0.2 vs 0 moves exactly the 59 markers with MAC <= 10,
+  and MAC cutoff 10 vs 100 moves exactly the 17 with 10 < MAC <= 100.
+  `--hard-call-threshold 0.499` on the import is deliberate -- every dosage also
+  gets a hard call, so the fixture adds no missing genotypes and varies one
+  thing. **The guard that matters there** is that every `AC_Allele2` must be
+  FRACTIONAL: if the decode were bypassed, or plink2 had hard-called on import,
+  every other assertion would still pass against what is effectively a hard-call
+  fixture. Still not covered: dosages AND missingness together, i.e.
+  `--impute_method` on fractional data.
   **Trap paid for once:** `missingRate = numMissing / N` is computed over the
   MODEL's sample subset (fam rows 1..1000), not the .fam's 10,000 rows. A first
   fixture sized its ladder against 10,000 and SAIGE reported 0.032/0.096/0.161

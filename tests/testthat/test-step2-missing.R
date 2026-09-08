@@ -165,3 +165,68 @@ test_that("the PGEN reader agrees with the PLINK reader on missing calls", {
   expect_equal(a$p.value, b$p.value, tolerance = 1e-12)
   expect_equal(a$BETA, b$BETA, tolerance = 1e-12)
 })
+
+# ---------------------------------------------------------------------------
+# Dosages. `--dosage_zerod_cutoff` only does its real job on fractional values;
+# on hard calls the only sub-threshold entries are the ones mean imputation
+# writes (LEDGER #109, covered above). extdata/input/genotype_100markers_dosage
+# is the same 10,000 samples and 100 markers as genotype_100markers, with twelve
+# hom-ref dosages per marker on a ladder straddling the 0.2 default, and NO
+# missing calls -- so these tests vary one thing.
+DOS_ARGS <- function() {
+  c("--pgenFile=./input/genotype_100markers_dosage.pgen",
+    "--pvarFile=./input/genotype_100markers_dosage.pvar",
+    "--psamFile=./input/genotype_100markers_dosage.psam",
+    "--AlleleOrder=alt-first")
+}
+dos_run <- function(key, extra = character()) {
+  if (!is.null(miss_cache[[key]])) return(miss_cache[[key]])
+  out <- file.path(tempfile("dos_"), paste0(key, ".txt"))
+  dir.create(dirname(out), recursive = TRUE)
+  status <- run_saige_cli("step2_SPAtests.R",
+                          c(DOS_ARGS(), miss_model(), MISS_COMMON, extra,
+                            paste0("--SAIGEOutputFile=", out)))
+  expect_cli_ok(status)
+  miss_cache[[key]] <- read_saige_table(out)
+  miss_cache[[key]]
+}
+dos_mac <- function(d) {
+  ac <- as.numeric(d$AC_Allele2)
+  n <- as.numeric(d$N_case) + as.numeric(d$N_ctrl)
+  pmin(ac, 2 * n - ac)
+}
+
+test_that("the dosages actually reach the statistics, not hard calls", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  d <- dos_run("dos_base")
+  ac <- as.numeric(d$AC_Allele2)
+  # Every marker's allele count is fractional. If the pgen dosage decode were
+  # bypassed -- or plink2 had hard-called on import -- these would all be
+  # integers, and every assertion below would still "pass" against a hard-call
+  # fixture while measuring nothing.
+  expect_equal(sum(ac != round(ac)), nrow(d))
+  # 100 markers against 70 on hard calls: the ladder makes the 30 monomorphic
+  # markers polymorphic.
+  expect_equal(nrow(d), 100L)
+})
+
+test_that("--dosage_zerod_cutoff zeroes dosages exactly on the MAC-gated markers", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  on_  <- dos_run("dos_base")
+  off_ <- dos_run("dos_nozerod", "--dosage_zerod_cutoff=0")
+  # src/UTIL.cpp:108-112 runs clean(cutoff) only when MAC <= the MAC cutoff, so
+  # the differing set must be the MAC band EXACTLY, not merely inside it.
+  expect_equal(differing_markers(on_, off_), sort(on_$MarkerID[dos_mac(on_) <= 10]))
+})
+
+test_that("--dosage_zerod_MAC_cutoff moves exactly the markers it admits", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  base <- dos_run("dos_base")
+  wide <- dos_run("dos_mac100", "--dosage_zerod_MAC_cutoff=100")
+  mac <- dos_mac(base)
+  expect_equal(differing_markers(base, wide),
+               sort(base$MarkerID[mac > 10 & mac <= 100]))
+})
