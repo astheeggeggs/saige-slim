@@ -167,6 +167,33 @@ Goldens: 43 files re-baselined for #106 (plus P27's two degenerate rows once
 `projectionCollapsed` landed), 14 for #104. Each set proved byte-reproducible
 by two `make_goldens.sh` runs into separate trees before being copied.
 
+**Verified at `4e47b760` (end of day): the FULL tier and the negative control,
+which had last run on 2026-08-30 -- before every fix in this handoff.**
+`bash harness/run_tests.sh full` gives FAIL 0, WARN 2, **SKIP 0**, PASS 2998;
+SKIP 0 is the point, since it means the golden regeneration, the step-1
+determinism double-run and the permuted-phenotype control all actually ran
+rather than being skipped as they are in the standard tier. The control passes
+through both readers: 70 markers, min p = 2.62e-02 against a 1.4e-05 flag,
+lambda_GC 0.505 / 1.078 / 0.783 over the MAC<=4 / 5-19 / >=20 strata, KS on the
+32 near-continuous markers D = 0.202, p = 0.126.
+
+All four committed control goldens came back BYTE-IDENTICAL, which was predicted
+before the run and is a real confinement check rather than a formality: the
+control's step 2 carries no `--sparseGRMFile`, so #103/#104/#105/#106 cannot
+reach it, and its step 1 is a binary fit whose Sigma diagonal is >= 4, far above
+#91's old 1e-4 floor. Any of those leaking outside its intended path would have
+moved these bytes.
+
+Read the control for what it is: 32 markers at the KS gate has power against
+GROSS miscalibration and very little against subtle, and `harness/check_null.R`
+says so in its own header. It also only exercises the SINGLE-VARIANT output,
+while everything this handoff changed is on the REGION path. The strongest
+calibration evidence for the day remains #106's N = 50,000 comparison against an
+exact sparse-Cholesky solve (median relative error 1.4e-4 -> 1.4e-8), which is
+ground truth for variances rather than uniformity for p-values. A permuted
+phenotype through a REGION run on the `sim50k` fixture would be the honest next
+step there, and is the one calibration check nobody has run.
+
 What is NOT done, for whoever comes next:
 
 - The `sum(Phi)` divide in `get_newPhi_scaleFactor_traitType` has no guard for
