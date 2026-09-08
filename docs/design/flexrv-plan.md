@@ -1,8 +1,24 @@
 # FlexRV on the `strip` branch
 
-<!-- Plan written 2026-09-06/07, NOT implemented. Status: awaiting the owner's
-     go-ahead; step F0 needs the FlexRV PDF (bioRxiv blocks fetches). The
-     multi-weight engine it builds on is Phase 5 (C1-C11), landed. -->
+<!-- Plan written 2026-09-06/07. Status 2026-09-08: F1 LANDED (97db5a88);
+     F0 and F2 are BLOCKED on the owner supplying the FlexRV PDF, because the
+     16x12 transform table has to be pinned verbatim before the kernels can be
+     written or tested against closed forms (bioRxiv blocks fetches). F3 is the
+     commit that needs review: it changes mainRegionInCPP's signature, which
+     pulls in RcppExports, the stale Main.hpp, src/Makevars and the
+     delete-src/*.o rule. F5's memory number is a genuine go/no-go, not a
+     formality. The multi-weight engine this builds on is Phase 5 (C1-C11),
+     landed. -->
+
+## How to read the references in this file
+
+**Every code reference here is anchored on a SYMBOL, with a line number as a
+dated hint only** (`~:1956` means "near line 1956 at commit `97db5a88`,
+2026-09-08"). The first version of this plan cited bare line ranges and they had
+drifted by up to ~145 lines within a day -- `SAIGEWT_k` was written as `:1579`
+and was at `:1745` -- which is exactly the failure CLAUDE.md's "re-resolve every
+line number before using it" rule exists to prevent. Grep for the symbol; treat
+the number as a starting point, not an address.
 
 ## Context
 
@@ -12,9 +28,9 @@ Phase 5 multi-weight region engine, fully landed (C1-C11, commits
 `0fc41971`..`94a95dd7`): K weight sets per region from `weight:NAME` group-file
 lines plus `--weights.beta` pairs and `No_Weights`, rows per
 (anno x max_MAF x weight set), per-row ACAT-V/ACAT-O, and ONE pooled Cauchy row
-per region whose each p-column is ACAT over every row (both writers:
-`src/Main.cpp:2888-2909` for BURDEN, `R/SAIGE_SPATest_Region.R:606-651` for
-SKAT-O). That engine is the substrate; FlexRV itself is absent.
+per region whose each p-column is ACAT over every row (both writers: the `CCT_cpp` call in the
+BURDEN writer, `src/Main.cpp` ~:3551-3587, for BURDEN, and the `cctVec`
+assembly in `R/SAIGE_SPATest_Region.R` ~:563 for SKAT-O). That engine is the substrate; FlexRV itself is absent.
 
 **What FlexRV is** (Schwartzentruber, Fiziev, McRae, Ulirsch, Farh; bioRxiv
 2025.11.04.686320, Illumina; STAAR implementation, code promised at
@@ -44,20 +60,25 @@ difference.
 
 **Why not just write 192 weight lines?** It works today (custom sets) and is
 kept as the reconciliation control, but MAC thresholds need the in-sample MAC
-that only C++ knows after QC (`src/Main.cpp:2012-2016`), and group files grow
+that only C++ knows after QC (the `MACVec.at(i)`/`MAFVec.at(i)` fill,
+`src/Main.cpp` ~:2463), and group files grow
 192x. Decision (user): build the sets inside SAIGE from one `score:NAME` line,
 and include the N=50k measurement stage.
 
 ## Design
 
 **Group file.** One optional line per gene, `GENE score:NAME v1 v2 ...`
-(same `[,:]` split as weight lines, `R/SAIGE_SPATest_Region_Func.R:83-92`),
+(same `[,:]` split as weight lines -- `parse_weight_type`,
+`R/SAIGE_SPATest_Region_Func.R` ~:86, and `parse_score_type` beside it since F1),
 after the var/anno lines and before/among weight lines; values numeric in
 [0,1], NA rejected. Carried like weight columns through
 `SAIGE.getRegionList_new` (sanitized `SAIGESC_1`, cf. `SAIGEWT_k` at
-`R/SAIGE_SPATest_Region.R:1579-1584`) and subset with the annotation filter.
+the `paste0("SAIGEWT_", ...)` line in
+`SAIGE.getRegionList_new`, `R/SAIGE_SPATest_Region.R` ~:1745) and subset with
+the annotation filter. DONE in F1 as `SAIGESC_1`.
 Region 1 defines the layout; every region must carry the same score name
-(the same global-stride model as weights, `:129-165`).
+(the same global-stride model as weights -- the "must appear in the same order
+in every region" check, `R/SAIGE_SPATest_Region_Func.R` ~:294).
 
 **CLI.** `--flexRV_score=NAME` enables FlexRV sets from that score line
 (error if the file has no such line). `--flexRV_scoreTransforms` and
@@ -65,10 +86,11 @@ Region 1 defines the layout; every region must carry the same score name
 (`unw;lof;cbrt:0.2,...,0.9;sbeta:1.5,2,3,5,10,20` and
 `unw;mafbeta:2,5;mac:1,3,5,10,25,50,100,200,500`); `--flexRV_lofAnno=lof`
 names the annotation label(s) that the LoF mask keys on. Parsed in
-`R/SAIGE_Test_main.R` next to `parse_weights_beta` (`:11-50`), into a
+`R/SAIGE_Test_main.R` next to `parse_weights_beta` (~:11, unchanged), into a
 `Kt x 4` transform table (scoreKind, scoreParam, mafKind, mafParam).
 
-**Set composition** (`R/SAIGE_SPATest_Region.R:792-931`): order becomes
+**Set composition** (the "weight-set composition (design D5/D10)" block,
+`R/SAIGE_SPATest_Region.R` ~:862 onwards): order becomes
 custom, **transform**, beta, No_Weights; names
 `<NAME>_<scoreT>_<mafT>` e.g. `PAI3D_cbrt0.5_MAC10`, `PAI3D_unw_unw`.
 `weightSetDescriptor` (`R/WeightSets.R`) gains kind `transform`; its R-side
@@ -81,17 +103,20 @@ Exception to the two-ways rule is deliberate and replaced by a kernel test
 
 **C++** (`src/Main.cpp` `mainRegionInCPP`): new args `arma::vec t_score`,
 `arma::mat t_transformTable`, `std::vector<std::string> t_lofAnno` -> new
-`SET_TRANSFORM` kind in the set tables (`:1805-1826`). At the `w0_vec(r)` fill
-(`:2036-2044`) and every custom-branch site (collapse `:2238-2267`, UR emission
-`:2397-2409`, conditional raw export) read from `transformW(i, c)` instead of
+`SET_TRANSFORM` kind in the set tables (the `SET_CUSTOM`/`SET_BETA`/`SET_NOWEIGHT`
+constants and `setKindVec` fill, ~:1956-1969). At the `pr.w0(r) = t_weight(...)`
+fill (~:2331) and every custom-branch site (the weighted `genoURMat ... std::max`
+collapse ~:2577-2599, the UR emission from `genoURMat.col(jmr)` ~:2891-2931,
+conditional raw export) read from `transformW(i, c)` instead of
 `t_weight(i, c)` through one accessor, so the two kinds share code paths.
 `transformW(i, c) = flexrvScoreWeight(kind, param, s_i, isLof_i) *
 flexrvMafWeight(kind, param, MAF_i, MAC_i)` evaluated right after MAF/MAC are
-final (`:2016`); `isLof_i` comes from the marker's anno label. Kernels live in
+final (the `MACVec`/`MAFVec` fill, ~:2463); `isLof_i` comes from the marker's
+anno label. Kernels live in
 a new `src/FlexRV.cpp` with an `[[Rcpp::export]]` wrapper for tests (add to
 `OBJECTS` in `src/Makevars`, `compileAttributes`, align `Main.hpp`).
 `erAllowedVec[r]` is true only for the `unw_unw` set (weights identically 1),
-false otherwise, matching the custom rule at `:1810`. At `Kt == 0` nothing in
+false otherwise, matching the custom rule in the `erAllowedVec` fill (~:1963-1969). At `Kt == 0` nothing in
 the existing arms changes: every branch is on kind, the K=1 legacy arm is
 untouched, so all committed goldens stay byte-identical (predicted movers:
 none).
@@ -99,10 +124,11 @@ none).
 **Beta-weight independence (owner's concern, verified in code).** The
 default `beta(1,25)` MAF weighting must NOT touch FlexRV sets: they replace
 it. Today's custom path already guarantees this on the unconditional path
-(`w0_vec(r) = t_weight(i, col)` at `src/Main.cpp:2036-2044`, R AnnoWeights
-= file weights + ones for UR rows at `R/SAIGE_SPATest_Region.R:216-226`, and
+(`pr.w0(r) = t_weight(i, setColVec[r])` at `src/Main.cpp` ~:2331, R AnnoWeights
+= file weights + ones for UR rows at `R/SAIGE_SPATest_Region.R` ~:218, and
 the implicit beta set is composed only when no other set exists,
-`:917-927`). Transform sets inherit that by construction (same accessor, same
+the "composed ONLY when more than one pair is supplied" rule in the composition
+block, ~:883). Transform sets inherit that by construction (same accessor, same
 branches). Two guards make it an invariant rather than a hope:
 - Test: a FlexRV run with `--weights.beta="1,1"` and one with the default
   `"1,25"` produce identical FlexRV rows (numeric 1e-12); the single pair
@@ -115,7 +141,8 @@ branches). Two guards make it an invariant rather than a hope:
 
 The one place beta(1,25) DOES reach a custom-set run is the conditioning
 markers: `w0G2Vec_cond` defaults to `pdf(beta(1,25), MAF)` when
-`--weights_for_condition` is absent (`src/Main.cpp:1852-1860`), one vector
+`--weights_for_condition` is absent (the `t_weight_cond.is_zero()` fallback,
+`src/Main.cpp` ~:2013 and ~:3998), one vector
 shared by every set (design D7). Conditioning markers live outside the group
 file and have no score, so a transform cannot be applied to them. Rule:
 `--flexRV_score` + `--condition` is a hard error unless
@@ -126,7 +153,8 @@ set. Documented in F0 and CLAUDE.md as a known asymmetry, not silently
 defaulted.
 
 **Zero-weight cells** (already characterised): BURDEN omits the row and the
-Cauchy pool skips it (`:2807`, `:4004`); SKAT-O reports NA via the SKAT
+Cauchy pool skips it (the BURDEN writer's row-emission guard and its
+`nonMissingPvalVec` filter, `src/Main.cpp` ~:3551); SKAT-O reports NA via the SKAT
 failure path. Fine for MAC thresholds below a gene's smallest MAC; document.
 
 **Memory.** `genoURMat`, `genoSumMat` (N x anno*maf*K), `P1Mat`/`P2Mat`
@@ -164,7 +192,7 @@ per-cell Cauchy-over-sets rows are a follow-up decision, not in scope.
   keeps its historical wording when no score is in play (`test-unit-regionlist.R`
   pins it). Line references below had drifted by ~145 lines and were
   re-resolved.
-- **F1 (original text).** `checkGroupFile` (`R/SAIGE_SPATest_Region_Func.R:76-239`)
+- **F1 (original text).** `checkGroupFile` (`R/SAIGE_SPATest_Region_Func.R` ~:79)
   parses `score:NAME`, `detail=TRUE` adds `scoreName`; the two pinned
   `expect_identical` returns stay verbatim. `SAIGE.getRegionList_new` carries
   `SCORE`. Unit tests in `test-unit-groupfile.R` (parse, [0,1] validation, name
@@ -187,7 +215,8 @@ per-cell Cauchy-over-sets rows are a follow-up decision, not in scope.
   `harness/make_goldens.sh`, plus PGEN mirrors, proved byte-reproducible twice):
   BURDEN full default 192 sets on one cell; SKAT-O on a reduced spec (2x2 sets)
   so the R writer is covered without 192 Davies calls. Invariants extend
-  `test-invariants-goldens.R:66-89` to the new files. Reconciliations, all
+  `tests/testthat/test-invariants-goldens.R` (the Weight-column block, ~:130) to
+  the new files. Reconciliations, all
   numeric at ~1e-12, never byte across paths:
   - `unw_unw` rows == `No_Weights` rows of a plain run (null control for the
     machinery).
@@ -227,9 +256,11 @@ per-cell Cauchy-over-sets rows are a follow-up decision, not in scope.
 
 ## Critical files
 - `R/SAIGE_SPATest_Region_Func.R` (parser), `R/SAIGE_SPATest_Region.R`
-  (composition :792-931, `region_postprocess` :216-226, getRegionList),
+  (composition ~:862, `region_postprocess` ~:218, `SAIGE.getRegionList_new`
+  ~:1700),
   `R/WeightSets.R`, `R/SAIGE_Test_main.R`, `extdata/step2_SPAtests.R`
-- `src/Main.cpp` (:1760-1827, :2012-2044, :2238-2267, :2383-2439, :2975),
+- `src/Main.cpp` (set tables ~:1956, MAF/MAC fill ~:2463, w0 fill ~:2331,
+  collapse ~:2577, UR emission ~:2891, BURDEN writer ~:3551),
   new `src/FlexRV.cpp`, `src/Main.hpp`, `src/Makevars`
 - `harness/make_goldens.sh`, `tests/testthat/test-invariants-goldens.R`,
   `tests/testthat/helper-multiweight.R`, `harness/sim/02_build_dataset.py`
