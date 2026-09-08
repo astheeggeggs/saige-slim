@@ -176,3 +176,70 @@ test_that("LOCO against a sparse-GRM model is refused, with advice it cannot fol
   # ... and the half that can.
   expect_match(txt, "please set LOCO=FALSE in this step", fixed = TRUE)
 })
+
+# ---------------------------------------------------------------------------
+# The REGION path under LOCO. Goldens P54/P55 pin the bytes; this pins the
+# behaviour they exist for -- that ReadModel's per-chromosome swap reaches a
+# GROUP result, not just a marker one.
+
+loco_region_run <- function(key, chrom, loco) {
+  if (!is.null(loco_cache[[key]])) return(loco_cache[[key]])
+  out <- file.path(tempfile("locoreg_"), paste0(key, ".txt"))
+  dir.create(dirname(out), recursive = TRUE)
+  sg <- paste0("--sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_",
+               "1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt")
+  args <- c(LOCO_G2(),
+            paste0("--GMMATmodelFile=",
+                   file.path(saige_goldens, "step1", "binary_loco_vr_2chr.rda")),
+            paste0("--varianceRatioFile=",
+                   file.path(saige_goldens, "step1",
+                             "binary_loco_vr_2chr.varianceRatio.txt")),
+            paste0("--sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_",
+                   "1000_randomMarkersUsed.sparseGRM.mtx"),
+            sg,
+            "--groupFile=./input/group_new_snpid.txt",
+            "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+            "--maxMAF_in_groupTest=0.0001,0.001,0.01",
+            "--minMAF=0", "--minMAC=0.5", "--is_fastTest=FALSE",
+            paste0("--chrom=", chrom), paste0("--LOCO=", loco),
+            paste0("--SAIGEOutputFile=", out))
+  status <- run_saige_cli("step2_SPAtests.R", args)
+  expect_cli_ok(status)
+  loco_cache[[key]] <- read_saige_table(out)
+  loco_cache[[key]]
+}
+
+test_that("the LOCO model carries sparse variance ratios, so a region test can use it", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  vr <- read.table(file.path(saige_goldens, "step1",
+                             "binary_loco_vr_2chr.varianceRatio.txt"),
+                   stringsAsFactors = FALSE)
+  # A group test given --sparseGRMFile needs `sparse` rows. A sparse-GRM FIT
+  # cannot supply them together with LOCO (useSparseGRMtoFitNULL forces LOCO
+  # off), so this model is a DENSE fit with --useSparseGRMforVarRatio=TRUE --
+  # the only combination that yields both.
+  expect_true(all(c("sparse", "null", "null_noXadj") %in% vr[[2]]))
+  e <- new.env()
+  load(file.path(saige_goldens, "step1", "binary_loco_vr_2chr.rda"), envir = e)
+  expect_true(e$modglmm$LOCO)
+})
+
+test_that("the per-chromosome refit reaches the REGION result too", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  for (chrom in c("1", "2")) {
+    on_  <- loco_region_run(paste0("ron", chrom),  chrom, "TRUE")
+    off_ <- loco_region_run(paste0("roff", chrom), chrom, "FALSE")
+    key <- function(d) paste(d$Region, d$Group, d$max_MAF)
+    expect_equal(key(on_), key(off_))
+    # Every cell must move: the two runs differ only in which refit is used.
+    moved <- as.numeric(on_$Pvalue) != as.numeric(off_$Pvalue)
+    expect_true(all(moved), label = paste0("every cell moves on chrom ", chrom))
+  }
+  # GENE2 spans the boundary, so it appears on both chromosomes -- with
+  # different marker sets and different refits.
+  expect_true("GENE2" %in% loco_cache[["ron1"]]$Region)
+  expect_true("GENE2" %in% loco_cache[["ron2"]]$Region)
+  expect_false("GENE1" %in% loco_cache[["ron2"]]$Region)
+})

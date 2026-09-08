@@ -363,6 +363,55 @@ run step1_binary_loco_2chr.log R2 step1_fitNULLGLMM.R \
   --IsOverwriteVarianceRatioFile=TRUE \
   --outputPrefix="$GOLD/step1/binary_loco_2chr"
 
+# A LOCO model that can also drive a REGION test. A group test given
+# --sparseGRMFile needs `sparse` variance-ratio rows, and the only model in the
+# repo that had them (extdata/output/example_binary_sparseGRM) is LOCO=FALSE,
+# while binary_loco_2chr above carries only null/null_noXadj -- so no model could
+# do both until this one. The combination that works is
+# `--useSparseGRMtoFitNULL=FALSE` (a DENSE fit, so LOCO survives) with
+# `--useSparseGRMforVarRatio=TRUE` (which supplies the sparse rows): the two
+# flags are independent, and only the FIRST forces LOCO off
+# (R/SAIGE_fitGLMM_fast.R:836). 20 s, and the variance-ratio file comes out with
+# all three row types over two MAC categories.
+run step1_binary_loco_vr_2chr.log R2 step1_fitNULLGLMM.R \
+  --plinkFile=./input/plinkforGRM_1000samples_10kMarkers \
+  --sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx \
+  --sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt \
+  --useSparseGRMtoFitNULL=FALSE \
+  --useSparseGRMforVarRatio=TRUE \
+  --phenoFile=./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt \
+  --phenoCol=y_binary \
+  --covarColList=x1,x2,a9,a10 \
+  --qCovarColList=a9,a10 \
+  --sampleIDColinphenoFile=IID \
+  --traitType=binary \
+  --nThreads=1 \
+  --LOCO=TRUE \
+  --minMAFforGRM=0.01 \
+  --isCateVarianceRatio=TRUE \
+  --IsOverwriteVarianceRatioFile=TRUE \
+  --outputPrefix="$GOLD/step1/binary_loco_vr_2chr"
+
+# PGEN mirror of it; byte-identity asserted in the candidate dir, not committed.
+run step1_binary_loco_vr_2chr_pgen.log R2 step1_fitNULLGLMM.R \
+  --plink2File=./input/plinkforGRM_1000samples_10kMarkers \
+  --sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx \
+  --sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt \
+  --useSparseGRMtoFitNULL=FALSE \
+  --useSparseGRMforVarRatio=TRUE \
+  --phenoFile=./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt \
+  --phenoCol=y_binary \
+  --covarColList=x1,x2,a9,a10 \
+  --qCovarColList=a9,a10 \
+  --sampleIDColinphenoFile=IID \
+  --traitType=binary \
+  --nThreads=1 \
+  --LOCO=TRUE \
+  --minMAFforGRM=0.01 \
+  --isCateVarianceRatio=TRUE \
+  --IsOverwriteVarianceRatioFile=TRUE \
+  --outputPrefix="$GOLD/step1/binary_loco_vr_2chr_pgen"
+
 # PGEN mirror of the LOCO fit; byte-identity is asserted in the candidate dir
 # below rather than committed, as for every other step-1 pgen run.
 run step1_binary_loco_2chr_pgen.log R2 step1_fitNULLGLMM.R \
@@ -1193,6 +1242,40 @@ run step2_plink_marker_loco_chr2.log R2 step2_SPAtests.R \
   $LOCO_G2 --SAIGEOutputFile="$GOLD/step2/plink_marker_loco_chr2.txt" \
   --chrom=2 $LOCO_COMMON $LOCO_MODEL
 
+# P54-P55 (2026-09-08): the REGION path under LOCO, which no golden reached --
+# every group golden runs --LOCO=FALSE, so `ReadModel`'s per-chromosome swap had
+# been gated only on the single-variant path (P52/P53).
+#
+# The group file is `group_new_snpid.txt`, the SAME one the other region goldens
+# use, against the two-chromosome genotypes: its GENE1 is entirely on chr1 while
+# GENE2 has 40 markers on chr1 and 10 on chr2, so GENE2 SPANS THE BOUNDARY and
+# is tested against a different refit in each run. (The repo's
+# `group_new_chrposa1a2_2chr.txt` cannot be used here: PLINK group files key on
+# bim column 2, and that file's chr:pos:A1:A2 ids match nothing in this .bim --
+# "100 markers in 'RegionFile' are not in 'GenoFile'", a zero-byte output at
+# exit 0. It was built for the retired bgen/vcf fixtures.)
+#
+# Measured before these were accepted, against the same commands with
+# --LOCO=FALSE on the same model:
+#   chrom 1 (14 cells): every cell moves; max 39% on the three p-value columns
+#                       and 156% on BETA_Burden
+#   chrom 2 ( 4 cells): every cell moves; max 0.65% on Pvalue, 1.4% BETA_Burden
+# Same asymmetry, and same cause, as the marker path: LOCOResult[[1]] leaves out
+# 9,988 GRM markers and LOCOResult[[2]] leaves out 12.
+LOCO_R_MODEL="--GMMATmodelFile=$GOLD/step1/binary_loco_vr_2chr.rda --varianceRatioFile=$GOLD/step1/binary_loco_vr_2chr.varianceRatio.txt"
+LOCO_R_COMMON="--minMAF=0 --minMAC=0.5 --LOCO=TRUE --is_fastTest=FALSE --groupFile=./input/group_new_snpid.txt --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous --maxMAF_in_groupTest=0.0001,0.001,0.01"
+
+# P54: SKAT-O region test under LOCO, chromosome 1 (GENE1 + GENE2's chr1 half).
+run step2_plink_group_loco_chr1.log R2 step2_SPAtests.R \
+  $LOCO_G2 --SAIGEOutputFile="$GOLD/step2/plink_group_loco_chr1.txt" \
+  --chrom=1 $LOCO_R_COMMON $LOCO_R_MODEL $SG
+
+# P55: the same, chromosome 2 (GENE2's chr2 half), so the pair differs only in
+# --chrom and therefore only in which refit ReadModel installs.
+run step2_plink_group_loco_chr2.log R2 step2_SPAtests.R \
+  $LOCO_G2 --SAIGEOutputFile="$GOLD/step2/plink_group_loco_chr2.txt" \
+  --chrom=2 $LOCO_R_COMMON $LOCO_R_MODEL $SG
+
 ############ PGEN-vs-PLINK byte identity, checked in the candidate dir #########
 # The step-0 and step-1 PGEN runs above are NOT committed as separate goldens:
 # each is byte-identical to its PLINK twin, so committing them would double the
@@ -1218,7 +1301,7 @@ S0SUF="_relatednessCutoff_0.05_5000_randomMarkersUsed.sparseGRM.mtx"
 check_identical "$GOLD/step0/test_sparseGRM$S0SUF" "$GOLD/step0/test_sparseGRM_pgen$S0SUF"
 check_identical "$GOLD/step0/test_sparseGRM$S0SUF.sampleIDs.txt" \
                 "$GOLD/step0/test_sparseGRM_pgen$S0SUF.sampleIDs.txt"
-for n in binary_sparseGRM_a binary_sparseGRM_b quant_sparseGRM binary_denseGRM binary_sparseGRM_vr quant_sparseGRM_vr binary_loco_2chr; do
+for n in binary_sparseGRM_a binary_sparseGRM_b quant_sparseGRM binary_denseGRM binary_sparseGRM_vr quant_sparseGRM_vr binary_loco_2chr binary_loco_vr_2chr; do
   check_identical "$GOLD/step1/$n.rda"                "$GOLD/step1/${n}_pgen.rda"
   check_identical "$GOLD/step1/$n.varianceRatio.txt"  "$GOLD/step1/${n}_pgen.varianceRatio.txt"
 done

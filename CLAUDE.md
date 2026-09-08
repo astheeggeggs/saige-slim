@@ -416,9 +416,17 @@ only because its message beats the C++ throw's.
 - Variance-ratio file: headerless `value type category` rows, `type` in
   `{sparse, null, null_noXadj}` (`Get_Variance_Ratio` in `R/readInGLMM.R`).
   Step-1 sparse-GRM fits emit only `null`/`null_noXadj` rows, so step 2 must
-  NOT be given `--sparseGRMFile` for those models; group tests need a model
-  whose VR file has `sparse` rows. Multiple rows per type = categorical VRs
+  NOT be given `--sparseGRMFile` for those models; a group test needs `sparse`
+  rows ONLY IF it is given `--sparseGRMFile` (measured 2026-09-08: a region run
+  on a `null`-only LOCO model with no `--sparseGRMFile` produces rows normally --
+  an earlier version of this line said group tests need them unconditionally).
+  Multiple rows per type = categorical VRs
   matched to `cateVarRatioMinMACVecExclude`; C++ picks per marker by MAC.
+  **A LOCO model that can also drive a group test needs BOTH halves and only one
+  combination gives them**: `--useSparseGRMtoFitNULL=FALSE` (a dense fit, so
+  LOCO survives `R/SAIGE_fitGLMM_fast.R:836`) with
+  `--useSparseGRMforVarRatio=TRUE` (which supplies the `sparse` rows). Golden
+  `binary_loco_vr_2chr`.
 - LOCO is three mechanisms: step-1 global-state mutation per chromosome, the
   save-time file layout, and step-2 `ReadModel` overwriting fitted values from
   `LOCOResult[[chrom]]` (`--chrom` mandatory when LOCO=TRUE).

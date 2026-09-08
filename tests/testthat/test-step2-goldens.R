@@ -307,3 +307,31 @@ test_that("step2 LOCO on chromosome 2 matches golden", {
   run_step2_case("plink_marker_loco_chr2.txt",
     c(LOCO_GOLD_G(), "--chrom=2", LOCO_GOLD_COMMON, loco_gold_model()))
 })
+
+# ---------------------------------------------------------------------------
+# P54-P55: the REGION path under LOCO. Every other group golden runs
+# --LOCO=FALSE, so ReadModel's per-chromosome swap was gated only on the
+# single-variant path. GENE2 spans the chromosome boundary in this fixture, so
+# it is tested against a different refit in each of the two runs.
+LOCO_R_MODEL <- function() {
+  c(paste0("--GMMATmodelFile=",
+           file.path(saige_goldens, "step1", "binary_loco_vr_2chr.rda")),
+    paste0("--varianceRatioFile=",
+           file.path(saige_goldens, "step1", "binary_loco_vr_2chr.varianceRatio.txt")))
+}
+LOCO_R_COMMON <- c("--minMAF=0", "--minMAC=0.5", "--LOCO=TRUE", "--is_fastTest=FALSE",
+                   "--groupFile=./input/group_new_snpid.txt",
+                   "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+                   "--maxMAF_in_groupTest=0.0001,0.001,0.01")
+
+test_that("step2 region test under LOCO, chromosome 1, matches golden", {
+  args <- c(LOCO_GOLD_G(), "--chrom=1", LOCO_R_COMMON, LOCO_R_MODEL(), SG_ARGS)
+  run_step2_case("plink_group_loco_chr1.txt", args,
+                 extra_outputs = ".singleAssoc.txt")
+})
+
+test_that("step2 region test under LOCO, chromosome 2, matches golden", {
+  args <- c(LOCO_GOLD_G(), "--chrom=2", LOCO_R_COMMON, LOCO_R_MODEL(), SG_ARGS)
+  run_step2_case("plink_group_loco_chr2.txt", args,
+                 extra_outputs = ".singleAssoc.txt")
+})

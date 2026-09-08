@@ -718,6 +718,48 @@ phenotypes at K = 0.01, not another single arm; that is the next calibration job
 if anyone wants one, and it is a question about SAIGE-GENE+ on rare binary traits
 rather than about this branch's fixes.
 
+## Dead-surface audit of the whole repo (2026-09-08)
+
+Method, so it can be re-run rather than re-derived: every function definition in
+`R/*.R` (133, excluding `RcppExports.R`) and every R-visible Rcpp export (156),
+cross-referenced against `R/`, `extdata/`, `tests/`, `harness/` and `src/`,
+matching on word boundaries so string dispatch (`do.call("f", ...)`) counts as a
+use. **Its own control is `gen_spsolve_v4`**, which the audit did NOT flag --
+correct, LEDGER #91 records it as the live sparse solve -- while its superseded
+siblings `_v2`, `_v3` and `_inR` were all flagged.
+
+| | count | size |
+|---|---|---|
+| R functions defined, never referenced anywhere | 16 | ~470 lines |
+| Rcpp exports never called from R | 52 | -- |
+| .. of those, used inside C++ (only the R WRAPPER is dead) | 35 | -- |
+| .. of those, called from nowhere at all | 17 | ~1,438 lines |
+
+Each of the 17 was verified by listing every occurrence of its name in `src/`:
+all show exactly one, their own definition. All 17 are in
+`SAIGE_fitGLMM_fast.cpp` -- superseded variants (`getPCG1ofSigmaAndVector_old`,
+`gen_spsolve_v2/v3/inR`, `getCrossprodMatAndKin_usingSubMarker`), the mailman
+multiplication experiment (`muliplyMailman_NbyM`,
+`getCrossprodMatAndKin_mailman`, `mmGetPb_*` on the wrapper-only side) and
+`testTime`.
+
+**The behavioural part is LEDGER #114 and is the only piece written up as a
+row**: two of the 17 are the ONLY setters of two globals, so `isUsePrecondM` and
+`isUseSparseSigmaforInitTau` are frozen at `false`, the preconditioner-M `else`
+branch in the PCG is unreachable in any build, and one disjunct is inert.
+
+The rest is size, not behaviour, and is left as a tidiness item because deleting
+it moves no golden and answers no question. If it is ever done, two things are
+worth knowing. The 35 wrapper-only exports are the cheaper win: dropping their
+`// [[Rcpp::export]]` shrinks `RcppExports.*` and stops exposing internals,
+without touching any live code path -- but it requires the
+`Rcpp::compileAttributes` + `src/Makevars` dance in CLAUDE.md. And
+`region_postprocess_parallel` (`R/SkatoParallel.R:204`) is among the dead R
+functions while its own roxygen justifies keeping it "for the unit tests of the
+three pieces" -- measured FALSE: the tests reference `skatoCollect`,
+`skatoEvaluate` and `skatoServe` 3, 4 and 5 times and the composition zero. A
+comment is not a caller.
+
 ## DECISION (2026-09-08): incompatible flag combinations should be REFUSED
 
 The owner's call, recorded here because it is a policy rather than a single fix:
@@ -844,7 +886,18 @@ What the audit found and is NOT done:
   `R/readInGLMM.R:248` passes and reads NULL fitted values out of a stub). Exit
   1, so no wrong answer escapes. Worth a row if anyone decides to support the
   flag properly; not written, because the flag is dead on the recommended path.
-* **`r.corr` only ever takes 0 or 1**, so no fixed-rho SKAT between them.
+* **`r.corr` only ever takes 0 or 1 -- and that is a CLOSED DOOR, not a coverage
+  gap** (measured 2026-09-08). `--r.corr=0.1/0.5/0.9` all exit 1 with "r.corr
+  needs to be either 1 (BURDEN test) or 0 (SKAT-O test)"
+  (`R/SAIGE_SPATest_Region.R:815`). SAIGE reuses SKAT's parameter NAME but not
+  its semantics: `r.corr = 0` does not mean "SKAT", it means "run SKAT-O", which
+  then sweeps the whole rho grid internally (`SKAT_Check_Method(method =
+  "optimal.adj")` returns the grid and it is assigned straight back into
+  `r.corr` at `:802`). So the option is a two-valued MODE SELECTOR and there is
+  nothing between the values to gate. The roxygen at
+  `R/SAIGE_Test_main.R:97` still says "numeric. bewteen 0 and 1", which implies a
+  continuum that does not exist (and misspells "between") -- #111's family, not
+  written up as its own row.
 * **`binary_denseGRM` is a step-1 golden that is never a step-2 model.**
 * Quantitative still has no `fastTest`, multi-weight or conditional REGION
   golden (binary has 14, 9 and 9 respectively).
