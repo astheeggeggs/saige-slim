@@ -60,6 +60,42 @@ for (nm in setdiff(shared, skip)) {
     for (sub in intersect(names(gv), names(cv))) {
       if (is.numeric(gv[[sub]])) report(paste0("obj.noK$", sub), relerr(gv[[sub]], cv[[sub]]), TOL_OTHER)
     }
+  } else if (is.list(gv) && nm == "LOCOResult") {
+    # A LOCO fit's whole point lives in here: one refit per left-out
+    # chromosome. Before this branch existed the loop skipped LOCOResult
+    # silently -- it is a list and it is not obj.noK -- so a LOCO step-1
+    # golden would have gated theta and the base fields while comparing not
+    # one value of the thing it was added for.
+    if (length(gv) != length(cv)) {
+      cat("LOCOResult: length differs FAIL\n")
+      fails <- fails + 1L
+    } else {
+      gflag <- vapply(gv, function(e) isTRUE(e$isLOCO), logical(1))
+      cflag <- vapply(cv, function(e) isTRUE(e$isLOCO), logical(1))
+      if (!identical(gflag, cflag)) {
+        cat("LOCOResult: isLOCO pattern differs FAIL\n")
+        fails <- fails + 1L
+      }
+      # Only the populated entries carry numbers; the rest are list(isLOCO =
+      # FALSE) stubs for chromosomes the fixture has no markers on.
+      for (j in which(gflag & cflag)) {
+        ge <- gv[[j]]
+        ce <- cv[[j]]
+        for (sub in intersect(names(ge), names(ce))) {
+          if (is.numeric(ge[[sub]]) && length(ge[[sub]]) > 0) {
+            report(sprintf("LOCOResult[[%d]]$%s", j, sub),
+                   relerr(ge[[sub]], ce[[sub]]), TOL_OTHER)
+          } else if (is.list(ge[[sub]]) && sub == "obj.noK") {
+            for (k in intersect(names(ge[[sub]]), names(ce[[sub]]))) {
+              if (is.numeric(ge[[sub]][[k]])) {
+                report(sprintf("LOCOResult[[%d]]$obj.noK$%s", j, k),
+                       relerr(ge[[sub]][[k]], ce[[sub]][[k]]), TOL_OTHER)
+              }
+            }
+          }
+        }
+      }
+    }
   }
 }
 only_g <- setdiff(names(g), names(c_)); only_c <- setdiff(names(c_), names(g))

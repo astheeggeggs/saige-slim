@@ -320,6 +320,65 @@ SG="--sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersU
 # BGEN conditional analysis is broken at HEAD (LEDGER.md #12) -> no bgen cond runs.
 # --rangestoIncludeFile is broken at HEAD (LEDGER.md #11) -> not used; the ER path
 # is exercised by --minMAC=1 (ultra-rare MAC<=4 markers exist in the 100-marker set).
+############################ step 1: LOCO ###################################
+# LOCO had ZERO golden coverage: `--LOCO=TRUE` appeared in 0 of the 51 golden
+# runs and `--LOCO=FALSE` in 46 of them. It is three mechanisms (CLAUDE.md) --
+# step-1 global-state mutation per chromosome, the save-time file layout, and
+# step-2 `ReadModel` overwriting fitted values from `LOCOResult[[chrom]]` -- and
+# the third had no end-to-end gate at all. `test-step1-lowmem-loco.R` covers the
+# second and `test-unit-readmodel.R` the third at unit level.
+#
+# ONLY a dense-GRM fit can produce a LOCO model: `useSparseGRMtoFitNULL=TRUE`
+# forces `LOCO <- FALSE` at R/SAIGE_fitGLMM_fast.R:836, so four of the five
+# step-1 goldens can never carry a LOCOResult.
+#
+# The fixture is plinkforGRM_1000samples_10kMarkers, not the 22-chromosome one
+# the other dense golden uses, and the choice was measured rather than assumed:
+#   - 22 chromosomes: 47 s, a 4.7 MB .rda (LOCOResult holds 22 copies of every
+#     per-sample vector, against ~268 KB for every other step-1 golden), and
+#     chr1-vs-chr2 residuals differing by only 1.5e-3.
+#   - this one:        7 s, a 677 KB .rda, and chr1-vs-chr2 residuals differing
+#     by 0.19 -- 130x more signal, because it is 9,988 markers on chr1 against
+#     12 on chr2, so leaving out chr1 changes the GRM enormously and leaving out
+#     chr2 barely at all.
+# LOCOResult keeps its length-22 shape either way; here 20 entries are
+# `list(isLOCO = FALSE)` stubs. It is also the first step-1 golden on this
+# fixture, which until now fed step 0 only.
+#
+# NOTE the harness had to be fixed to gate this at all: compare_step1.R
+# descended into a list only when the field was named `obj.noK`, so LOCOResult
+# was skipped SILENTLY and this golden would have compared theta and the base
+# fields while checking not one value of the thing it exists for.
+run step1_binary_loco_2chr.log R2 step1_fitNULLGLMM.R \
+  --plinkFile=./input/plinkforGRM_1000samples_10kMarkers \
+  --phenoFile=./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt \
+  --phenoCol=y_binary \
+  --covarColList=x1,x2,a9,a10 \
+  --qCovarColList=a9,a10 \
+  --sampleIDColinphenoFile=IID \
+  --traitType=binary \
+  --nThreads=1 \
+  --LOCO=TRUE \
+  --minMAFforGRM=0.01 \
+  --IsOverwriteVarianceRatioFile=TRUE \
+  --outputPrefix="$GOLD/step1/binary_loco_2chr"
+
+# PGEN mirror of the LOCO fit; byte-identity is asserted in the candidate dir
+# below rather than committed, as for every other step-1 pgen run.
+run step1_binary_loco_2chr_pgen.log R2 step1_fitNULLGLMM.R \
+  --plink2File=./input/plinkforGRM_1000samples_10kMarkers \
+  --phenoFile=./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt \
+  --phenoCol=y_binary \
+  --covarColList=x1,x2,a9,a10 \
+  --qCovarColList=a9,a10 \
+  --sampleIDColinphenoFile=IID \
+  --traitType=binary \
+  --nThreads=1 \
+  --LOCO=TRUE \
+  --minMAFforGRM=0.01 \
+  --IsOverwriteVarianceRatioFile=TRUE \
+  --outputPrefix="$GOLD/step1/binary_loco_2chr_pgen"
+
 BIN_MODEL="--GMMATmodelFile=$GOLD/step1/binary_sparseGRM_a.rda --varianceRatioFile=$GOLD/step1/binary_sparseGRM_a.varianceRatio.txt"
 QUANT_MODEL="--GMMATmodelFile=$GOLD/step1/quant_sparseGRM.rda --varianceRatioFile=$GOLD/step1/quant_sparseGRM.varianceRatio.txt"
 VR_MODEL="--GMMATmodelFile=$GOLD/step1/binary_sparseGRM_vr.rda --varianceRatioFile=$GOLD/step1/binary_sparseGRM_vr.varianceRatio.txt"
@@ -1106,6 +1165,34 @@ run step2_pgen_marker_dosage_mac100.log R2 step2_SPAtests.R \
   $DOSAGE_G --SAIGEOutputFile="$GOLD/step2/pgen_marker_dosage_mac100.txt" \
   $DOSAGE_COMMON $BIN_MODEL --dosage_zerod_MAC_cutoff=100
 
+# P52-P53 (2026-09-08): the step-2 half of LOCO, which no golden reached.
+# `ReadModel` overwrites the model's fitted values from `LOCOResult[[chrom]]`
+# (--chrom is mandatory when LOCO=TRUE), so the SAME model tested on two
+# chromosomes uses two different refits. genotype_100markers_2chr carries 90
+# markers on chr1 and 10 on chr2 and shares the sample IDs.
+#
+# Measured before these were accepted, against the same commands with
+# --LOCO=FALSE on the same model -- which is the contrast that proves the swap
+# reaches the output rather than merely being present in the .rda:
+#   chr1: all 63 emitted markers move, median 6.5% and max 52% in p.value
+#   chr2: all  7 emitted markers move, median 1.3% and max  6.0%
+# The ratio is the point and it was predicted before the run: LOCOResult[[1]]
+# leaves out 9,988 markers and LOCOResult[[2]] leaves out 12.
+LOCO_G2="--bedFile=./input/genotype_100markers_2chr.bed --bimFile=./input/genotype_100markers_2chr.bim --famFile=./input/genotype_100markers_2chr.fam --AlleleOrder=alt-first"
+LOCO_MODEL="--GMMATmodelFile=$GOLD/step1/binary_loco_2chr.rda --varianceRatioFile=$GOLD/step1/binary_loco_2chr.varianceRatio.txt"
+LOCO_COMMON="--minMAF=0 --minMAC=1 --LOCO=TRUE --is_output_moreDetails=TRUE"
+
+# P52: chromosome 1 left out of the GRM that the model was refitted on.
+run step2_plink_marker_loco_chr1.log R2 step2_SPAtests.R \
+  $LOCO_G2 --SAIGEOutputFile="$GOLD/step2/plink_marker_loco_chr1.txt" \
+  --chrom=1 $LOCO_COMMON $LOCO_MODEL
+
+# P53: chromosome 2, the same model and command with only --chrom changed, so
+# the pair isolates LOCOResult[[chrom]] and nothing else.
+run step2_plink_marker_loco_chr2.log R2 step2_SPAtests.R \
+  $LOCO_G2 --SAIGEOutputFile="$GOLD/step2/plink_marker_loco_chr2.txt" \
+  --chrom=2 $LOCO_COMMON $LOCO_MODEL
+
 ############ PGEN-vs-PLINK byte identity, checked in the candidate dir #########
 # The step-0 and step-1 PGEN runs above are NOT committed as separate goldens:
 # each is byte-identical to its PLINK twin, so committing them would double the
@@ -1131,7 +1218,7 @@ S0SUF="_relatednessCutoff_0.05_5000_randomMarkersUsed.sparseGRM.mtx"
 check_identical "$GOLD/step0/test_sparseGRM$S0SUF" "$GOLD/step0/test_sparseGRM_pgen$S0SUF"
 check_identical "$GOLD/step0/test_sparseGRM$S0SUF.sampleIDs.txt" \
                 "$GOLD/step0/test_sparseGRM_pgen$S0SUF.sampleIDs.txt"
-for n in binary_sparseGRM_a binary_sparseGRM_b quant_sparseGRM binary_denseGRM binary_sparseGRM_vr quant_sparseGRM_vr; do
+for n in binary_sparseGRM_a binary_sparseGRM_b quant_sparseGRM binary_denseGRM binary_sparseGRM_vr quant_sparseGRM_vr binary_loco_2chr; do
   check_identical "$GOLD/step1/$n.rda"                "$GOLD/step1/${n}_pgen.rda"
   check_identical "$GOLD/step1/$n.varianceRatio.txt"  "$GOLD/step1/${n}_pgen.varianceRatio.txt"
 done

@@ -279,3 +279,31 @@ test_that("step2 dosage pgen with --dosage_zerod_MAC_cutoff=100 matches golden",
   run_step2_case("pgen_marker_dosage_mac100.txt",
     c(DOSAGE_ARGS(), DOSAGE_COMMON, bin_model(), "--dosage_zerod_MAC_cutoff=100"))
 })
+
+# ---------------------------------------------------------------------------
+# P52-P53: LOCO. The same model and command with only --chrom changed, so the
+# pair isolates ReadModel's LOCOResult[[chrom]] swap and nothing else.
+LOCO_GOLD_G <- function() {
+  c("--bedFile=./input/genotype_100markers_2chr.bed",
+    "--bimFile=./input/genotype_100markers_2chr.bim",
+    "--famFile=./input/genotype_100markers_2chr.fam",
+    "--AlleleOrder=alt-first")
+}
+loco_gold_model <- function() {
+  c(paste0("--GMMATmodelFile=",
+           file.path(saige_goldens, "step1", "binary_loco_2chr.rda")),
+    paste0("--varianceRatioFile=",
+           file.path(saige_goldens, "step1", "binary_loco_2chr.varianceRatio.txt")))
+}
+LOCO_GOLD_COMMON <- c("--minMAF=0", "--minMAC=1", "--LOCO=TRUE",
+                      "--is_output_moreDetails=TRUE")
+
+test_that("step2 LOCO on chromosome 1 matches golden", {
+  run_step2_case("plink_marker_loco_chr1.txt",
+    c(LOCO_GOLD_G(), "--chrom=1", LOCO_GOLD_COMMON, loco_gold_model()))
+})
+
+test_that("step2 LOCO on chromosome 2 matches golden", {
+  run_step2_case("plink_marker_loco_chr2.txt",
+    c(LOCO_GOLD_G(), "--chrom=2", LOCO_GOLD_COMMON, loco_gold_model()))
+})

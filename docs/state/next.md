@@ -768,11 +768,29 @@ What the audit found and is NOT done:
   fixture sized its ladder against 10,000 and SAIGE reported 0.032/0.096/0.161
   where 0.05/0.10/0.15 were meant, putting the boundary marker on the wrong side
   of `--maxMissing`. Size any genotype-QC fixture against the analysed subset.
-* **`LOCO=TRUE` is in zero golden runs.** Three tests cover pieces
-  (`test-step1-lowmem-loco.R`, `test-step1-stale-model-file.R`,
-  `test-unit-readmodel.R`), so it is not unguarded, but the step-2 half --
-  `ReadModel` overwriting fitted values from `LOCOResult[[chrom]]` -- has no
-  end-to-end byte gate.
+* **`LOCO=TRUE` was in zero golden runs -- CLOSED 2026-09-08.** Step-1 golden
+  `binary_loco_2chr` plus step-2 goldens P52/P53 (the same model and command with
+  only `--chrom` changed, so the pair isolates `LOCOResult[[chrom]]`), and
+  `tests/testthat/test-step2-loco.R`. Only a DENSE fit can carry a LOCOResult at
+  all: `useSparseGRMtoFitNULL=TRUE` forces `LOCO <- FALSE`
+  (`R/SAIGE_fitGLMM_fast.R:836`), so four of the five step-1 goldens never could.
+  **The harness had to be fixed first, and this is the reusable lesson:**
+  `compare_step1.R` descended into a list only when the field was named
+  `obj.noK`, so `LOCOResult` was skipped SILENTLY -- the golden would have gated
+  theta and the base fields while comparing not one value of the thing it exists
+  for. Drilled: perturbing `LOCOResult[[2]]$residuals[1]` by 1% is now a FAIL and
+  was invisible before. **Fixture chosen by measurement**, not by reusing the
+  other dense golden's: the 22-chromosome fixture gives a 4.7 MB `.rda` (against
+  ~268 KB for every other step-1 golden) and chr1-vs-chr2 residuals differing by
+  1.5e-3, while `plinkforGRM_1000samples_10kMarkers` gives 677 KB, a 7 s fit and
+  a 0.19 difference -- 130x the signal, because it is 9,988 markers on chr1
+  against 12 on chr2. The mechanism demonstrably reaches the output: same model,
+  same chromosome, only `--LOCO` changed moves every marker (chr1 median 6.5%,
+  max 52%; chr2 median 1.3%, max 6.0%), and the asymmetry's direction was
+  predicted from the marker counts first. The PGEN mirror of a LOCO fit is
+  byte-identical to its PLINK twin, which no earlier identity check covered.
+  Found LEDGER #110 on the way. Still uncovered: `--isLowMemLOCO` has no GOLDEN
+  (only `test-step1-lowmem-loco.R`), and no REGION test runs under LOCO.
 * **`r.corr` only ever takes 0 or 1**, so no fixed-rho SKAT between them.
 * **`binary_denseGRM` is a step-1 golden that is never a step-2 model.**
 * Quantitative still has no `fastTest`, multi-weight or conditional REGION
