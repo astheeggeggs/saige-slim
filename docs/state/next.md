@@ -656,6 +656,46 @@ log-odds near 1 (maximum likelihood with the true random effects recovers
 0.97), on the marker path as much as in the region path. Neither is a code
 defect on this branch.
 
+## Golden coverage audit (2026-09-08)
+
+[Measured, not estimated: the 38 step-2 golden commands parsed out of
+`harness/make_goldens.sh` and crossed against trait type and test type, then all
+133 CLI options swept for ones no golden touches, then checked against the test
+suite. Reproduce with the same parse of `make_goldens.sh`.]
+
+**Closed by this audit:** the quantitative sparse-GRM step-2 path had NO golden
+(23 of 33 binary runs passed `--sparseGRMFile`, 0 of 5 quantitative). Fixed the
+same day with `quant_sparseGRM_vr` and goldens P38-P41; the pre-#106 build moves
+that path's `BETA_Burden` by up to 64%, so it was worth having.
+
+What the audit found and is NOT done:
+
+* **Missing genotypes are never exercised.** Verified by decoding the .bed:
+  `genotype_100markers` has ZERO missing calls, and no plink/pgen fixture in the
+  repo has any. Consequently `impute_method`, `maxMissing`, `is_imputed_data`,
+  `minInfo`, `dosage_zerod_cutoff` and `dosage_zerod_MAC_cutoff` have no golden
+  AND no test. The only missingness fixtures the repo ever had were
+  `genotype_10markers.missingness.{bgen,vcf}`, i.e. for the removed readers, and
+  LEDGER #96 moved them to `harness/goldens_retired/inputs/` on 2026-09-08. The
+  fix is to generate a PLINK/PGEN missingness fixture from the existing bed with
+  plink2 -- the next most valuable coverage item after the one just closed.
+* **`LOCO=TRUE` is in zero golden runs.** Three tests cover pieces
+  (`test-step1-lowmem-loco.R`, `test-step1-stale-model-file.R`,
+  `test-unit-readmodel.R`), so it is not unguarded, but the step-2 half --
+  `ReadModel` overwriting fitted values from `LOCOResult[[chrom]]` -- has no
+  end-to-end byte gate.
+* **`r.corr` only ever takes 0 or 1**, so no fixed-rho SKAT between them.
+* **`binary_denseGRM` is a step-1 golden that is never a step-2 model.**
+* Quantitative still has no `fastTest`, multi-weight or conditional REGION
+  golden (binary has 14, 9 and 9 respectively).
+* Step-1 options with neither golden nor test, mostly numerical knobs:
+  `tolPCG`, `maxiterPCG`, `maxiter`, `tauInit`, `nrun`, `traceCVcutoff`,
+  `ratioCVcutoff`, `isCovariateTransform`, `isCovariateOffset`,
+  `isDiagofKinSetAsOne`, `skipModelFitting`, `memoryChunk`,
+  `usePCGwithSparseGRM`. Step-2: `weights_for_condition`.
+* Recorded covr baseline, not re-measured: R 55.2%, live step-2 C++ 72.2% line
+  and 42.9% branch.
+
 ## Deliberately not listed
 
 The consolidation work (README is still the upstream stub, `pixi.lock` is

@@ -316,3 +316,42 @@ test_that("useSparseGRMforVarRatio changes only the variance-ratio file", {
   expect_identical(sum(vr$V2 == "sparse"), sum(a$V2 == "null"))
   expect_true(all(abs(vr$V1[vr$V2 == "sparse"] - 1) < 1e-3))
 })
+
+test_that("the same holds for the QUANTITATIVE variance-ratio pair", {
+  # quant_sparseGRM_vr is quant_sparseGRM's step-1 command plus
+  # --useSparseGRMforVarRatio=TRUE, and it is what let the quantitative
+  # sparse-GRM step-2 path get a golden at all (P38-P41, 2026-09-08): a region
+  # test needs `sparse` rows and only that flag writes them. The same invariant
+  # as the binary pair above, for the same reason -- it is what makes P38/P39
+  # diffable against P37/P36.
+  #
+  # It is also the only golden containing a quantitative `sparse` row, so it is
+  # where LEDGER #97 is visible: #65 scales the null / null_noXadj ratios by
+  # 1/s^2 on the way out of a quantitative fit and leaves `sparse` alone,
+  # because that ratio is scale-free.
+  skip_if_no_goldens()
+  s1 <- function(f) file.path(saige_goldens, "step1", f)
+  skip_if_not(file.exists(s1("quant_sparseGRM_vr.rda")), "quant vr step-1 golden absent")
+  expect_identical(tools::md5sum(s1("quant_sparseGRM_vr.rda"))[[1]],
+                   tools::md5sum(s1("quant_sparseGRM.rda"))[[1]])
+
+  vr <- read.table(s1("quant_sparseGRM_vr.varianceRatio.txt"))
+  a <- read.table(s1("quant_sparseGRM.varianceRatio.txt"))
+  expect_identical(sort(unique(vr$V2)), c("null", "null_noXadj", "sparse"))
+  keep <- vr$V2 != "sparse"
+  expect_identical(vr$V1[keep], a$V1)
+  expect_identical(vr$V2[keep], a$V2)
+  expect_identical(vr$V3[keep], a$V3)
+  expect_identical(sum(vr$V2 == "sparse"), sum(a$V2 == "null"))
+  # Near 1, but NOT as near as the binary pair's 1e-3: measured 0.9969 and
+  # 0.9976, i.e. ~3.2e-3 out. That gap is the same physics that makes this
+  # golden worth having. The sparse ratio is a full-GRM numerator over a
+  # sparse-GRM denominator, so it departs from 1 in proportion to the GRM's
+  # share of Sigma = tau0/W + tau1*GRM. Here W = 1 and tau = (0.216, 0.465), so
+  # the GRM term is 2.2x the diagonal one; on the binary fit tau0/W >= 4 against
+  # tau1 = 0.33, so it is at most 0.08 -- about 26x less. The same ordering is
+  # why LEDGER #106's one-triangle Sigma was first-order on a quantitative trait
+  # and ~0.5% on a binary one.
+  expect_true(all(abs(vr$V1[vr$V2 == "sparse"] - 1) < 1e-2))
+  expect_true(all(abs(vr$V1[vr$V2 == "sparse"] - 1) > 1e-3))
+})

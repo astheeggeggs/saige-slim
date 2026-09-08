@@ -163,6 +163,38 @@ run step1_binary_sparseGRM_vr.log R2 step1_fitNULLGLMM.R \
   --isCateVarianceRatio=TRUE \
   --outputPrefix="$GOLD/step1/binary_sparseGRM_vr"
 
+# quant_sparseGRM_vr: the QUANTITATIVE counterpart of binary_sparseGRM_vr, and
+# the reason the quantitative sparse-GRM step-2 path had no golden at all until
+# 2026-09-08. A region test needs `sparse` rows in the variance-ratio file and
+# only --useSparseGRMforVarRatio=TRUE writes them; quant_sparseGRM above is a
+# --useSparseGRMtoFitNULL fit, so its file has null/null_noXadj only and step 2
+# must NOT be given --sparseGRMFile for it (which is exactly why P36/P37 do
+# not). Config is quant_sparseGRM's with the one flag added, so -- as for the
+# binary pair -- the .rda should come out BYTE-IDENTICAL to quant_sparseGRM.rda
+# and a diff of the runs below against P36/P37 isolates the step-2 branch
+# rather than the model.
+#
+# It also puts a quantitative trait through LEDGER #97: #65 rescales the
+# null/null_noXadj ratios by 1/s^2 on the way out and leaves the `sparse` ratio
+# alone because it is scale-free. Before this config no golden contained a
+# quantitative `sparse` row at all.
+run step1_quant_sparseGRM_vr.log R2 step1_fitNULLGLMM.R \
+  --plinkFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr \
+  --sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx \
+  --sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt \
+  --useSparseGRMtoFitNULL=TRUE \
+  --useSparseGRMforVarRatio=TRUE \
+  --phenoFile=./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt \
+  --phenoCol=y_quantitative \
+  --covarColList=x1,x2,a9,a10 \
+  --qCovarColList=a9,a10 \
+  --sampleIDColinphenoFile=IID \
+  --traitType=quantitative \
+  --invNormalize=TRUE \
+  --IsOverwriteVarianceRatioFile=TRUE \
+  --isCateVarianceRatio=TRUE \
+  --outputPrefix="$GOLD/step1/quant_sparseGRM_vr"
+
 
 ################## step 1 mirrors through the PGEN reader ##################
 # The same five configurations, reading
@@ -259,6 +291,23 @@ run step1_binary_sparseGRM_vr_pgen.log R2 step1_fitNULLGLMM.R \
   --isCateVarianceRatio=TRUE \
   --outputPrefix="$GOLD/step1/binary_sparseGRM_vr_pgen"
 
+run step1_quant_sparseGRM_vr_pgen.log R2 step1_fitNULLGLMM.R \
+  --plink2File=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr \
+  --sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx \
+  --sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt \
+  --useSparseGRMtoFitNULL=TRUE \
+  --useSparseGRMforVarRatio=TRUE \
+  --phenoFile=./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt \
+  --phenoCol=y_quantitative \
+  --covarColList=x1,x2,a9,a10 \
+  --qCovarColList=a9,a10 \
+  --sampleIDColinphenoFile=IID \
+  --traitType=quantitative \
+  --invNormalize=TRUE \
+  --IsOverwriteVarianceRatioFile=TRUE \
+  --isCateVarianceRatio=TRUE \
+  --outputPrefix="$GOLD/step1/quant_sparseGRM_vr_pgen"
+
 ##################### step 2: association tests (frozen inputs) #####################
 SG="--sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx --sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt"
 
@@ -274,6 +323,7 @@ SG="--sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersU
 BIN_MODEL="--GMMATmodelFile=$GOLD/step1/binary_sparseGRM_a.rda --varianceRatioFile=$GOLD/step1/binary_sparseGRM_a.varianceRatio.txt"
 QUANT_MODEL="--GMMATmodelFile=$GOLD/step1/quant_sparseGRM.rda --varianceRatioFile=$GOLD/step1/quant_sparseGRM.varianceRatio.txt"
 VR_MODEL="--GMMATmodelFile=$GOLD/step1/binary_sparseGRM_vr.rda --varianceRatioFile=$GOLD/step1/binary_sparseGRM_vr.varianceRatio.txt"
+QUANT_VR_MODEL="--GMMATmodelFile=$GOLD/step1/quant_sparseGRM_vr.rda --varianceRatioFile=$GOLD/step1/quant_sparseGRM_vr.varianceRatio.txt"
 GRP_MODEL="--GMMATmodelFile=./output/example_binary_sparseGRM.rda --varianceRatioFile=./output/example_binary_sparseGRM.varianceRatio.txt"
 PLINK_G="--bedFile=./input/genotype_100markers.bed --bimFile=./input/genotype_100markers.bim --famFile=./input/genotype_100markers.fam --AlleleOrder=alt-first"
 
@@ -855,6 +905,68 @@ run step2_plink_group_nofast_quant.log R2 step2_SPAtests.R \
   --maxMAF_in_groupTest=0.0001,0.001,0.01 \
   --is_fastTest=FALSE
 
+# P38-P41 (2026-09-08): the QUANTITATIVE sparse-GRM step-2 path, which had NO
+# golden of any kind. Measured before they were added: of 38 step-2 goldens, 23
+# of the 33 binary ones passed --sparseGRMFile and 0 of the 5 quantitative ones
+# did, because no quantitative step-1 golden had `sparse` variance-ratio rows.
+# quant_sparseGRM_vr above supplies them.
+#
+# This is not an abstract gap. LEDGER #106 -- step 2's sparse Sigma carrying one
+# triangle, and its PCG stopping on an absolute residual -- says in its own WHAT
+# cell that the error is "small here only because 1/W ~ 11 dominates
+# tau2 x kinship ~ 0.16; on a QUANTITATIVE trait (diagonal tau1 ~ 1) or a
+# strongly related cohort the missing triangle is first-order". The regime where
+# that bug was largest is the one no golden looked at: the #106 fix moved 43
+# binary goldens and, necessarily, not one quantitative byte.
+
+# P38: group test, quantitative, SKAT-O with a sparse GRM. The quantitative twin
+# of P6 and the main one of this group -- it is the run that puts a quantitative
+# model through setSparseSigma_new and getPCG1ofSigmaAndGtilde.
+run step2_plink_group_nofast_quant_sparse.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_nofast_quant_sparse.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $QUANT_VR_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --is_fastTest=FALSE
+
+# P39: the same model on the BURDEN-only arm (r.corr=1), the quantitative twin
+# of P5. Reaches the collapsed-vector burden variance with a sparse GRM, which
+# is the construction LEDGER #104/#105 turned on.
+run step2_plink_group_burden_quant_sparse.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_burden_quant_sparse.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $QUANT_VR_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --r.corr=1 --is_fastTest=FALSE
+
+# P40: single-variant with a sparse GRM, the quantitative twin of P27 -- the
+# marker-path scoreTest + PCG arm, which is where LEDGER #44's third shape and
+# #106's var column both live. Binary had this arm covered; quantitative did not.
+run step2_plink_marker_sparse_quant.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_marker_sparse_quant.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $QUANT_VR_MODEL $SG \
+  --is_fastTest=FALSE
+
+# P41: PGEN mirror of P38 -- the only quantitative PGEN region golden, and the
+# only place the pgen reader meets a quantitative sparse-GRM region test.
+run step2_pgen_group_nofast_quant_sparse.log R2 step2_SPAtests.R \
+  $PGEN_G \
+  --SAIGEOutputFile="$GOLD/step2/pgen_group_nofast_quant_sparse.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $QUANT_VR_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --is_fastTest=FALSE
+
 ############ PGEN-vs-PLINK byte identity, checked in the candidate dir #########
 # The step-0 and step-1 PGEN runs above are NOT committed as separate goldens:
 # each is byte-identical to its PLINK twin, so committing them would double the
@@ -880,7 +992,7 @@ S0SUF="_relatednessCutoff_0.05_5000_randomMarkersUsed.sparseGRM.mtx"
 check_identical "$GOLD/step0/test_sparseGRM$S0SUF" "$GOLD/step0/test_sparseGRM_pgen$S0SUF"
 check_identical "$GOLD/step0/test_sparseGRM$S0SUF.sampleIDs.txt" \
                 "$GOLD/step0/test_sparseGRM_pgen$S0SUF.sampleIDs.txt"
-for n in binary_sparseGRM_a binary_sparseGRM_b quant_sparseGRM binary_denseGRM binary_sparseGRM_vr; do
+for n in binary_sparseGRM_a binary_sparseGRM_b quant_sparseGRM binary_denseGRM binary_sparseGRM_vr quant_sparseGRM_vr; do
   check_identical "$GOLD/step1/$n.rda"                "$GOLD/step1/${n}_pgen.rda"
   check_identical "$GOLD/step1/$n.varianceRatio.txt"  "$GOLD/step1/${n}_pgen.varianceRatio.txt"
 done
