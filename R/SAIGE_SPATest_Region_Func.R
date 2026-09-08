@@ -344,14 +344,30 @@ get_newPhi_scaleFactor_traitType <- function(q.sum, mu.a, g.sum, p.new, Score, P
   m1 <- sum(mu.a * g.sum)
   if (traitType == "binary") {
     var1 <- sum(mu.a * (1 - mu.a) * g.sum^2)
-    qinv <- -sign(q.sum - m1) * abs(q.sum - m1) + m1
   }
-  pval_noadj <- pchisq((q.sum - m1)^2 / var1, lower.tail = FALSE, df = 1, log.p = TRUE)
+  # LEDGER #104/#105 fix (fix A). var1 is the NAIVE burden variance -- no GRM,
+  # no variance ratio -- and it is the variance of the saddlepoint's CGF over
+  # (mu, g.sum). The burden statistic's variance under the null model is
+  # 1'Phi 1 (GRM- and ratio-corrected, as C++ delivered it). Standardise the
+  # statistic by that before the |z| < 2 test and the saddlepoint, exactly the
+  # device the C++ marker SPA uses (q = Tstat / sqrt(var1 / var2) + m1 in
+  # SAIGE_test.cpp): below the cutoff the implied VarQ_2 then equals 1'Phi 1
+  # and the r = min(VarQ / VarQ_2, 1) rescale in
+  # SPA_ER_kernel_related_Phiadj_fast_new is a no-op; above it, the rescale
+  # carries only the case-control imbalance correction. Before this, VarQ_2
+  # was var1 itself, so wherever the mixed model reduced the variance the
+  # region path reported the naive burden test and inflated all of Phi by
+  # var1 / 1'Phi 1 (every cell of golden P6, 5-6 %). With no GRM and unit
+  # ratios 1'Phi 1 == var1 and the factor is exactly 1.
+  var_b <- sum(Phi)
+  q_adj <- m1 + (q.sum - m1) * sqrt(var1 / var_b)
+  qinv <- -sign(q_adj - m1) * abs(q_adj - m1) + m1
+  pval_noadj <- pchisq((q_adj - m1)^2 / var1, lower.tail = FALSE, df = 1, log.p = TRUE)
   isSPAConverge <- TRUE
-  if (abs(q.sum - m1) / sqrt(var1) < 2) {
+  if (abs(q_adj - m1) / sqrt(var1) < 2) {
     p.value_burden <- pval_noadj
   } else {
-    p.value_burden <- SPA_pval(mu.a, g.sum, q.sum, qinv, pval_noadj, .Machine$double.eps^0.25, TRUE, traitType, isSPAConverge)
+    p.value_burden <- SPA_pval(mu.a, g.sum, q_adj, qinv, pval_noadj, .Machine$double.eps^0.25, TRUE, traitType, isSPAConverge)
   }
 
   re_phi <- SPA_ER_kernel_related_Phiadj_fast_new(p.new, Score, Phi, p.value_burden, regionTestType)
