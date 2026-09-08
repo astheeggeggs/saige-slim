@@ -1,8 +1,11 @@
 # What is worth doing next (2026-09-03, updated 2026-09-08)
 
 **Current handoff: `docs/state/handoff-2026-09-08-ledger-zero-and-coverage.md`**
-(its "NEXT UP" section first -- the named next job is the N = 50,000 null region
-control). Two handoffs share 2026-09-08 and `ls | tail -1` sorts by NAME, so
+(its "NEXT UP" section first -- **but that named job, the N = 50,000 null region
+control, is DONE**: `docs/state/null50k-2026-09-08.md`, and the section below.
+Read the handoff for everything else it carries, and note that its claim that the
+2026-09-01 `step2_group_y_null.txt` is "a genuine BEFORE baseline" is WRONG --
+~80 commits separate it from HEAD, LEDGER #50 among them). Two handoffs share 2026-09-08 and `ls | tail -1` sorts by NAME, so
 this line is the pointer: the other one,
 `handoff-2026-09-08-burden-variance-fixes.md`, is the earlier session (#103,
 #106, #104/#105) and the coverage one supersedes it. Then this file, then
@@ -658,6 +661,40 @@ relatedness; and the score-test `BETA` overshoots by 16 % at a per-allele
 log-odds near 1 (maximum likelihood with the true random effects recovers
 0.97), on the marker path as much as in the region path. Neither is a code
 defect on this branch.
+
+## The N = 50,000 null region control (2026-09-08) -- DONE
+
+`docs/state/null50k-2026-09-08.md`. The named NEXT UP job of the previous
+handoff, and it is closed. Headline: on the `sim50k` `y_null` arm (quantitative,
+sparse GRM, real relatedness, 210 genes, 3,338 region rows and 9,049
+single-variant rows) the null is **calibrated at alpha = 0.05 and CONSERVATIVE at
+alpha = 0.01**, with no anti-conservatism on any column or MAC stratum, and the
+step-1 fit recovers the planted variance component to 0.7 % as the paired
+positive control.
+
+Three things in there that outlive the run:
+
+* **`lambda_GC` is invalid on the SKAT-O columns.** They carry a point mass at
+  `p == 1` exactly (26.7 % of the Cauchy rows; LEDGER #86, DECIDED). Dropping the
+  atom reports lambda 1.47 on a perfectly acceptable null; keeping it reports
+  0.73. Use the ECDF at alpha with a binomial interval. Same shape as the binary
+  ER atom `harness/check_null.R` warns about, in a column nobody had checked.
+* **The 2026-09-01 `step2_group_y_null.txt` is a CONFOUNDED baseline** -- ~80
+  commits, not four fixes. Its `.singleAssoc.txt` is missing 255 rows in six
+  whole gene blocks, and those six genes are exactly the six that escalate under
+  `--is_fastTest`: that is LEDGER #50, fixed 2026-09-03. Attribution needed a
+  scratch install at `cca6b497` (#103's parent).
+* **#103's correction reaches -79 % at 50k**, against 1.0013-1.0367 on the
+  bundled goldens: `kappa_w` has median 0.99928 (rare variants are slightly
+  NEGATIVELY correlated, so `1 + (m-1) rbar` dips below 1) and max 4.826. It
+  moves ZERO p-values, as designed. #106 lowered the burden variance by up to
+  6.1 % and made 91-93 % of moved p-values SMALLER -- the pre-registered sign --
+  while leaving `lambda_GC` to move only 0.721 -> 0.726, also pre-registered.
+
+Not covered by it: the BINARY SKAT-O path, where #104/#105 live (they are gated
+behind `traitType == "binary"` at `R/SAIGE_SPATest_Region.R:363` and provably
+cannot fire on a quantitative trait) and where the measured golden movement was
+12.6 %. Running `y_binary` on the same fixture is the obvious follow-on.
 
 ## Golden coverage audit (2026-09-08)
 
