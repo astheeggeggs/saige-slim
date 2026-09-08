@@ -1,18 +1,18 @@
 # What is worth doing next (2026-09-03, updated 2026-09-08)
 
-**Current handoff: `docs/state/handoff-2026-09-08-ledger-zero-and-coverage.md`**
-(its "NEXT UP" section first -- **but that named job, the N = 50,000 null region
-control, is DONE**: `docs/state/null50k-2026-09-08.md`, and the section below.
-Read the handoff for everything else it carries, and note that its claim that the
-2026-09-01 `step2_group_y_null.txt` is "a genuine BEFORE baseline" is WRONG --
-~80 commits separate it from HEAD, LEDGER #50 among them). Two handoffs share 2026-09-08 and `ls | tail -1` sorts by NAME, so
-this line is the pointer: the other one,
-`handoff-2026-09-08-burden-variance-fixes.md`, is the earlier session (#103,
-#106, #104/#105) and the coverage one supersedes it. Then this file, then
-`python3 harness/tools/ledger.py open`, which now reports 0 open. Handoffs are dated and
-never renamed; when several share the newest date `ls | tail -1` sorts them by
-name, not by time, so this line is the pointer and is updated with every new
-handoff. `docs/state/handoff-2026-09-04.md` is where CI lives.
+**Current handoff: `docs/state/handoff-2026-09-08-coverage-loco-flexrv.md`** --
+the third session of 2026-09-08 and the current pointer. THREE handoffs share
+that date and `ls | tail -1` sorts by NAME, not by time, so this line is the
+pointer and is updated with every new handoff. The other two are
+`handoff-2026-09-08-burden-variance-fixes.md` (#103-#106) and
+`handoff-2026-09-08-ledger-zero-and-coverage.md`; both are superseded, and the
+second's claim that the 2026-09-01 `step2_group_y_null.txt` is "a genuine BEFORE
+baseline" is WRONG -- ~80 commits separate it from HEAD.
+
+**Its NEXT UP is a DECISION, not a job**: eight open ledger rows, every one of
+them the owner's call. Then this file, then
+`python3 harness/tools/ledger.py open`. `docs/state/handoff-2026-09-04.md` is
+where CI lives.
 
 Short list, kept deliberately short. `LEDGER.md` says what is broken;
 `docs/state/*.md` says what was done and why; this file says what is NOT done
