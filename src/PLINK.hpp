@@ -13,7 +13,7 @@ class PlinkClass{
 private:
   
   // added on 03/14/2021
-  std::string m_AlleleOrder;           // "ref-first" (default for BGEN) or "alt-first" (default for PLINK)
+  std::string m_AlleleOrder;           // "alt-first" (the PLINK default) or "ref-first"
   
   // information from bim file
   uint32_t m_M0, m_M;

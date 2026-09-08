@@ -52,7 +52,11 @@ option_list <- list(
     "--AlleleOrder",
     type = "character",
     default = "alt-first",
-    help = "alt-first or ref-first for bgen or PLINK files"
+    help = paste0(
+      "alt-first or ref-first, for PLINK bed/bim/fam input. alt-first (the ",
+      "default) counts bim column 5, ref-first counts column 6. Ignored for ",
+      "PGEN: a pvar is always REF/ALT-ordered."
+    )
   ),
   make_option(
     "--idstoIncludeFile",
@@ -71,8 +75,7 @@ option_list <- list(
     help = paste0(
       "Path to a file containing genome regions to be included from the dosage ",
       "file. The file contains three columns for chromosome, start, and end ",
-      "respectively with no header. Note for vcf and sav files, only the first ",
-      "line in the file will be used."
+      "respectively with no header."
     )
   ),
   make_option(
@@ -80,9 +83,9 @@ option_list <- list(
     type = "character",
     default = "",
     help = paste0(
-      "If LOCO is specified, chrom is required. chrom is also required for ",
-      "VCF/BCF/SAV input. Note: the string needs to exactly match the chromosome ",
-      "string in the vcf/sav file. For example, 1 does not match chr1."
+      "If LOCO is specified, chrom is required. Note: the string needs to ",
+      "exactly match the chromosome string in the genotype file. For example, ",
+      "1 does not match chr1."
     )
   ),
   make_option(
@@ -315,8 +318,8 @@ option_list <- list(
     type = "character",
     default = "",
     help = paste0(
-      "Path to the file containing one column for IDs of MALE samples in the ",
-      "bgen or vcf file with NO header.Order does not matter"
+      "Path to the file containing one column for IDs of MALE samples, with ",
+      "NO header. Order does not matter"
     )
   ),
   make_option(
@@ -341,10 +344,9 @@ option_list <- list(
     help = paste0(
       "Whether to rewrite gentoypes or dosages of variants in the NON-PAR ",
       "regions on chromosome X for males (multiply by 2). By default, FALSE. ",
-      "Note, only use is_rewrite_XnonPAR_forMales=TRUE when the specified VCF or ",
-      "Bgen file only has variants on chromosome X. When ",
-      "is_rewrite_XnonPAR_forMales=TRUE, the program does not check the ",
-      "chromosome value by assuming all variants are on chromosome X"
+      "Only variants whose chromosome is X (X, x, 23, chrX, chr23) are ",
+      "rewritten; other chromosomes in the same file are left alone ",
+      "(LEDGER #69)."
     )
   ),
   make_option(

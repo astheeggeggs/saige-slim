@@ -1,4 +1,8 @@
-#to get the savvy library instead of the symlinks
-
-export CFLAGS="-fPIC"; export CXXFLAGS="-fPIC"; cget install -f requirements.txt
- 
+# Third-party sources fetched at build time, listed in requirements.txt.
+#
+#     export CFLAGS="-fPIC"; export CXXFLAGS="-fPIC"; cget install -f requirements.txt
+#
+# This recipe used to be about the savvy library, which backed the SAV and VCF
+# readers. Those readers are not part of this branch and savvy is no longer in
+# requirements.txt; nothing under src/ or harness/ references this directory
+# today. It is kept only so the upstream layout is recognisable.
