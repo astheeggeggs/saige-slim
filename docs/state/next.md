@@ -1,7 +1,9 @@
-# What is worth doing next (2026-09-03, updated 2026-09-07)
+# What is worth doing next (2026-09-03, updated 2026-09-08)
 
-**Current handoff: `docs/state/diag-2026-09-07-region-burden-variance.md`** (then this
-file, then `python3 harness/tools/ledger.py open`). Handoffs are dated and
+**Current handoff: `docs/state/handoff-2026-09-08-burden-variance-fixes.md`**
+(its RESUME HERE section first; the diagnosis it acts on is
+`docs/state/diag-2026-09-07-region-burden-variance.md`) -- then this
+file, then `python3 harness/tools/ledger.py open`. Handoffs are dated and
 never renamed; when several share the newest date `ls | tail -1` sorts them by
 name, not by time, so this line is the pointer and is updated with every new
 handoff. `docs/state/handoff-2026-09-04.md` is where CI lives.
@@ -601,7 +603,13 @@ stage measures at N = 50,000 on `sim50k` before anything is called done; the
 sim's latent score `a_lat` is not written by `02_build_dataset.py`, which F5
 has to fix or work around.
 
-## LEDGER #104/#105/#106: the SKAT-O burden variance (2026-09-07)
+## LEDGER #104/#105/#106: the SKAT-O burden variance (2026-09-07) -- DONE 2026-09-08
+
+**All three are FIXED and committed** (`4ebc7c38` #106, `e338bdbd` #104/#105,
+`690894f1` #103 before them), together with #44, which #106 re-opened and the
+same commit re-fixed. `docs/state/handoff-2026-09-08-burden-variance-fixes.md`
+is the account; the rows' STATUS cells are authoritative. Nothing below is a
+decision any more -- it is kept as the record of what was decided and why.
 
 [Diagnosed, reconciled two ways, fix verified;
 `docs/state/diag-2026-09-07-region-burden-variance.md`, scripts and
@@ -620,7 +628,7 @@ one. The published SAIGE-GENE method has no such step. #106 is new and
 separate: step 2's sparse `Sigma` is one triangle of the symmetric .mtx and
 its PCG stops after one or two iterations on an absolute tolerance.
 
-Decisions for the owner:
+Decisions for the owner, all taken and executed:
 * **Apply fix A** (four lines in `get_newPhi_scaleFactor_traitType`, reference
   `fixes.R` `phi_a`): standardise the burden statistic by `1'Phi 1` before
   the `|z| < 2` test and the saddlepoint, the marker SPA's own device. One
