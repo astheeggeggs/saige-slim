@@ -372,16 +372,18 @@ get_SKAT_pvalue <- function(Score, Phi, r.corr, regionTestType) {
   )
 
 
-  # LEDGER #34 fix: take the trace WITHOUT diag(), which reads a
-  # length-1 numeric as a DIMENSION and CONSTRUCTS a trunc(x)-square
-  # identity -- 0 x 0 below 1 (so sum() is 0 and BETA is Inf), and a
-  # quadratic allocation above it: the argument is a weighted score
-  # variance, so diag(4e5) asks for 1.2 Tb and aborts the run. Shape
-  # by shape this is byte-identical on every reachable path: a matrix
-  # still gives the trace, and a bare vector still gives sum(Phi),
-  # exactly what sum(diag(vector)) computed. Only the scalar case
-  # changes, from garbage to the value itself.
-  varSum_Phi <- if (is.matrix(Phi)) sum(diag(Phi)) else sum(Phi)
+  # LEDGER #103 fix: the burden information is the FULL sum of Phi,
+  # 1'Phi 1, not its trace. The score for the burden coefficient b is
+  # 1'Score and its variance is 1'Phi 1, so the estimator is
+  # sum(Score) / sum(Phi) with SE 1 / sqrt(sum(Phi)); dividing by the trace
+  # reported b times kappa_w = 1'Phi 1 / tr(Phi), the LD inflation of the
+  # weighted score covariance (reconciled against a planted effect and
+  # against the --r.corr=1 pseudo-variant path; see the ledger row). This
+  # is also what SKAT's own r.corr = 1 branch uses (a <- as.matrix(sum(Phi))).
+  # The p-value and Z were never affected: SE_Burden is back-derived from
+  # the printed p, so it moves with BETA. (LEDGER #34, which this replaces,
+  # was about diag() on a bare length-1 numeric; sum() has no such trap.)
+  varSum_Phi <- sum(Phi)
   BETA_Burden <- sum(Score) / varSum_Phi
   # LEDGER #57 (the open half): the kernel's message used to die here -- the
   # error.code below is set and never read. It now rides out on the result

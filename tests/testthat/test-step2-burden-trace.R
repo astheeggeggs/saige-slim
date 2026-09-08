@@ -13,9 +13,11 @@
 # The defect is the estimand, which is why nothing downstream can detect it.
 # (The planted-effect and cross-mode reconciliations are in the ledger row.)
 #
-# These tests assert what the code does TODAY. When #103 is fixed, invert the
-# assertions marked INVERT below: BETA_Burden becomes sum(Score) / sum(Phi) and
-# SE_Burden becomes 1 / sqrt(sum(Phi)). The others hold either way.
+# LEDGER #103 FIXED: these tests now pin the corrected estimator,
+# BETA_Burden == sum(Score) / sum(Phi) and SE_Burden == 1 / sqrt(sum(Phi)),
+# and that the old trace denominator is NOT what is reported. The assertions
+# marked INVERTED were the characterization of the defect; the others hold
+# either way.
 
 # A small PSD Phi with a large, unambiguous off-diagonal mass: AR(1) correlation
 # 0.5 on five markers, so sum(Phi) is ~2x its trace and the two candidate
@@ -35,7 +37,7 @@ test_that("r.corr = 0 expands to the 7-point SKAT-O grid these tests rely on", {
   expect_equal(burden_trace_case()$r.corr, c(0, 0.01, 0.04, 0.09, 0.25, 0.5, 1))
 })
 
-test_that("BETA_Burden divides by the trace of Phi, not by its full sum", {
+test_that("BETA_Burden divides by the full sum of Phi, not by its trace", {
   tc <- burden_trace_case()
   out <- SAIGE:::get_SKAT_pvalue(tc$Score, tc$Phi, tc$r.corr, "SKAT-O")
 
@@ -44,14 +46,14 @@ test_that("BETA_Burden divides by the trace of Phi, not by its full sum", {
   # the fixture is only meaningful while the two denominators are far apart
   expect_gt(fullSum / traceOnly, 2)
 
-  # INVERT ON FIX. What it does today, to the last bit:
-  expect_identical(out$BETA_Burden, sum(tc$Score) / traceOnly)
-  # INVERT ON FIX. And it is NOT the estimator of the burden coefficient:
-  expect_false(isTRUE(all.equal(out$BETA_Burden, sum(tc$Score) / fullSum)))
-  # INVERT ON FIX. The bias is exactly kappa_w, which is what #103 asserts;
-  # after the fix this ratio is 1, not kappa_w.
-  expect_equal(out$BETA_Burden / (sum(tc$Score) / fullSum), fullSum / traceOnly,
-               tolerance = 1e-12)
+  # INVERTED (#103 fixed). The estimator of the burden coefficient, to the
+  # last bit:
+  expect_identical(out$BETA_Burden, sum(tc$Score) / fullSum)
+  # INVERTED. And it is NOT the trace-denominator statistic any more:
+  expect_false(isTRUE(all.equal(out$BETA_Burden, sum(tc$Score) / traceOnly)))
+  # INVERTED. The kappa_w bias is gone: this ratio is 1, not fullSum/traceOnly.
+  expect_equal(out$BETA_Burden / (sum(tc$Score) / fullSum), 1, tolerance = 1e-12)
+  expect_gt(abs(out$BETA_Burden / (sum(tc$Score) / traceOnly) - 1), 0.5)
 })
 
 test_that("the Pvalue_Burden printed beside it uses the FULL sum of Phi", {
@@ -71,23 +73,26 @@ test_that("the Pvalue_Burden printed beside it uses the FULL sum of Phi", {
 })
 
 test_that("SE_Burden is the correct standard error OF THE REPORTED beta", {
-  # sqrt(B_w)/A_w, not 1/sqrt(B_w): SAIGE's SE is right for SAIGE's beta, which
-  # is precisely why #103 is an estimand defect and not an arithmetic one.
-  # INVERT ON FIX: SE_Burden becomes 1/sqrt(sum(Phi)).
+  # 1/sqrt(B_w) now that the beta is S_w/B_w. Before the fix it was
+  # sqrt(B_w)/A_w, the correct SE of the trace-denominator statistic, which is
+  # precisely why #103 was an estimand defect and not an arithmetic one.
+  # INVERTED (#103 fixed).
   # Toleranced at 1e-3: SE is back-derived through qnorm from SKAT's Davies p at
   # rho = 0.999, which is not exactly the normal-approximation p.
   tc <- burden_trace_case()
   out <- SAIGE:::get_SKAT_pvalue(tc$Score, tc$Phi, tc$r.corr, "SKAT-O")
 
-  expect_equal(out$SE_Burden, sqrt(sum(tc$Phi)) / sum(diag(tc$Phi)), tolerance = 1e-3)
-  expect_false(isTRUE(all.equal(out$SE_Burden, 1 / sqrt(sum(tc$Phi)), tolerance = 1e-3)))
+  expect_equal(out$SE_Burden, 1 / sqrt(sum(tc$Phi)), tolerance = 1e-3)
+  expect_false(isTRUE(all.equal(out$SE_Burden, sqrt(sum(tc$Phi)) / sum(diag(tc$Phi)),
+                                tolerance = 1e-3)))
 })
 
 test_that("the estimand defect is invisible to any Z-based check on the row", {
   # SE_Burden is back-derived as abs(BETA_Burden / qnorm(p / 2)), so BETA and SE
   # carry the same scale error and BETA/SE reproduces the printed p exactly.
-  # This is why no golden invariant or meta-analysis Z can detect #103, and why
-  # the fix moves BETA_Burden and SE_Burden while every p-value stays identical.
+  # This is why no golden invariant or meta-analysis Z could detect #103, and
+  # why its fix moved BETA_Burden and SE_Burden while every p-value stayed
+  # identical.
   tc <- burden_trace_case()
   out <- SAIGE:::get_SKAT_pvalue(tc$Score, tc$Phi, tc$r.corr, "SKAT-O")
 
@@ -102,8 +107,8 @@ test_that("the estimand defect is invisible to any Z-based check on the row", {
 })
 
 test_that("a single-marker cell cannot move: its trace IS its full sum", {
-  # Why the #103 fix is predicted to leave every single-effective-marker row
-  # byte-identical, and only multi-marker cells re-baseline.
+  # Why the #103 fix left every single-effective-marker row byte-identical,
+  # and only multi-marker cells re-baselined.
   tc <- burden_trace_case()
   Phi1 <- tc$Phi[1, 1, drop = FALSE]
   expect_identical(sum(diag(Phi1)), sum(Phi1))

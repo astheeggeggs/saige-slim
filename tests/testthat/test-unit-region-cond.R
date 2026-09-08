@@ -220,12 +220,14 @@ test_that("LEDGER #33 (FIXED): the binary conditional arm subtracts the full mat
   # the old form was the row-broadcast of the diagonal
   expect_identical(old, Phi - matrix(rep(diag(VarMatAdjCond), q), q, q))
   # ... and its DIAGONAL was already correct, which is why BETA_Burden_cond
-  # (sum(diag(.)) only) did not move when the fix was applied, while the
-  # SKAT p-values, which read the off-diagonals, did.
+  # (then sum(diag(.))) did not move when the #33 fix was applied, while the
+  # SKAT p-values, which read the off-diagonals, did. Since LEDGER #103 the
+  # beta reads the FULL sum of Phi too, so today the two forms disagree on
+  # BETA_Burden as well; the diagonal identity is what #33 rests on.
   expect_equal(diag(old), diag(fixed), tolerance = 1e-12)
-  expect_equal(get_SKAT_pvalue(rep(1, q), old, 0, "SKAT-O")$BETA_Burden,
-               get_SKAT_pvalue(rep(1, q), fixed, 0, "SKAT-O")$BETA_Burden,
-               tolerance = 1e-12)
+  expect_false(isTRUE(all.equal(
+    get_SKAT_pvalue(rep(1, q), old, 0, "SKAT-O")$BETA_Burden,
+    get_SKAT_pvalue(rep(1, q), fixed, 0, "SKAT-O")$BETA_Burden)))
   expect_false(isTRUE(all.equal(
     get_SKAT_pvalue(rep(1, q), old, 0, "SKAT-O")$Pvalue_SKAT,
     get_SKAT_pvalue(rep(1, q), fixed, 0, "SKAT-O")$Pvalue_SKAT)))
