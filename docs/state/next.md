@@ -1,18 +1,24 @@
-# What is worth doing next (2026-09-03, updated 2026-09-08)
+# What is worth doing next (2026-09-03, updated 2026-09-09)
 
-**Current handoff: `docs/state/handoff-2026-09-08-coverage-loco-flexrv.md`** --
-the third session of 2026-09-08 and the current pointer. THREE handoffs share
-that date and `ls | tail -1` sorts by NAME, not by time, so this line is the
-pointer and is updated with every new handoff. The other two are
-`handoff-2026-09-08-burden-variance-fixes.md` (#103-#106) and
-`handoff-2026-09-08-ledger-zero-and-coverage.md`; both are superseded, and the
-second's claim that the 2026-09-01 `step2_group_y_null.txt` is "a genuine BEFORE
-baseline" is WRONG -- ~80 commits separate it from HEAD.
+**Current handoff: `docs/state/handoff-2026-09-09-benchmark-and-ledger-sweep.md`**
+-- this line is the pointer and is updated with every new handoff, because
+several handoffs can share a date and `ls | tail -1` sorts by NAME, not by time.
+The three 2026-09-08 handoffs are superseded; of those,
+`handoff-2026-09-08-coverage-loco-flexrv.md` still reads correctly as history but
+its "NEXT UP: eight open ledger rows" is out of date (five are now closed), and
+`handoff-2026-09-08-ledger-zero-and-coverage.md`'s claim that the 2026-09-01
+`step2_group_y_null.txt` is "a genuine BEFORE baseline" is WRONG -- ~80 commits
+separate it from HEAD. `docs/state/handoff-2026-09-04.md` is where CI lives.
 
-**Its NEXT UP is a DECISION, not a job**: eight open ledger rows, every one of
-them the owner's call. Then this file, then
-`python3 harness/tools/ledger.py open`. `docs/state/handoff-2026-09-04.md` is
-where CI lives.
+**Read the handoff, then this file, then
+`python3 harness/tools/ledger.py open`.** Never write a hand-counted "N open of
+M" here; the lint rejects it, because the count drifted every time.
+
+**2026-09-09 closed #107-#113 and opened #115/#116.** What remains is one
+owner's decision (#114), two one-line help fixes (#115), and one row that needs
+its mechanism diagnosed before it can be decided (#116). The 50k
+strip-vs-upstream benchmark was re-run with a Firth-off arm:
+`harness/sim/upstream_compare/RESULTS-2026-09-09.md`.
 
 Short list, kept deliberately short. `LEDGER.md` says what is broken;
 `docs/state/*.md` says what was done and why; this file says what is NOT done
@@ -100,11 +106,11 @@ must be answered before item 2 below is coded.
   golden (P2, P3, P8, P8b, P10, P14, P15, P21, P23, P24, P34, P35) and retire
   P35's reason to exist. Only worth revisiting once the two items above are
   taken and the region loop is the bottleneck again.
-* the C++ region loop is the other 43.9%; threading it would compose with the
-  above (serial fraction ~11% if both), but `qfc` thread-safety is unchecked and
-  the SKAT-O side would have to be reimplemented to run in-process. The brief
-  proposes doing **BURDEN only** first -- 93.7% C++, 3.36x at 4 threads, and
-  none of the pipelining tension.
+* ~~the C++ region loop is the other 43.9%; threading it would compose with the
+  above~~ **DONE 2026-09-06** (`3eeb554e`): `--nThreads` drives the C++ region
+  marker loop, byte-identical at any count, and CLAUDE.md documents it. This
+  bullet was left stale here until 2026-09-09; the remaining region-path item is
+  the task-batching one above.
 
 ## From the 2026-09-04 upstream-issue-tracker mine (LEDGER #63-#85)
 
