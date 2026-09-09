@@ -31,7 +31,7 @@ fitNULLGLMM(
   skipModelFitting = FALSE,
   memoryChunk = 2,
   tauInit = c(0, 0),
-  LOCO = TRUE,
+  LOCO = NULL,
   isLowMemLOCO = FALSE,
   traceCVcutoff = 0.0025,
   ratioCVcutoff = 0.001,
@@ -124,7 +124,11 @@ specified, 'plink2File'.psam will be used}
 
 \item{tauInit}{vector of numbers. e.g. c(1,1), Initial values for tau. For binary traits, the first element will be always be set to 1. If the tauInit is 0,0, the second element will be 0.5 for binary traits and the initial tau vector for quantitative traits is 1,0. For quantitative traits the whole of step 1 runs on the phenotype divided by the sd of its covariate-adjusted values and the saved model and variance ratios are scaled back (LEDGER #65), so tauInit is given in phenotype units, the convergence and divergence rules are scale-free, and the old stop() on a phenotype variance below 0.1 is gone; only a constant phenotype stops}
 
-\item{LOCO}{logical. Whether to apply the leave-one-chromosome-out (LOCO) option. By default, TRUE}
+\item{LOCO}{logical or NULL. Whether to apply the leave-one-chromosome-out
+(LOCO) option. LOCO requires a full GRM and is REFUSED with
+useSparseGRMtoFitNULL = TRUE, which has no per-chromosome structure to
+leave out. NULL, the default, resolves to FALSE for a sparse-GRM fit and
+TRUE otherwise}
 
 \item{isLowMemLOCO}{logical. Whether to write the model file by chromosome when LOCO=TRUE. If TRUE, memory use in Step 1 and Step 2 is lower. By default, FALSE}
 

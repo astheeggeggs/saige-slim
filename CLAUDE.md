@@ -306,6 +306,46 @@ beta sets unweighted. Fixtures: `group_new_snpid_withWeights.txt` (K=1),
 the K=1 weight line -- one statistic computed two ways). Tests:
 `test-step2-multiweight{,-cond,-behaviour}.R` over `helper-multiweight.R`.
 
+## FlexRV (2026-09-09; F0-F4 landed, F5 measurement open)
+
+FlexRV (Schwartzentruber et al., bioRxiv 2025.11.04.686320) is 16 score
+transforms x 12 MAF transforms = 192 fixed weight vectors per gene, a burden
+test each, Cauchy-combined into `p_FlexRV`. On this branch it is a fourth
+weight-set kind of the Phase 5 engine, `SET_TRANSFORM`, expanded inside C++
+from one `GENE score:NAME v1 v2 ...` group-file line (after `anno`, before any
+weight line) and the marker's IN-SAMPLE MAF/MAC after QC. Kernels
+`src/FlexRV.cpp`, spec parser and set names `R/FlexRV.R`, the pinned table
+with every closed form and every resolved ambiguity
+`docs/design/flexrv-design.md` (the MAF beta transform is DECREASING,
+`(1 - MAF/M)^(b-1)`, zero at and above M; read A1 before touching it).
+Custom-set semantics throughout: weighted ultra-rare collapse, `w0 = 1` on
+the pseudo-marker, ER only for `unw_unw`; `--weights.beta` is inert on them.
+
+The run: `--flexRV_score=NAME --flexRV_maxMAF=M --annotation_in_groupTest=<ONE
+group> --r.corr=1`, optionally `--flexRV_scoreTransforms` /
+`--flexRV_MAFTransforms` (spec strings, defaults are the paper's),
+`--flexRV_lofAnno=lof` (exact labels, each must occur in the file). ONE
+annotation group and ONE max MAF per run, or the pooled Cauchy row is not
+`p_FlexRV`; `--maxMAF_in_groupTest` is replaced when absent and rejected when
+different; `--condition` needs `--weights_for_condition`; M != 0.001 warns
+and names the beta sets `mafbeta<b>@M`. Every set's row is written
+(`--flexRV_output_sets` was decided but is NOT implemented). Three traps:
+- **The bundled fixture's in-sample N is 1,000** (the models', not the fam's
+  10,000), so max MAF 0.01 is MAC <= 20 and is the only cell with real markers
+  at the default collapse cutoff; the goldens P58-P61 pin it, and there
+  `MAC25`..`MAC500` are duplicates of `unw` (`helper-step2-flexrv.R`).
+- **`MAC<=1,3,5,10` sit at or below the default collapse cutoff**, so those
+  sets test the `max()` pseudo-marker alone; `--MACCutoff_to_CollapseUltraRare=0`
+  is the paper's unbinned quantitative run (P59).
+- **A weight of exactly 0 inside a binary SKAT-O cell returns NA** (LEDGER
+  #117, pre-existing, custom weights too), which the `lof` mask and every MAC
+  threshold produce; on a binary trait FlexRV is a `--r.corr=1` run.
+`opt$flexRV_score` partial-matches `--flexRV_scoreTransforms` when the flag is
+absent: the CLI reads the five flags with `[[ ]]`. The memory line a FlexRV run
+prints once is the formula in the design doc's "Implementation notes", not a
+measurement; the N = 1,000 fixture is startup-bound and cannot see the 192x
+work, so RAM/CPU at scale is F5's open measurement on the 50k fixture.
+
 ## Architecture
 
 ### Entry points -> R functions

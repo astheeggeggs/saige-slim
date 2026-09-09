@@ -388,3 +388,157 @@ These are the values F2's `test-unit-flexrv.R` should pin (fast tier, the
 `test-unit-spa.R` shape): `s = 0`, `s = 1`, `s = t`, the `MAF = 0.001`
 boundary from both sides, `MAC = t` and `MAC = t+1`, and the 16 x 12 product
 ordering `k = c*12 + d`.
+
+## Cross-check against `AMCalejandro/rvas_aou` (2026-09-09)
+
+An independent FlexRV implementation, read at `origin/main` = `ee8b236`
+(local checkout `~/Repositories/rvas_aou`, not part of this repo). It holds
+TWO FlexRV paths: `axaou/amc_run_saige.py` writes 192 `weight,<label>` lines
+per gene into a SAIGE group file (the external route this plan keeps as a
+reconciliation control), and `ukb_weighted_burden/genebass_burden.py` runs the
+burden in Hail from Genebass per-variant `BETA`/`SE` summary statistics. Line
+numbers below are at that commit.
+
+**What agrees.** The 16 score kernels (`_hl_cubic_root_weight`,
+`_hl_beta_score_weight`), the `lof_only` mask (annotation-based, pLoF scored 1,
+matching A2), the score-major/MAF-minor ordering (`i*12 + j`, identical to
+`k = c*12 + d`), and the CCT (`add_cct_p_entry`: equal weights over the
+DEFINED p-values, `1/(p*pi)` below 1e-16, `1/(T*pi)` above 1e15 -- the same
+guards as `src/CCT.cpp`, confirming A4). Their group-file label format
+(`weight,NAME`) is accepted by `parse_weight_type`
+(`R/SAIGE_SPATest_Region_Func.R`), so an UNROUNDED export of their files could
+serve as F4's external reconciliation control; the rounded ones cannot (below).
+
+**Where theirs differs, and each is a defect this design avoids.**
+
+- **MAF beta direction is inconsistent between their two paths.**
+  `genebass_burden.py:46` is `(MAF/0.001)^(b-1)` -- the literal reading A1
+  excludes by the figure, rarest variants weighted least. `amc_run_saige.py:546`
+  has the corrected `(1 - MAF/0.001)^(b-1)` with a comment calling the other
+  form backwards. Two implementations in one repo disagree on the sign of the
+  effect, which is the strongest evidence yet that A1 needed writing down.
+- **No clamp above the boundary.** The corrected form is evaluated as
+  `abs(1 - MAF/0.001)^(b-1)`, which grows again for MAF > 0.001. One weight
+  line is shared across their default `--max-maf-group=0.01,0.001,0.0001`, so
+  in the 0.01 cell MAF 0.005 gets weight 4 (b=2) / 256 (b=5) and MAF 0.01 gets
+  9 / 6561. D2's `else 0` and the one-cell rule are what prevent this here.
+- **MAC thresholds read a hardcoded N = 100,000** (`amc_run_saige.py:835,853`)
+  converted to a MAF cutoff, while SAIGE's in-sample N is per phenotype and per
+  ancestry: their "MAC 10" is MAC 5 at N = 50k and MAC 25 at N = 250k. (The UKB
+  path uses `n_cases + n_controls` per phenotype, which is right.) A3 reads
+  in-sample MAC, which is the whole reason the sets are built inside C++.
+- **Weights rounded to 3 decimals in the group file** (`_hl_round`). `sbeta20`
+  is then 0 for every s < 0.67, `sbeta10` below 0.43, `sbeta5` below 0.15; the
+  steep beta transforms become hard thresholds with a few hundred levels.
+  Computed 2026-09-09: `0.0005^(1/(b-1))`. We keep doubles end to end.
+- **The pooled row is a super-omnibus.** `--r.corr` is left at 0 (SKAT-O on
+  every set, 192 Davies calls per cell; the paper is burden) over 3 effective
+  annotation groups x 3 MAF cells, ~1,700 tests in one Cauchy row. This is
+  exactly the shape the one-cell / `--r.corr=1` recommendation is written
+  against, and it is why their pipeline had to grow `--n-group-chunks`.
+- **Ultra-rare collapse untouched** (default cutoff 10), so their
+  `MAC<=1,3,5,10` sets are the pseudo-marker-only tests described under "What
+  enters the test". No recommendation on their side; the by-trait one above
+  stands.
+- **Missingness** at 20% (`--maxMissing=0.2`, gene map AN > 0.8 max) against
+  the paper's 5%.
+
+**Two of their choices worth weighing (neither adopted).**
+
+- **Cohort-level AF for the MAF axis.** Their gene map carries the ancestry
+  call-stats AF from the full call set, which is closer to the paper's "MAF in
+  the full cohort" than our in-sample-after-QC MAF, and makes the `mafbeta`
+  weight vector phenotype-independent. Already named under "Which MAF" above.
+  Kept in-sample: the MAC ladder must read it anyway, and one MAF source per
+  run is one fewer thing to reconcile. Defensible alternative for `mafbeta`
+  only, not for the ladder.
+- **Gene-mean imputation of missing scores**, applied twice (before percentile
+  ranking in `utils/percentiles.py`, again at group-file build). F1 rejects
+  NA and leaves construction to the caller, which stays the rule; the
+  group-file builder's documentation should say NA must be resolved upstream
+  and that gene-mean is one reasonable default (0 = "treat as benign" is the
+  other; the paper does not say). Whether their percentile is over all
+  POSSIBLE missense variants, as the paper requires, or only observed ones,
+  could not be verified from the code.
+
+**What they confirm.** Chunking group files per gene because "192 weight rows
+per gene do not fit in one step-2 job" validates building the sets internally;
+their `lof_only` construction validates A2; their CCT validates A4.
+
+## Implementation notes (F2-F4, 2026-09-09)
+
+What landed, and the four things the implementation taught that this document
+and the plan had wrong or had not seen. Commits: F2 kernels, F3 engine + CLI,
+F4 fixture + goldens, then LEDGER #117 + docs.
+
+**Where the pieces are.** Kernels `src/FlexRV.{hpp,cpp}` (namespace `FlexRV`,
+kind codes shared with `R/FlexRV.R`, test export `flexrvWeightsInCPP`);
+`R/FlexRV.R` (spec parser, `flexrvTransformTable`, the R route
+`flexrvWeightsR` used only by tests); `mainRegionInCPP` has a fourth set kind
+`SET_TRANSFORM`, composed after the custom sets, reading its per-marker weight
+from `FlexRV::weight(...)` in `prepare` (after `imputeGenoAndFlip` fixes
+MAF/MAC), collapsing ultra-rare markers weighted like a custom set, `w0 = 1` on
+the pseudo-marker, ER only for `unw_unw`, and exporting `transformWeightMat`
+(q0 x Kt, NaN on QC failures) to `region_postprocess`, whose descriptor kind
+`transform` treats it exactly as a custom column. The CLI flags are
+`--flexRV_score`, `--flexRV_scoreTransforms`, `--flexRV_MAFTransforms`,
+`--flexRV_lofAnno`, `--flexRV_maxMAF`; `--maxMAF_in_groupTest` is replaced when
+absent and rejected when different. `--flexRV_output_sets` is NOT implemented:
+every set's row is written.
+
+**1. The fixture's in-sample N is 1,000, not 10,000.** The fam has 10,000 rows;
+the bundled models hold 1,000 samples and step 2 subsets to them. Measured
+with `plink2 --freq counts --keep`: at max MAF 0.01 (MAC <= 20) GENE1 has 21
+polymorphic markers (MAC 1..20) and GENE2 18 (MAC 1..13); at the default
+collapse cutoff the real markers are rs4/rs17/rs31/rs33 and rs60/rs70/rs91.
+So the goldens pin `--flexRV_maxMAF=0.01`, where `MAC25`..`MAC500` are
+duplicates of `unw` (six of twelve MAF transforms coincide), `MAC1/3/5/10`
+select only collapsed markers at cutoff 10 and are fully live at cutoff 0, and
+`mafbeta@0.01` is live on every marker. Distinct (p, beta, se) triples among
+the 192 rows: 100/102 per gene with the collapse on (P58), 111/111 with it off
+(P59); `test-invariants-goldens.R` pins those counts as the fixture's
+resolving power.
+
+**2. A zero weight inside a binary SKAT-O cell returns NA (LEDGER #117).**
+Found through the reduced-spec SKAT-O golden: `mac:5` gives every real marker
+weight 0 and `SPA_ER_kernel_related_Phiadj_fast_new` divides by that marker's
+zero variance. Pre-existing (a zero CUSTOM weight does the same), so recorded
+rather than fixed; P60 uses max MAF 0.02 with `mafbeta:2` so no in-cell weight
+is 0, and `test-step2-flexrv.R` characterizes the failure on the `mac:5` spec.
+For FlexRV the consequence is simple: on a binary trait the run is
+`--r.corr=1`, which was the recommendation anyway. The fix, when the owner
+decides it, is to drop weight-0 markers from a cell before the kernel.
+
+**3. `opt$flexRV_score` partially matched `--flexRV_scoreTransforms`.** With
+the flag absent optparse omits it from `opt`, `$` partial-matches the longer
+name, and every plain group run silently became a FlexRV run with the spec
+string as the score name. Caught by the reconciliation tests (a plain run
+refused to start), not by the guards. The CLI reads the five flags with
+`[[ ]]`. Any option that is a prefix of another option has this hazard.
+
+**4. Memory and CPU at N = 1,000 measure nothing.** The 192-set BURDEN run
+and the one-set run on the same cell both take ~13-15 s wall at ~219 MB peak
+RSS: startup. The memory line printed once per FlexRV run is a FORMULA, not a
+measurement -- `8N x cells x (2 [genoURMat, genoSumMat] + 2 [the persistent
+ultra-rare cell records: collapsed vector plus zero-index vector]) + 2 x 8N x
+cells [burden cell records]` for BURDEN, and for SKAT-O the per-model
+genoSumMat copy and P1/P2 scratch instead -- and it prints 8.8 MB here, 4.6 GB
+at N = 500k and 192 cells. Two levers were identified but NOT pulled, because
+each touches a shared path and must be gated on the 50k fixture: the cell
+records' zero-index vectors (~N per cell) are derivable from the nonzero
+indices at test time, which halves the per-cell memory; and
+`genoURMat_noweights.col(jm)` is copied N-long once per SET inside the
+ultra-rare pass where once per cell would do. F5 decides.
+
+**Testing shape, for the record.** The unit tier pins every kernel against
+the paper's dbeta forms written out in R (two routes, 1e-12) on a grid with
+every boundary named above, plus a positive control that a perturbed table
+disagrees. The standard tier reconciles the internal expansion against the
+external weight-line route (16 score transforms written at 17 digits as custom
+sets, rows equal at 1e-10 with the allele accounting byte-equal),
+`unw_unw` against the legacy all-ones run, `lof_unw` against a LoF-only run
+(quantitative, cutoff 0), the `MAC25`..`MAC500` rows against `unw` row for
+row, the omitted-row Cauchy pool against a recomputed CCT, `--weights.beta`
+and `--nThreads=4` as byte-inert, and every guard's message. The goldens were
+each generated twice into separate trees and `cmp`-identical before being
+committed; the pgen mirror is byte-identical to its PLINK twin.

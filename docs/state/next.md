@@ -1,8 +1,8 @@
 # What is worth doing next (2026-09-03, updated 2026-09-09)
 
-**Current handoff: `docs/state/handoff-2026-09-09-flexrv-f0.md`**
-(previous: `handoff-2026-09-09-skato-identical-cells.md`, then
-`handoff-2026-09-09-benchmark-and-ledger-sweep.md`)
+**Current handoff: `docs/state/handoff-2026-09-09-flexrv-f2-f4.md`**
+(previous: `handoff-2026-09-09-flexrv-f0.md`, then
+`handoff-2026-09-09-skato-identical-cells.md`)
 -- this line is the pointer and is updated with every new handoff, because
 several handoffs can share a date and `ls | tail -1` sorts by NAME, not by time.
 The three 2026-09-08 handoffs are superseded; of those,
@@ -609,7 +609,29 @@ Decided order for what remained. **Steps 3b, 4 and 5 all landed on
   REGIONS rather than markers, which approaches the hardware ceiling
   (~2.9x at 4 threads here).
 
-## FlexRV: F0/F1 landed, F2 unblocked (2026-09-07, upd. 2026-09-09)
+## FlexRV: F0-F4 LANDED, F5 (the RAM/CPU measurement) is what is left (upd. 2026-09-09 evening)
+
+[Grounded; `docs/state/handoff-2026-09-09-flexrv-f2-f4.md`.] The feature
+runs end to end: `--flexRV_score` expands the 192 sets in C++, four goldens
+(P58-P61) gate it, the internal expansion reconciles against the external
+weight-line route at 1e-10, and every pre-existing golden stayed
+byte-identical in both compare modes. What is NOT done, in order of value:
+- **F5, the only thing that answers the RAM/CPU question.** The N = 1,000
+  fixture is startup-bound (192 sets and 1 set both ~14 s, ~219 MB). The
+  formula the run prints says 4.6 GB at N = 500k for BURDEN; the two levers
+  identified (derive the cell records' zero-index vectors at test time;
+  hoist the per-set N-copy of `genoURMat_noweights` out of the r loop) are
+  each a shared-path change that must be gated on the 50k fixture. Also F5's
+  controls: null KS on `p_FlexRV`, the >= 2-carriers-per-gene fraction that
+  bounds the `max` vs additive collapse gap.
+- **LEDGER #117** (a zero weight NAs a binary SKAT-O cell; pre-existing) is
+  the owner's decision: drop weight-0 markers before the kernel, or leave it
+  and keep FlexRV-on-binary a `--r.corr=1` run.
+- `--flexRV_output_sets` (decided, not implemented); the conditional
+  reconciliation test (only the missing-`--weights_for_condition` error is
+  tested); a native `sum_geno` collapse if F5 says the operator matters.
+Everything below this line in this section is the pre-F2 history.
+
 
 [Planned; `docs/design/flexrv-plan.md`, owner's decisions recorded there.]
 The repo's "flexRV" label on Phase 5 names the multi-weight ENGINE, not the

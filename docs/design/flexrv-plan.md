@@ -1,16 +1,21 @@
 # FlexRV on the `strip` branch
 
-<!-- Plan written 2026-09-06/07. Status 2026-09-09: F1 LANDED (97db5a88);
-     F0 LANDED -- the owner supplied the PDF and the 16x12 table is pinned
-     verbatim in docs/design/flexrv-design.md, which SUPERSEDES the lossy-fetch
-     table below and resolves four ambiguities the Methods text leaves open
-     (the MAF beta transform's direction is the one that changes the program).
-     F2 is unblocked. F3 is the
-     commit that needs review: it changes mainRegionInCPP's signature, which
-     pulls in RcppExports, the stale Main.hpp, src/Makevars and the
-     delete-src/*.o rule. F5's memory number is a genuine go/no-go, not a
-     formality. The multi-weight engine this builds on is Phase 5 (C1-C11),
-     landed. -->
+<!-- Plan written 2026-09-06/07. Status 2026-09-09 (evening): F0, F1, F2, F3
+     and F4 LANDED -- kernels (src/FlexRV.cpp, test-unit-flexrv.R), the engine
+     (SET_TRANSFORM in mainRegionInCPP, R/FlexRV.R, the five --flexRV_* flags,
+     test-step2-flexrv{,-guards}.R), the fixture
+     (extdata/input/group_new_snpid_flexrv.txt) and goldens P58-P61 with their
+     invariants. See docs/state/handoff-2026-09-09-flexrv-f2-f4.md and the
+     "Implementation notes" section of docs/design/flexrv-design.md, which
+     record what this plan got wrong (the fixture's in-sample N is 1,000, not
+     10,000) and what was found on the way (LEDGER #117: a zero weight NAs a
+     binary SKAT-O cell). NOT done: --flexRV_output_sets (every set's row is
+     always written), the conditional reconciliation test (only the error path
+     is tested), F5 (the N = 50k measurement, which is where the RAM/CPU
+     question is actually answered -- the N = 1,000 fixture is startup-bound
+     and cannot see it), F6's roxygen for the R API is done but the CLAUDE.md
+     paragraph is the one in this commit series. The multi-weight engine this
+     builds on is Phase 5 (C1-C11), landed. -->
 
 ## How to read the references in this file
 
@@ -281,17 +286,22 @@ per-cell Cauchy-over-sets rows are a follow-up decision, not in scope.
   - Conditional: transform set + `--weights_for_condition` reconciles the
     way `test-step2-multiweight-cond.R` does for custom sets; without the
     flag the exact error message is asserted.
-  **The fixture arithmetic is a constraint, not a detail (2026-09-09).**
-  `genotype_100markers` is N = 10,000, so 2N = 20,000, and at the goldens'
-  `--maxMAF_in_groupTest=0.0001,0.001,0.01` most of the MAF axis is degenerate:
-  the 0.0001 cell (MAC <= 2) is entirely below the collapse cutoff and has no
-  real markers at all; the 0.001 cell (MAC <= 20) makes six of the nine MAC
-  thresholds all-ones, i.e. duplicates of `unw`; the 0.01 cell (MAC <= 200)
-  duplicates `unw` at `MAC200`/`MAC500` and zeroes every MAC >= 20 marker in the
-  beta sets. A FlexRV golden built on the defaults would reproduce the "a golden
-  that reproduces P1 gates nothing" trap. F4 must choose `--flexRV_maxMAF` and
-  `--MACCutoff_to_CollapseUltraRare` deliberately AND assert how many of the 192
-  weight columns are actually distinct on the fixture.
+  **The fixture arithmetic is a constraint, not a detail (2026-09-09;
+  CORRECTED later the same day).** The fam file of `genotype_100markers` has
+  10,000 rows, but step 2 subsets to the MODEL's samples and every bundled
+  model holds 1,000, so the in-sample 2N is 2,000 -- an earlier version of this
+  paragraph said 20,000 and drew the cells one decade too high. Measured with
+  `plink2 --freq counts --keep <the 1,000 IDs>`: the 0.001 cell (MAC <= 2)
+  holds no real marker at the default collapse cutoff (every MAC <= 2 marker
+  collapses), and the 0.01 cell (MAC <= 20) holds 21 polymorphic markers in
+  GENE1 (MAC 1..20) and 18 in GENE2 (MAC 1..13), of which rs4/rs17/rs31/rs33
+  and rs60/rs70/rs91 survive the cutoff as real markers. So at 0.01:
+  `MAC25`..`MAC500` are all-ones (six duplicates of `unw`), `MAC1/3/5/10`
+  select only collapsed markers at cutoff 10 and are fully live at cutoff 0,
+  and `mafbeta@0.01` is live on every marker. A FlexRV golden on the paper's
+  0.001 would gate nothing (the "a golden that reproduces P1 gates nothing"
+  trap), which is why F4 pins `--flexRV_maxMAF=0.01` (P58-P61) and asserts how
+  many of the 192 weight columns are distinct on the fixture.
 - **F5 N=50k stage** (SAIGE-sim worktree, fixture outside git). Derive a
   score line from `variants.tsv.gz` (`a_lat` is not written; use the anno
   class plus a seeded deterministic jitter, or add `a_lat` to the table and
