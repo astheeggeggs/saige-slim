@@ -1321,6 +1321,79 @@ run step2_plink_group_cond_quant.log R2 step2_SPAtests.R \
   --maxMAF_in_groupTest=0.0001,0.001,0.01 \
   --condition=rs30,rs79 --is_fastTest=TRUE
 
+# P58-P61 (2026-09-09, FlexRV F4): the FlexRV transform sets
+# (docs/design/flexrv-design.md) on extdata/input/group_new_snpid_flexrv.txt --
+# group_new_snpid.txt plus a `score:REVEL` line per gene (LoF markers 1,
+# missense markers the REVEL values of the multiWeights fixture).
+#
+# THE FIXTURE ARITHMETIC PINS THESE FLAGS. The model holds 1,000 samples, so
+# max MAF 0.01 admits MAC <= 20: 21 polymorphic markers in GENE1 (MAC 1..20)
+# and 18 in GENE2 (MAC 1..13). At the default collapse cutoff the real markers
+# are rs4/rs17/rs31/rs33 and rs60/rs70/rs91; MAC25..MAC500 are then duplicates
+# of unw, and MAC1/3/5/10 select only collapsed markers. 0.001 (MAC <= 2) would
+# leave no real marker at all, so a golden on the paper's boundary would gate
+# nothing (the "a golden that reproduces P1 gates nothing" trap).
+#
+# P58: the default 192 sets, binary BURDEN, one cell (lof:missense at 0.01),
+# ultra-rare collapse on -- the recommended binary run. The C++ BURDEN writer
+# emits 192 rows + 1 Cauchy row per gene.
+run step2_plink_group_flexrv_burden.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_flexrv_burden.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid_flexrv.txt \
+  --flexRV_score=REVEL --flexRV_maxMAF=0.01 \
+  --annotation_in_groupTest=lof:missense \
+  --r.corr=1 --is_fastTest=FALSE
+
+# P59: the paper's own configuration -- quantitative trait, NO ultra-rare
+# collapse (--MACCutoff_to_CollapseUltraRare=0, the unbinned additive burden),
+# so the whole MAC ladder is live on real markers. No $SG: the quantitative
+# model's variance-ratio file has only `null` rows.
+run step2_plink_group_flexrv_burden_quant.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_flexrv_burden_quant.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $QUANT_MODEL \
+  --groupFile=./input/group_new_snpid_flexrv.txt \
+  --flexRV_score=REVEL --flexRV_maxMAF=0.01 \
+  --annotation_in_groupTest=lof:missense \
+  --MACCutoff_to_CollapseUltraRare=0 \
+  --r.corr=1 --is_fastTest=FALSE
+
+# P60: SKAT-O on a REDUCED spec (unw;sbeta:2 x unw;mafbeta:2 = 4 sets), so the
+# R writer, the transformWeightMat export and the per-set ACAT-V/ACAT-O columns
+# are covered without 192 Davies integrations per cell. Max MAF 0.02 rather
+# than 0.01, and mafbeta rather than a MAC threshold, so that NO marker in the
+# cell gets weight exactly 0: a zero weight inside a binary SKAT-O cell makes
+# the kernel return NA (LEDGER #117, pre-existing, reached by custom weights
+# too), and a golden that encodes that failure would gate the bug, not the
+# feature. At 0.02 the largest in-cell MAF is 0.017 (GENE1 rs37, MAC 34), so
+# every mafbeta@0.02 weight is positive.
+run step2_plink_group_flexrv_skato.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_flexrv_skato.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid_flexrv.txt \
+  --flexRV_score=REVEL --flexRV_maxMAF=0.02 \
+  --flexRV_scoreTransforms="unw;sbeta:2" --flexRV_MAFTransforms="unw;mafbeta:2" \
+  --annotation_in_groupTest=lof:missense \
+  --is_fastTest=FALSE
+
+# P61: P58 through the pgen reader (the in-sample MAC/MAF the MAC ladder and
+# the mafbeta transforms read must not depend on the reader).
+run step2_pgen_group_flexrv_burden.log R2 step2_SPAtests.R \
+  $PGEN_G \
+  --SAIGEOutputFile="$GOLD/step2/pgen_group_flexrv_burden.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid_flexrv.txt \
+  --flexRV_score=REVEL --flexRV_maxMAF=0.01 \
+  --annotation_in_groupTest=lof:missense \
+  --r.corr=1 --is_fastTest=FALSE
+
 ############ PGEN-vs-PLINK byte identity, checked in the candidate dir #########
 # The step-0 and step-1 PGEN runs above are NOT committed as separate goldens:
 # each is byte-identical to its PLINK twin, so committing them would double the

@@ -355,3 +355,97 @@ test_that("the same holds for the QUANTITATIVE variance-ratio pair", {
   expect_true(all(abs(vr$V1[vr$V2 == "sparse"] - 1) < 1e-2))
   expect_true(all(abs(vr$V1[vr$V2 == "sparse"] - 1) > 1e-3))
 })
+
+# ---- FlexRV goldens (F4, 2026-09-09; P58-P61) --------------------------------
+# One cell (lof;missense at max MAF 0.01) and the default 192 transform sets on
+# group_new_snpid_flexrv.txt. The fixture arithmetic is in
+# helper-step2-flexrv.R: at the model's 1,000 samples no in-cell marker has
+# MAC > 20, so MAC25..MAC500 are duplicates of unw; at the default collapse
+# cutoff MAC1/3/5/10 select only collapsed markers.
+
+flexrv_goldens <- c(plink_group_flexrv_burden.txt = 10L, plink_group_flexrv_burden_quant.txt = 0L)
+
+test_that("FlexRV goldens: 192 sets per gene in the normative order, one Cauchy row, p_FlexRV = CCT", {
+  skip_if_no_goldens()
+  names192 <- flexrvTransformTable(flexrvDefaultScoreSpec, flexrvDefaultMAFSpec, "REVEL",
+                                   maxMAF = 0.01)$names
+  for (f in names(flexrv_goldens)) {
+    d <- golden2(f)
+    expect_identical(colnames(d)[1:5], c("Region", "Group", "max_MAF", "Weight", "Pvalue_Burden"))
+    r <- d[d$Group != "Cauchy", ]
+    cau <- d[d$Group == "Cauchy", ]
+    expect_identical(cau$Region, c("GENE1", "GENE2"))
+    for (g in c("GENE1", "GENE2")) {
+      rg <- r[r$Region == g, ]
+      expect_identical(rg$Weight, names192, label = paste(f, g))
+      expect_true(all(rg$Group == "lof;missense" & rg$max_MAF == "0.01"))
+      p <- num(rg$Pvalue_Burden)
+      expect_true(all(is.finite(p) & p > 0 & p <= 1))
+      # the pooled row is the CCT over the 192 rows, from their printed digits
+      expect_lt(rel_err(num(cau$Pvalue_Burden[cau$Region == g]), CCT(p)), 1e-5)
+      # the ultra-rare counts say which run this is: collapse on (10) or off (0)
+      expect_true(all(num(rg$Number_ultra_rare) >= (if (flexrv_goldens[[f]] > 0) 1 else 0)))
+      if (flexrv_goldens[[f]] == 0) expect_true(all(num(rg$Number_ultra_rare) == 0))
+    }
+  }
+})
+
+test_that("FlexRV goldens: a MAC threshold above every MAC is unw, and the axis is otherwise live", {
+  skip_if_no_goldens()
+  strip <- function(d) {
+    d$Weight <- NULL
+    rownames(d) <- NULL
+    d
+  }
+  # measured 2026-09-09 when the goldens were made: the number of DISTINCT
+  # (Pvalue_Burden, BETA_Burden, SE_Burden) triples per gene among the 192
+  # rows. Not 192, because MAC25..MAC500 repeat unw (6 of 12 MAF transforms
+  # coincide) and, with the collapse on, the four low MAC sets differ only
+  # through the pseudo-marker. A change here is a change in which sets the
+  # fixture can tell apart, which is exactly what a coverage claim rests on.
+  distinct <- list(plink_group_flexrv_burden.txt = c(GENE1 = 100L, GENE2 = 102L),
+                   plink_group_flexrv_burden_quant.txt = c(GENE1 = 111L, GENE2 = 111L))
+  for (f in names(flexrv_goldens)) {
+    d <- golden2(f)
+    r <- d[d$Group != "Cauchy", ]
+    for (g in c("GENE1", "GENE2")) {
+      rg <- r[r$Region == g, ]
+      for (sc in c("unw", "lof", "cbrt0.2", "sbeta20")) {
+        base <- strip(rg[rg$Weight == paste0("REVEL_", sc, "_unw"), ])
+        for (t in c(25, 50, 100, 200, 500)) {
+          expect_identical(strip(rg[rg$Weight == paste0("REVEL_", sc, "_MAC", t), ]), base,
+                           label = paste(f, g, sc, t))
+        }
+        expect_false(identical(strip(rg[rg$Weight == paste0("REVEL_", sc, "_MAC10"), ]), base))
+        expect_false(identical(strip(rg[rg$Weight == paste0("REVEL_", sc, "_mafbeta2@0.01"), ]),
+                               base))
+      }
+      key <- paste(rg$Pvalue_Burden, rg$BETA_Burden, rg$SE_Burden)
+      expect_identical(length(unique(key)), distinct[[f]][[g]], label = paste(f, g))
+    }
+  }
+})
+
+test_that("FlexRV goldens: the pgen mirror is byte-identical to its PLINK twin", {
+  skip_if_no_goldens()
+  # the MAC ladder and the mafbeta transforms read the IN-SAMPLE MAC/MAF, which
+  # must not depend on the reader
+  expect_true(files_byte_identical(file.path(saige_goldens, "step2", "plink_group_flexrv_burden.txt"),
+                                   file.path(saige_goldens, "step2", "pgen_group_flexrv_burden.txt")))
+})
+
+test_that("FlexRV SKAT-O golden: 4 sets per gene, multi-weight schema, no kernel failure", {
+  skip_if_no_goldens()
+  d <- golden2("plink_group_flexrv_skato.txt")
+  expect_identical(colnames(d)[1:5], c("Region", "Group", "max_MAF", "Weight", "Pvalue"))
+  expect_true(all(c("Pvalue_ACATV", "Pvalue_ACATO") %in% colnames(d)))
+  r <- d[d$Group != "Cauchy", ]
+  expect_identical(r$Weight, rep(c("REVEL_unw_unw", "REVEL_unw_mafbeta2@0.02", "REVEL_sbeta2_unw",
+                                   "REVEL_sbeta2_mafbeta2@0.02"), 2))
+  expect_false(any(r$Pvalue == "NA"))
+  for (i in seq_len(nrow(r))) {
+    trio <- num(c(r$Pvalue_ACATV[i], r$Pvalue_Burden[i], r$Pvalue_SKAT[i]))
+    expect_lt(rel_err(num(r$Pvalue_ACATO[i]), CCT(trio)), 1e-12)
+  }
+  expect_identical(sum(d$Group == "Cauchy"), 2L)
+})

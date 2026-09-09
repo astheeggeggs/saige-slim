@@ -184,6 +184,50 @@ test_that("step2 group conditional multi-weight (K=2, rs30,rs79) matches golden"
     extra_outputs = ".singleAssoc.txt")
 })
 
+# ---- FlexRV goldens (F4, 2026-09-09; P58-P61 in harness/make_goldens.sh) ----
+# One annotation group, one max MAF (0.01: at the model's 1,000 samples that
+# is MAC <= 20, the only cell of this fixture with real markers at the default
+# collapse cutoff -- helper-flexrv.R has the arithmetic).
+FLEXRV_COMMON <- c("--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
+                   "--groupFile=./input/group_new_snpid_flexrv.txt",
+                   "--flexRV_score=REVEL", "--flexRV_maxMAF=0.01",
+                   "--annotation_in_groupTest=lof:missense")
+
+test_that("step2 FlexRV 192-set BURDEN (binary, collapse on) matches golden", {
+  run_step2_case("plink_group_flexrv_burden.txt",
+    c(PLINK_ARGS(), GRP_MODEL, SG_ARGS, FLEXRV_COMMON, "--r.corr=1", "--is_fastTest=FALSE"))
+})
+
+test_that("step2 FlexRV 192-set BURDEN (quantitative, no collapse) matches golden", {
+  run_step2_case("plink_group_flexrv_burden_quant.txt",
+    c(PLINK_ARGS(), quant_model(), FLEXRV_COMMON, "--MACCutoff_to_CollapseUltraRare=0",
+      "--r.corr=1", "--is_fastTest=FALSE"))
+})
+
+test_that("step2 FlexRV reduced-spec SKAT-O (2 x 2 sets) matches golden", {
+  # max MAF 0.02 and mafbeta rather than a MAC threshold, so no in-cell weight
+  # is exactly 0 (LEDGER #117: a zero weight NAs a binary SKAT-O cell)
+  run_step2_case("plink_group_flexrv_skato.txt",
+    c(PLINK_ARGS(), GRP_MODEL, SG_ARGS,
+      "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
+      "--groupFile=./input/group_new_snpid_flexrv.txt",
+      "--flexRV_score=REVEL", "--flexRV_maxMAF=0.02",
+      "--annotation_in_groupTest=lof:missense",
+      # system2 goes through a shell, so the semicolons need quoting
+      paste0("--flexRV_scoreTransforms=", shQuote("unw;sbeta:2")),
+      paste0("--flexRV_MAFTransforms=", shQuote("unw;mafbeta:2")),
+      "--is_fastTest=FALSE"),
+    extra_outputs = ".singleAssoc.txt")
+})
+
+test_that("step2 FlexRV 192-set BURDEN through the pgen reader matches golden", {
+  run_step2_case("pgen_group_flexrv_burden.txt",
+    c("--pgenFile=./input/genotype_100markers.pgen",
+      "--pvarFile=./input/genotype_100markers.pvar",
+      "--psamFile=./input/genotype_100markers.psam",
+      GRP_MODEL, SG_ARGS, FLEXRV_COMMON, "--r.corr=1", "--is_fastTest=FALSE"))
+})
+
 test_that("step2 group composed sets (2 beta pairs + No_Weights) matches golden", {
   run_step2_case("plink_group_composed.txt",
     c(PLINK_ARGS(), "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
