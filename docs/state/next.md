@@ -608,7 +608,7 @@ Decided order for what remained. **Steps 3b, 4 and 5 all landed on
   REGIONS rather than markers, which approaches the hardware ceiling
   (~2.9x at 4 threads here).
 
-## FlexRV: F1 landed, F0/F2 blocked on the paper (2026-09-07, upd. 2026-09-08)
+## FlexRV: F0/F1 landed, F2 unblocked (2026-09-07, upd. 2026-09-09)
 
 [Planned; `docs/design/flexrv-plan.md`, owner's decisions recorded there.]
 The repo's "flexRV" label on Phase 5 names the multi-weight ENGINE, not the
@@ -643,12 +643,37 @@ position is FIXED (immediately after `anno`), and `scoreName` is appended to the
 `detail = TRUE` return ONLY when a score line exists -- because FOUR existing
 tests pin the historical returns and messages, where the plan said two.
 
-**The real blocker is not `a_lat`, it is the PAPER.** F0 and F2 need the FlexRV
-PDF supplied by hand (bioRxiv blocks fetches) so the 16x12 transform table can
-be pinned VERBATIM before the kernels can be written or tested against closed
-forms; `a_lat` only gates F5 and the plan already carries a cheap workaround
-(anno class plus seeded jitter, no 65-minute rebuild). F3 is the commit that
-wants review: it changes `mainRegionInCPP`'s signature, which pulls in
+**Updated 2026-09-09. The paper blocker is GONE: the owner supplied the PDF,
+F0 is LANDED (`722c3610`) and F2 is unblocked.** The 16x12 table is pinned
+verbatim in `docs/design/flexrv-design.md` with each closed form derived and
+reconciled two ways, and that file SUPERSEDES the plan's lossy-fetch table.
+It resolves five ambiguities that a literal transcription would have got wrong,
+of which one changes the program: the MAF beta transform is DECREASING in MAF,
+`(1 - MAF/0.001)^(b-1)`, not the `(MAF/0.001)^(b-1)` a literal substitution into
+the paper's own score-beta formula gives -- settled against Extended Data
+Fig. 1b, whose axis is allele count 1-1000, not by intent.
+
+A second doc commit (`ab047839`) records the F3/F4/F5 decisions taken while
+reading it. The load-bearing ones: **one MAF cell and one annotation group per
+FlexRV run** (`--flexRV_maxMAF`), because otherwise the region's pooled Cauchy
+row is a super-omnibus over anno x maxMAF x set and is not `p_FlexRV`; the
+**ultra-rare collapse collides with four of the twelve MAF transforms**
+(`MAC<=1,3,5,10` sit at or below its default cutoff, so those tests are carried
+entirely by the `max()` pseudo-marker and are not the paper's additive count),
+with `--MACCutoff_to_CollapseUltraRare=0` as the exact fix for quantitative
+traits and dropping the four transforms as the fix for binary; and **the
+paper's AC x decile pseudo-variant binning is NOT ported** -- it is a STAAR
+speed workaround approximating a test we can compute exactly. **F4 has a
+fixture constraint**: at N = 10,000 and the goldens' default max MAFs most of
+the MAF axis is degenerate, so a FlexRV golden on the defaults would gate
+nothing.
+
+`a_lat` still gates F5 only, and the plan carries a cheap workaround (anno
+class plus seeded jitter, no 65-minute rebuild). **Three decisions are the
+owner's and none blocks F2**: whether the quantitative/binary collapse split is
+advice or an enforced default, whether the constant-score warning earns its
+surface, and whether per-set rows are written by default (recommended: yes,
+measured at 70 B/row). F3 is the commit that wants review: it changes `mainRegionInCPP`'s signature, which pulls in
 `RcppExports`, the stale `Main.hpp`, `src/Makevars` and the delete-`src/*.o`
 rule. **The plan's line references were re-resolved on 2026-09-08 and are now
 SYMBOL-anchored** with the line number as a dated hint; they had drifted by up
