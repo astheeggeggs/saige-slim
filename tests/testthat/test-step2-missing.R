@@ -127,6 +127,30 @@ test_that("--dosage_zerod_cutoff silently undoes MEAN imputation below the MAC c
                                         mi[mi$MarkerID %in% MAC_LE_10_PASSING, ])), 0)
 })
 
+test_that("LEDGER #107 FIXED: --minInfo above 0 is refused, and 0 still runs", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  # No reader here supplies an INFO score, so the gate `imputeInfo < minInfo`
+  # is `1 < minInfo`: a normal threshold like 0.8 filters NOTHING silently, and
+  # anything above 1 drops every marker. Refused rather than accepted; the
+  # option stays declared for a future BGEN/VCF reader.
+  out <- file.path(tempfile("minfo_"), "out.txt")
+  dir.create(dirname(out), recursive = TRUE)
+  for (v in c("0.8", "1.5")) {
+    log <- tempfile(fileext = ".log")
+    st <- run_saige_cli("step2_SPAtests.R",
+                        c(MISS_ARGS(), miss_model(), MISS_COMMON,
+                          paste0("--minInfo=", v),
+                          paste0("--SAIGEOutputFile=", out)), log = log)
+    expect_false(st == 0, label = paste0("--minInfo=", v, " is refused"))
+    txt <- paste(readLines(log, warn = FALSE), collapse = "\n")
+    expect_match(txt, "no genotype reader on this branch supplies an imputation INFO score",
+                 fixed = TRUE)
+  }
+  # the default is still a working run, so the refusal has not broken the path
+  expect_equal(nrow(miss_run("base")), 48L)
+})
+
 test_that("--is_imputed_data REPLACES MissingRate with an always-1 imputationInfo", {
   skip_unless_level("standard")
   skip_if_no_goldens()

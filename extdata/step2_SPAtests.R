@@ -128,7 +128,13 @@ option_list <- list(
     "--minInfo",
     type = "double",
     default = 0,
-    help = "Minimum Info for markers to be tested if is_imputed_data=TRUE [default=0]"
+    help = paste0(
+      "Minimum imputation INFO for markers to be tested. NOT AVAILABLE on this ",
+      "branch: neither the PLINK nor the PGEN reader supplies an INFO score, so ",
+      "every marker is scored 1 and any non-zero threshold is refused rather ",
+      "than silently accepted. Kept declared for a future BGEN/VCF reader ",
+      "[default=0]."
+    )
   ),
   make_option(
     "--maxMissing",

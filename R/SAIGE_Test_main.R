@@ -120,7 +120,9 @@ parse_X_PARregion_token <- function(token) {
 #' @export
 #' @param min_MAF numeric. Minimum minor allele frequency for markers to be tested. The higher threshold between min_MAC and min_MAF will be used. By default, 0
 #' @param min_MAC numeric. Minimum minor allele count for markers to be tested. The higher threshold between min_MAC and min_MAF will be used. By default, 0.5
-#' @param min_Info numeric. Minimum imputation info for markers to be tested if is_imputed_data=TRUE. By default, 0
+#' @param min_Info numeric. Minimum imputation INFO for markers to be tested.
+#'   Not available on this branch: no genotype reader supplies an INFO score, so
+#'   any value above 0 is refused rather than silently accepted. By default, 0
 #' @param max_missing numeric. Maximum missing rate for markers to be tested. By default, 0.15
 #' @param max_MAC_use_ER numeric. p-values of genetic variants with MAC <= max_MAC_use_ER are calculated by efficient resampling (the exact test). Such markers report Is.SPA = TRUE and their SE is back-derived from the exact p. By default, 4
 #' @param weights_for_condition character. Weights for the conditioning markers in gene- or region-based tests, delimited by comma, one per conditioning marker, e.g. '1,2,3'. If not specified, weights are generated from beta(MAF, 1, 25); use weights.beta to change those parameters
@@ -198,6 +200,24 @@ SPAGMMATtest <- function(bedFile = "",
   # cat("r.corr is ", r.corr, "\n")
   if (!(impute_method %in% c("best_guess", "mean", "minor"))) {
     stop("impute_method should be 'best_guess', 'mean' or 'minor'.")
+  }
+
+  # No reader on this branch supplies an imputation INFO score. PLINK carries
+  # hard calls and PGEN carries hard calls or dosages; neither format has an R2
+  # field, and both readers assign t_imputeInfo = 1 unconditionally
+  # (src/PLINK.cpp:312, src/PGEN.cpp:585) with nothing else ever writing it.
+  # Upstream's behaviour is defensible where BGEN/VCF supply a real score --
+  # this is a consequence of stripping those readers, not an upstream defect --
+  # so the option stays declared, ready for their return, and refuses here
+  # instead of silently accepting a filter that cannot fire. LEDGER #107.
+  if (min_Info > 0) {
+    stop(
+      "--minInfo=", min_Info, " cannot be applied: no genotype reader on this ",
+      "branch supplies an imputation INFO score, so every marker is scored 1. ",
+      "A threshold at or below 1 would filter nothing and one above 1 would ",
+      "drop every marker, so the option can only mislead. Remove --minInfo ",
+      "(or pass 0) to run without INFO filtering.\n"
+    )
   }
 
   # Which null models is this run testing? One (the legacy --GMMATmodelFile
