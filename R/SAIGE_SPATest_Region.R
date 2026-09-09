@@ -753,6 +753,7 @@ SAIGE.Region <- function(mu,
   }
   cat("Region marker loop will use ", nThreads, " in-process threads.\n", sep = "")
   skatFailureReset() # LEDGER #57: per-run accounting, R/SkatFailures.R
+  skatoDedupeReset() # identical cells evaluated once: per-run counts, R/SkatoParallel.R
 
   # LEDGER #25 FIXED: the index is written and validated with the SAME nEachChunk.
   # It records completed REGIONS one per line, so the chunk size it states is 1
@@ -1199,7 +1200,10 @@ SAIGE.Region <- function(mu,
           S$jobs2 <- lapply(esc, function(k) skatoCollect(postArgs(S, k, TRUE)))
         } else {
           for (k in esc) {
-            S <- takePost(S, k, do.call(region_postprocess, postArgs(S, k, TRUE)))
+            S <- takePost(S, k, do.call(
+              region_postprocess,
+              c(postArgs(S, k, TRUE), list(skat_fun = skatoMemoKernel()))
+            ))
           }
         }
       }
@@ -1318,10 +1322,12 @@ SAIGE.Region <- function(mu,
     }
     jobs <- flatten(lapply(skatoBatch, `[[`, "jobs"))
     # Printed per batch so a test can assert the batching actually happened
-    # (a knob that never arrived would otherwise pass as green, LEDGER #30).
+    # (a knob that never arrived would otherwise pass as green, LEDGER #30),
+    # with the distinct count so the same holds for the identical-cell memo.
+    dd <- skatoDedupe(jobs)
     cat("SKAT-O batch: ", length(jobs), " cell(s) from ", length(skatoBatch),
-        " region(s) to the pool\n", sep = "")
-    answers <- skatoEvaluate(cl, jobs)
+        " region(s) to the pool (", length(dd$uniq), " distinct)\n", sep = "")
+    answers <- skatoEvaluate(cl, jobs, dd)
     pos <- 0L
     for (b in seq_along(skatoBatch)) {
       S <- skatoBatch[[b]]
@@ -1333,10 +1339,12 @@ SAIGE.Region <- function(mu,
       skatoBatch[[b]] <<- regionEscalate(S)
     }
     jobs <- flatten(lapply(skatoBatch, `[[`, "jobs2"))
+    dd <- skatoDedupe(jobs)
     if (length(jobs) > 0) {
-      cat("SKAT-O batch: ", length(jobs), " escalated cell(s) to the pool\n", sep = "")
+      cat("SKAT-O batch: ", length(jobs), " escalated cell(s) to the pool (",
+          length(dd$uniq), " distinct)\n", sep = "")
     }
-    answers <- skatoEvaluate(cl, jobs)
+    answers <- skatoEvaluate(cl, jobs, dd)
     pos <- 0L
     for (b in seq_along(skatoBatch)) {
       S <- skatoBatch[[b]]
@@ -1492,7 +1500,10 @@ SAIGE.Region <- function(mu,
           skatoBatchBytes <- skatoBatchBytes + as.numeric(utils::object.size(S$outLists))
         } else {
           for (k in seq_len(nModels)) {
-            S <- takePost(S, k, do.call(region_postprocess, postArgs(S, k, FALSE)))
+            S <- takePost(S, k, do.call(
+              region_postprocess,
+              c(postArgs(S, k, FALSE), list(skat_fun = skatoMemoKernel()))
+            ))
           }
           S <- regionEscalate(S)
           regionFinish(S)
@@ -1663,6 +1674,7 @@ SAIGE.Region <- function(mu,
   # With several models the count is over all of them and the sidecar goes
   # beside the FIRST model's file (the per-cell record has no model column).
   skatFailureSummary(OutputFile)
+  skatoDedupeSummary()
 
   message <- "Analysis done!"
   message <- paste0(

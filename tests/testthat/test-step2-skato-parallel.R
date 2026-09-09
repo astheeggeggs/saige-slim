@@ -149,3 +149,44 @@ test_that("fastTest escalation inside a batch keeps the single rows in region or
   expect_output_matches_golden(paste0(P35g, ".singleAssoc.txt"),
                                paste0(r$path, ".singleAssoc.txt"))
 })
+
+# ---------------------------------------------------------------------------
+# Identical cells evaluated once (2026-09-09, R/SkatoParallel.R). P6's fixture
+# has no synonymous marker under the cutoffs, so `missense;lof;synonymous`
+# holds the same markers as `missense;lof` in both genes: 4 twin rows in the
+# golden. Three of the four cells are bit-identical in (Score, Phi) and are
+# served from their twin; the fourth (GENE2 at max_MAF 0.01) differs by one
+# ULP in one off-diagonal Phi entry, and the memo correctly leaves it alone.
+# The counts are asserted so a memo that never fired cannot pass as green
+# (LEDGER #30 shape), and the golden bytes so a memo that fired wrongly
+# cannot either.
+# ---------------------------------------------------------------------------
+
+cells_reported <- function(lg) {
+  l <- grep("^SKAT-O cells: ", lg, value = TRUE)
+  testthat::expect_length(l, 1L)
+  as.integer(regmatches(l, gregexpr("[0-9]+", l))[[1]])   # asked, evaluated, served
+}
+
+test_that("--nThreads=1: identical cells are served once, bytes unchanged", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+
+  r <- skato_run(1)
+  expect_cli_ok(r$status)
+  expect_identical(cells_reported(r$log), c(12L, 9L, 3L))
+  expect_output_matches_golden(P6g, r$path)
+})
+
+test_that("--nThreads=4: the batch line reports the distinct count, bytes unchanged", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+
+  r <- skato_run(4)
+  expect_cli_ok(r$status)
+  expect_identical(regions_per_batch(r$log), 2L)
+  b <- grep("^SKAT-O batch: .* from [0-9]+ region", r$log, value = TRUE)
+  expect_true(grepl("(9 distinct)", b, fixed = TRUE))
+  expect_identical(cells_reported(r$log), c(12L, 9L, 3L))
+  expect_output_matches_golden(P6g, r$path)
+})

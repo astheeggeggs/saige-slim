@@ -79,8 +79,8 @@ step2_group() {
     --is_output_markerList_in_groupTest=TRUE \
     --is_single_in_groupTest=TRUE \
     --maxMAF_in_groupTest=0.0001,0.001,0.01 \
-    --groupFile=$D/groupFile.txt \
-    --annotation_in_groupTest="high,medium,low,high:medium,high:medium:low" \
+    --groupFile=${GROUP_FILE:-$D/groupFile.txt} \
+    --annotation_in_groupTest="${GROUP_ANNO:-high,medium,low,high:medium,high:medium:low}" \
     ${GROUP_NT:+--nThreads=$GROUP_NT} \
     ${S2EXTRA:-} \
     --SAIGEOutputFile=${S2OUT:-$D/step2_group_$col.txt}

@@ -68,3 +68,71 @@ test_that("the batch memory budget reads the environment and rejects nonsense", 
     expect_identical(SAIGE:::skatoBatchBudgetBytes(), 512 * 1024^2)
   })
 })
+
+# ---------------------------------------------------------------------------
+# Identical cells evaluated once (2026-09-09): skatoDedupe / skatoMemoKernel /
+# the counters. A cell is served an earlier cell's answer only when its inputs
+# are identical(); both controls are pinned -- a one-ULP perturbation and an
+# attribute-only difference must each stay distinct.
+# ---------------------------------------------------------------------------
+
+test_that("skatoDedupe pairs identical cells and refuses near-identical ones", {
+  A <- ub_cell(3L, 11)
+  B <- ub_cell(3L, 12)
+  C <- ub_cell(2L, 13)
+  A_ulp <- A
+  # (1 + 2 eps) moves any double by at least one ULP; (1 + eps) can round back
+  A_ulp$Score[1] <- A_ulp$Score[1] * (1 + 2 * .Machine$double.eps)
+  A_attr <- A
+  dimnames(A_attr$Phi) <- list(letters[1:3], letters[1:3])         # same numbers, extra attribute
+  jobs <- list(A, B, A, C, B, A_ulp, A_attr, A)
+  dd <- SAIGE:::skatoDedupe(jobs)
+  expect_identical(dd$uniq, c(1L, 2L, 4L, 6L, 7L))
+  expect_identical(dd$idx, c(1L, 2L, 1L, 3L, 2L, 4L, 5L, 1L))
+  # the fan-out reproduces the job list exactly
+  expect_identical(jobs[dd$uniq][dd$idx], jobs)
+  expect_identical(SAIGE:::skatoDedupe(list()), list(uniq = integer(0), idx = integer(0)))
+  # the key itself is exact: the ULP twin and the attribute twin share A's numbers
+  expect_identical(SAIGE:::skatoJobKey(A_attr), SAIGE:::skatoJobKey(A))
+  expect_false(identical(SAIGE:::skatoJobKey(A_ulp), SAIGE:::skatoJobKey(A)))
+})
+
+test_that("skatoEvaluate serves duplicates their twin's answer and counts them", {
+  jobs <- list(ub_cell(4L, 21), ub_cell(2L, 22), ub_cell(4L, 21), ub_cell(6L, 23), ub_cell(2L, 22))
+  serial <- lapply(jobs, SAIGE:::skatoEvalJob)
+  cl <- parallel::makeForkCluster(2L)
+  on.exit(parallel::stopCluster(cl), add = TRUE)
+  SAIGE:::skatoDedupeReset()
+  batched <- SAIGE:::skatoEvaluate(cl, jobs)
+  expect_identical(batched, serial)
+  counts <- SAIGE:::skatoDedupeSummary()
+  expect_identical(unname(counts), c(5L, 3L))
+  expect_output(SAIGE:::skatoDedupeSummary(),
+                "SKAT-O cells: 5 asked for, 3 evaluated, 2 served from an identical cell.",
+                fixed = TRUE)
+})
+
+test_that("skatoMemoKernel calls the kernel once per distinct cell", {
+  ct <- new.env()
+  ct$calls <- 0L
+  counting <- function(Score, Phi, r.corr, regionTestType) {
+    ct$calls <- ct$calls + 1L
+    SAIGE:::get_SKAT_pvalue(Score, Phi, r.corr, regionTestType)
+  }
+  A <- ub_cell(3L, 31)
+  B <- ub_cell(5L, 32)
+  A_ulp <- A
+  A_ulp$Phi[2, 2] <- A_ulp$Phi[2, 2] * (1 + 2 * .Machine$double.eps)
+  ask <- function(f, j) f(j$Score, j$Phi, j$r.corr, j$regionTestType)
+  SAIGE:::skatoDedupeReset()
+  memo <- SAIGE:::skatoMemoKernel(counting)
+  got <- lapply(list(A, B, A, A_ulp, B, A), function(j) ask(memo, j))
+  expect_identical(ct$calls, 3L)              # A, B, A_ulp, and no more
+  want <- lapply(list(A, B, A, A_ulp, B, A), function(j) ask(SAIGE:::get_SKAT_pvalue, j))
+  expect_identical(got, want)
+  expect_identical(unname(SAIGE:::skatoDedupeSummary()), c(6L, 3L))
+  # a fresh memo remembers nothing (one per region_postprocess drive)
+  memo2 <- SAIGE:::skatoMemoKernel(counting)
+  ask(memo2, A)
+  expect_identical(ct$calls, 4L)
+})

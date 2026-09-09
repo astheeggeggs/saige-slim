@@ -157,15 +157,144 @@ skatoCollect <- function(args) {
 #' order (`order` is stable), and the order of EVALUATION cannot reach the
 #' bytes anyway: each answer is a pure function of its own cell.
 #' @noRd
-skatoEvaluate <- function(cl, jobs) {
+skatoEvaluate <- function(cl, jobs, dedupe = skatoDedupe(jobs)) {
   if (length(jobs) == 0L) {
     return(list())
   }
-  cost <- vapply(jobs, function(j) as.numeric(NCOL(j$Phi)), numeric(1))
+  # Identical cells are evaluated once (see skatoDedupe): the pool sees only
+  # the distinct jobs and every duplicate is served its twin's answer.
+  uniq <- jobs[dedupe$uniq]
+  cost <- vapply(uniq, function(j) as.numeric(NCOL(j$Phi)), numeric(1))
   ord <- order(-cost)
-  answers <- vector("list", length(jobs))
-  answers[ord] <- parallel::clusterApplyLB(cl, jobs[ord], skatoEvalJob)
-  answers
+  answers <- vector("list", length(uniq))
+  answers[ord] <- parallel::clusterApplyLB(cl, uniq[ord], skatoEvalJob)
+  skatoDedupeCount(length(jobs), length(uniq))
+  answers[dedupe$idx]
+}
+
+# ---------------------------------------------------------------------------
+# Identical cells evaluated once (2026-09-09).
+#
+# WHY. The cells of a region are (annotation x max_MAF x weight set), and on
+# real data many of them hold exactly the same markers: an annotation union
+# `missense;lof;synonymous` equals `missense;lof` in every gene without a
+# synonymous marker under the cutoff, a max_MAF band that adds no marker
+# repeats the band below it, and so on. In the bundled fixture 4 of the 12
+# tested cells per run are such twins (P6: `missense;lof` and
+# `missense;lof;synonymous` in both genes). The C++ carry-forward
+# (q_maf_for_anno) covers only cutoffs ABOVE an annotation's largest MAF;
+# everything else was evaluated again, at ~445 Davies calls a cell.
+#
+# WHY THIS CANNOT MOVE A BYTE. A cell is served an earlier cell's answer only
+# when its (Score, Phi, r.corr, regionTestType) is `identical()` to that
+# cell's -- the same bits, attributes included -- and `get_SKAT_pvalue` is a
+# pure function of exactly those arguments (the premise the fork pool already
+# rests on). Whether the C++ side produces bit-identical inputs for identical
+# marker sets is deliberately NOT part of the argument: if it did not, the
+# memo would simply never fire, which is a coverage fact and is what the
+# printed counts are for. The duplicate ROWS are still emitted, so the
+# Cauchy row still combines them exactly as before.
+#
+# HOW. A cell's key is the hex (`%a`, exact) rendering of its numbers plus
+# its shapes; a key hit is confirmed with `identical()` before it counts, so
+# the key is only a pre-filter and the contract is R's own equality. Keys are
+# compared with `match`, not used as environment names (a 50-marker cell's
+# key is ~60 KB, past R's symbol limit).
+# ---------------------------------------------------------------------------
+
+#' The exact key of one collected cell.
+#' @noRd
+skatoJobKey <- function(job) {
+  paste(c(job$regionTestType, length(job$Score), dim(job$Score), "|", dim(job$Phi), "|",
+          sprintf("%a", c(job$r.corr, job$Score, job$Phi))), collapse = " ")
+}
+
+#' Find the identical cells in a batch. Returns `uniq`, the positions of the
+#' first occurrence of each distinct cell, and `idx`, for every job the
+#' position in `uniq` of the cell it is identical to, so that
+#' `answers_for_uniq[idx]` is the answer vector for `jobs`.
+#' @noRd
+skatoDedupe <- function(jobs) {
+  n <- length(jobs)
+  if (n == 0L) {
+    return(list(uniq = integer(0), idx = integer(0)))
+  }
+  keys <- vapply(jobs, skatoJobKey, character(1))
+  uniq <- integer(0)
+  ukeys <- character(0)
+  idx <- integer(n)
+  for (i in seq_len(n)) {
+    hit <- 0L
+    for (u in which(ukeys == keys[i])) {
+      if (identical(jobs[[i]], jobs[[uniq[u]]])) {
+        hit <- u
+        break
+      }
+    }
+    if (hit == 0L) {
+      uniq <- c(uniq, i)
+      ukeys <- c(ukeys, keys[i])
+      hit <- length(uniq)
+    }
+    idx[i] <- hit
+  }
+  list(uniq = uniq, idx = idx)
+}
+
+#' A `skat_fun` that evaluates `kernel` once per distinct cell, for the drives
+#' that do not go through the pool (--nThreads=1, and BURDEN): one memo per
+#' region_postprocess drive, which is where the twins live.
+#' @noRd
+skatoMemoKernel <- function(kernel = get_SKAT_pvalue) {
+  st <- new.env(parent = emptyenv())
+  st$jobs <- list()
+  st$keys <- character(0)
+  st$answers <- list()
+  function(Score, Phi, r.corr, regionTestType) {
+    job <- list(Score = Score, Phi = Phi, r.corr = r.corr, regionTestType = regionTestType)
+    key <- skatoJobKey(job)
+    for (u in which(st$keys == key)) {
+      if (identical(job, st$jobs[[u]])) {
+        skatoDedupeCount(1L, 0L)
+        return(st$answers[[u]])
+      }
+    }
+    ans <- kernel(Score, Phi, r.corr, regionTestType)
+    st$jobs[[length(st$jobs) + 1L]] <- job
+    st$keys <- c(st$keys, key)
+    st$answers[[length(st$answers) + 1L]] <- ans
+    skatoDedupeCount(1L, 1L)
+    ans
+  }
+}
+
+# Per-run accounting of the cells asked for and the cells actually evaluated,
+# printed once at the end of the run by skatoDedupeSummary(). Always printed,
+# so a run where the memo never fired says "0" rather than nothing -- the
+# negative control has to be visible too (and a test asserts the positive one).
+skato_env$n_cells <- 0L
+skato_env$n_evaluated <- 0L
+
+#' @noRd
+skatoDedupeReset <- function() {
+  skato_env$n_cells <- 0L
+  skato_env$n_evaluated <- 0L
+  invisible(NULL)
+}
+
+#' @noRd
+skatoDedupeCount <- function(n_cells, n_evaluated) {
+  skato_env$n_cells <- skato_env$n_cells + as.integer(n_cells)
+  skato_env$n_evaluated <- skato_env$n_evaluated + as.integer(n_evaluated)
+  invisible(NULL)
+}
+
+#' @noRd
+skatoDedupeSummary <- function() {
+  cat("SKAT-O cells: ", skato_env$n_cells, " asked for, ", skato_env$n_evaluated,
+      " evaluated, ", skato_env$n_cells - skato_env$n_evaluated,
+      " served from an identical cell.\n", sep = "")
+  invisible(c(cells = skato_env$n_cells, evaluated = skato_env$n_evaluated))
 }
 
 #' SERVE a batch's answers back into the same `region_postprocess` drive.

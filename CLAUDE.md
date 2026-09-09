@@ -386,7 +386,13 @@ top-level, or R ships the whole `outList` per task). The two alternate per
 region. SKAT-O itself can never run in-process on threads: SKAT's `qfc` is
 file-scope statics and a global `jmp_buf` (`docs/state/region-perf-handoff.md`).
 The ultra-rare pass and the BURDEN emitter are still serial per cell, which
-is what caps BURDEN at ~1.6x on 4 threads. One deliberate degradation: a
+is what caps BURDEN at ~1.6x on 4 threads. **Identical cells are evaluated
+once (2026-09-09):** a cell whose (Score, Phi, r.corr) is `identical()` to
+an earlier cell's is served that answer (`skatoDedupe`/`skatoMemoKernel`,
+`R/SkatoParallel.R`), the rows still emitted; the run prints
+`SKAT-O cells: N asked for, M evaluated, K served`. Printed-equal rows are
+not always bit-equal cells (P6: 4 twin rows, 3 served, one Phi entry 2 ULP
+off), so read K as a measurement. One deliberate degradation: a
 reader that cannot clone (only the PLINK pread fallback now) drops to one
 thread with a printed reason and an R `warning()`.
 
