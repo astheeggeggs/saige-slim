@@ -5,6 +5,10 @@ CCT_cpp <- function(pval) {
     .Call('_SAIGE_CCT_cpp', PACKAGE = 'SAIGE', pval)
 }
 
+flexrvWeightsInCPP <- function(t_table, t_score, t_isLof, t_MAF, t_MAC, t_maxMAF) {
+    .Call('_SAIGE_flexrvWeightsInCPP', PACKAGE = 'SAIGE', t_table, t_score, t_isLof, t_MAF, t_MAC, t_maxMAF)
+}
+
 setAssocTest_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_min_info_marker, t_dosage_zerod_cutoff, t_dosage_zerod_MAC_cutoff, t_weights_beta, t_outputFilePrefix, t_MACCutoffforER) {
     invisible(.Call('_SAIGE_setAssocTest_GlobalVarsInCPP', PACKAGE = 'SAIGE', t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_min_info_marker, t_dosage_zerod_cutoff, t_dosage_zerod_MAC_cutoff, t_weights_beta, t_outputFilePrefix, t_MACCutoffforER))
 }
@@ -69,8 +73,8 @@ RegionSetUpConditional_binary_InCPP <- function(t_weight_cond, t_modelIndex) {
     .Call('_SAIGE_RegionSetUpConditional_binary_InCPP', PACKAGE = 'SAIGE', t_weight_cond, t_modelIndex)
 }
 
-mainRegionInCPP <- function(t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, t_P1Mat_placeholder, t_P2Mat_placeholder, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_forceWeightColumn, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput, t_nThreads, t_modelIdx) {
-    .Call('_SAIGE_mainRegionInCPP', PACKAGE = 'SAIGE', t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, t_P1Mat_placeholder, t_P2Mat_placeholder, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_forceWeightColumn, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput, t_nThreads, t_modelIdx)
+mainRegionInCPP <- function(t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, t_P1Mat_placeholder, t_P2Mat_placeholder, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_forceWeightColumn, t_score, t_isLof, t_transformTable, t_flexMaxMAF, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput, t_nThreads, t_modelIdx) {
+    .Call('_SAIGE_mainRegionInCPP', PACKAGE = 'SAIGE', t_genoType, t_genoIndex, annoIndicatorMat, maxMAFVec, t_outputFile, t_traitType, t_n, t_P1Mat_placeholder, t_P2Mat_placeholder, t_regionTestType, t_isImputation, t_weight, t_beta_params, t_includeNoWeights, t_weightNames, t_forceWeightColumn, t_score, t_isLof, t_transformTable, t_flexMaxMAF, t_weight_cond, t_isSingleinGroupTest, t_isOutputMarkerList, annoStringVec, regionName, t_isFastTest, t_isMoreOutput, t_nThreads, t_modelIdx)
 }
 
 assign_conditionMarkers_factors <- function(t_genoType, t_genoIndex, t_n, t_weight_cond, t_modelIndex) {
