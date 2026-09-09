@@ -1651,3 +1651,25 @@ is not the barrier; the candidates are the per-task master cost (one task per
 cell kept) and the thread-scaling inflation the marker path already measured,
 and the batch line shows 7 batches per run (a chunk each, plus its escalated
 call: the 512 MB budget was never hit at one model).
+
+## Identical cells evaluated once (2026-09-09): the 50k A/B
+
+`R/SkatoParallel.R` memoises `get_SKAT_pvalue` on `identical()` inputs
+(commit `1b5bf4c1`). Paired A/B on sim50k, `y_binary` SKAT-O, frozen models,
+scratch install of the parent `ab047839` (same `SAIGE.so`) vs the new build,
+arms alternated, 3 reps, under Spotlight load 4-12 (ratios only). Driver
+`harness/work/region_profile/drivers/region_s6_ab.sh`; three annotation
+configs via the new `GROUP_ANNO`/`GROUP_FILE` hooks in `04_run_saige.sh`.
+Predictions were written in `docs/state/handoff-2026-09-09-skato-identical-cells.md`
+before the run.
+
+| config | twins | 1-thread new/old | predicted | 4-thread new/old |
+|---|---|---|---|---|
+| native (driver's 5 groups) | 0.6% | **1.00** (0.999-1.005) | 1.00 | 1.05 (noise; see handoff) |
+| planted (each group also unioned with an absent label) | 47% | **0.71** (0.68-0.73) | 0.67-0.75 | 0.87 |
+| thinned (`high` absent in half the genes) | 9.8% | **0.95** (0.948-0.954) | 0.94-0.96 | 0.92 |
+
+54/54 output files byte-identical a vs b. Saving = twin fraction x ~0.5 at
+one thread; `skatoDedupe` itself 0.78 s per run (in-process timer).
+4-thread pairs are +-10% on this box (the thinned OLD arm's user CPU spans
+178-198 s across its own reps), so quote the 1-thread ratios.

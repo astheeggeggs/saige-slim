@@ -108,6 +108,41 @@ from these is a bug to locate (units, arm swap, the wrong library loaded),
 not a discovery. The twin fraction is read from the `SKAT-O cells:` line of
 each log, so it is measured, not assumed.
 
+## The 50k measurement: results (2026-09-09 19:21-21:00)
+
+Log `harness/work/region_profile/ab_s6.log`, TSV
+`harness/work/region_profile/results_s6_ab.tsv`, outputs under
+`harness/work/upstream_compare/strip/out/s2group_y_binary_r[ab]*_frozen_{native,planted,thinned}.txt`.
+Both libraries' `SAIGE.so` md5 `28d522d1...` (equal); the 18 old-arm logs
+all record the `oldlib` path and the 18 new-arm logs none of them (the
+which-library null control). **Every a/b output pair is byte-identical:
+54 of 54 files** (region rows, singleAssoc, markerList). Spotlight held
+the load at 4-12 throughout (the 2.5 rule was waived deliberately: paired,
+alternated arms; ratios only).
+
+| config | twin fraction, measured | new/old wall, 1 thread (3 reps) | predicted | 4 threads (3 reps) |
+|---|---|---|---|---|
+| native | 14 / 2527 = 0.6% | 0.999, 1.000, 1.005 -> **1.00** | 1.00 +- 0.02 | 0.99, 1.09, 1.07 -> 1.05 |
+| planted | 2391 / 5054 = 47% | 0.709, 0.729, 0.684 -> **0.71** | 0.67-0.75 | 0.91, 0.84, 0.85 -> 0.87 |
+| thinned | 236 / 2411 = 9.8% | 0.952, 0.948, 0.954 -> **0.95** | 0.94-0.96 | 0.87, 0.98, 0.92 -> 0.92 |
+
+Every 1-thread ratio is inside its pre-registered band; the served counts
+are identical across reps (deterministic). Of the 2527 planted twins,
+136 (5.4%) were not bit-identical -- the same ULP class as P6's fourth
+pair -- so the served fraction on real data is (twin rows) x ~0.95.
+
+**Rule of thumb from this:** saving = twin fraction x ~0.5 at one thread
+(the Davies share), about half that in wall at 4 threads where the pool
+absorbs part of it. The memo's own cost: 1-thread user time equal to
+within 0.4 s on 2527 cells; a direct in-process timer put `skatoDedupe`
+at 0.78 s per 4-thread run over 24 MB of keys.
+
+**The 4-thread numbers are noisy at +-10% on this box and only the
+1-thread ratios should be quoted.** native's 1.05 at 4 threads is not
+overhead: rep 1 was 0.99, and the thinned OLD arm alone swung 178-198 s
+of user CPU between its own reps. Four workers plus four TBB threads on
+8 cores under Spotlight's ~2 cores is the reason.
+
 ## Not done
 
 - The C++ per-cell work (ultra-rare collapse, pseudo-marker test,
@@ -116,6 +151,5 @@ each log, so it is measured, not assumed.
   the collapse and column sharing, and its byte-identity would rest on
   iteration-order reasoning rather than value equality. Worth it only if a
   BURDEN profile on real data shows a high twin fraction; measure first.
-- No measurement of the saving on the 50k fixture yet (the bundled fixture is
-  startup-dominated). Prediction for a SKAT-O run: saving = twin fraction x
-  ~45% of wall at 1 thread, less at 4 where the pool absorbs part of it.
+- A quiet-box 4-thread measurement, if anyone needs the 4-thread ratio
+  to better than +-10%.
