@@ -151,28 +151,30 @@ test_that("LEDGER #107 FIXED: --minInfo above 0 is refused, and 0 still runs", {
   expect_equal(nrow(miss_run("base")), 48L)
 })
 
-test_that("--is_imputed_data REPLACES MissingRate with an always-1 imputationInfo", {
+test_that("LEDGER #108 FIXED: --is_imputed_data=TRUE is refused, and MissingRate survives", {
   skip_unless_level("standard")
   skip_if_no_goldens()
-  d <- miss_run("base")
-  im <- miss_run("imputed", "--is_imputed_data=TRUE")
-  # It is a SWAP, not an addition: all four writer sites branch on
+  # It was a SWAP, not an addition: all four writer sites branch on
   # t_isImputation to emit imputationInfo INSTEAD OF MissingRate
-  # (src/Main.cpp:4197, :4258, :4539, :4790), so turning the flag on COSTS the
-  # missing rate. Assert the removal as well as the addition -- checking only
-  # setdiff(new, old) is what hid this in the first place, and the file being
-  # SMALLER than its twin is what gave it away. See LEDGER #107/#108.
-  expect_equal(setdiff(names(im), names(d)), "imputationInfo")
-  expect_equal(setdiff(names(d), names(im)), "MissingRate")
-  expect_equal(length(names(im)), length(names(d)))
-  expect_equal(which(names(im) == "imputationInfo"), which(names(d) == "MissingRate"))
-  # Both readers assign t_imputeInfo = 1 unconditionally (src/PLINK.cpp:312,
-  # src/PGEN.cpp:585), so the replacement column is a constant and --minInfo is
-  # a switch at 1 rather than a quality filter. Characterization, not endorsement.
-  expect_equal(unique(im$imputationInfo), "1")   # character: see read_saige_table
-  # every column they still share is untouched
-  expect_equal(length(differing_markers(d, im)), 0)
-  expect_equal(im$MarkerID, d$MarkerID)
+  # (src/Main.cpp:4197, :4258, :4539, :4790), and both readers assign
+  # t_imputeInfo = 1 unconditionally, so the flag cost a real column to gain a
+  # constant. Now refused. The writer branch is untouched and the option stays
+  # declared, so a restored BGEN/VCF reader re-enables it by supplying a score.
+  out <- file.path(tempfile("imputed_"), "out.txt")
+  dir.create(dirname(out), recursive = TRUE)
+  log <- tempfile(fileext = ".log")
+  st <- run_saige_cli("step2_SPAtests.R",
+                      c(MISS_ARGS(), miss_model(), MISS_COMMON,
+                        "--is_imputed_data=TRUE",
+                        paste0("--SAIGEOutputFile=", out)), log = log)
+  expect_false(st == 0)
+  txt <- paste(readLines(log, warn = FALSE), collapse = "\n")
+  expect_match(txt, "no genotype reader on this branch", fixed = TRUE)
+  expect_match(txt, "cost a real column and return a constant", fixed = TRUE)
+  # the default run keeps MissingRate and never grows an imputationInfo column
+  d <- miss_run("base")
+  expect_true("MissingRate" %in% names(d))
+  expect_false("imputationInfo" %in% names(d))
 })
 
 test_that("the PGEN reader agrees with the PLINK reader on missing calls", {

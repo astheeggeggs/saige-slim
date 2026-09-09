@@ -75,7 +75,10 @@ parse_X_PARregion_token <- function(token) {
 #' @param idstoIncludeFile character. Path to a file containing variant ids to be included from the dosage file. The file does not have a header and each line is for a marker ID. Variant ids are in the format chr:pos_ref/alt
 #' @param rangestoIncludeFile character. Path to a file containing genome regions to be included from the dosage file. The file contains three columns for chromosome, start, and end respectively with no header.
 #' @param chrom character. If LOCO is specified, chrom is required. Note: the string needs to exactly match the chromosome string in the genotype file. For example, 1 does not match chr1.
-#' @param is_imputed_data logical. Whether the dosages/genotypes imputed are imputed. If TRUE, the program will output the imputed info score. By default, FALSE.
+#' @param is_imputed_data logical. Whether the genotypes are imputed dosages. If
+#'   TRUE, the program replaces the MissingRate column with imputationInfo. Not
+#'   available on this branch: no genotype reader supplies an INFO score, so TRUE
+#'   is refused rather than returning a constant column. By default, FALSE
 #' @param impute_method character. Imputation method for missing dosages. best_guess, mean or minor. best_guess: missing dosages imputed as best guessed genotyes round(2*allele frequency). mean: missing dosages are imputed as mean (2*allele frequency). minor: missing dosages are imputed as minor allele homozygotes. By default, minor
 #' @param LOCO logical. Whether to apply the leave-one-chromosome-out option. If TRUE, --chrom is required. By default, TRUE
 #' @param GMMATmodelFile character. Path to the input file containing the glmm model, which is output from previous step. Will be used by load()
@@ -209,7 +212,7 @@ SPAGMMATtest <- function(bedFile = "",
   # Upstream's behaviour is defensible where BGEN/VCF supply a real score --
   # this is a consequence of stripping those readers, not an upstream defect --
   # so the option stays declared, ready for their return, and refuses here
-  # instead of silently accepting a filter that cannot fire. LEDGER #107.
+  # instead of silently returning nothing. LEDGER #107 and #108.
   if (min_Info > 0) {
     stop(
       "--minInfo=", min_Info, " cannot be applied: no genotype reader on this ",
@@ -217,6 +220,18 @@ SPAGMMATtest <- function(bedFile = "",
       "A threshold at or below 1 would filter nothing and one above 1 would ",
       "drop every marker, so the option can only mislead. Remove --minInfo ",
       "(or pass 0) to run without INFO filtering.\n"
+    )
+  }
+  # Same cause, same treatment (LEDGER #108): --is_imputed_data EXCHANGES the
+  # MissingRate column for imputationInfo rather than adding one, so on this
+  # branch it costs a real column and returns a constant.
+  if (is_imputed_data) {
+    stop(
+      "--is_imputed_data=TRUE cannot be honoured: it replaces the MissingRate ",
+      "column with imputationInfo, and no genotype reader on this branch ",
+      "supplies an INFO score, so that column could only ever read 1. Turning ",
+      "it on would cost a real column and return a constant. Remove ",
+      "--is_imputed_data to keep MissingRate.\n"
     )
   }
 

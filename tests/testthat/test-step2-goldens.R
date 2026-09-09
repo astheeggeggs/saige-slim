@@ -248,10 +248,9 @@ test_that("step2 PGEN mirror under missing calls matches golden", {
     c(MISSING_PGEN_ARGS(), MISSING_COMMON, bin_model()))
 })
 
-test_that("step2 --is_imputed_data=TRUE matches golden", {
-  run_step2_case("plink_marker_missing_imputed.txt",
-    c(MISSING_ARGS(), MISSING_COMMON, bin_model(), "--is_imputed_data=TRUE"))
-})
+# P48 retired 2026-09-09 (LEDGER #108): --is_imputed_data=TRUE is now refused,
+# so there is no output to compare. The refusal itself is pinned by
+# test-step2-missing.R; nothing here can run that flag any more.
 
 # ---------------------------------------------------------------------------
 # P49-P51: dosages. Only the pgen reader can carry them, and before these no

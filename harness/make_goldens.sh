@@ -1148,14 +1148,14 @@ run step2_pgen_marker_missing.log R2 step2_SPAtests.R \
   $MISS_PGEN_G --SAIGEOutputFile="$GOLD/step2/pgen_marker_missing.txt" \
   $MISS_COMMON $BIN_MODEL
 
-# P48: --is_imputed_data=TRUE. It does NOT add a column -- it EXCHANGES
-# `MissingRate` for `imputationInfo`, which on this branch can only ever read 1,
-# because both readers assign `t_imputeInfo = 1` unconditionally
-# (src/PLINK.cpp:312, src/PGEN.cpp:585). So the flag costs the user a real column
-# and returns a constant. LEDGER #107/#108.
-run step2_plink_marker_missing_imputed.log R2 step2_SPAtests.R \
-  $MISS_G --SAIGEOutputFile="$GOLD/step2/plink_marker_missing_imputed.txt" \
-  $MISS_COMMON $BIN_MODEL --is_imputed_data=TRUE
+# P48 RETIRED 2026-09-09 (LEDGER #108). It ran --is_imputed_data=TRUE, which
+# does NOT add a column -- it EXCHANGES `MissingRate` for `imputationInfo`,
+# which on this branch can only ever read 1, because both readers assign
+# `t_imputeInfo = 1` unconditionally (src/PLINK.cpp:312, src/PGEN.cpp:585). So
+# the flag cost a real column and returned a constant, and it is now refused.
+# There is no output left to compare; the refusal is pinned by
+# tests/testthat/test-step2-missing.R. The option and the writer branch both
+# stay, so restoring a BGEN/VCF reader restores this golden with it.
 
 # P49-P51 (2026-09-08): DOSAGES, which only the pgen reader can carry and which
 # no golden touched. `--dosage_zerod_cutoff`/`--dosage_zerod_MAC_cutoff` zero

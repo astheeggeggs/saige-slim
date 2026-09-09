@@ -93,8 +93,12 @@ option_list <- list(
     type = "logical",
     default = FALSE,
     help = paste0(
-      "Whether the dosages/genotypes imputed are imputed. If TRUE, the program ",
-      "will output the imputed info score [default=FALSE]."
+      "Whether the genotypes are imputed dosages. If TRUE, the program replaces ",
+      "the MissingRate column with imputationInfo. NOT AVAILABLE on this ",
+      "branch: no genotype reader supplies an INFO score, so that column could ",
+      "only read 1 and turning the flag on would cost a real column to gain a ",
+      "constant. TRUE is refused. Kept declared for a future BGEN/VCF reader ",
+      "[default=FALSE]."
     )
   ),
   make_option(
