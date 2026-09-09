@@ -1,7 +1,8 @@
 # What is worth doing next (2026-09-03, updated 2026-09-09)
 
-**Current handoff: `docs/state/handoff-2026-09-09-skato-identical-cells.md`**
-(previous: `handoff-2026-09-09-benchmark-and-ledger-sweep.md`)
+**Current handoff: `docs/state/handoff-2026-09-09-flexrv-f0.md`**
+(previous: `handoff-2026-09-09-skato-identical-cells.md`, then
+`handoff-2026-09-09-benchmark-and-ledger-sweep.md`)
 -- this line is the pointer and is updated with every new handoff, because
 several handoffs can share a date and `ls | tail -1` sorts by NAME, not by time.
 The three 2026-09-08 handoffs are superseded; of those,

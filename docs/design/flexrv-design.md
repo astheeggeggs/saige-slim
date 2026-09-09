@@ -331,7 +331,24 @@ number of distinct score values therefore bounds the number of distinct sets:
 Duplicates are not invalid -- CCT is robust to arbitrary dependence in the tail
 -- but they enter the pool more than once and re-weight it. The escape is the
 spec string (`--flexRV_scoreTransforms=unw` collapses the score axis to 1), not
-a code path. If duplicate-column memoisation is ever added it must be
+a code path.
+
+**Half of the duplicate work is already handled, as of `1b5bf4c1`
+(2026-09-09, landed by another session while this file was being written).**
+`skatoDedupe`/`skatoMemoKernel` (`R/SkatoParallel.R`) evaluate a region cell
+once when its `(Score, Phi, r.corr, regionTestType)` is `identical()` to an
+earlier cell's, and serve the stored answer by index -- exactly the
+compute-once-and-copy shape argued for below, with output unchanged. Two FlexRV
+sets with identical weight vectors produce the same `Score`/`Phi` from the same
+arithmetic on the same inputs, so the memo is EXPECTED to fire on every
+degeneracy in this section, removing the 192-Davies-call problem on the SKAT-O
+path for free. That expectation is unverified: the commit's own note says a
+memo that never fires is a coverage fact, not a bug, and `skatoDedupeSummary()`
+prints per-run counts, so F5 should read the count rather than assume it.
+
+What is NOT covered is the C++ side -- the burden loop and the ultra-rare
+collapse, which is where the `N`-length `genoURMat` columns are built and which
+is serial per cell. If that memoisation is added it must likewise be
 COMPUTE-ONCE-AND-COPY (byte-identical output, pool unchanged), not
 skip-and-reweight (which changes the row schema); and equality must be tested on
 the FULL weight vector including the `w0 = 1` UR entry, since proportionality is
