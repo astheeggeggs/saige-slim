@@ -510,3 +510,41 @@ test_that("pgen threading holds over the 128k-marker fixture (P20 at 4 threads)"
   expect_output_matches_golden(
     file.path(saige_goldens, "step2", "pgen_marker_chunked.txt"), out)
 })
+
+test_that("a pgen GROUP test threads too, byte-identically (P19 at 4 threads)", {
+  # The two S8 tests above are both MARKER-path, so until now nothing proved a
+  # pgen REGION run threads. It is a separate gate: the region path probes
+  # cloneability in R (`isGenoReaderCloneableInCPP()`,
+  # R/SAIGE_SPATest_Region.R) rather than in mainMarkerInCPP, and a pgen reader
+  # that failed the probe there would silently drop to one thread and still
+  # reproduce the golden -- the LEDGER #30 shape again. So both printed
+  # knob-arrival lines are asserted: the C++ region marker loop (2026-09-06)
+  # and the SKAT-O post-processing pool, the two mechanisms --nThreads drives
+  # on a group run.
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  log <- tempfile(fileext = ".log")
+  out <- file.path(tempfile("step2_pgen_group_nthreads_"), "out.txt")
+  dir.create(dirname(out), recursive = TRUE)
+  status <- run_saige_cli("step2_SPAtests.R",
+                          c(PGEN_G, "--chrom=1", "--minMAF=0", "--minMAC=0.5",
+                            "--LOCO=FALSE", GRP_MODEL, SG,
+                            "--groupFile=./input/group_new_snpid.txt",
+                            paste0("--annotation_in_groupTest=lof,missense:lof,",
+                                   "missense:lof:synonymous"),
+                            "--maxMAF_in_groupTest=0.0001,0.001,0.01",
+                            "--is_fastTest=FALSE", "--nThreads=4",
+                            paste0("--SAIGEOutputFile=", out)),
+                          log = log)
+  expect_cli_ok(status)
+  txt <- readLines(log, warn = FALSE)
+  expect_true(any(grepl("Region marker loop will use 4 in-process threads",
+                        txt, fixed = TRUE)),
+              label = "the region marker loop reported 4 threads")
+  expect_true(any(grepl("SKAT-O post-processing will use 4 workers",
+                        txt, fixed = TRUE)),
+              label = "the SKAT-O pool reported 4 workers")
+  expect_false(any(grepl("cannot be cloned", txt)))
+  expect_output_matches_golden(
+    file.path(saige_goldens, "step2", "pgen_group_nofast.txt"), out)
+})
