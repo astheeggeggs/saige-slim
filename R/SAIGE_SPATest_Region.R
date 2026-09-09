@@ -1855,11 +1855,33 @@ SAIGE.getRegionList_new <- function(marker_group_line,
       }
       posNA <- which(is.na(RegionData$genoIndex))
 
+      nRegionMarkers <- nrow(RegionData)
       if (length(posNA) != 0) {
         RegionData <- RegionData[which(!is.na(RegionData$genoIndex))]
         cat(
           length(posNA),
           " markers in 'RegionFile' are not in 'GenoFile'.\n"
+        )
+      }
+      # LEDGER #113: NOT ONE marker of the group file joined the genotype file.
+      # Every region is then empty, the chunk loop has nothing to do and the
+      # writer is reached with no header and no rows -- a zero-byte results file
+      # at exit 0 with "Analysis done!", which nothing downstream can tell from
+      # a run that legitimately found nothing. This is the emptiness guard #76
+      # gave the --chrom filter, on the route #76 does not cover: there the
+      # filter empties the marker set, here the ID JOIN does.
+      #
+      # The condition is deliberately "no marker matched AT ALL". Individual
+      # empty regions are normal and are handled inside the loop below
+      # (`if (length(posSNP) > 0)`), so they must not trip this.
+      if (nrow(RegionData) == 0) {
+        stop(
+          "None of the ", nRegionMarkers, " markers in the group file were ",
+          "found in the genotype file, so every region is empty. PLINK keys on ",
+          "column 2 of the .bim and PGEN on the ID column of the .pvar, so a ",
+          "group file written for another format -- chr:pos:ref:alt IDs, say -- ",
+          "matches nothing here. Check that the group file's marker IDs are the ",
+          "same identifiers the variant file uses.\n"
         )
       }
       setorderv(RegionData, col = c("CHROM", "POS"))
