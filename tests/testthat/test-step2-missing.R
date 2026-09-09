@@ -111,7 +111,7 @@ test_that("best_guess and minor differ exactly where round(2*AF) is 1", {
   expect_equal(differing_markers(bg, mi), sort(AF_GE_QUARTER_PASSING))
 })
 
-test_that("--dosage_zerod_cutoff silently undoes MEAN imputation below the MAC cutoff", {
+test_that("LEDGER #109 FIXED: the zeroing overrides MEAN below the MAC cutoff, as documented", {
   skip_unless_level("standard")
   skip_if_no_goldens()
   on_  <- miss_run("mean", "--impute_method=mean")
@@ -119,8 +119,14 @@ test_that("--dosage_zerod_cutoff silently undoes MEAN imputation below the MAC c
   # `t_GVec.clean(cutoff)` runs whenever MAC <= --dosage_zerod_MAC_cutoff (10 by
   # default). Mean imputation writes 2*AF, which on those markers is ~0.003 --
   # below the 0.2 default -- so it is zeroed straight back to what `minor` would
-  # have given. Documented as applying "if is_imputed_data = TRUE"; the code
-  # never consults that flag. See LEDGER.
+  # have given. The BEHAVIOUR is kept (LEDGER #109): an ultra-rare variant
+  # should not be recorded as fractionally present where it was merely missing,
+  # and the collapse in the region path would accumulate those fractions. What
+  # was wrong was the documentation -- three help strings said "if
+  # is_imputed_data = TRUE" and the code never consulted that flag. So this
+  # asserts the behaviour the help now describes, and the assertion that the
+  # override reaches --impute_method=mean is what makes the note in the
+  # --impute_method help true.
   expect_equal(differing_markers(on_, off_), sort(MAC_LE_10_PASSING))
   mi <- miss_run("minor", "--impute_method=minor")
   expect_equal(length(differing_markers(on_[on_$MarkerID %in% MAC_LE_10_PASSING, ],

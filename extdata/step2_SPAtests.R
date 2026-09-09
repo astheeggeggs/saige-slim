@@ -155,7 +155,9 @@ option_list <- list(
       "best_guess: missing dosages imputed as best guessed genotyes ",
       "round(2*allele frequency). mean: missing dosages are imputed as mean ",
       "(2*allele frequency). minor: missing dosages are imputed as minor allele ",
-      "homozygotes [default=minor]"
+      "homozygotes. NOTE: for variants with MAC <= --dosage_zerod_MAC_cutoff, ",
+      "what mean writes is then zeroed by --dosage_zerod_cutoff, so mean and ",
+      "minor agree there unless that cutoff is set to 0 [default=minor]"
     )
   ),
   make_option(
@@ -472,9 +474,13 @@ option_list <- list(
     type = "double",
     default = 0.2,
     help = paste0(
-      "If is_imputed_data = TRUE, For variants with MAC <= ",
-      "dosage_zerod_MAC_cutoff, dosages <= dosageZerodCutoff with be set to 0. ",
-      "[default=0.2]"
+      "For variants with MAC <= dosage_zerod_MAC_cutoff, values <= this cutoff ",
+      "are set to 0. Applies to EVERY run, not only when is_imputed_data=TRUE: ",
+      "an ultra-rare variant should not be recorded as fractionally present in ",
+      "a sample where it was merely missing. On hard calls this reaches only ",
+      "what --impute_method=mean just wrote (2*AF, ~0.003 on a rare marker); on ",
+      "dosages it also zeroes genuine low dosages. Set 0 to switch it off ",
+      "[default=0.2]."
     )
   ),
   make_option(
@@ -482,9 +488,8 @@ option_list <- list(
     type = "double",
     default = 10,
     help = paste0(
-      "If is_imputed_data = TRUE, For variants with MAC <= ",
-      "dosage_zerod_MAC_cutoff, dosages <= dosageZerodCutoff with be set to 0. ",
-      "[default=10]"
+      "The MAC at or below which --dosage_zerod_cutoff applies. Applies to ",
+      "EVERY run, not only when is_imputed_data=TRUE [default=10]."
     )
   ),
   make_option(

@@ -57,3 +57,34 @@ test_that("LEDGER #111 FIXED: --LOCO help states its actual default, TRUE", {
   # The declared `default = TRUE` in the source is pinned by the fast-tier
   # check in test-step2-loco.R, so the two are not asserted twice here.
 })
+
+# LEDGER #109 FIXED: three help strings said the dosage zeroing applies only
+# "If is_imputed_data = TRUE" and the code never consulted that flag. The
+# BEHAVIOUR is deliberately kept -- an ultra-rare variant should not be recorded
+# as fractionally present where it was merely missing -- so the documentation
+# was corrected to match, and --impute_method now warns that `mean` is overridden
+# below the MAC cutoff, which is where a user would actually look.
+#
+# Tier: standard (one --help invocation, ~1.5 s).
+
+test_that("LEDGER #109 FIXED: the dosage-zeroing help claims no is_imputed_data gate", {
+  skip_unless_level("standard")
+  log <- tempfile(fileext = ".txt")
+  st <- run_saige_cli("step2_SPAtests.R", "--help", log = log)
+  expect_cli_ok(st)
+  help <- readLines(log, warn = FALSE)
+  para <- function(opt) {
+    i <- grep(paste0("^\\s*", opt, "="), help)
+    expect_length(i, 1L)
+    nxt <- grep("^\\s*--", help)
+    nxt <- nxt[nxt > i]
+    paste(help[(i + 1L):(if (length(nxt)) nxt[1] - 1L else length(help))], collapse = " ")
+  }
+  for (opt in c("--dosage_zerod_cutoff", "--dosage_zerod_MAC_cutoff")) {
+    p <- para(opt)
+    expect_false(grepl("If is_imputed_data = TRUE", p, fixed = TRUE))
+    expect_true(grepl("EVERY run", p, fixed = TRUE))
+  }
+  # the interaction is named where a user reading about imputation would see it
+  expect_true(grepl("zeroed by --dosage_zerod_cutoff", para("--impute_method"), fixed = TRUE))
+})

@@ -101,8 +101,14 @@ parse_X_PARregion_token <- function(token) {
 #' @param markers_per_chunk_in_groupTest numeric. Number of markers in each chunk when calculating the variance covariance matrix in the set/group-based tests. By default, 100.
 #' @param condition character. For conditional analysis. Variant ids are in the format chr:pos_ref/alt and seperated by by comma. e.g."chr3:101651171:C:T,chr3:101651186:G:A".
 #' @param SPAcutoff by default = 2 (SPA test would be used when p value < 0.05 under the normal approximation). The output column Is.SPA is true whenever the reported SE was back-derived from the reported p-value rather than from 1/sqrt(var): after the saddlepoint approximation and also after the exact resampling test on MAC <= max_MAC_use_ER markers, which has no saddlepoint (LEDGER #80).
-#' @param dosage_zerod_cutoff numeric. If is_imputed_data = TRUE, For variants with MAC <= dosage_zerod_MAC_cutoff, dosages <= dosageZerodCutoff with be set to 0. By derault, 0.2
-#' @param dosage_zerod_MAC_cutoff numeric. If is_imputed_data = TRUE, For variants with MAC <= dosage_zerod_MAC_cutoff, dosages <= dosageZerodCutoff with be set to 0. By derault, 10
+#' @param dosage_zerod_cutoff numeric. For variants with MAC <=
+#'   dosage_zerod_MAC_cutoff, values <= this cutoff are set to 0. Applies to EVERY
+#'   run, not only when is_imputed_data = TRUE: an ultra-rare variant should not be
+#'   recorded as fractionally present where it was merely missing. Set 0 to switch
+#'   it off. By default, 0.2
+#' @param dosage_zerod_MAC_cutoff numeric. The MAC at or below which
+#'   dosage_zerod_cutoff applies. Applies to every run, not only when
+#'   is_imputed_data = TRUE. By default, 10
 #' @param is_single_in_groupTest logical.  Whether to output single-variant assoc test results when perform group tests. Note, single-variant assoc test results will always be output when SKAT and SKAT-O tests are conducted with r.corr=0. This parameter should only be used when only Burden tests are condcuted with r.corr=1. By default, FALSE (the same as the command line since LEDGER #18; it was TRUE before 2026-09-05)
 #' @param is_no_weight_in_groupTest logical. Whether no weights (all-ones) are used in the group test. If FALSE, weights will be calcuated based on MAF from the Beta distribution with paraemters weights.beta or weights will be extracted from the group File if available. If TRUE and the run has no other weight sets (unweighted group file, single weights.beta pair), the all-ones weights simply replace the beta weights, exactly as before. If TRUE and the run does have other weight sets (weight lines in the group file, or more than one weights.beta pair), an all-ones weight set named "No_Weights" is appended as the last weight set (this replaces the previous hard error for weighted group files). By default, FALSE
 #' @param is_output_weight_column logical. Whether to force the multi-weight output schema even when only a single weight set is in play: the Weight column (labeled with the set's name) right after max_MAF, and for SKAT-O the additive Pvalue_ACATV/Pvalue_ACATO columns and an always-emitted Cauchy row. Useful for a stable schema across runs with different weight configurations. With more than one weight set the schema is always on and this flag is redundant. By default, FALSE
