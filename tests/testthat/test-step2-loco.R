@@ -88,7 +88,7 @@ test_that("leaving out the marker-dense chromosome moves p-values far more", {
   expect_gt(relmove("1"), relmove("2"))
 })
 
-test_that("--chrom is required under LOCO, and the message names the wrong test type", {
+test_that("LEDGER #110 FIXED: the missing --chrom message names no test type", {
   skip_unless_level("standard")
   skip_if_no_goldens()
   out <- file.path(tempfile("loco_nochrom_"), "out.txt")
@@ -99,10 +99,14 @@ test_that("--chrom is required under LOCO, and the message names the wrong test 
                             paste0("--SAIGEOutputFile=", out)), log = log)
   expect_false(status == 0)
   txt <- paste(readLines(log, warn = FALSE), collapse = "\n")
-  # Characterization: this is a SINGLE-VARIANT run and the message says
-  # "gene- or region-based tests". Pinned as-is; see LEDGER.
-  expect_match(txt, "chrom needs to be specified", fixed = TRUE)
-  expect_match(txt, "gene- or region-based tests", fixed = TRUE)
+  # This is a SINGLE-VARIANT run: the message used to say the problem concerned
+  # "gene- or region-based tests", which is a remedy the user cannot act on.
+  expect_false(grepl("gene- or region-based tests", txt, fixed = TRUE))
+  expect_match(txt, "--chrom must be specified when LOCO is TRUE", fixed = TRUE)
+  # it names both remedies that actually exist, and says the guard is not
+  # specific to region tests
+  expect_match(txt, "single-variant as well as region-based", fixed = TRUE)
+  expect_match(txt, "set LOCO=FALSE", fixed = TRUE)
 })
 
 test_that("a non-LOCO model under --LOCO=TRUE is refused, and that message IS accurate", {

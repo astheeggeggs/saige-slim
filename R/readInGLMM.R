@@ -78,7 +78,12 @@ ReadModel <- function(GMMATmodelFile = "", chrom = "", LOCO = TRUE, is_Firth_bet
       stop("LOCO is TRUE but the null model file .rda does not contain LOCO results. In order to apply Leave-one-chromosome-out, please run Step 1 using LOCO. Otherwise, please set LOCO=FALSE in this step (Step 2).\n")
     } else {
       if (chrom == "") {
-        stop("chrom needs to be specified in order to apply Leave-one-chromosome-out on gene- or region-based tests")
+        stop(
+          "--chrom must be specified when LOCO is TRUE: the null model holds one fit ",
+          "per chromosome and --chrom selects which to use. This applies to every ",
+          "step-2 test, single-variant as well as region-based. Either pass --chrom, ",
+          "or set LOCO=FALSE in this step (Step 2).\n"
+        )
       } else {
         chrom_v3 <- getChromNumber(chrom)
       }
@@ -234,7 +239,12 @@ ReadModel_subsample <- function(GMMATmodelFile = "", chrom = "", LOCO = TRUE, is
       stop("LOCO is TRUE but the null model file .rda does not contain LOCO results. In order to apply Leave-one-chromosome-out, please run Step 1 using LOCO. Otherwise, please set LOCO=FALSE in this step (Step 2).\n")
     } else {
       if (chrom == "") {
-        stop("chrom needs to be specified in order to apply Leave-one-chromosome-out on gene- or region-based tests")
+        stop(
+          "--chrom must be specified when LOCO is TRUE: the null model holds one fit ",
+          "per chromosome and --chrom selects which to use. This applies to every ",
+          "step-2 test, single-variant as well as region-based. Either pass --chrom, ",
+          "or set LOCO=FALSE in this step (Step 2).\n"
+        )
       } else {
         chrom_v3 <- getChromNumber(chrom)
       }
