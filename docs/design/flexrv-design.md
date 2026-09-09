@@ -195,6 +195,24 @@ average.
 written for FlexRV. This is a typesetting loss in the preprint, not a
 methodological difference.
 
+### A5 -- which AC do the paper's pseudo-variant MAC thresholds read?
+
+For genes with >= 400 variants the paper collapses AC <= 5 variants into up to
+50 pseudo-variants, binned by AC (1..5) x score decile. It never says whether
+the `MAC <= t` transforms then read the bin's **constituent** AC (1..5) or the
+pseudo-variant's **realised** summed AC.
+
+**Read as the constituent AC.** The 5 x 10 structure has no other purpose: if
+the AC label were not used downstream, score deciles alone would give 10
+pseudo-variants and the same speedup. Under the realised-AC reading, `MAC<=1`,
+`<=3`, `<=5` and nearly `<=10` would select nothing in every large gene -- 30+
+of the 192 sets empty -- which contradicts their claim that binned and unbinned
+burden p-values were "highly similar".
+
+We do not replicate the binning at all (see below), so this only matters if we
+ever reconcile against a STAAR FlexRV run. Recorded so that reconciliation
+starts from the right reading.
+
 ## Differences from the paper that are deliberate and permanent
 
 - **Large-gene collapse.** The paper: "for genes with >= 400 variants we
@@ -216,10 +234,108 @@ methodological difference.
   the gene, combined by max. SAIGE reads `s` from the group file's
   `score:NAME` line (F1). We define the transforms, not the score.
 - **The MAF < 0.1% cohort filter is not a weight.** The paper selects variants
-  at MAF < 0.1% before testing. In SAIGE that is `--maxMAF_in_groupTest`, and
-  the recommended FlexRV run sets it to 0.001 -- otherwise the `mafbeta*` sets
-  silently zero out every variant above the boundary while `unw` and the larger
-  `MAC*` sets do not, and the cells are no longer testing the same variant set.
+  at MAF < 0.1% before testing (Methods, "Variant annotation": VEP v109.3 most
+  severe consequence only, in-frame indels excluded, variants with > 5% missing
+  calls excluded, missense and LoF only, "MAF < 0.1% in the full cohort", no
+  lower bound -- singletons are kept, which `MAC <= 1` requires). `MAF/0.001` is
+  therefore a rescaling of an already-filtered set, not a filter in disguise.
+  Three mismatches when mapping it onto SAIGE:
+  - **Boundary.** SAIGE's cell is inclusive (`find(maxMAFVec >= pr.MAF)`,
+    `src/Main.cpp` ~:2509), so MAF exactly 0.001 is IN the cell where the
+    paper's strict `<` excludes it. `mafbeta*` gives it weight 0 either way;
+    `unw` and the larger `MAC*` sets do not.
+  - **Which MAF.** Theirs is a fixed cohort-level property of the variant list;
+    SAIGE recomputes MAF in-sample after QC. The closer analogue is to apply
+    the 0.1% filter when BUILDING the group file.
+  - **Missingness.** Their 5% exclusion vs SAIGE's `--maxMissing` default of
+    0.15. Set it to 0.05 to match.
+
+
+## What enters the test (and what the transforms cannot change)
+
+The 192 sets are re-weightings of a variant set they do not choose. A weight of
+zero can push a variant out; nothing in the transform table can pull one in.
+The cascade, in order:
+
+1. the group file's `var` line;
+2. the annotation group -- exact `%in%` match on the ANNO row
+   (`R/SAIGE_SPATest_Region.R` ~:1944);
+3. the `--maxMAF_in_groupTest` cell, inclusive;
+4. run-level QC (`--minMAF`, `--minMAC`, `--maxMissing`);
+5. **the ultra-rare collapse** -- every marker with
+   `MAC <= --MACCutoff_to_CollapseUltraRare` (default 10) leaves as an
+   individual and is folded into ONE pseudo-marker per set, genotype
+   `max(w_r * G)` (`src/Main.cpp` ~:2598), weight `w0 = 1` unscaled (LEDGER #17);
+6. only then `w = w_score * w_MAF` on the surviving real markers.
+
+**Step 5 collides with four of the twelve MAF transforms.** `MAC<=1`, `<=3`,
+`<=5` and `<=10` sit at or below the default collapse cutoff, so every variant
+they select has already been collapsed: every real marker gets weight 0 and the
+whole test is carried by the pseudo-marker. Because the collapse is WEIGHTED and
+per set, the masking still happens in the right order and each cutoff gets its
+own pseudo-marker (`genoURMat` is `N x q_anno_maf_weight`) -- but the operator is
+`max`, an "any qualifying carrier" indicator, not the additive weighted count the
+paper's corresponding column reports. Two consequences:
+
+- `w0 = 1` does NOT bias these four sets. When the cutoff is >= the threshold
+  there are no real markers, the pseudo-marker IS the test, and a burden
+  p-value is invariant to a global rescaling of `w`. The `w0 = 1` asymmetry
+  only bites sets that mix a UR bucket with real markers.
+- `max` and the paper's additive collapse differ only for individuals carrying
+  TWO OR MORE qualifying ultra-rare variants in the same gene. That count is
+  computable straight from the genotypes, before any test runs, and it bounds
+  the size of the difference a priori. F5 computes it first.
+
+**We do not port the paper's AC x decile binning.** It is a STAAR speed
+workaround ("STAAR ran slowly for genes with a large number of variants") whose
+own validation is that it approximates the unbinned additive burden -- and the
+unbinned test is available exactly, with no new code, via
+`--MACCutoff_to_CollapseUltraRare=0` (the collapse is one condition,
+`if(!(MAC > g_cfg.region_minMAC_cutoff))`, `src/Main.cpp` ~:2345, and 0 is a
+legal value: `R/checkArgs.R` rejects only negatives). Porting it would mean
+implementing someone else's approximation to something we can compute. The
+recommendation is therefore by trait:
+- **quantitative** (the paper's own 62 traits): `--MACCutoff_to_CollapseUltraRare=0`;
+- **binary**: keep the collapse, which is SAIGE-GENE+'s variance stabilisation
+  and earns its keep on unbalanced case/control, and drop the four now-redundant
+  transforms with `--flexRV_MAFTransforms=unw;mafbeta:2,5;mac:25,50,100,200,500`.
+
+If F5 shows the operator matters, the cheap middle option is reviving upstream's
+inactive `sum_geno` collapse (the commented block at `R/checkArgs.R` ~:123):
+additive instead of `max`, still one pseudo-marker, no shape change. That is a
+strictly better target than the paper's binning.
+
+## When FlexRV degenerates
+
+Burden p-values are invariant to a positive global rescaling of `w`, so two
+weight sets differ only if their RATIO pattern across markers differs. The
+number of distinct score values therefore bounds the number of distinct sets:
+
+- **constant score within a cell** -- every score transform returns the same
+  value, all 16 coincide, and the 192 sets collapse to 12. This is the pLoF-only
+  case under the paper's own construction (LoF = 1): `cbrt_t(1) = 1` and
+  `sbeta_b(1) = 1`, so the score axis is entirely degenerate and what runs is a
+  12-way MAC/MAF sweep combined by CCT. Not worthless, but it is not FlexRV and
+  the pooled p should not be called `p_FlexRV`.
+- **score in {0, 1} exactly** -- 0 and 1 are fixed points of every transform, so
+  all 14 nonlinear transforms become the same indicator mask: 16 score sets
+  collapse to at most 3 (`unw`, the indicator, `lof`). A two-valued score at
+  INTERIOR values does not degenerate: {0.2, 0.8} gives ratio 1:2.4 under
+  `cbrt0.5` and 1:2.5e5 under `sbeta20`.
+- **a LoF-only annotation group** -- `lof_*` equals `unw_*` there, 12 duplicate
+  sets. Except through ER: `erAllowedVec[r]` is keyed on the set KIND, so
+  `unw_unw` is ER-exempt and `lof_unw` is not, and on a binary trait with low
+  MAC the two identical-weight sets can take different test paths. Keep the
+  static rule (a data-dependent ER choice would be worse) and document it.
+
+Duplicates are not invalid -- CCT is robust to arbitrary dependence in the tail
+-- but they enter the pool more than once and re-weight it. The escape is the
+spec string (`--flexRV_scoreTransforms=unw` collapses the score axis to 1), not
+a code path. If duplicate-column memoisation is ever added it must be
+COMPUTE-ONCE-AND-COPY (byte-identical output, pool unchanged), not
+skip-and-reweight (which changes the row schema); and equality must be tested on
+the FULL weight vector including the `w0 = 1` UR entry, since proportionality is
+not sufficient once a UR bucket is present.
 
 ## Rules this fixes for F2/F3
 

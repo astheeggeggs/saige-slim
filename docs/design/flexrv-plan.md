@@ -212,6 +212,53 @@ per-cell Cauchy-over-sets rows are a follow-up decision, not in scope.
   print, the `--condition` without `--weights_for_condition` hard error,
   restart-schema guard already keyed on K. Gate: standard byte, every
   existing golden byte-identical.
+  **Decisions taken 2026-09-09**, all of them narrowing the CLI rather than
+  adding machinery (rationale in `docs/design/flexrv-design.md`):
+  - **One cell per FlexRV run.** `--flexRV_maxMAF` (default 0.001) replaces
+    `--maxMAF_in_groupTest` for the run, and exactly ONE annotation group is
+    allowed. Both dimensions must be pinned or the region's pooled Cauchy row is
+    a super-omnibus over anno x maxMAF x set rather than `p_FlexRV`. Internally
+    this is `maxMAFVec = c(M)`, `q_maf = 1` -- no new machinery, and it retires
+    the deferred "per-cell Cauchy row" question. Passing
+    `--maxMAF_in_groupTest` as well, with a different value, is an error naming
+    both flags: silently overriding a knob is the LEDGER #30 shape.
+  - **M != 0.001 warns loudly and renames the sets.** The `mafbeta*` transforms
+    rescale to `(1 - MAF/M)^(b-1)`, because the paper defines them relative to
+    the inclusion boundary ("the most common variants included in this test will
+    have the smallest scores"). The MAC ladder does NOT rescale: `MAC <= 1,3,5`
+    are absolute and interpretable, and rescaling them would invent something
+    the paper does not have. The warning says what actually changes: at
+    M = 0.01 every sub-0.1% variant lands in (0.9, 1] for b=2, so the beta sets
+    stop discriminating among exactly the variants FlexRV is for; and the MAC
+    ladder then spans only the bottom sliver of the tested range (at N = 500k,
+    M = 0.01 admits MAC up to 10,000). M is encoded in the set name
+    (`PAI3D_sbeta5_mafbeta2@0.005`) so the OUTPUT is self-describing -- a stdout
+    warning does not survive into a golden, a column label does.
+  - **`--flexRV_lofAnno` takes a list**, separators `,` `:` `;`
+    interchangeable (one flat dimension, unlike `--annotation_in_groupTest`
+    where `,` separates groups and `:`/`;` join within one). Matching is exact
+    and case-sensitive like every other annotation -- SAIGE has NO annotation
+    vocabulary (`RegionData$ANNO[posSNP] %in% ...`,
+    `R/SAIGE_SPATest_Region.R` ~:1944), so `pLoF`, `plof`, `ptv` are all equally
+    valid and none is special. A label matching nothing in the group file's ANNO
+    column is a hard error naming the labels present (the #113(a) precedent);
+    otherwise the mask silently zeroes and 12 of the 192 sets vanish from the
+    pool with no NA and no message. `isLof_i` is per-marker, evaluated once,
+    reused across cells. Graded pLoF severity (LOFTEE HC/LC) belongs in the
+    score line, not in the mask, which is binary by construction.
+  - **Warn when a cell's score column is constant** (all 16 score transforms
+    coincide; 192 sets collapse to 12) and when it takes only the values 0 and
+    1 (16 collapse to <= 3). A property of the input, so no code path is made
+    data-dependent.
+  - **Write every set's row by default**, `--flexRV_output_sets=FALSE` to emit
+    only the pooled row. The CCT is already computed on the fly from the
+    in-memory p-vector, so this is verbosity, not computation order. Measured
+    cost: 70 B/row in a burden-only golden, so 192 sets x 18,790 genes is
+    ~325 MB per trait and ~10 s of writer time (2-3 us/row). Every analysis
+    worth doing twice -- which transform won, the effective threshold, the
+    score-vs-MAF optimum, why a `p_FlexRV` surprised you -- needs those rows.
+    Do NOT make row emission conditional on a p-value threshold: it puts a
+    statistics-dependent branch in both writers (#51).
 - **F4 fixture, goldens, invariants** (full tier). Fixture
   `extdata/input/group_new_snpid_flexrv.txt` (2 genes, literal deterministic
   scores, LoF rows scored 1). Goldens (next free P numbers in
@@ -234,13 +281,33 @@ per-cell Cauchy-over-sets rows are a follow-up decision, not in scope.
   - Conditional: transform set + `--weights_for_condition` reconciles the
     way `test-step2-multiweight-cond.R` does for custom sets; without the
     flag the exact error message is asserted.
+  **The fixture arithmetic is a constraint, not a detail (2026-09-09).**
+  `genotype_100markers` is N = 10,000, so 2N = 20,000, and at the goldens'
+  `--maxMAF_in_groupTest=0.0001,0.001,0.01` most of the MAF axis is degenerate:
+  the 0.0001 cell (MAC <= 2) is entirely below the collapse cutoff and has no
+  real markers at all; the 0.001 cell (MAC <= 20) makes six of the nine MAC
+  thresholds all-ones, i.e. duplicates of `unw`; the 0.01 cell (MAC <= 200)
+  duplicates `unw` at `MAC200`/`MAC500` and zeroes every MAC >= 20 marker in the
+  beta sets. A FlexRV golden built on the defaults would reproduce the "a golden
+  that reproduces P1 gates nothing" trap. F4 must choose `--flexRV_maxMAF` and
+  `--MACCutoff_to_CollapseUltraRare` deliberately AND assert how many of the 192
+  weight columns are actually distinct on the fixture.
 - **F5 N=50k stage** (SAIGE-sim worktree, fixture outside git). Derive a
   score line from `variants.tsv.gz` (`a_lat` is not written; use the anno
   class plus a seeded deterministic jitter, or add `a_lat` to the table and
   rebuild the fixture, 65 min). Run y_null -> KS on `p_FlexRV` (negative
   control, expect uniform), causal-gene ranking (positive control), and wall
   time and peak RSS at K=192 on one cell and on 12 cells; record in
-  `harness/bench/NOTES.md`. Decide from the numbers whether sparse UR storage
+  `harness/bench/NOTES.md`. **First, before any p-value** (2026-09-09): the
+  fraction of individuals carrying >= 2 qualifying ultra-rare variants per gene,
+  straight from the genotypes -- it bounds a priori how far the `max` collapse
+  can diverge from the paper's additive pseudo-variants, and if it is a fraction
+  of a percent the `sum_geno` question closes without a single test being run.
+  Then `p_FlexRV` at `--MACCutoff_to_CollapseUltraRare` 0 vs 10, null and signal
+  arms; check the null by the ECDF at small alpha with a binomial interval, not
+  by lambda_GC. Timing must separate the ultra-rare pass, which is serial per
+  cell and now runs 192 times instead of once -- the suspected new hot spot, and
+  the input to the deferred duplicate-column memoisation decision. Decide from the numbers whether sparse UR storage
   or the BURDEN-loop threading (`docs/state/region-perf-handoff.md`) becomes a
   next.md item.
 - **F6 docs.** CLAUDE.md paragraph (feature, flags, recommended run, the
