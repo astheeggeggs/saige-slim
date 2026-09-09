@@ -545,6 +545,6 @@ test_that("a pgen GROUP test threads too, byte-identically (P19 at 4 threads)", 
                         txt, fixed = TRUE)),
               label = "the SKAT-O pool reported 4 workers")
   expect_false(any(grepl("cannot be cloned", txt)))
-  expect_output_matches_golden(
-    file.path(saige_goldens, "step2", "pgen_group_nofast.txt"), out)
+  golden <- file.path(saige_goldens, "step2", "pgen_group_nofast.txt")
+  expect_output_matches_golden(golden, out)
 })
