@@ -1,9 +1,11 @@
 # FlexRV on the `strip` branch
 
-<!-- Plan written 2026-09-06/07. Status 2026-09-08: F1 LANDED (97db5a88);
-     F0 and F2 are BLOCKED on the owner supplying the FlexRV PDF, because the
-     16x12 transform table has to be pinned verbatim before the kernels can be
-     written or tested against closed forms (bioRxiv blocks fetches). F3 is the
+<!-- Plan written 2026-09-06/07. Status 2026-09-09: F1 LANDED (97db5a88);
+     F0 LANDED -- the owner supplied the PDF and the 16x12 table is pinned
+     verbatim in docs/design/flexrv-design.md, which SUPERSEDES the lossy-fetch
+     table below and resolves four ambiguities the Methods text leaves open
+     (the MAF beta transform's direction is the one that changes the program).
+     F2 is unblocked. F3 is the
      commit that needs review: it changes mainRegionInCPP's signature, which
      pulls in RcppExports, the stale Main.hpp, src/Makevars and the
      delete-src/*.o rule. F5's memory number is a genuine go/no-go, not a
@@ -39,8 +41,9 @@ weight vectors = 16 pathogenicity transforms x 12 MAF transforms, a burden test
 per vector (SKAT optional), Cauchy-combined into `p_FlexRV`. No training.
 Per-variant score `s` in [0,1]: LoF = 1, missense = PrimateAI-3D percentile
 within the gene's possible missense variants, combined by max. Variants with
-MAF < 0.1%. Transforms as quoted from the Methods (via a lossy fetch; **step F0
-re-pins them from the PDF**):
+MAF < 0.1%. Transforms as quoted from the Methods (via a lossy fetch; **F0 re-pinned
+them from the PDF in `docs/design/flexrv-design.md` -- read that, not this
+table, before writing a kernel**):
 
 | family | count | weight |
 |---|---|---|
