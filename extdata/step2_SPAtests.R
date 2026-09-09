@@ -154,7 +154,7 @@ option_list <- list(
     default = TRUE,
     help = paste0(
       "Whether to apply the leave-one-chromosome-out option. If TRUE, --chrom is ",
-      "required [default=FALSE] "
+      "required, and the null model must have been fitted with LOCO [default=TRUE]."
     )
   ),
   make_option(

@@ -132,15 +132,18 @@ test_that("a non-LOCO model under --LOCO=TRUE is refused, and that message IS ac
 # Characterization -- these assert what the code does TODAY, including the
 # contradiction and the unfollowable advice. Invert them when either is fixed.
 
-test_that("step 2's --LOCO help contradicts its own default (LEDGER #111)", {
+test_that("LEDGER #111 FIXED: step 2's --LOCO help agrees with its own default", {
   skip_unless_level("fast")
   cli <- file.path(saige_extdata, "step2_SPAtests.R")
   skip_if_not(file.exists(cli))
   src <- paste(readLines(cli, warn = FALSE), collapse = "\n")
   # The declaration and the help text sit four lines apart in one make_option.
+  # This is the fast-tier source check; test-step2-cli-help.R pins the RENDERED
+  # --help paragraph in the standard tier, so a change has to pass both.
   block <- regmatches(src, regexpr('"--LOCO".*?\\)\\s*,', src))
   expect_match(block, "default = TRUE", fixed = TRUE)
-  expect_match(block, "[default=FALSE]", fixed = TRUE)
+  expect_false(grepl("[default=FALSE]", block, fixed = TRUE))
+  expect_match(block, "[default=TRUE]", fixed = TRUE)
 })
 
 test_that("LOCO against a sparse-GRM model is refused, with advice it cannot follow (#112)", {
