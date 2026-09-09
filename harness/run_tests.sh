@@ -37,6 +37,14 @@ export TESTTHAT_CPUS="${TESTTHAT_CPUS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null |
 # count quoted in CLAUDE.md drifted from the tool's. Every tier, and CI, gates it.
 python3 "$REPO/harness/tools/ledger.py" lint || exit 1
 
+# And the docs must not repeat a statement a later commit falsified. `selftest`
+# first, because a rule that matches nothing would pass the check silently:
+# it proves every rule still fires on the sentence it was written against.
+# Five copies of two false threading claims survived three sessions before this
+# existed (2026-09-09); drilled at 4c2ca05a^, where it reports 10 hits.
+python3 "$REPO/harness/tools/docdrift.py" selftest || exit 1
+python3 "$REPO/harness/tools/docdrift.py" || exit 1
+
 # package/load_package are REQUIRED for the parallel path: test_dir defaults to
 # load_package="none", which hands each callr worker an empty package name and
 # fails with "attempt to use zero-length variable name" before any test runs.

@@ -150,7 +150,8 @@ PGEN fixtures (`linux-64`/`osx-64` only, hence the per-platform split in
 ## Test suite
 
 `bash harness/run_tests.sh [fast|standard|full]` -- testthat under
-`tests/testthat/`, sourcing the pinned env itself; `ledger.py lint` runs first.
+`tests/testthat/`, sourcing the pinned env itself; `ledger.py lint` and
+`docdrift.py` run first.
 - **fast** (~20s): unit tests over the R seams, R-vs-C++ CCT reconciliation,
   pure kernels pinned to closed forms (`test-unit-spa.R`, `test-unit-firth.R`),
   data-invariant checks over the goldens, and the suite's own comparator
@@ -169,6 +170,21 @@ CI (`.github/workflows/tests.yml`, on the `slim` remote
 `astheeggeggs/saige-slim`, `gh run list --repo astheeggeggs/saige-slim`) uses it.
 Detection power is drill-verified: a planted 0.1% variance-ratio perturbation
 fails the standard tier.
+
+**`harness/tools/docdrift.py` is a blocklist of statements this branch has
+already written down wrongly**, each with the commit that falsified it and the
+evidence to re-check. It is a regression guard, not a drift detector: it cannot
+notice that a doc has gone stale, only that a known-false sentence is back --
+which is the observed failure mode, because the five found on 2026-09-09 had
+been COPIED from each other (CLAUDE.md into the roxygen, the roxygen into
+`man/`, `man/` into the CLI help) and one twin had already been corrected while
+the other was not. It scans only the CURRENT-state surfaces (`CLAUDE.md`,
+`docs/state/next.md`, `R/`, `man/`, `extdata/`); dated handoffs and `LEDGER.md`
+are correct about their own date and are never scanned. `docdrift.py selftest`
+is the control that no rule has quietly stopped matching, and every rule is
+drilled against `4c2ca05a^`, where the tool reports 10 hits. Add a rule only
+after a claim has actually been written wrongly; a line that must quote a false
+claim on purpose carries the marker the tool names.
 
 Characterization tests pin ledger bugs, asserting what the code does TODAY
 including malformed messages and unreachable guards. When one "fails" after a
