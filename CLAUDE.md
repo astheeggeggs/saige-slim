@@ -46,9 +46,11 @@ for the owner, in `docs/state/next.md`.
 `<outputPrefix>_<pheno>.*` plus a `.multiTraits.txt` manifest that step 2
 consumes; each phenotype's outputs byte-identical to a standalone run's):
 `docs/state/step1-multipheno.md`. **Step 2 tests several null models in ONE
-genotype pass** (`--GMMATmodel_varianceRatio_multiTraits_File`, marker path
-only, each model's file byte-identical to its own single-model run):
-`docs/state/multimodel-step2.md`.
+genotype pass** (`--GMMATmodel_varianceRatio_multiTraits_File`, on the marker
+path and -- since 2026-09-06, `2ed00165` -- on the region path too, where every
+model must have been fitted on ONE sample set; each model's file byte-identical
+to its own single-model run): `docs/state/multimodel-step2.md`,
+`docs/state/handoff-2026-09-06-region-multimodel.md`.
 
 ## Traps
 
@@ -385,8 +387,11 @@ process that owns a TBB pool is the hazard; the worker function MUST be
 top-level, or R ships the whole `outList` per task). The two alternate per
 region. SKAT-O itself can never run in-process on threads: SKAT's `qfc` is
 file-scope statics and a global `jmp_buf` (`docs/state/region-perf-handoff.md`).
-The ultra-rare pass and the BURDEN emitter are still serial per cell, which
-is what caps BURDEN at ~1.6x on 4 threads. **Identical cells are evaluated
+The ultra-rare pass and the BURDEN emitter thread their per-cell TESTS as
+well (`runCellTests` in `src/Main.cpp`, one cell per worker); what stays serial
+in cell order is the prepare that feeds each test and the write-back that
+consumes it. That took BURDEN from 1.57x/1.64x at 4 threads to ~1.84x/~1.71x
+(`e7b346ba`, `harness/bench/NOTES.md`). **Identical cells are evaluated
 once (2026-09-09):** a cell whose (Score, Phi, r.corr) is `identical()` to
 an earlier cell's is served that answer (`skatoDedupe`/`skatoMemoKernel`,
 `R/SkatoParallel.R`), the rows still emitted; the run prints

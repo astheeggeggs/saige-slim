@@ -199,7 +199,8 @@ option_list <- list(
       "<SAIGEOutputFile>_<name> per model, each with its own .index; a ",
       "single-row manifest writes the unsuffixed <SAIGEOutputFile>. Models ",
       "whose step-1 sample IDs are identical share one genotype reader and one ",
-      "decode per marker. Single-variant tests only"
+      "decode per marker. A group test takes a manifest too, but there every ",
+      "model must have been fitted on one sample set"
     )
   ),
   make_option(
@@ -629,10 +630,12 @@ option_list <- list(
       "loop is threaded in place -- one process, one copy of the null model, ",
       "one output file -- and the result is byte-identical to a one-thread ",
       "run; restarting an interrupted run works as it does serially. For ",
-      "group tests the marker loop stays on one thread and the threads drive ",
-      "the SKAT-O post-processing instead (about half of a group run at ",
-      "N = 50,000; 1.3x at 4 workers, byte-identical; Unix only, elsewhere a ",
-      "group run stays serial). Falls back to one thread with a warning if the ",
+      "group tests they drive the C++ region marker loop, the per-cell tests ",
+      "of the ultra-rare pass and the BURDEN emitter, and the SKAT-O ",
+      "post-processing (about half of a group run at N = 50,000; at 4 threads ",
+      "SKAT-O 1.69x and BURDEN ~1.8x, byte-identical; the SKAT-O pool is a ",
+      "fork pool, so on non-Unix only that part stays serial). Falls back to ",
+      "one thread with a warning if the ",
       "genotype reader cannot be cloned, which is now only PLINK when the .bed ",
       "could not be memory-mapped; PGEN threads. Set it to the machine's ",
       "PHYSICAL core count: threads beyond that (hyperthreads) did not shorten ",

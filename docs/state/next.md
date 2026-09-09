@@ -582,17 +582,31 @@ the region marker loop, byte-identical at any count, TSAN clean + plant. At 4
 threads on `sim50k`: SKAT-O 1.69x / 1.93x wall, BURDEN 1.57x / 1.64x. The
 `qfc` audit closed in-process SKAT-O for good (see the port section below).
 
-Decided order for what remains:
-* **Step 3b, next:** thread the per-cell tests of the ultra-rare pass and the
+Decided order for what remained. **Steps 3b, 4 and 5 all landed on
+2026-09-06**; this list was left stale here until 2026-09-09.
+* ~~**Step 3b, next:** thread the per-cell tests of the ultra-rare pass and the
   BURDEN emitter (15 independent cells each; they are ~45% of a BURDEN run
   with accumulate and R, which is exactly why BURDEN reads 1.57x and not the
-  3.36x once projected). Predicted ~2.2x at 4 threads on this machine.
-* **Step 4, then:** several null models per region (`--groupFile` with a
+  3.36x once projected). Predicted ~2.2x at 4 threads on this machine.~~
+  **DONE** (`e7b346ba`, `docs/state/handoff-2026-09-06-region-cells.md`):
+  each pass is prepare / test / write-back, only the tests on the pool, so
+  the prepare and write-back stay serial in cell order. Measured **~1.84x /
+  ~1.71x** at 4 threads by the paired ratios, not the 2.2x predicted
+  (`harness/bench/NOTES.md`, the step-3b section).
+* ~~**Step 4, then:** several null models per region (`--groupFile` with a
   manifest). Step 1's buckets size it: the shared prepare is 18-23% of the
-  SKAT-O C++ (~10% of a run per extra model) and 35-59% of BURDEN's.
-* Step 5 (batch the SKAT-O cells) is independent and small.
-* Later, if BURDEN at scale matters: thread across REGIONS rather than
-  markers, which approaches the hardware ceiling (~2.9x at 4 threads here).
+  SKAT-O C++ (~10% of a run per extra model) and 35-59% of BURDEN's.~~
+  **DONE** (`1e02a154` C++ + `2ed00165` R,
+  `docs/state/handoff-2026-09-06-region-multimodel.md`): every model in a
+  region manifest must share one sample set, checked before any state reaches
+  C++.
+* ~~Step 5 (batch the SKAT-O cells) is independent and small.~~ **DONE**
+  (`1c706bd2`, `docs/state/handoff-2026-09-06-region-skato-batch.md`): the
+  cells of a whole batch of regions go to the pool in one call. 2026-09-09
+  added identical-cell dedupe on top (`1b5bf4c1`).
+* **Still open, unscheduled:** if BURDEN at scale matters, thread across
+  REGIONS rather than markers, which approaches the hardware ceiling
+  (~2.9x at 4 threads here).
 
 ## FlexRV: F1 landed, F0/F2 blocked on the paper (2026-09-07, upd. 2026-09-08)
 
