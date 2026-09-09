@@ -645,7 +645,11 @@ solveSpMatrixUsingArma <- function(sparseGRMtest) {
 #' @param skipModelFitting logical.  Whether to skip fitting the null model and only calculating the variance ratio, By default, FALSE. If TURE, the model file ".rda" is needed
 #' @param memoryChunk integer or float. The size (Gb) for each memory chunk. By default, 2
 #' @param tauInit vector of numbers. e.g. c(1,1), Initial values for tau. For binary traits, the first element will be always be set to 1. If the tauInit is 0,0, the second element will be 0.5 for binary traits and the initial tau vector for quantitative traits is 1,0. For quantitative traits the whole of step 1 runs on the phenotype divided by the sd of its covariate-adjusted values and the saved model and variance ratios are scaled back (LEDGER #65), so tauInit is given in phenotype units, the convergence and divergence rules are scale-free, and the old stop() on a phenotype variance below 0.1 is gone; only a constant phenotype stops
-#' @param LOCO logical. Whether to apply the leave-one-chromosome-out (LOCO) option. By default, TRUE
+#' @param LOCO logical or NULL. Whether to apply the leave-one-chromosome-out
+#'   (LOCO) option. LOCO requires a full GRM and is REFUSED with
+#'   useSparseGRMtoFitNULL = TRUE, which has no per-chromosome structure to
+#'   leave out. NULL, the default, resolves to FALSE for a sparse-GRM fit and
+#'   TRUE otherwise
 #' @param traceCVcutoff numeric. The threshold for coefficient of variation (CV) for the trace estimator to increase nrun. By default, 0.0025
 #' @param ratioCVcutoff numeric. The threshold for coefficient of variation (CV) for the variance ratio estimate. If ratioCV > ratioCVcutoff. numMarkersForVarRatio will be increased by 10. By default, 0.001
 #' @param outputPrefix character. Path to the output files with prefix.
@@ -711,7 +715,7 @@ fitNULLGLMM <- function(plinkFile = "",
                         skipModelFitting = FALSE,
                         memoryChunk = 2,
                         tauInit = c(0, 0),
-                        LOCO = TRUE,
+                        LOCO = NULL,
                         isLowMemLOCO = FALSE,
                         traceCVcutoff = 0.0025,
                         ratioCVcutoff = 0.001,
@@ -766,6 +770,26 @@ fitNULLGLMM <- function(plinkFile = "",
       "Male-specific model will be fitted. Samples coded as ",
       MaleCode, " in the column ", sexCol, " in the phenotype file will be included\n"
     )
+  }
+
+  # LOCO is resolved HERE, before its first read at `if (LOCO & isLowMemLOCO)`
+  # below. LOCO leaves one chromosome out of the GRM and a sparse GRM has no
+  # per-chromosome structure to leave out, so the two are incompatible rather
+  # than merely redundant: an EXPLICIT request is refused (LEDGER #112), and an
+  # absent one (NULL) resolves to FALSE for a sparse-GRM fit and TRUE otherwise
+  # -- which is exactly what the silent override produced, so no existing call
+  # changes behaviour.
+  if (useSparseGRMtoFitNULL && isTRUE(LOCO)) {
+    stop(
+      "LOCO = TRUE cannot be combined with useSparseGRMtoFitNULL = TRUE. LOCO leaves ",
+      "one chromosome out of the GRM, and a sparse GRM has no per-chromosome structure ",
+      "to leave out. Either omit LOCO (it then resolves to FALSE for a sparse-GRM fit), ",
+      "pass LOCO = FALSE, or fit the null model with a full GRM ",
+      "(useSparseGRMtoFitNULL = FALSE).\n"
+    )
+  }
+  if (is.null(LOCO)) {
+    LOCO <- !useSparseGRMtoFitNULL
   }
 
   modelOut <- paste0(outputPrefix, ".rda")
@@ -833,12 +857,13 @@ fitNULLGLMM <- function(plinkFile = "",
 
   if (useSparseGRMtoFitNULL) {
     # useSparseGRMforVarRatio = FALSE
-    LOCO <- FALSE
+    # LOCO was already resolved to FALSE above, where the incompatibility is
+    # enforced; these announce the two options this branch takes over.
     nThreads <- 1
-    if (bedFile != "") {
-      cat("sparse GRM will be used to fit the NULL model and nThreads is set to 1\n")
-    }
-    cat("Leave-one-chromosome-out is not applied\n")
+    # announced for every reader: the notice used to sit behind `bedFile != ""`,
+    # so a --plink2File sparse fit overrode nThreads with no output at all
+    cat("sparse GRM will be used to fit the NULL model and nThreads is set to 1\n")
+    cat("LOCO is not applied: the null model is fitted with a sparse GRM\n")
   }
 
 

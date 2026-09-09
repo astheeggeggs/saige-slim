@@ -33,9 +33,13 @@ test_that("ReadModel argument and LOCO validation", {
   expect_error(ReadModel("/nope.rda"), "does not exsit")  # typo verbatim
   expect_error(ReadModel(golden_rda("quant_sparseGRM"), LOCO = "yes"),
                "LOCO should be TRUE or FALSE")
-  # all goldens were fit without LOCO
+  # all goldens were fit without LOCO. LEDGER #112 rewrote this message: it now
+  # leads with the GENERAL condition, because the guard also fires for a dense
+  # fit run with LOCO=FALSE, not only for a sparse-GRM one.
   expect_error(ReadModel(golden_rda("quant_sparseGRM"), chrom = "1", LOCO = TRUE),
-               "LOCO is TRUE but the null model file .rda does not contain LOCO results")
+               "LOCO is TRUE but this null model has no LOCO results", fixed = TRUE)
+  expect_error(ReadModel(golden_rda("quant_sparseGRM"), chrom = "1", LOCO = TRUE),
+               "Step 1 stores them only when it was run with LOCO=TRUE", fixed = TRUE)
 })
 
 test_that("ReadModel LOCO=TRUE picks the per-chromosome result (synthetic fixture)", {
@@ -55,8 +59,9 @@ test_that("ReadModel LOCO=TRUE picks the per-chromosome result (synthetic fixtur
   expect_identical(m$obj.noK$marker, "chr3")
   expect_true(all(vapply(m$LOCOResult, is.null, logical(1))))
 
+  # LEDGER #110: the message no longer names a test type it does not guard.
   expect_error(ReadModel(f, chrom = "", LOCO = TRUE),
-               "chrom needs to be specified in order to apply Leave-one-chromosome-out")
+               "--chrom must be specified when LOCO is TRUE", fixed = TRUE)
 })
 
 test_that("getChromNumber", {
@@ -100,10 +105,10 @@ test_that("ReadModel_subsample repeats ReadModel's LOCO validation", {
                "LOCO should be TRUE or FALSE.", fixed = TRUE)
   expect_error(ReadModel_subsample(fixture(FALSE), chrom = "1", LOCO = TRUE,
                                    subSampleFile = ss),
-               "does not contain LOCO results")
+               "has no LOCO results", fixed = TRUE)
   expect_error(ReadModel_subsample(fixture(TRUE), chrom = "", LOCO = TRUE,
                                    subSampleFile = ss),
-               "chrom needs to be specified in order to apply Leave-one-chromosome-out")
+               "--chrom must be specified when LOCO is TRUE", fixed = TRUE)
 })
 
 test_that("ReadModel_subsample validation and prefix-subset happy path", {

@@ -236,10 +236,13 @@ option_list <- list(
   make_option(
     "--LOCO",
     type = "logical",
-    default = TRUE,
+    default = NULL,
     help = paste0(
       "Whether to apply the leave-one-chromosome-out (LOCO) approach when fitting ",
-      "the null model using the full GRM [default=TRUE]."
+      "the null model using the full GRM. LOCO requires a full GRM: it is refused ",
+      "with --useSparseGRMtoFitNULL=TRUE, because a sparse GRM has no per-chromosome ",
+      "structure to leave out. If not supplied, defaults to FALSE for a sparse-GRM ",
+      "fit and TRUE otherwise [default=TRUE, except sparse-GRM fits]."
     )
   ),
   make_option(

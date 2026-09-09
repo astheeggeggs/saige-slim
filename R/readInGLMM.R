@@ -75,7 +75,14 @@ ReadModel <- function(GMMATmodelFile = "", chrom = "", LOCO = TRUE, is_Firth_bet
     }
   } else {
     if (!modglmm$LOCO) {
-      stop("LOCO is TRUE but the null model file .rda does not contain LOCO results. In order to apply Leave-one-chromosome-out, please run Step 1 using LOCO. Otherwise, please set LOCO=FALSE in this step (Step 2).\n")
+      stop(
+        "LOCO is TRUE but this null model has no LOCO results. Step 1 stores them only ",
+        "when it was run with LOCO=TRUE against a full GRM. A model fitted with ",
+        "--useSparseGRMtoFitNULL=TRUE never has them: a sparse GRM has no per-chromosome ",
+        "structure to leave out, so Step 1 refuses that combination. Set LOCO=FALSE in ",
+        "this step (Step 2), or refit the null model in Step 1 with ",
+        "--useSparseGRMtoFitNULL=FALSE --LOCO=TRUE.\n"
+      )
     } else {
       if (chrom == "") {
         stop(
@@ -236,7 +243,14 @@ ReadModel_subsample <- function(GMMATmodelFile = "", chrom = "", LOCO = TRUE, is
     }
   } else {
     if (!modglmm$LOCO) {
-      stop("LOCO is TRUE but the null model file .rda does not contain LOCO results. In order to apply Leave-one-chromosome-out, please run Step 1 using LOCO. Otherwise, please set LOCO=FALSE in this step (Step 2).\n")
+      stop(
+        "LOCO is TRUE but this null model has no LOCO results. Step 1 stores them only ",
+        "when it was run with LOCO=TRUE against a full GRM. A model fitted with ",
+        "--useSparseGRMtoFitNULL=TRUE never has them: a sparse GRM has no per-chromosome ",
+        "structure to leave out, so Step 1 refuses that combination. Set LOCO=FALSE in ",
+        "this step (Step 2), or refit the null model in Step 1 with ",
+        "--useSparseGRMtoFitNULL=FALSE --LOCO=TRUE.\n"
+      )
     } else {
       if (chrom == "") {
         stop(

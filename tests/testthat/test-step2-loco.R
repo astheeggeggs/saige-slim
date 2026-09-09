@@ -7,9 +7,9 @@
 # covers the second and `test-unit-readmodel.R` the third at unit level; this
 # file covers the third END TO END, against golden `binary_loco_2chr`.
 #
-# Only a dense-GRM fit can carry a LOCOResult at all:
-# `useSparseGRMtoFitNULL=TRUE` forces `LOCO <- FALSE`
-# (R/SAIGE_fitGLMM_fast.R:836).
+# Only a dense-GRM fit can carry a LOCOResult at all: with
+# `useSparseGRMtoFitNULL=TRUE`, LOCO resolves to FALSE when it was not asked
+# for and is REFUSED when it was (LEDGER #112, R/SAIGE_fitGLMM_fast.R).
 
 LOCO_G2 <- function() {
   c("--bedFile=./input/genotype_100markers_2chr.bed",
@@ -109,12 +109,14 @@ test_that("LEDGER #110 FIXED: the missing --chrom message names no test type", {
   expect_match(txt, "set LOCO=FALSE", fixed = TRUE)
 })
 
-test_that("a non-LOCO model under --LOCO=TRUE is refused, and that message IS accurate", {
+test_that("a DENSE non-LOCO model under --LOCO=TRUE is refused, without blaming the GRM", {
   skip_unless_level("standard")
   skip_if_no_goldens()
   # The sibling guard three lines above the one in the previous test, on the
-  # same path. It is pinned too so that #110 records one bad string rather than
-  # leaving the reader to wonder whether the whole block is wrong.
+  # same path. binary_denseGRM is a FULL-GRM fit run with --LOCO=FALSE, so it
+  # reaches this guard for a reason that has nothing to do with sparse GRMs.
+  # #112 rewrote the message; this pins that the rewrite did not narrow it to
+  # the sparse case, which would be the #110 error committed again.
   out <- file.path(tempfile("loco_nonloco_"), "out.txt")
   dir.create(dirname(out), recursive = TRUE)
   log <- tempfile(fileext = ".log")
@@ -127,14 +129,18 @@ test_that("a non-LOCO model under --LOCO=TRUE is refused, and that message IS ac
                                              "binary_denseGRM.varianceRatio.txt")),
                             paste0("--SAIGEOutputFile=", out)), log = log)
   expect_false(status == 0)
-  expect_match(paste(readLines(log, warn = FALSE), collapse = "\n"),
-               "does not contain LOCO results", fixed = TRUE)
+  txt <- paste(readLines(log, warn = FALSE), collapse = "\n")
+  expect_match(txt, "has no LOCO results", fixed = TRUE)
+  # the general condition is stated first, so it covers this dense LOCO=FALSE fit
+  expect_match(txt, "Step 1 stores them only when it was run with LOCO=TRUE", fixed = TRUE)
+  expect_match(txt, "Set LOCO=FALSE in this step", fixed = TRUE)
 })
 
 # ---------------------------------------------------------------------------
-# LEDGER #111 and #112: the LOCO defaults, and LOCO against a sparse-GRM model.
-# Characterization -- these assert what the code does TODAY, including the
-# contradiction and the unfollowable advice. Invert them when either is fixed.
+# LEDGER #111 and #112 FIXED: the LOCO defaults, and LOCO against a sparse-GRM
+# model. These assert the corrected behaviour -- the help agrees with its
+# default, an explicit LOCO=TRUE with a sparse GRM is refused at step 1, and
+# step 2's remedy names only actions the user can actually take.
 
 test_that("LEDGER #111 FIXED: step 2's --LOCO help agrees with its own default", {
   skip_unless_level("fast")
@@ -150,14 +156,15 @@ test_that("LEDGER #111 FIXED: step 2's --LOCO help agrees with its own default",
   expect_match(block, "[default=TRUE]", fixed = TRUE)
 })
 
-test_that("LOCO against a sparse-GRM model is refused, with advice it cannot follow (#112)", {
+test_that("LEDGER #112 FIXED: LOCO against a sparse-GRM model is refused with advice that works", {
   skip_unless_level("standard")
   skip_if_no_goldens()
-  # binary_sparseGRM_a was fitted with --useSparseGRMtoFitNULL=TRUE, which sets
-  # LOCO <- FALSE silently (R/SAIGE_fitGLMM_fast.R:836) even though that run
-  # requested --LOCO=TRUE. Here --LOCO is simply left at its CLI default, which
-  # IS TRUE (#111), and --chrom is supplied so this is not #110's path. So this
-  # is the default invocation of the recommended workflow.
+  # binary_sparseGRM_a was fitted with --useSparseGRMtoFitNULL=TRUE, which
+  # resolves LOCO to FALSE. That golden does NOT pass --LOCO: its log echoes
+  # `$LOCO [1] TRUE` because that was the CLI default, which is the distinction
+  # the fix now makes real. Here --LOCO is likewise left at its default and
+  # --chrom is supplied, so this is not #110's path: it is the default
+  # invocation of the recommended workflow.
   out <- file.path(tempfile("loco_sparse_"), "out.txt")
   dir.create(dirname(out), recursive = TRUE)
   log <- tempfile(fileext = ".log")
@@ -176,12 +183,40 @@ test_that("LOCO against a sparse-GRM model is refused, with advice it cannot fol
   status <- run_saige_cli("step2_SPAtests.R", args, log = log)
   expect_false(status == 0)
   txt <- paste(readLines(log, warn = FALSE), collapse = "\n")
-  expect_match(txt, "does not contain LOCO results", fixed = TRUE)
-  # The half of the remedy that cannot be carried out on a sparse-GRM fit: the
-  # user DID run step 1 with LOCO and it was overridden without a word.
-  expect_match(txt, "please run Step 1 using LOCO", fixed = TRUE)
-  # ... and the half that can.
-  expect_match(txt, "please set LOCO=FALSE in this step", fixed = TRUE)
+  expect_match(txt, "has no LOCO results", fixed = TRUE)
+  # The old remedy could not be carried out on a sparse-GRM fit: it told the
+  # user to "run Step 1 using LOCO", which Step 1 now refuses outright.
+  expect_false(grepl("please run Step 1 using LOCO", txt, fixed = TRUE))
+  # Both remedies that do exist are named, and the reason is given.
+  expect_match(txt, "Set LOCO=FALSE in this step", fixed = TRUE)
+  expect_match(txt, "--useSparseGRMtoFitNULL=FALSE --LOCO=TRUE", fixed = TRUE)
+  expect_match(txt, "no per-chromosome structure to leave out", fixed = TRUE)
+})
+
+test_that("LEDGER #112 FIXED: step 1 refuses an EXPLICIT --LOCO=TRUE with a sparse GRM", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  # The other half of the row: the combination is now refused at the point the
+  # user asks for it, rather than overridden and failing a step later.
+  sg <- "output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx"
+  plink <- "nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr"
+  pheno <- "pheno_1000samples.txt_withdosages_withBothTraitTypes.txt"
+  log <- tempfile(fileext = ".log")
+  status <- run_saige_cli("step1_fitNULLGLMM.R",
+                          c(paste0("--plinkFile=./input/", plink),
+                            paste0("--sparseGRMFile=", sg),
+                            paste0("--sparseGRMSampleIDFile=", sg, ".sampleIDs.txt"),
+                            "--useSparseGRMtoFitNULL=TRUE", "--LOCO=TRUE",
+                            paste0("--phenoFile=./input/", pheno),
+                            "--phenoCol=y_binary", "--covarColList=x1,x2",
+                            "--sampleIDColinphenoFile=IID", "--traitType=binary",
+                            "--IsOverwriteVarianceRatioFile=TRUE",
+                            paste0("--outputPrefix=", tempfile("loco_refuse_"))),
+                          log = log)
+  expect_false(status == 0)
+  txt <- paste(readLines(log, warn = FALSE), collapse = "\n")
+  expect_match(txt, "cannot be combined with useSparseGRMtoFitNULL = TRUE", fixed = TRUE)
+  expect_match(txt, "no per-chromosome structure", fixed = TRUE)
 })
 
 # ---------------------------------------------------------------------------
