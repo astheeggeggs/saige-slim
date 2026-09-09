@@ -64,7 +64,12 @@ SPAGMMATtest(
   is_noadjCov = TRUE,
   is_output_weight_column = FALSE,
   nThreads = 1,
-  GMMATmodel_varianceRatio_multiTraits_File = ""
+  GMMATmodel_varianceRatio_multiTraits_File = "",
+  flexRV_score = NULL,
+  flexRV_scoreTransforms = flexrvDefaultScoreSpec,
+  flexRV_MAFTransforms = flexrvDefaultMAFSpec,
+  flexRV_lofAnno = "lof",
+  flexRV_maxMAF = 0.001
 )
 }
 \arguments{
@@ -96,9 +101,14 @@ SPAGMMATtest(
 
 \item{min_MAF}{numeric. Minimum minor allele frequency for markers to be tested. The higher threshold between min_MAC and min_MAF will be used. By default, 0}
 
-\item{min_Info}{numeric. Minimum imputation info for markers to be tested if is_imputed_data=TRUE. By default, 0}
+\item{min_Info}{numeric. Minimum imputation INFO for markers to be tested.
+Not available on this branch: no genotype reader supplies an INFO score, so
+any value above 0 is refused rather than silently accepted. By default, 0}
 
-\item{is_imputed_data}{logical. Whether the dosages/genotypes imputed are imputed. If TRUE, the program will output the imputed info score. By default, FALSE.}
+\item{is_imputed_data}{logical. Whether the genotypes are imputed dosages. If
+TRUE, the program replaces the MissingRate column with imputationInfo. Not
+available on this branch: no genotype reader supplies an INFO score, so TRUE
+is refused rather than returning a constant column. By default, FALSE}
 
 \item{GMMATmodelFile}{character. Path to the input file containing the glmm model, which is output from previous step. Will be used by load()}
 
@@ -136,9 +146,15 @@ SPAGMMATtest(
 
 \item{r.corr}{numeric. bewteen 0 and 1. parameters for gene-based tests. If r.corr = 1, only Burden tests will be performed. If r.corr = 0, SKAT-O tests will be performed and results for Burden tests and SKAT tests will be output too.  By default, 0. The per-region Cauchy row is the ACAT of the cells' SKAT-O Pvalue, except that when any cell's Pvalue is exactly 1 (the SKAT package saturates its SKAT-O integral to 1 when the smallest per-rho p exceeds ~0.78) the row is min(1, n_cells * min(Pvalue)), a Bonferroni under the Cauchy label; see LEDGER #86.}
 
-\item{dosage_zerod_cutoff}{numeric. If is_imputed_data = TRUE, For variants with MAC <= dosage_zerod_MAC_cutoff, dosages <= dosageZerodCutoff with be set to 0. By derault, 0.2}
+\item{dosage_zerod_cutoff}{numeric. For variants with MAC <=
+dosage_zerod_MAC_cutoff, values <= this cutoff are set to 0. Applies to EVERY
+run, not only when is_imputed_data = TRUE: an ultra-rare variant should not be
+recorded as fractionally present where it was merely missing. Set 0 to switch
+it off. By default, 0.2}
 
-\item{dosage_zerod_MAC_cutoff}{numeric. If is_imputed_data = TRUE, For variants with MAC <= dosage_zerod_MAC_cutoff, dosages <= dosageZerodCutoff with be set to 0. By derault, 10}
+\item{dosage_zerod_MAC_cutoff}{numeric. The MAC at or below which
+dosage_zerod_cutoff applies. Applies to every run, not only when
+is_imputed_data = TRUE. By default, 10}
 
 \item{is_output_moreDetails}{logical. Whether to output heterozygous and homozygous counts in cases and controls. By default, FALSE. If True, the columns homN_Allele2_cases, hetN_Allelelogical2_cases, homN_Allele2_ctrls, hetN_Allele2_ctrls will be output. By default, FALSE}
 
@@ -190,6 +206,16 @@ the printed digits. Only for binary traits with is_Firth_beta = TRUE.}
 \item{nThreads}{integer. Number of threads for the single-variant marker scan. The C++ marker loop is threaded in place, so there is one process, one copy of the null model and one output file; the result is byte-identical to a one-thread run, which is the gate in tests/testthat/test-step2-threads-inprocess.R. Restarting an interrupted run works exactly as it does serially. For a GROUP test it drives three things, all byte-identical to one thread: the C++ region marker loop and the per-cell tests of the ultra-rare pass and the BURDEN emitter (both since 2026-09-06), and the SKAT-O post-processing, which Rprof puts at 45\% of a group run at N = 50,000. At 4 threads on N = 50,000: SKAT-O 1.69x, BURDEN ~1.84x (binary) / ~1.71x (quantitative) -- see harness/bench/NOTES.md. The SKAT-O pool is a fork pool and so is Unix only; on other platforms the post-processing stays serial while the C++ loops still thread. A genotype reader that cannot be cloned (PLINK when the .bed could not be memory mapped) falls back to one thread with a warning. PGEN threads too, since S8. By default, 1}
 
 \item{GMMATmodel_varianceRatio_multiTraits_File}{character. Path to a manifest of null models to test in ONE marker scan, sharing the genotype read. Three whitespace-separated columns, no header: a name, the step-1 .rda, and that model's variance ratio file. Mutually exclusive with GMMATmodelFile/varianceRatioFile. Output goes to <SAIGEOutputFile>_<name> per model, each with its own .index -- except for a single-row manifest, which writes the unsuffixed <SAIGEOutputFile> and is byte- and name-identical to the equivalent GMMATmodelFile run. Models whose step-1 sample IDs are identical share one genotype reader and one decode per marker; models with different sample sets each get their own. A group test (groupFile) takes a manifest too, but every model must have been fitted on the SAME sample set (identical step-1 sampleID vectors); more than one sample-set group there is an error. By default, ""}
+
+\item{flexRV_score}{character. FlexRV (Schwartzentruber et al. 2025): the name of the group file's 'score:NAME' line (per-marker pathogenicity in [0, 1]). When given, the 16 x 12 = 192 FlexRV weight sets (flexRV_scoreTransforms x flexRV_MAFTransforms) are expanded from it inside SAIGE and tested as weight sets of the group test; the region's Cauchy row over them is p_FlexRV. Requires exactly ONE annotation group and ONE max MAF (flexRV_maxMAF); see docs/design/flexrv-design.md. By default, NULL (off)}
+
+\item{flexRV_scoreTransforms}{character. FlexRV score transforms as ';'-separated families: unw, lof, cbrt:t1,t2,... (cubic root with transition t in (0,1)), sbeta:b1,b2,... (beta with a = 1, b > 1). By default, the paper's 16}
+
+\item{flexRV_MAFTransforms}{character. FlexRV MAF transforms: unw, mafbeta:b1,b2,... ((1 - MAF/flexRV_maxMAF)^(b-1), zero at and above the boundary), mac:t1,t2,... (1 if in-sample MAC <= t). By default, the paper's 12. With the ultra-rare collapse on (MACCutoff_to_CollapseUltraRare = 10) the mac:1,3,5,10 sets test only the collapsed pseudo-marker}
+
+\item{flexRV_lofAnno}{character. Annotation label(s) the FlexRV 'lof' score transform keys on, separated by ',', ':' or ';'; matched exactly, and each must occur in the group file. By default, "lof"}
+
+\item{flexRV_maxMAF}{numeric. The single max MAF of a FlexRV run (the paper's variant filter). Replaces maxMAF_in_groupTest; giving both with different values is an error. Not 0.001 rescales the mafbeta transforms to the new boundary (and names them mafbeta<b>@<maxMAF>) but leaves the MAC ladder alone. By default, 0.001}
 }
 \value{
 SAIGEOutputFile

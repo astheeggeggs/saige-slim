@@ -9,6 +9,7 @@
 // std::this_thread::sleep_for (std::chrono::seconds(1));
 #include <cstdio>         // std::remove
 #include <fstream>
+#include <iomanip>        // std::setprecision (the FlexRV memory line)
 #include <string.h>
 // Currently, omp does not work well, will check it later
 // error: SET_VECTOR_ELT() can only be applied to a 'list', not a 'character'
@@ -19,6 +20,7 @@
 #include <RcppParallel.h>   // S6: parallelFor for the marker scan
 #include <mutex>
 #include "Main.hpp"
+#include "FlexRV.hpp"
 #include <cstring>
 #include <cstdlib>
 #include <functional>
@@ -1845,6 +1847,10 @@ Rcpp::List mainRegionInCPP(
 			   bool t_includeNoWeights,    // append an all-ones "No_Weights" set
 			   std::vector<std::string> & t_weightNames, // per-set labels; only consumed when the Weight column is emitted
 			   bool t_forceWeightColumn, // emit the Weight column in the BURDEN writer even at q_weight == 1 (is_output_weight_column)
+			   arma::vec & t_score,        // FlexRV (F3): per-marker pathogenicity score in [0,1], length q0 when transform sets are in play, else empty
+			   arma::vec & t_isLof,        // FlexRV: per-marker LoF indicator (0/1), same length as t_score
+			   arma::mat & t_transformTable, // FlexRV: Kt x 4 (scoreKind, scoreParam, mafKind, mafParam); 0 rows when none
+			   double t_flexMaxMAF,        // FlexRV: the inclusion boundary M the mafbeta transforms rescale to
 			   arma::vec & t_weight_cond,
 			   bool t_isSingleinGroupTest,
 			   bool t_isOutputMarkerList, 
@@ -1936,6 +1942,24 @@ Rcpp::List mainRegionInCPP(
   boost::math::beta_distribution<> beta_dist(g_cfg.weights_beta[0], g_cfg.weights_beta[1]);
   bool hasCustomWeights = (!(t_weight.is_zero()) && t_weight.n_rows == q0);
   unsigned int q_weight_custom = hasCustomWeights ? t_weight.n_cols : 0;
+  // FlexRV (F3): Kt transform sets, one per row of the transform table,
+  // composed right after the custom sets. A transform set behaves like a
+  // custom set everywhere below (weighted ultra-rare collapse, w0 = 1 on the
+  // pseudo-marker, ER only when its weights are identically 1), the one
+  // difference being where the per-marker weight comes from: computed here
+  // from the marker's score, LoF flag and IN-SAMPLE MAF/MAC once QC has
+  // fixed them (prepare), never read from a file. R receives the q0 x Kt
+  // matrix back as transformWeightMat and re-derives nothing.
+  FlexRV::checkTable(t_transformTable);
+  const unsigned int q_weight_transform = t_transformTable.n_rows;
+  if(q_weight_transform > 0){
+    if(t_score.n_elem != q0 || t_isLof.n_elem != q0){
+      Rcpp::stop("mainRegionInCPP: FlexRV transform sets need one score and one LoF flag per marker (got " + std::to_string(t_score.n_elem) + " scores and " + std::to_string(t_isLof.n_elem) + " flags for " + std::to_string(q0) + " markers)");
+    }
+    if(!(t_flexMaxMAF > 0.0)){
+      Rcpp::stop("mainRegionInCPP: FlexRV maxMAF must be > 0");
+    }
+  }
   bool hasExplicitBeta = !(t_beta_params.is_zero());
   if(hasExplicitBeta && !(t_beta_params.n_cols == 2 && t_beta_params.n_rows >= 1)){
     // fail fast on a malformed (e.g. transposed Kb x 2 -> 2 x Kb) matrix
@@ -1944,16 +1968,16 @@ Rcpp::List mainRegionInCPP(
     Rcpp::stop("mainRegionInCPP: t_beta_params must be the 0-matrix sentinel or a Kb x 2 matrix of beta(a,b) parameter pairs; got %d x %d", (int)(t_beta_params.n_rows), (int)(t_beta_params.n_cols));
   }
   unsigned int q_weight_beta = hasExplicitBeta ? t_beta_params.n_rows : 0;
-  bool useImplicitBeta = (q_weight_custom + q_weight_beta + (t_includeNoWeights ? 1u : 0u)) == 0;
+  bool useImplicitBeta = (q_weight_custom + q_weight_transform + q_weight_beta + (t_includeNoWeights ? 1u : 0u)) == 0;
   if(useImplicitBeta){
     q_weight_beta = 1;
   }
-  unsigned int q_weight = q_weight_custom + q_weight_beta + (t_includeNoWeights ? 1u : 0u);
+  unsigned int q_weight = q_weight_custom + q_weight_transform + q_weight_beta + (t_includeNoWeights ? 1u : 0u);
   // Weight-column emission in the BURDEN writer: on for a real multi-weight
   // run, or forced at a single set by is_output_weight_column (schema only;
   // no arithmetic depends on this flag)
   bool emitWeightColumn = (q_weight > 1) || t_forceWeightColumn;
-  const int SET_CUSTOM = 0, SET_BETA = 1, SET_NOWEIGHT = 2;
+  const int SET_CUSTOM = 0, SET_BETA = 1, SET_NOWEIGHT = 2, SET_TRANSFORM = 3;
   std::vector<int> setKindVec(q_weight);
   std::vector<unsigned int> setColVec(q_weight, 0);  // custom column / beta row per set
   std::vector<boost::math::beta_distribution<>> betaDistVec;
@@ -1967,6 +1991,14 @@ Rcpp::List mainRegionInCPP(
       setKindVec[rset] = SET_CUSTOM;
       setColVec[rset] = c;
       erAllowedVec[rset] = arma::all(t_weight.col(c) == 1.0);
+      rset++;
+    }
+    for(unsigned int c = 0; c < q_weight_transform; c++){
+      setKindVec[rset] = SET_TRANSFORM;
+      setColVec[rset] = c;
+      // only the unw x unw set has weights identically 1; a zero weight is
+      // not a unit weight, so lof_unw is NOT exempt (design doc, "ER gating")
+      erAllowedVec[rset] = FlexRV::isUnitRow(t_transformTable, c);
       rset++;
     }
     for(unsigned int b = 0; b < q_weight_beta; b++){
@@ -1990,6 +2022,42 @@ Rcpp::List mainRegionInCPP(
   unsigned int q_maf = maxMAFVec.n_elem;
   unsigned int q_anno_maf = q_anno*q_maf;                    // weight-independent (jm) slots
   unsigned int q_anno_maf_weight = q_anno_maf*q_weight;      // per-set (jmr) slots
+  // FlexRV: the per-marker transform weights, filled in accumulate() for
+  // every marker that passes QC (NaN otherwise; those rows never reach a
+  // test) and exported to R for the SKAT-O post-processing
+  arma::mat transformWeightMat(q0, q_weight_transform);
+  transformWeightMat.fill(arma::datum::nan);
+  if(q_weight_transform > 0){
+    // Printed once per process: the dense N-length structures below are
+    // per (anno x max_MAF x set) cell, so at Kt = 192 they are the memory
+    // of the run. Counted: genoURMat + genoSumMat (2 columns per cell), the
+    // persistent ultra-rare cell records (a collapsed vector plus its
+    // zero-index vector, ~2N each), and for BURDEN the burden cell records
+    // (the same shape); a SKAT-O run adds each model's residualised copy of
+    // genoSumMat and its P1/P2 scratch (2 x max(m1, cells) x N), and keeps
+    // every chunk's P1/P2 rows in memory on top of that. An estimate of the
+    // floor, not a measurement (docs/design/flexrv-design.md, "Memory").
+    static bool s_flexMemPrinted = false;
+    if(!s_flexMemPrinted){
+      s_flexMemPrinted = true;
+      const double cells = (double)q_anno_maf_weight;
+      const double perN = 8.0 * (double)t_n;
+      double bytes = perN * cells * 4.0;   // genoURMat, genoSumMat, UR records (vec + zero idx)
+      if(t_regionTestType == "BURDEN"){
+        bytes += perN * cells * 2.0;       // burden cell records
+      }else{
+        const double m1c = std::max((double)g_cfg.region_maxMarkers_cutoff, cells);
+        bytes += (double)P * (perN * cells + 2.0 * perN * m1c);
+      }
+      std::cout << "FlexRV: " << q_weight_transform << " transform sets over "
+                << q_anno_maf << " (annotation x max_MAF) cell(s) = " << q_anno_maf_weight
+                << " weighted cells per region; the dense per-cell working memory is at least "
+                << std::fixed << std::setprecision(1) << (bytes / 1048576.0) << " MB at N = " << t_n
+                << (t_regionTestType == "BURDEN" ? " (BURDEN)" : " (SKAT-O, plus the per-chunk P1/P2 rows)")
+                << std::endl;
+      std::cout.unsetf(std::ios_base::floatfield);
+    }
+  }
   arma::mat genoURMat(t_n, q_anno_maf_weight, arma::fill::zeros);
   arma::mat genoURMat_noweights(t_n, q_anno_maf, arma::fill::zeros);  // jm-indexed (weight-independent)
   unsigned int q = q0 + q_anno_maf_weight;
@@ -2330,6 +2398,10 @@ Rcpp::List mainRegionInCPP(
     for(unsigned int r = 0; r < q_weight; r++){
       if(setKindVec[r] == SET_CUSTOM){
         pr.w0(r) = t_weight(i, setColVec[r]);
+      }else if(setKindVec[r] == SET_TRANSFORM){
+        // FlexRV: score transform x MAF transform on the marker's in-sample
+        // MAF/MAC as fixed by imputeGenoAndFlip above (src/FlexRV.cpp)
+        pr.w0(r) = FlexRV::weight(t_transformTable, setColVec[r], t_score(i), t_isLof(i) != 0.0, MAF, MAC, t_flexMaxMAF);
       }else if(setKindVec[r] == SET_BETA){
         pr.w0(r) = boost::math::pdf(betaDistVec[setColVec[r]], MAF);
       }else{
@@ -2466,6 +2538,11 @@ Rcpp::List mainRegionInCPP(
     if(!pr.passQC){
       return;
     }
+    for(unsigned int r = 0; r < q_weight; r++){
+      if(setKindVec[r] == SET_TRANSFORM){
+        transformWeightMat(i, setColVec[r]) = pr.w0(r);
+      }
+    }
     const uint nNonZero = pr.nz.n_elem;
     const bool flip = pr.flip;
     if(pr.isRare){  // not Ultra-Rare Variants
@@ -2574,7 +2651,7 @@ Rcpp::List mainRegionInCPP(
               for(unsigned int r = 0; r < q_weight; r++){
                 jmr = jm*q_weight + r;
                 annoMAFIndicatorVec(jmr) = 2;
-                if(setKindVec[r] != SET_CUSTOM){
+                if(setKindVec[r] != SET_CUSTOM && setKindVec[r] != SET_TRANSFORM){
                   // beta / No_Weights sets: unweighted collapse (per-kind table above)
                   for(unsigned int k2 = 0; k2 < nNonZero; k2++){
                     genoURMat(pr.nz(k2), jmr) = std::max(genoURMat(pr.nz(k2), jmr), pr.gnz(k2));
@@ -2593,9 +2670,13 @@ Rcpp::List mainRegionInCPP(
                 }else{
                   // custom set: collapse the w_r-weighted genotypes; the jm-indexed
                   // unweighted collapse is kept for the count accumulators (max is
-                  // idempotent, so repeating it per custom set is exact)
+                  // idempotent, so repeating it per custom set is exact).
+                  // A FlexRV transform set collapses the same way with its
+                  // computed weight (pr.w0(r); for a custom set that is the very
+                  // same double as t_weight(i, col), which is kept textually).
+                  const double wUR = (setKindVec[r] == SET_CUSTOM) ? t_weight(i, setColVec[r]) : pr.w0(r);
                   for(unsigned int k2 = 0; k2 < nNonZero; k2++){
-                    genoURMat(pr.nz(k2), jmr) = std::max(genoURMat(pr.nz(k2), jmr) , t_weight(i, setColVec[r]) * (pr.gnz(k2)));
+                    genoURMat(pr.nz(k2), jmr) = std::max(genoURMat(pr.nz(k2), jmr) , wUR * (pr.gnz(k2)));
                     genoURMat_noweights(pr.nz(k2), jm) = std::max(genoURMat_noweights(pr.nz(k2), jm) , (pr.gnz(k2)));
                   }
                 }
@@ -2922,7 +3003,9 @@ if(i2 > 0){
 	  // the WEIGHTED support, exactly as upstream). At q_weight > 1 the
 	  // count was already accumulated once per (j,m) before the r loop, so
 	  // the emission loops touch genoSumMat only.
-	  if(setKindVec[r] == SET_CUSTOM){
+	  if(setKindVec[r] == SET_CUSTOM || setKindVec[r] == SET_TRANSFORM){
+	    // (a FlexRV transform set is a custom set here: its weight is
+	    // already inside the collapse, so the pseudo-marker carries 1)
 	    // LEDGER #17 FIXED. w0 used to be left UNASSIGNED here, and the
 	    // conditional export below multiplies by it -- so a K=1 custom-weighted
 	    // group file plus --condition read an uninitialised double.
@@ -3620,6 +3703,9 @@ if(t_regionTestType == "BURDEN"){
 
     OutList.push_back(w.VarMat, "VarMat");
     OutList.push_back(MAFVec, "MAFVec");
+    if(q_weight_transform > 0){
+      OutList.push_back(transformWeightMat, "transformWeightMat");
+    }
     OutList.push_back(w.TstatVec_flip, "TstatVec_flip");
   //arma::mat scaled_m_VarInvMat_cond;
     if(isCondition){

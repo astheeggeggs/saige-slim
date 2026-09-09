@@ -169,6 +169,7 @@ region_postprocess <- function(outList,
   nWeightSets <- length(weight_sets$kind)
   ws_kind <- weight_sets$kind
   ws_customCol <- weight_sets$customCol
+  ws_transformCol <- weight_sets$transformCol
   ws_betaA <- weight_sets$betaA
   ws_betaB <- weight_sets$betaB
   ws_force <- isTRUE(weight_sets$force)
@@ -215,6 +216,10 @@ region_postprocess <- function(outList,
       #    dbeta(MAF, 1, 25) whatever --weights.beta said, a C++/R hybrid);
       #    reachable here only at K = 1 with is_output_weight_column.
       #  noweight: all ones.
+      #  transform (FlexRV): custom-set semantics over the q0 x Kt weight
+      #    matrix C++ computed per marker and exported as transformWeightMat
+      #    (NaN on a marker that failed QC; such rows are dropped with the
+      #    NA p-values below, exactly as a custom set's are)
       # outList$numofUR is q_anno*q_maf*K, so each vector is q0 + numofUR
       # long -- one entry per row of the marker-level output, as at K = 1
       # (outList$MAFVec has that same length). Rows of other sets are never
@@ -227,6 +232,7 @@ region_postprocess <- function(outList,
           },
           beta = dbeta(outList$MAFVec, ws_betaA[r], ws_betaB[r]),
           noweight = rep(1, length(outList$MAFVec)),
+          transform = c(outList$transformWeightMat[, ws_transformCol[r]], rep(1, outList$numofUR)),
           stop("region_postprocess: unknown weight-set kind '", ws_kind[r], "'\n")
         )
       })
@@ -704,6 +710,13 @@ SAIGE.Region <- function(mu,
                          is_output_moreDetails,
                          weights_beta_mat = matrix(c(1, 25), nrow = 1, ncol = 2),
                          is_output_weight_column = FALSE,
+                         # FlexRV (F3): NULL, or the list SPAGMMATtest builds
+                         # from --flexRV_score/--flexRV_scoreTransforms/
+                         # --flexRV_MAFTransforms/--flexRV_lofAnno/--flexRV_maxMAF
+                         # (fields score, scoreTransforms, MAFTransforms,
+                         # lofAnno, maxMAF). The transform sets it describes are
+                         # composed right after the group file's custom sets.
+                         flexRV = NULL,
                          # Workers for the SKAT-O post-processing only. The C++
                          # region loop stays single-threaded; this parallelises
                          # the 45% of a group run that Rprof puts in
@@ -860,10 +873,64 @@ SAIGE.Region <- function(mu,
   # with no score line, which is every bundled one, so this is inert.
   scoreName <- region_list$scoreName
 
+  # ---- FlexRV transform sets (F3) -------------------------------------------
+  # Kt = nScore x nMAF sets expanded from the group file's score line inside
+  # C++ (src/FlexRV.cpp), named <score>_<scoreT>_<mafT> in score-major order
+  # (docs/design/flexrv-design.md). The LoF mask keys on annotation labels,
+  # which are matched exactly (SAIGE has no annotation vocabulary); a label
+  # that matches nothing anywhere in the file is an error here, because the
+  # mask would otherwise silently zero 12 of the 192 sets.
+  flexTable <- matrix(0, nrow = 0, ncol = 4)
+  flexNames <- character(0)
+  flexLofAnno <- character(0)
+  flexMaxMAF <- 0.001
+  nTransformSets <- 0L
+  if (!is.null(flexRV)) {
+    if (length(scoreName) == 0) {
+      stop("--flexRV_score=", flexRV$score, " needs a 'score:", flexRV$score,
+           "' line in every region of the group file, and ", groupFile, " has no score line\n")
+    }
+    if (!identical(scoreName, flexRV$score)) {
+      stop("--flexRV_score=", flexRV$score, " but the group file's score line is named '",
+           scoreName, "'\n")
+    }
+    flexMaxMAF <- flexRV$maxMAF
+    flexTT <- flexrvTransformTable(flexRV$scoreTransforms, flexRV$MAFTransforms,
+                                   scoreName, maxMAF = flexMaxMAF)
+    flexTable <- flexTT$table
+    flexNames <- flexTT$names
+    nTransformSets <- nrow(flexTable)
+    if (flexTT$usesLof) {
+      flexLofAnno <- parseFlexRVLofAnno(flexRV$lofAnno)
+      absent <- setdiff(flexLofAnno, region_list$annoLabels)
+      if (length(absent) > 0) {
+        stop("--flexRV_lofAnno label(s) ", paste(shQuote(absent), collapse = ", "),
+             " match no annotation in the group file, whose labels are ",
+             paste(shQuote(region_list$annoLabels), collapse = ", "),
+             ". The LoF mask (the 'lof' score transform) would be all zeros.\n")
+      }
+    }
+    if (any(flexNames %in% weightSetNames)) {
+      stop("FlexRV set name '", flexNames[flexNames %in% weightSetNames][1],
+           "' collides with a weight set in the group file\n")
+    }
+    if (flexMaxMAF != 0.001) {
+      warning("--flexRV_maxMAF=", flexMaxMAF, " is not the paper's 0.001: the mafbeta ",
+              "transforms rescale to (1 - MAF/", flexMaxMAF, ")^(b-1) and are named ",
+              "'mafbeta<b>@", flexMaxMAF, "'; the MAC ladder is absolute and does not ",
+              "rescale, so it may cover only the rare end of the tested range\n",
+              call. = FALSE, immediate. = TRUE)
+    }
+    cat("FlexRV: ", nTransformSets, " transform sets (", flexTT$nScore, " score x ",
+        flexTT$nMAF, " MAF) from score '", scoreName, "' at max MAF ", flexMaxMAF, "\n",
+        sep = "")
+  }
+
   # ---- weight-set composition (design D5/D10) ------------------------------
   # The composed per-run weight-set list, in the NORMATIVE order shared with
   # C++ (src/Main.cpp mainRegionInCPP):
   #   custom sets (group-file weight lines, file order)
+  #   -> FlexRV transform sets (F3; score-major over the transform table)
   #   -> explicit beta sets (weights.beta pairs in given order, named
   #      "Beta_a_b"; composed ONLY when more than one pair is supplied -- a
   #      single pair, default or not, keeps the legacy implicit-beta path)
@@ -885,7 +952,7 @@ SAIGE.Region <- function(mu,
   #  - group-file weight lines (which used to hard-error here) or explicit
   #    beta sets: an all-ones "No_Weights" set is APPENDED as the last set
   includeNoWeightsSet <- is_no_weight_in_groupTest &&
-    (is_weight_included || useExplicitBeta)
+    (is_weight_included || useExplicitBeta || nTransformSets > 0)
   legacyNoWeight <- is_no_weight_in_groupTest && !includeNoWeightsSet
   if (legacyNoWeight) {
     cat("No weights are used in the group test\n")
@@ -896,6 +963,7 @@ SAIGE.Region <- function(mu,
   composedNames <- c(
     if (legacyNoWeight) "No_Weights",
     if (nWeightSets > 0) weightSetNames,
+    flexNames,
     betaSetNames,
     if (includeNoWeightsSet) "No_Weights"
   )
@@ -990,6 +1058,7 @@ SAIGE.Region <- function(mu,
   } else {
     c(
       rep("custom", nWeightSets),
+      rep("transform", nTransformSets),
       rep("beta", if (useExplicitBeta) nBetaPairs else 0L),
       if (includeNoWeightsSet) "noweight"
     )
@@ -1103,6 +1172,10 @@ SAIGE.Region <- function(mu,
       includeNoWeightsSet,
       region_weight_names,
       is_output_weight_column,
+      S$SCORE,
+      S$ISLOF,
+      flexTable,
+      flexMaxMAF,
       weight_cond,
       is_single_in_groupTest,
       is_output_markerList_in_groupTest,
@@ -1377,7 +1450,8 @@ SAIGE.Region <- function(mu,
         chrom,
         nWeightSets,
         weightSetNames,
-        scoreName
+        scoreName,
+        lofAnno = flexLofAnno
       )
       # print(RegionList)
       cat(
@@ -1449,11 +1523,42 @@ SAIGE.Region <- function(mu,
         ))
         # Everything the region's later stages read, so that a batch of
         # regions can be held while the pool evaluates their cells (step 5).
+        # FlexRV: the region's score and LoF flags (numeric(0) when no
+        # transform set is composed; C++ then ignores them)
+        SCORE <- if (nTransformSets > 0) as.numeric(region$SCORE) else numeric(0)
+        # without a lof transform no label list was parsed and no ISLOF was
+        # carried; C++ still wants one flag per marker (never read)
+        ISLOF <- if (nTransformSets == 0) {
+          numeric(0)
+        } else if (length(flexLofAnno) > 0) {
+          as.numeric(region$ISLOF)
+        } else {
+          rep(0, length(SCORE))
+        }
+        if (nTransformSets > 0 && length(SCORE) > 1) {
+          # a property of the input, warned about rather than acted on: every
+          # score transform of a constant column coincides (192 sets -> 12),
+          # and 0/1 are fixed points of every transform (16 -> at most 3)
+          us <- unique(SCORE)
+          if (length(us) == 1) {
+            warning("Region ", regionName, ": the score '", scoreName, "' is constant (",
+                    us, ") over its ", length(SCORE), " markers, so every score transform ",
+                    "gives the same weights and the FlexRV score axis is degenerate\n",
+                    call. = FALSE, immediate. = TRUE)
+          } else if (all(us %in% c(0, 1))) {
+            warning("Region ", regionName, ": the score '", scoreName, "' takes only the ",
+                    "values 0 and 1, which every score transform maps to themselves, so ",
+                    "the nonlinear FlexRV score transforms coincide\n",
+                    call. = FALSE, immediate. = TRUE)
+          }
+        }
         S <- list(
           regionName = regionName,
           i = i,
           SNP = SNP,
           WEIGHT = WEIGHT,
+          SCORE = SCORE,
+          ISLOF = ISLOF,
           annolistsub = annolistsub,
           annoIndicatorMat = region$annoIndicatorMat,
           region = region,
@@ -1712,7 +1817,11 @@ SAIGE.getRegionList_new <- function(marker_group_line,
                                     chrom = "",
                                     nWeightSets = NULL,
                                     weightSetNames = NULL,
-                                    scoreName = character(0)) {
+                                    scoreName = character(0),
+                                    # FlexRV: annotation labels that mark a
+                                    # marker as LoF; ISLOF is carried per region
+                                    # only when this is non-empty
+                                    lofAnno = character(0)) {
   if (is.null(nWeightSets)) {
     # legacy callers: infer the weight layout from nline_per_gene
     # (2 -> no weights; 3 -> one bare weight line, set name "WEIGHT")
@@ -1935,6 +2044,9 @@ SAIGE.getRegionList_new <- function(marker_group_line,
           # one per-marker score, rows aligned to SNP, subset with them below
           SCORE <- RegionData[posSNP, scoreColNames, with = FALSE][[1]]
         }
+        if (length(lofAnno) > 0) {
+          ISLOF <- as.numeric(RegionData$ANNO[posSNP] %in% lofAnno)
+        }
 
         if (any(duplicated(SNP))) {
           stop(
@@ -1999,6 +2111,9 @@ SAIGE.getRegionList_new <- function(marker_group_line,
           if (nScoreSets > 0) {
             SCORE <- SCORE[-annoIndicatorMat_rmind]
           }
+          if (length(lofAnno) > 0) {
+            ISLOF <- ISLOF[-annoIndicatorMat_rmind]
+          }
 
           annoIndicatorMat <- annoIndicatorMat[-annoIndicatorMat_rmind, ,
             drop =
@@ -2035,6 +2150,9 @@ SAIGE.getRegionList_new <- function(marker_group_line,
           # entry shape is byte-for-byte what it was for every existing file
           if (nScoreSets > 0) {
             RegionList[[r]]$SCORE <- as.numeric(SCORE)
+          }
+          if (length(lofAnno) > 0) {
+            RegionList[[r]]$ISLOF <- ISLOF
           }
         }
       } else {

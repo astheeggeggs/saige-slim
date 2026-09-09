@@ -545,6 +545,68 @@ option_list <- list(
     )
   ),
   make_option(
+    "--flexRV_score",
+    type = "character",
+    default = NULL,
+    help = paste0(
+      "FlexRV (Schwartzentruber et al. 2025): the name of the group file's ",
+      "'score:NAME' line, a per-marker pathogenicity score in [0, 1]. When ",
+      "given, the FlexRV weight sets (--flexRV_scoreTransforms x ",
+      "--flexRV_MAFTransforms, 192 by default) are expanded from it inside ",
+      "SAIGE and tested as weight sets of the group test; the region's Cauchy ",
+      "row over them is p_FlexRV. A FlexRV run tests exactly ONE annotation ",
+      "group and ONE max MAF (--flexRV_maxMAF, which replaces ",
+      "--maxMAF_in_groupTest). --r.corr=1 is the recommended run. ",
+      "[default=off]"
+    )
+  ),
+  make_option(
+    "--flexRV_scoreTransforms",
+    type = "character",
+    default = "unw;lof;cbrt:0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9;sbeta:1.5,2,3,5,10,20",
+    help = paste0(
+      "FlexRV score transforms, ';'-separated families: unw (all 1), lof (1 ",
+      "on the --flexRV_lofAnno labels, else 0), cbrt:t,... (cubic root with ",
+      "transition t in (0,1)), sbeta:b,... (s^(b-1), b > 1). ",
+      "[default=the paper's 16]"
+    )
+  ),
+  make_option(
+    "--flexRV_MAFTransforms",
+    type = "character",
+    default = "unw;mafbeta:2,5;mac:1,3,5,10,25,50,100,200,500",
+    help = paste0(
+      "FlexRV MAF transforms: unw, mafbeta:b,... ((1 - MAF/flexRV_maxMAF)^(b-1), ",
+      "0 at and above the boundary), mac:t,... (1 if the in-sample MAC <= t). ",
+      "With the ultra-rare collapse on (--MACCutoff_to_CollapseUltraRare=10) ",
+      "the mac:1,3,5,10 sets test only the collapsed pseudo-marker; ",
+      "--MACCutoff_to_CollapseUltraRare=0 is the paper's unbinned burden. ",
+      "[default=the paper's 12]"
+    )
+  ),
+  make_option(
+    "--flexRV_lofAnno",
+    type = "character",
+    default = "lof",
+    help = paste0(
+      "Annotation label(s) the FlexRV 'lof' score transform keys on, separated ",
+      "by ',', ':' or ';'. Matched exactly against the group file's anno line; ",
+      "each label must occur somewhere in the file. [default=lof]"
+    )
+  ),
+  make_option(
+    "--flexRV_maxMAF",
+    type = "double",
+    default = 0.001,
+    help = paste0(
+      "The single max MAF of a FlexRV run (the paper's MAF < 0.1% filter). ",
+      "Replaces --maxMAF_in_groupTest; giving both with different values is an ",
+      "error. A value other than 0.001 rescales the mafbeta transforms to the ",
+      "new boundary (named mafbeta<b>@<maxMAF>) and leaves the MAC ladder ",
+      "alone. [default=0.001]"
+    )
+  ),
+  make_option(
     "--is_Firth_beta",
     type = "logical",
     default = FALSE,
@@ -700,6 +762,19 @@ maxMAF_in_groupTest <- convertToNumeric(
   strsplit(opt$maxMAF_in_groupTest, ",")[[1]],
   "maxMAF_in_groupTest"
 )
+# FlexRV: --flexRV_maxMAF is the run's one max MAF. optparse cannot tell a
+# default --maxMAF_in_groupTest from a typed one, so the command line is
+# inspected: an explicit --maxMAF_in_groupTest reaches SPAGMMATtest, which
+# rejects it unless it equals --flexRV_maxMAF; an absent one is replaced.
+# opt[["..."]], not opt$...: with --flexRV_score absent, `$` PARTIALLY matches
+# flexRV_scoreTransforms and would switch FlexRV on with the spec string as
+# the score name
+if (!is.null(opt[["flexRV_score"]])) {
+  explicitMaxMAF <- any(grepl("^--maxMAF_in_groupTest(=|$)", commandArgs(trailingOnly = TRUE)))
+  if (!explicitMaxMAF) {
+    maxMAF_in_groupTest <- opt$flexRV_maxMAF
+  }
+}
 maxMAC_in_groupTest <- convertToNumeric(
   strsplit(opt$maxMAC_in_groupTest, ",")[[1]],
   "maxMAC_in_groupTest"
@@ -775,6 +850,11 @@ fixed_params <- list(
   is_single_in_groupTest = opt$is_single_in_groupTest,
   is_no_weight_in_groupTest = opt$is_no_weight_in_groupTest,
   is_output_weight_column = opt$is_output_weight_column,
+  flexRV_score = opt[["flexRV_score"]], # exact: `$` would partial-match the spec
+  flexRV_scoreTransforms = opt[["flexRV_scoreTransforms"]],
+  flexRV_MAFTransforms = opt[["flexRV_MAFTransforms"]],
+  flexRV_lofAnno = opt[["flexRV_lofAnno"]],
+  flexRV_maxMAF = opt[["flexRV_maxMAF"]],
   is_output_markerList_in_groupTest = opt$is_output_markerList_in_groupTest,
   is_fastTest = opt$is_fastTest,
   pval_cutoff_for_fastTest = opt$pval_cutoff_for_fastTest,

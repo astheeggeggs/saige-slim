@@ -117,6 +117,10 @@ Rcpp::List mainRegionInCPP(
 			   bool t_includeNoWeights,
 			   std::vector<std::string> & t_weightNames,
 			   bool t_forceWeightColumn,
+			   arma::vec & t_score,          // FlexRV (F3)
+			   arma::vec & t_isLof,
+			   arma::mat & t_transformTable,
+			   double t_flexMaxMAF,
 			   arma::vec & t_weight_cond,
 			   bool t_isSingleinGroupTest,
 			   bool t_isOutputMarkerList,

@@ -111,6 +111,11 @@ parse_X_PARregion_token <- function(token) {
 #'   is_imputed_data = TRUE. By default, 10
 #' @param is_single_in_groupTest logical.  Whether to output single-variant assoc test results when perform group tests. Note, single-variant assoc test results will always be output when SKAT and SKAT-O tests are conducted with r.corr=0. This parameter should only be used when only Burden tests are condcuted with r.corr=1. By default, FALSE (the same as the command line since LEDGER #18; it was TRUE before 2026-09-05)
 #' @param is_no_weight_in_groupTest logical. Whether no weights (all-ones) are used in the group test. If FALSE, weights will be calcuated based on MAF from the Beta distribution with paraemters weights.beta or weights will be extracted from the group File if available. If TRUE and the run has no other weight sets (unweighted group file, single weights.beta pair), the all-ones weights simply replace the beta weights, exactly as before. If TRUE and the run does have other weight sets (weight lines in the group file, or more than one weights.beta pair), an all-ones weight set named "No_Weights" is appended as the last weight set (this replaces the previous hard error for weighted group files). By default, FALSE
+#' @param flexRV_score character. FlexRV (Schwartzentruber et al. 2025): the name of the group file's 'score:NAME' line (per-marker pathogenicity in [0, 1]). When given, the 16 x 12 = 192 FlexRV weight sets (flexRV_scoreTransforms x flexRV_MAFTransforms) are expanded from it inside SAIGE and tested as weight sets of the group test; the region's Cauchy row over them is p_FlexRV. Requires exactly ONE annotation group and ONE max MAF (flexRV_maxMAF); see docs/design/flexrv-design.md. By default, NULL (off)
+#' @param flexRV_scoreTransforms character. FlexRV score transforms as ';'-separated families: unw, lof, cbrt:t1,t2,... (cubic root with transition t in (0,1)), sbeta:b1,b2,... (beta with a = 1, b > 1). By default, the paper's 16
+#' @param flexRV_MAFTransforms character. FlexRV MAF transforms: unw, mafbeta:b1,b2,... ((1 - MAF/flexRV_maxMAF)^(b-1), zero at and above the boundary), mac:t1,t2,... (1 if in-sample MAC <= t). By default, the paper's 12. With the ultra-rare collapse on (MACCutoff_to_CollapseUltraRare = 10) the mac:1,3,5,10 sets test only the collapsed pseudo-marker
+#' @param flexRV_lofAnno character. Annotation label(s) the FlexRV 'lof' score transform keys on, separated by ',', ':' or ';'; matched exactly, and each must occur in the group file. By default, "lof"
+#' @param flexRV_maxMAF numeric. The single max MAF of a FlexRV run (the paper's variant filter). Replaces maxMAF_in_groupTest; giving both with different values is an error. Not 0.001 rescales the mafbeta transforms to the new boundary (and names them mafbeta<b>@<maxMAF>) but leaves the MAC ladder alone. By default, 0.001
 #' @param is_output_weight_column logical. Whether to force the multi-weight output schema even when only a single weight set is in play: the Weight column (labeled with the set's name) right after max_MAF, and for SKAT-O the additive Pvalue_ACATV/Pvalue_ACATO columns and an always-emitted Cauchy row. Useful for a stable schema across runs with different weight configurations. With more than one weight set the schema is always on and this flag is redundant. By default, FALSE
 #' @param is_output_markerList_in_groupTest logical. Whether to output the marker lists included in the set-based tests for each mask. By default, FALSE
 #' @param is_Firth_beta logical. Whether to estimate effect sizes using approx Firth, only for binary traits. By default, FALSE
@@ -200,7 +205,12 @@ SPAGMMATtest <- function(bedFile = "",
                          is_noadjCov = TRUE,
                          is_output_weight_column = FALSE,
                          nThreads = 1,
-                         GMMATmodel_varianceRatio_multiTraits_File = "") {
+                         GMMATmodel_varianceRatio_multiTraits_File = "",
+                         flexRV_score = NULL,
+                         flexRV_scoreTransforms = flexrvDefaultScoreSpec,
+                         flexRV_MAFTransforms = flexrvDefaultMAFSpec,
+                         flexRV_lofAnno = "lof",
+                         flexRV_maxMAF = 0.001) {
   cat("is_noadjCov ", is_noadjCov, "\n")
   cat("is_fastTest ", is_fastTest, "\n")
 
@@ -366,6 +376,49 @@ SPAGMMATtest <- function(bedFile = "",
     isGroupTest <- TRUE
     Check_File_Exist(groupFile, "groupFile")
     cat("group-based test will be performed\n")
+    # FlexRV (F3): one annotation group and one max MAF per run, or the
+    # region's pooled Cauchy row is a super-omnibus over anno x maxMAF x set
+    # and is not p_FlexRV (docs/design/flexrv-design.md). Every check names the
+    # flag that has to change; nothing is silently overridden (LEDGER #30).
+    flexRV <- NULL
+    if (!is.null(flexRV_score)) {
+      if (!is.character(flexRV_score) || length(flexRV_score) != 1 || !nzchar(flexRV_score)) {
+        stop("flexRV_score must be the name of the group file's score line\n")
+      }
+      if (!is.numeric(flexRV_maxMAF) || length(flexRV_maxMAF) != 1 ||
+            !is.finite(flexRV_maxMAF) || flexRV_maxMAF <= 0 || flexRV_maxMAF > 0.5) {
+        stop("flexRV_maxMAF must be a single number in (0, 0.5]\n")
+      }
+      if (length(maxMAF_in_groupTest) != 1 || maxMAF_in_groupTest != flexRV_maxMAF) {
+        stop("A FlexRV run tests ONE max MAF cell, --flexRV_maxMAF (", flexRV_maxMAF,
+             "); --maxMAF_in_groupTest=", paste(maxMAF_in_groupTest, collapse = ","),
+             " conflicts with it. Drop --maxMAF_in_groupTest or set both to the same value\n")
+      }
+      if (any(maxMAC_in_groupTest != 0)) {
+        stop("A FlexRV run tests ONE max MAF cell; --maxMAC_in_groupTest cannot add cells\n")
+      }
+      if (length(annotation_in_groupTest) != 1) {
+        stop("A FlexRV run tests ONE annotation group (e.g. ",
+             "--annotation_in_groupTest=lof:missense); got ",
+             length(annotation_in_groupTest), ": ",
+             paste(annotation_in_groupTest, collapse = ","), "\n")
+      }
+      if (!is.null(condition) && nzchar(condition) && is.null(weights_for_condition)) {
+        stop("--flexRV_score with --condition needs --weights_for_condition: the conditioning ",
+             "markers have no score, so no transform can weight them, and the beta(1,25) ",
+             "default would be applied silently\n")
+      }
+      if (r.corr != 1) {
+        warning("FlexRV is a burden method; --r.corr=", r.corr, " runs SKAT-O on every one of ",
+                "the transform sets (one Davies integration per set per region) and holds the ",
+                "P1/P2 scratch and a residualised genoSumMat copy per model. p_FlexRV is the ",
+                "Cauchy row's Pvalue_Burden either way; --r.corr=1 is the recommended run\n",
+                call. = FALSE, immediate. = TRUE)
+      }
+      flexRV <- list(score = flexRV_score, scoreTransforms = flexRV_scoreTransforms,
+                     MAFTransforms = flexRV_MAFTransforms, lofAnno = flexRV_lofAnno,
+                     maxMAF = flexRV_maxMAF)
+    }
     # checkArgsList_for_Region(method_to_CollapseUltraRare,
     # order the max MAF from lowest to highest
     maxMAF_in_groupTest <- maxMAF_in_groupTest[order(maxMAF_in_groupTest)]
@@ -752,6 +805,7 @@ SPAGMMATtest <- function(bedFile = "",
       is_output_moreDetails,
       weights_beta_mat = weights.beta,
       is_output_weight_column = is_output_weight_column,
+      flexRV = flexRV,
       nThreadsSKATO = nThreadsSKATO,
       nThreads = nThreads
     )

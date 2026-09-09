@@ -178,6 +178,11 @@ checkGroupFile <- function(groupFile, detail = FALSE) {
   gf <- file(groupFile, "r")
   line <- 0
   nregion <- 0
+  # every annotation label the file uses; collected only when a score line is
+  # present, because that is when a caller (FlexRV's --flexRV_lofAnno) needs
+  # to know whether a label matches anything in the WHOLE file before the
+  # first chunk is read
+  annoLabels <- character(0)
   while (TRUE) {
     marker_group_line <- readLines(gf, n = a)
     # line = line+a
@@ -230,6 +235,9 @@ checkGroupFile <- function(groupFile, detail = FALSE) {
     numAnnos <- length(marker_group_line_list) - 2
     if (numAnnos != numMarkers) {
       stop("The length of annotations for markers in region ", geneID, " is not equal to the length of marker IDs\n")
+    }
+    if (nScoreSets > 0) {
+      annoLabels <- union(annoLabels, marker_group_line_list[-c(1:2)])
     }
 
     if (nScoreSets > 0) {
@@ -332,6 +340,7 @@ checkGroupFile <- function(groupFile, detail = FALSE) {
     # length(NULL) == 0 is exactly the arithmetic they want.
     if (nScoreSets > 0) {
       res$scoreName <- scoreName
+      res$annoLabels <- annoLabels
     }
   }
   res
