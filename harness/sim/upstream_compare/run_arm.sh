@@ -43,7 +43,11 @@ export GRMFILE=$SIM/pedigree_truth.sparseGRM.mtx GRMIDS=$SIM/pedigree_truth.spar
 export RCPP_PARALLEL_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
 export NTHREADS=$nt GROUP_NT=$nt
 export RELCUT=0.125
-tag=${wl}_${trait}_r${rep}_nt${nt}_${MODELS}
+# VARIANT tags a flag change made through S2EXTRA (e.g. VARIANT=firthoff with
+# S2EXTRA=--is_Firth_beta=FALSE) so its logs, outputs and TSV rows do not collide
+# with the default arm's. S2EXTRA itself is read by 04_run_saige.sh.
+VARIANT=${VARIANT:-base}
+tag=${wl}_${trait}_r${rep}_nt${nt}_${MODELS}_${VARIANT}
 log=$WORK/logs/$tag.log
 
 case $MODELS in
@@ -70,7 +74,7 @@ so=$(ls "$lib"/libs/SAIGE.so 2>/dev/null)
 somd5=$(md5 -q "$so" 2>/dev/null)
 for f in "${warm[@]}"; do cat "$f" > /dev/null 2>&1; done
 {
-  echo "# build=$build workload=$wl trait=$trait rep=$rep nthreads=$nt models=$MODELS"
+  echo "# build=$build workload=$wl trait=$trait rep=$rep nthreads=$nt models=$MODELS variant=$VARIANT s2extra=${S2EXTRA:-}"
   echo "# lib=$lib so_md5=$somd5 MODELPREFIX=$MODELPREFIX"
   echo "# start $(date '+%F %T') $(uptime) $(pmset -g therm | grep CPU_Speed_Limit | tr -s ' \t' ' ')"
 } > "$log"
@@ -78,7 +82,7 @@ for f in "${warm[@]}"; do cat "$f" > /dev/null 2>&1; done
 rc=$?
 echo "# end $(date '+%F %T') $(uptime)" >> "$log"
 read -r real user sys rss < <(awk '/ real .* user .* sys/{r=$1;u=$3;s=$5} /maximum resident set size/{m=$1} END{print r,u,s,m/1048576}' "$log")
-[ -f "$RESULTS" ] || printf 'build\tworkload\ttrait\trep\tnthreads\tmodels\trc\treal_s\tuser_s\tsys_s\tmaxRSS_MB\tlib\tso_md5\tlog\n' > "$RESULTS"
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%.1f\t%s\t%s\t%s\n' \
-  "$build" "$wl" "$trait" "$rep" "$nt" "$MODELS" "$rc" "$real" "$user" "$sys" "$rss" "$lib" "$somd5" "$log" | tee -a "$RESULTS"
+[ -f "$RESULTS" ] || printf 'build\tworkload\ttrait\trep\tnthreads\tmodels\tvariant\trc\treal_s\tuser_s\tsys_s\tmaxRSS_MB\tlib\tso_md5\tlog\n' > "$RESULTS"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%.1f\t%s\t%s\t%s\n' \
+  "$build" "$wl" "$trait" "$rep" "$nt" "$MODELS" "$VARIANT" "$rc" "$real" "$user" "$sys" "$rss" "$lib" "$somd5" "$log" | tee -a "$RESULTS"
 exit $rc

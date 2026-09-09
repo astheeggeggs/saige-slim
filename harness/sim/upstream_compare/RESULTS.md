@@ -1,5 +1,12 @@
 # strip vs upstream at N = 50,000: speed and p-values (2026-09-05)
 
+> **SUPERSEDED IN PART -- see `RESULTS-2026-09-09.md`.** The timing table below predates
+> commit `b11e6b07` (2026-09-06); the single-variant rows in particular have moved
+> (binary 0.94x -> 1.78x, quant 1.28x -> 1.99x). Step 1 and the gene-test ratios still
+> hold. The gene-test p-value rows predate LEDGER #103-#106 (2026-09-08); the 2026-09-09
+> run reproduces this file's binary figure of 0.018 by re-running the pre-fix code, so
+> what is below is correct FOR THAT CODE, not for HEAD.
+
 `strip` HEAD (`fa0ec961` + this session's uncommitted comparison scripts; `SAIGE.so`
 md5 `41a20d16…`) against upstream `main` 365deeff (SAIGE 1.5.2, `SAIGE.so` md5
 `2ec37f64…`), both on the `sim50k` fixture (`SAIGE-sim/harness/work/sim50k`: 50,000

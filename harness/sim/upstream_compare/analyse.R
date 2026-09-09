@@ -38,7 +38,8 @@ ex <- t(sapply(seq_len(nrow(d)), function(i) {
   x
 }))
 d <- cbind(d, ex)
-d$cell <- paste(d$workload, d$trait, paste0("nt", d$nthreads), d$models)
+if (!"variant" %in% names(d)) d$variant <- "base"
+d$cell <- paste(d$workload, d$trait, paste0("nt", d$nthreads), d$models, d$variant)
 for (cell in unique(d$cell)) {
   s <- d[d$cell == cell, ]
   cat(sprintf("\n== %s ==\n", cell))
@@ -62,6 +63,20 @@ for (cell in unique(d$cell)) {
       mw <- m$work[match(reps, m$rep)]; tw <- t_$work[match(reps, t_$rep)]
       cat(sprintf("  main/strip work_s   = %.3fx   (startup removed)\n", mean(mw) / mean(tw)))
     }
+  }
+}
+# Firth on/off WITHIN a build: the cost of --is_Firth_beta=TRUE, per build and workload.
+fo <- d[d$variant == "firthoff", ]
+if (nrow(fo)) {
+  cat("\n== cost of Firth (within build; user CPU firth-on / firth-off) ==\n")
+  for (wl in unique(fo$workload)) for (t in unique(fo$trait[fo$workload == wl])) for (b in c("main", "strip")) {
+    on  <- d[d$workload == wl & d$trait == t & d$build == b & d$variant == "base" & d$models == "frozen", ]
+    off <- d[d$workload == wl & d$trait == t & d$build == b & d$variant == "firthoff" & d$models == "frozen", ]
+    if (!nrow(on) || !nrow(off)) next
+    reps <- intersect(on$rep, off$rep)
+    cat(sprintf("  %-9s %-9s %-5s  on %7.2f s  off %7.2f s  on/off %.3fx  saved %6.2f s (%.1f%%)  n=%d\n",
+        wl, t, b, mean(on$user_s), mean(off$user_s), mean(on$user_s) / mean(off$user_s),
+        mean(on$user_s) - mean(off$user_s), 100 * (1 - mean(off$user_s) / mean(on$user_s)), length(reps)))
   }
 }
 cat("\nlibraries loaded:\n"); print(unique(d[, c("build", "lib", "so_md5")]), row.names = FALSE)

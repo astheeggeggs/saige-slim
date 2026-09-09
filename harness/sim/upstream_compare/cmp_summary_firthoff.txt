@@ -1,0 +1,154 @@
+variance-ratio quotients strip/main: 1.00000 0.99859 0.99864 1.00000 1.00005 1.00022 
+== single y_binary models=own variant=firthoff single ==
+rows  main 70701  strip 70709
+only main 0 | only strip 8 | shared 70701
+strip-only MAC table (LEDGER #29 predicts all == minMAC):
+m
+20 
+ 8 
+p.value        Pearson 0.951645 Spearman 0.942567 | identical 18/70701 (0.03%) | max|d| 3.380e+00 | n(|d|>1) 390 | NA main 0 strip 0
+tags: tag
+AF>0.5   none  small   tiny     VR 
+ 11671     18      1      6  59005 
+AF<=0.5: differing 59012/59030   AF>0.5: differing 11671/11671
+  var_strip/var_main non-SPA AF<=0.5 MAC<=20.5 n=   619 median 0.9986404  range [0.9986344, 1.0000000]
+  var_strip/var_main non-SPA AF<=0.5 MAC>20.5  n= 55218 median 1.0002229  range [1.0000472, 1.0002325]
+  BETA        max|rel diff| 1.328e+00  n differing 70698
+  SE          max|rel diff| 9.907e-01  n differing 70699
+  Tstat       max|rel diff| 1.919e+00  n differing 11375
+  var         max|rel diff| 9.999e-01  n differing 70699
+  AF_Allele2  max|rel diff| 0.000e+00  n differing 0
+wrote /Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/cmp/single_y_binary_own_firthoff.tsv (70701 rows)
+
+variance-ratio quotients strip/main: 1.00000 1.00211 1.00214 1.00000 1.00530 1.00553 
+== single y_quant models=own variant=firthoff single ==
+rows  main 70701  strip 70709
+only main 0 | only strip 8 | shared 70701
+strip-only MAC table (LEDGER #29 predicts all == minMAC):
+m
+20 
+ 8 
+p.value        Pearson 0.973448 Spearman 0.946048 | identical 2/70701 (0.00%) | max|d| 3.225e+00 | n(|d|>1) 386 | NA main 0 strip 0
+tags: tag
+AF>0.5   none  small     VR 
+ 11670      2     17  59012 
+AF<=0.5: differing 59029/59030   AF>0.5: differing 11670/11671
+  var_strip/var_main non-SPA AF<=0.5 MAC<=20.5 n=   643 median 1.0021427  range [0.9629460, 1.0021427]
+  var_strip/var_main non-SPA AF<=0.5 MAC>20.5  n= 58387 median 1.0055317  range [1.0040921, 1.0107846]
+  BETA        max|rel diff| 9.999e-01  n differing 70701
+  SE          max|rel diff| 9.897e-01  n differing 70693
+  Tstat       max|rel diff| 4.005e-02  n differing 32274
+  var         max|rel diff| 9.999e-01  n differing 70701
+  AF_Allele2  max|rel diff| 0.000e+00  n differing 0
+wrote /Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/cmp/single_y_quant_own_firthoff.tsv (70701 rows)
+
+variance-ratio quotients strip/main: 1.00000 0.99859 0.99864 1.00000 1.00005 1.00022 
+== gene y_binary models=own variant=firthoff gene ==
+rows  main 3338  strip 3338
+only main 0 | only strip 0 | shared 3338
+Pvalue         Pearson 0.999972 Spearman 0.999836 | identical 231/3338 (6.92%) | max|d| 2.625e-01 | n(|d|>1) 0 | NA main 0 strip 0
+Pvalue_Burden  Pearson 0.999991 Spearman 0.999991 | identical 39/3338 (1.17%) | max|d| 1.867e-01 | n(|d|>1) 0 | NA main 0 strip 0
+Pvalue_SKAT    Pearson 0.999984 Spearman 0.999927 | identical 83/3338 (2.49%) | max|d| 2.466e-01 | n(|d|>1) 0 | NA main 0 strip 0
+gene cells whose SE_Burden^2 quotient matches a variance-ratio row: 141 ; lies between the rows (mixed MAC categories): 0 of 3118 
+tags: tag
+     Cauchy    Cauchy=1        none     SKATO=1       small        tiny 
+        155           1         231           4        2732         104 
+UNPREDICTED          VR 
+         20          91 
+wrote /Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/cmp/gene_y_binary_own_firthoff.tsv (3338 rows)
+
+variance-ratio quotients strip/main: 1.00000 1.00211 1.00214 1.00000 1.00530 1.00553 
+== gene y_quant models=own variant=firthoff gene ==
+rows  main 3338  strip 3338
+only main 0 | only strip 0 | shared 3338
+Pvalue         Pearson 0.999969 Spearman 0.999951 | identical 208/3338 (6.23%) | max|d| 5.675e-02 | n(|d|>1) 0 | NA main 0 strip 0
+Pvalue_Burden  Pearson 0.999972 Spearman 0.999942 | identical 19/3338 (0.57%) | max|d| 5.675e-02 | n(|d|>1) 0 | NA main 0 strip 0
+Pvalue_SKAT    Pearson 0.999958 Spearman 0.999842 | identical 55/3338 (1.65%) | max|d| 1.250e-01 | n(|d|>1) 0 | NA main 0 strip 0
+gene cells whose SE_Burden^2 quotient matches a variance-ratio row: 1724 ; lies between the rows (mixed MAC categories): 121 of 3115 
+tags: tag
+     Cauchy        none       small        tiny UNPREDICTED          VR 
+        158         208        1162         121           3        1585 
+     VR-mix 
+        101 
+wrote /Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/cmp/gene_y_quant_own_firthoff.tsv (3338 rows)
+
+variance-ratio quotients strip/main: 1.00000 0.99859 0.99864 1.00000 1.00005 1.00022 
+== gene_single y_binary models=own variant=firthoff single ==
+rows  main 8084  strip 9049
+only main 0 | only strip 965 | shared 8084
+strip-only MAC table (LEDGER #29 predicts all == minMAC):
+m
+   1    2    3    8    9   10   11   12   13   14   15   16   17   18   19   20 
+   6    3    3    3    6    3   52   29   26   28   38   25   25   19   29   15 
+  21   22   23   24   25   26   27   28   29   30   31   32   33   34   35   36 
+  15   17   13   23   13   18   11   18    9    8    6    2    1    5   12    6 
+  38   39   40   41   42   43   44   45   46   47   48   49   50   51   52   53 
+   8   10    3    7    6    8   20    2    4    6    4    1    2    5    2    4 
+  54   55   56   57   58   59   60   61   62   63   64   65   66   68   70   71 
+   2    3    7    6    5    2    5    4    6    2    2    6    1    6    5    3 
+  72   73   74   75   77   82   84   85   86   89   90   93   96   97   98  102 
+   6    3    1    4    2    5    2    3    1    2    1    4    5    4    4    1 
+ 103  105  107  108  109  110  112  114  115  120  121  122  123  124  125  126 
+   3    3    1    3    1    3    6    4    3    2    1    3    3    3    1    5 
+ 127  128  130  131  134  135  136  138  139  140  141  143  144  146  147  148 
+   1    1    1    1    1    1    3    3    1    1    3    3    1    1    3    1 
+ 151  152  154  155  158  160  161  163  166  167  168  176  182  184  187  189 
+   1    4    3    1    1    1    1    3    1    2    3    1    3    4    3    3 
+ 190  192  193  194  196  198  200  202  205  207  208  209  210  211  213  215 
+   4    3    1    3    1    1    1    1    1    1    3    1    3    3    3    1 
+ 217  222  223  229  231  243  246  249  252  253  256  260  261  264  265  267 
+   1    1    4    3    1    1    1    1    1    4    3    1    1    3    2    3 
+ 270  277  290  293  298  300  305  324  327  332  345  346  347  382  400  405 
+   2    1    3    3    1    1    3    1    1    4    1    3    1    3    3    1 
+ 407  413  418  421  436  453  458  461  464  482  489  502  504  526  549  562 
+   1    1    1    1    3    1    1    1    3    3    1    3    1    3    1    1 
+ 565  570  597  644  652  678  685  690  695  717  725  727  733  757  760  782 
+   3    1    1    3    1    1    1    1    3    1    3    1    1    1    1    2 
+ 794  805  847  852  876  879  885  969  971  990  996 1048 1069 1553 
+   1    1    1    3    1    1    1    1    1    1    1    3    3    3 
+p.value        Pearson 1.000000 Spearman 1.000000 | identical 654/8084 (8.09%) | max|d| 2.932e-03 | n(|d|>1) 0 | NA main 0 strip 0
+tags: tag
+AF>0.5   none   tiny     VR 
+    36    654    452   6942 
+AF<=0.5: differing 7394/8048   AF>0.5: differing 36/36
+  var_strip/var_main non-SPA AF<=0.5 MAC<=20.5 n=  2421 median 0.9999164  range [0.9954658, 1.0000450]
+  var_strip/var_main non-SPA AF<=0.5 MAC>20.5  n=  5231 median 1.0000545  range [1.0000462, 1.0000628]
+  BETA        max|rel diff| 7.298e-03  n differing 7056
+  SE          max|rel diff| 7.295e-03  n differing 7056
+  Tstat       max|rel diff| 0.000e+00  n differing 0
+  var         max|rel diff| 7.295e-03  n differing 7098
+  AF_Allele2  max|rel diff| 0.000e+00  n differing 0
+wrote /Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/cmp/gene_single_y_binary_own_firthoff.tsv (8084 rows)
+
+variance-ratio quotients strip/main: 1.00000 1.00211 1.00214 1.00000 1.00530 1.00553 
+== gene_single y_quant models=own variant=firthoff single ==
+rows  main 8669  strip 9049
+only main 0 | only strip 380 | shared 8669
+strip-only MAC table (LEDGER #29 predicts all == minMAC):
+m
+  2   7   9  11  12  13  14  15  16  17  18  19  20  21  22  23  24  25  26  27 
+  9   6   3  16  16  11  12  13  17   4   5   2   6  11   8   2   4   5   9   3 
+ 28  29  30  31  32  34  35  36  37  38  40  41  42  43  44  45  46  48  49  51 
+  8   6   2   2   3   4   1   4   1   2   1   3   4   2   9   1   2   1   1   4 
+ 52  53  56  57  59  61  62  63  64  65  68  76  77  78  79  81  85  92  93  97 
+  2   1   1   1   1   4   4   1   3   3   4   2   1   2   3   1   1   1   3   6 
+103 105 107 110 115 119 120 124 126 128 134 141 153 161 162 163 168 170 171 172 
+  2   2   1   1   3   1   7   1   1   3   1   6   1   3   3   1   3   1   4   3 
+183 189 190 200 201 204 205 221 228 237 259 260 263 282 293 298 330 338 345 346 
+  3   3   4   1   1   1   3   1   1   3   1   1   3   1   1   1   1   1   1   3 
+350 379 382 447 470 504 526 560 568 678 685 686 736 760 782 818 928 931 
+  1   1   3   1   1   1   3   3   3   1   1   1   1   1   2   3   1   1 
+p.value        Pearson 0.999922 Spearman 0.999974 | identical 98/8669 (1.13%) | max|d| 8.139e-02 | n(|d|>1) 0 | NA main 0 strip 0
+tags: tag
+AF>0.5   none   tiny     VR 
+    39     98    473   8059 
+AF<=0.5: differing 8532/8630   AF>0.5: differing 39/39
+  var_strip/var_main non-SPA AF<=0.5 MAC<=20.5 n=  2818 median 0.9950346  range [0.9290913, 1.0023264]
+  var_strip/var_main non-SPA AF<=0.5 MAC>20.5  n=  5812 median 1.0053005  range [1.0052923, 1.0053089]
+  BETA        max|rel diff| 7.091e-02  n differing 8295
+  SE          max|rel diff| 3.610e-02  n differing 8011
+  Tstat       max|rel diff| 1.419e-03  n differing 3587
+  var         max|rel diff| 7.091e-02  n differing 8132
+  AF_Allele2  max|rel diff| 0.000e+00  n differing 0
+wrote /Users/dpalmer/Repositories/SAIGE/harness/work/upstream_compare/cmp/gene_single_y_quant_own_firthoff.tsv (8669 rows)
+
