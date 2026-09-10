@@ -1099,6 +1099,9 @@ profile above exists.
   power question is answerable: raise the quantitative NCP, define the
   negative control for "score informativeness" against the best score-free
   set rather than `unw`, and decide whether `low` should be effect-free.
+  Before any further sweep: REFIT the four `sim50k` null models, which were
+  fitted before #124/#125 (the `y_binary` model at tau2 0.9728 will move to
+  ~0.9705 and every step-2 p-value with it), and re-run `study.sh`.
 - **`compare_step1.R` now floors its elementwise ratio at the field's scale
   (2026-09-10, night)** for the model's vector/matrix fields; theta and the
   variance ratios are unchanged. Nothing at HEAD changes; it exists because
