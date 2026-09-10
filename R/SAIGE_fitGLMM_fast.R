@@ -181,6 +181,8 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
     print(tau)
   }
 
+  guard <- tauGuardInit()   # LEDGER #122
+  critPrev <- FALSE
   for (i in seq_len(maxiter)) {
     if (verbose) cat("\nIteration ", i, tau, ":\n")
     alpha0 <- re.coef$alpha
@@ -195,7 +197,27 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
     cat("Updating fix effect coeffcieints took\n")
     print(t_end_Get_Coef - t_begin_Get_Coef)
 
-    fit <- fitglmmaiRPCG(re.coef$Y, X, re.coef$W, tau, re.coef$Sigma_iY, re.coef$Sigma_iX, re.coef$cov, nrun, maxiterPCG, tolPCG, tol = tol, traceCVcutoff = traceCVcutoff)
+    # LEDGER #122: the score terms come from getAIScore, the float Newton step
+    # from tauProposalBinary (fitglmmaiRPCG's arithmetic, unchanged), and the
+    # guard decides how much of that step is taken.
+    re <- getAIScore(re.coef$Y, X, re.coef$W, tau, re.coef$Sigma_iY, re.coef$Sigma_iX, re.coef$cov, nrun, maxiterPCG, tolPCG = tolPCG, traceCVcutoff = traceCVcutoff)
+    score <- re$YPAPY - re$Trace
+    if (tau0[2] == 0 && score <= 0) {
+      # zero is an iterate, not a decision: the boundary is the optimum only
+      # when the score there is non-positive. The post-loop refit reads the
+      # inner pass's state, so hand it over as the step below would have.
+      cov <- re.coef$cov
+      alpha <- re.coef$alpha
+      eta <- re.coef$eta
+      Y <- re.coef$Y
+      mu <- re.coef$mu
+      cat("tau2 = 0 is the optimum: the REML score at 0 is ", score, "\n")
+      break
+    }
+    prop <- tauProposalBinary(tau0[2], re$YPAPY, re$Trace, re$AI, tol)
+    sg <- tauGuardApply(guard, tau0[2], prop[["raw"]], prop[["step"]])
+    guard <- sg$state
+    fit <- list(tau = c(tau0[1], sg$p))
     t_end_fitglmmaiRPCG <- proc.time()
     # cat("t_end_fitglmmaiRPCG - t_begin_fitglmmaiRPCG\n")
     cat("Updating variance component estimate took\n")
@@ -213,9 +235,18 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
     cat("tau0: ", tau0, "\n")
 
 
-    if (tau[2] == 0) break
-    # Use only tau for convergence evaluation, because alpha was evaluated already in Get_Coef
-    if (max(abs(tau - tau0) / (abs(tau) + abs(tau0) + tol)) < tol) break
+    # Convergence is judged on the UNDAMPED proposal (how far the score is from
+    # zero); never on the first iteration, whose proposal comes from an inner
+    # state one Get_Coef call away from the GLM start (a cold start next to the
+    # answer "converged" there in one step); and, once the guard has damped a
+    # step in this fit, on two consecutive iterations: a single pair within tol
+    # is what let a cycle pass (#122). Keyed on a damped step, not on arming: a
+    # fit with two reversals that converges on its own keeps today's criterion
+    # and today's iteration count (the dense-GRM golden has exactly that).
+    tauRaw <- c(tau0[1], prop[["raw"]])
+    critNow <- max(abs(tauRaw - tau0) / (abs(tauRaw) + abs(tau0) + tol)) < tol
+    if (critNow && i > 1 && (!guard$fired || critPrev)) break
+    critPrev <- critNow
 
     if (max(tau) > tol^(-2)) {
       warning("Large variance estimate observed in the iterations, model not converged...", call. = FALSE)

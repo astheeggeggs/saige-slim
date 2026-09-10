@@ -3725,6 +3725,19 @@ float tauStepBinary(float tau0, float Dtau, float tol) {
   return tau;
 }
 
+// LEDGER #122: the raw Newton proposal and the #121 step from the score
+// terms, in the float arithmetic of fitglmmaiRPCG, so the R loop that
+// safeguards the step (R/TauBracket.R) reproduces fitglmmaiRPCG's iterates
+// bit for bit whenever the safeguard does not act.
+// [[Rcpp::export]]
+Rcpp::NumericVector tauProposalBinary(float tau0, float YPAPY, float Trace, float AI, float tol) {
+  float score1 = YPAPY - Trace;
+  float Dtau = score1 / AI;
+  float raw = tau0 + Dtau;
+  return Rcpp::NumericVector::create(Rcpp::Named("raw") = raw,
+                                     Rcpp::Named("step") = tauStepBinary(tau0, Dtau, tol));
+}
+
 //Rcpp::List fitglmmaiRPCG(arma::fvec& Yvec, arma::fmat& Xmat, arma::fvec& wVec,  arma::fvec& tauVec,
 // Modified by SLEE, 04/16/2017
 // Modified that (Sigma_iY, Sigma_iX, cov) are input parameters. Previously they are calculated in the function

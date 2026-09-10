@@ -401,6 +401,10 @@ tauStepBinary <- function(tau0, Dtau, tol) {
     .Call('_SAIGE_tauStepBinary', PACKAGE = 'SAIGE', tau0, Dtau, tol)
 }
 
+tauProposalBinary <- function(tau0, YPAPY, Trace, AI, tol) {
+    .Call('_SAIGE_tauProposalBinary', PACKAGE = 'SAIGE', tau0, YPAPY, Trace, AI, tol)
+}
+
 fitglmmaiRPCG <- function(Yvec, Xmat, wVec, tauVec, Sigma_iY, Sigma_iX, cov, nrun, maxiterPCG, tolPCG, tol, traceCVcutoff) {
     .Call('_SAIGE_fitglmmaiRPCG', PACKAGE = 'SAIGE', Yvec, Xmat, wVec, tauVec, Sigma_iY, Sigma_iX, cov, nrun, maxiterPCG, tolPCG, tol, traceCVcutoff)
 }
