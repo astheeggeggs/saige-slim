@@ -1089,7 +1089,10 @@ profile above exists.
   bundled fit by 1.6% (beyond the 1e-2 theta tolerance), and #122's guard
   becomes second order. Cost sweep done (handoff table): total inner solves
   rise by two or three while outer iterations halve, wall time never rises;
-  recommended default `tol.coef = 1e-5`. Details in the row and the handoff.
+  recommended default `tol.coef = 1e-5`. **LANDED the same night as
+  `--tolCoef` (default 1e-5), every golden re-baselined again**; #122's guard
+  is now second order and could be retired or kept as belt-and-braces --
+  owner's call, no rush. Details in the row and the handoff.
 - **FlexRV study S2-S4 RUN (2026-09-10, night; provenance: measured,
   `harness/sim/flexrv_study/results-2026-09-10.txt`, NOTES.md).** Null
   calibration fine; the positive control FAILED on `y_quant` (no method
