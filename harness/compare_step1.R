@@ -28,10 +28,23 @@ load_modglmm <- function(path) {
   get("modglmm", envir = e)
 }
 
-relerr <- function(a, b) {
+# Elementwise symmetric relative error. For the model's vector and matrix
+# fields the denominator is floored at the field's scale (its largest
+# magnitude): an entry a million-fold below that scale is determined only to
+# the solve's working precision TIMES THE SCALE, so a floorless ratio there
+# reads the last bits of a near-zero number. LEDGER #124's gate moved
+# obj.noK$S_a entries sitting at 1e-8 of scale by 1e-9 and the floorless ratio
+# called that 15% while every field's error against its scale was <= 2.4e-4.
+# At the largest entry the floor is inactive (|a| + |b| >= scale there). theta
+# and the variance ratios are compared WITHOUT the floor (floor = FALSE): their
+# components are different quantities, and with tau1 fixed at 1 a floor at the
+# vector's scale would let a 3% move of a binary tau2 through the 1e-2 gate
+# (drilled 2026-09-10).
+relerr <- function(a, b, floor = TRUE) {
   a <- as.numeric(a); b <- as.numeric(b)
   if (length(a) != length(b)) return(Inf)
-  d <- abs(a - b) / (abs(a) + abs(b) + .Machine$double.eps)
+  scale <- if (floor) suppressWarnings(max(abs(c(a, b)), na.rm = TRUE)) else 0
+  d <- abs(a - b) / pmax(abs(a) + abs(b), scale, .Machine$double.eps)
   d[is.na(a) & is.na(b)] <- 0
   max(d, na.rm = TRUE)
 }
@@ -47,7 +60,7 @@ g <- load_modglmm(find_rda(gold_prefix))
 c_ <- load_modglmm(find_rda(cand_prefix))
 
 # theta (variance components) at the loose tolerance
-if (!is.null(g$theta)) report("theta", relerr(g$theta, c_$theta), TOL_THETA)
+if (!is.null(g$theta)) report("theta", relerr(g$theta, c_$theta, floor = FALSE), TOL_THETA)
 
 # every other shared numeric field at the tighter tolerance
 skip <- c("theta")
@@ -111,7 +124,7 @@ if (file.exists(gvr_f) && file.exists(cvr_f)) {
   if (nrow(gvr) != nrow(cvr) || !identical(gvr[, -1], cvr[, -1])) {
     cat("varianceRatio: row/tag structure differs FAIL\n"); fails <- fails + 1L
   } else {
-    report("varianceRatio values", relerr(gvr[[1]], cvr[[1]]), TOL_THETA)
+    report("varianceRatio values", relerr(gvr[[1]], cvr[[1]], floor = FALSE), TOL_THETA)
   }
 } else if (file.exists(gvr_f) != file.exists(cvr_f)) {
   cat("varianceRatio file presence differs FAIL\n"); fails <- fails + 1L
