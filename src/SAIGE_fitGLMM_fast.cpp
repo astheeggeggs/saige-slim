@@ -3703,21 +3703,23 @@ int nrun, int maxiterPCG, float tolPCG, float traceCVcutoff){
 }
 
 // LEDGER #121: the binary AI-REML variance-component update for the one free
-// component, tau0 + Dtau with a floor at tol and a step-halving loop.
-// Extracted from fitglmmaiRPCG unchanged so the rule can be pinned to closed
-// forms (tests/testthat/test-unit-tau-step.R). Today's order: the tol floor
-// runs BEFORE the halving, so a step that lands below tol from ANY tau0 is
-// already 0 when the loop tests `< 0` and the halving never runs. The
-// quantitative copy (fitglmmaiRPCG_q, `zeroVec`) and GMMAT floor first only
-// when tau0 was itself already below tol.
+// component, tau0 + Dtau with a floor at tol and a step-halving loop, pinned
+// to closed forms in tests/testthat/test-unit-tau-step.R. The rule is GMMAT
+// glmmkin.ai's, which this file's quantitative copy (fitglmmaiRPCG_q,
+// `zeroVec`) already follows: floor before halving only when tau0 was itself
+// already below tol, halve while negative, floor unconditionally only after.
+// Before the fix the first floor was unconditional, so an overshoot from any
+// tau0 was already 0 when the loop tested `< 0`, the halving never ran and
+// R's `if (tau[2] == 0) break` ended the fit with no random effect.
 // [[Rcpp::export]]
 float tauStepBinary(float tau0, float Dtau, float tol) {
   float tau = tau0 + Dtau;
-  if (tau < tol) tau = 0;
+  if (tau < tol && tau0 < tol) tau = 0;
   float step = 1.0;
   while (tau < 0.0) {
     step = step * 0.5;
     tau = tau0 + step * Dtau;
+    if (tau < tol && tau0 < tol) tau = 0;
   }
   if (tau < tol) tau = 0;
   return tau;

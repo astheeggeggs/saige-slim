@@ -1,10 +1,11 @@
 # tauStepBinary (src/SAIGE_fitGLMM_fast.cpp, Rcpp-exported): the binary
 # AI-REML's variance-component update for its one free component, applied on
-# every iteration by fitglmmaiRPCG. LEDGER #121: the tol floor runs before the
-# step-halving loop, so the halving is unreachable and an overshoot from any
-# tau0 ends the fit at tau2 = 0 (R's `if (tau[2] == 0) break`). These tests
-# pin what the kernel does TODAY beside an R transcription of the reference
-# rule; the expectations marked #121 invert when the row is fixed.
+# every iteration by fitglmmaiRPCG. LEDGER #121 (FIXED): the tol floor used to
+# run before the step-halving loop, so the halving was unreachable and an
+# overshoot from any tau0 ended the fit at tau2 = 0 (R's `if (tau[2] == 0)
+# break`). The kernel now follows the reference rule, transcribed below, and
+# these tests hold it there; the expectations marked #121 were inverted by the
+# fix and are red at the commit before it.
 
 tol <- 0.02
 
@@ -37,8 +38,8 @@ test_that("a step that stays above tol is applied as is, under both rules", {
   expect_equal(referenceStep(0.26, 0.3, tol), 0.56)
 })
 
-test_that("#121: an overshoot from above tol is floored to 0 before the halving can run", {
-  expect_step(0.26, -0.4, 0) # one halving would give 0.06
+test_that("#121: an overshoot from above tol is halved, not floored to 0", {
+  expect_step(0.26, -0.4, 0.06) # one halving; 0 before the fix
   expect_equal(referenceStep(0.26, -0.4, tol), 0.06)
 })
 
@@ -52,15 +53,14 @@ test_that("from below tol, a negative step is 0 under both rules", {
   expect_equal(referenceStep(0.01, -0.5, tol), 0)
 })
 
-test_that("#121: the two rules disagree exactly on overshoots whose halved step clears tol", {
+test_that("#121: the kernel agrees with the reference rule on a (tau0, Dtau) grid", {
   grid <- expand.grid(tau0 = c(0.01, 0.05, 0.26, 1, 3),
                       Dtau = c(-4, -1.5, -0.4, -0.27, -0.2, 0, 0.5))
   kernel <- mapply(function(a, b) tauStepBinary(a, b, tol), grid$tau0, grid$Dtau)
   reference <- mapply(function(a, b) referenceStep(a, b, tol), grid$tau0, grid$Dtau)
-  differs <- abs(kernel - reference) > 1e-6
-  expect_true(any(differs))
-  expect_true(all(kernel[differs] == 0))
-  expect_true(all(reference[differs] > 0))
-  expect_true(all(grid$tau0[differs] >= tol))
-  expect_true(all(grid$tau0[differs] + grid$Dtau[differs] < tol))
+  expect_equal(kernel, reference, tolerance = 1e-6)
+  # the grid does exercise the branch the fix opened: overshoots from tau0 >= tol
+  # whose halved step clears tol, which were 0 before the fix
+  opened <- grid$tau0 >= tol & grid$tau0 + grid$Dtau < tol & reference > 0
+  expect_true(any(opened))
 })
