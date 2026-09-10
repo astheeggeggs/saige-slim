@@ -1,7 +1,9 @@
-# What is worth doing next (2026-09-03, updated 2026-09-09)
+# What is worth doing next (2026-09-03, updated 2026-09-10 night; read docs/state/handoff-2026-09-10-flexrv-sweep-124.md first)
 
-**Current handoff: `docs/state/handoff-2026-09-09-flexrv-f2-f4.md`**
-(previous: `handoff-2026-09-09-flexrv-f0.md`, then
+**Current handoff: `docs/state/handoff-2026-09-10-flexrv-sweep-124.md`**
+(previous: `handoff-2026-09-10-fitter-guard.md`, then
+`handoff-2026-09-09-flexrv-e2e.md`, then `handoff-2026-09-09-flexrv-f2-f4.md`, then
+`handoff-2026-09-09-flexrv-f0.md`, then
 `handoff-2026-09-09-skato-identical-cells.md`)
 -- this line is the pointer and is updated with every new handoff, because
 several handoffs can share a date and `ls | tail -1` sorts by NAME, not by time.
@@ -1025,3 +1027,59 @@ branch is for, which is not a decision to make from inside the code. The
 remaining speedup candidates named in the older plan -- step-1 variance-ratio
 estimation blocking, `setgeno` ingest -- are left where they are until the
 profile above exists.
+
+- **Binary AI-REML oscillates on the sim50k fixture (found 2026-09-10 while
+  fixing LEDGER #121; provenance: measured, `harness/work/flexrv_study/`
+  `step1-fix121.log` and the scratchpad `s1fix/` traces).** After #121 the
+  fit no longer dies at the boundary, but every binary trace at 1%
+  prevalence with the pedigree sparse GRM swings 3-5x per iteration and the
+  h2 = 0.2 trait hits `maxiter` unconverged; identical at every
+  `traceCVcutoff`, so it is the (alpha, tau) fixed-point iteration, not
+  trace noise. Not a bug that a golden can see. Candidates, none tried:
+  damp the AI step (GMMAT does not), tighten `tol.coef` / `maxiter` inside
+  `Get_Coef`, or check whether the PQL working variable at tau near 0 is the
+  driver. **Measured later the same day** (handoff, "Convergence of the
+  binary AI-REML"): CLI knobs do nothing; a damped step (0.5 or adaptive
+  sign-flip halving) with the criterion on the undamped proposal and
+  tol 0.0002 converges from every start to 0.970 on `y_binary` (SAIGE
+  reports 1.31 / 0 / 0.19 by budget) and to 1.32 on the h2 = 0.2 trait
+  (SAIGE: 0). **LEDGER #122 and #123 are FIXED (2026-09-10, late):** the
+  bracket design was refuted by its first drill (stale score signs), what
+  landed is adaptive damping armed on the second direction reversal
+  (`R/TauStepGuard.R`), zero as an iterate, convergence on the raw proposal
+  never on iteration 1, twice once damped; every golden byte-identical, the
+  50k trait 0.968-0.973 from four starts. What stays open here: the 5%
+  planted trait's start-0.3 run stops on a single pair at 0.671 against
+  0.626/0.634 from other starts (today's 2% criterion on a monotone tail,
+  left as is on purpose), and the trace estimator's own noise (19% of a
+  binary tau2 at N = 1,000 with the default 30 probes), which is the
+  estimator-test item below.
+- **Step-1 estimator tests (designed 2026-09-10, not built; handoff
+  "Estimator tests for step 1").** Planted traits from the bundled GRM,
+  dense exact references, tolerance = 3 x the trace estimator's own se
+  (computed exactly). Measured: both fitters reach the exact fixed points
+  up to that noise; the default 30 probes make it 19% of a binary tau2 of
+  0.13 at N = 1,000 and the `set_seed(200)` makes it repeatable, so a
+  same-sign offset in tau2 across traits is the trace, not a bug (this
+  cost an hour). LEDGER #124 (AI projection slip) fell out of it.
+- **LEDGER #124 measured and HELD (2026-09-10, night; provenance: measured,
+  the row and `handoff-2026-09-10-flexrv-sweep-124.md`).** The three-token
+  fix moves every step-1 golden at 1e-4 and the byte-mode standard tier pins
+  those bytes (multipheno, spsolve-cache, the guard test's golden-log trace),
+  so landing it regenerates every step-1 AND step-2 golden. Owner's decision;
+  characterization committed in its TODAY form; patch + inverted test under
+  `harness/work/flexrv_study/ledger124/`.
+- **FlexRV study S2-S4 RUN (2026-09-10, night; provenance: measured,
+  `harness/sim/flexrv_study/results-2026-09-10.txt`, NOTES.md).** Null
+  calibration fine; the positive control FAILED on `y_quant` (no method
+  detects the planted quantitative signal at 50k); two design expectations
+  mis-specified (the uninformative arm keeps the `lof` set and the MAF
+  ladder; the `low` class carries causal variants). [DECISION] x3 before the
+  power question is answerable: raise the quantitative NCP, define the
+  negative control for "score informativeness" against the best score-free
+  set rather than `unw`, and decide whether `low` should be effect-free.
+- **`compare_step1.R` now floors its elementwise ratio at the field's scale
+  (2026-09-10, night)** for the model's vector/matrix fields; theta and the
+  variance ratios are unchanged. Nothing at HEAD changes; it exists because
+  #124's gate showed the floorless ratio calling a 1e-9 move of a 1e-8 entry
+  15%. Reverse it if the owner prefers the old reading.
