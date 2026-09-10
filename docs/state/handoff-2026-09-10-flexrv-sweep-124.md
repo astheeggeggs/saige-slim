@@ -185,3 +185,13 @@ trace estimate, so the total PCG work falls. Recommended default 1e-5, the
 loosest value at which every answer and outer count stop changing (1e-4
 still leaves the 50k trait on a single-pair stop at 0.958). The decision and
 its re-baseline are the owner's; nothing in the tree implements it yet.
+
+**Sanity check against upstream `main` (365deeff, `ledger125/upstream_check.out`).**
+Upstream's own build reproduces every pre-fix behaviour we recorded: the
+bundled sparse trace to the digit, the planted trait's 1.14 / 1.04 / 1.99
+from three starts (start 2 accepted on its first iteration), and the 50k
+trait collapsing to 0 in four iterations (#121). Its dense fit gives 0.3291
+against our pre-#124 0.3324, attributed to #53 (upstream still packs the
+first four samples of every marker from an uninitialised byte). Upstream
+wires `tol.coef = tol` exactly as we did, so #125's mechanism is upstream's
+too; #121, #122/#125 and #124 are all candidates for an upstream issue.
