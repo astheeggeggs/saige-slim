@@ -1075,8 +1075,15 @@ profile above exists.
   single-pair criterion before a third reversal: the planted 3% trait
   reports 1.28 / 1.24 / 0.89 from three starts under the corrected AI, and
   #122's "three starts agree" was an accident of the wrong curvature. The
-  candidates are in the row; re-measure the 50k `y_binary` trait under #124
-  first (its 0.968-0.973 from four starts predates the fix).
+  MECHANISM FOUND the same night: the inner (alpha, b) pass converges only
+  to the shared `tol.coef = tol = 0.02`, which makes the outer REML score
+  four times noisier than the exact score; with `tol.coef = 1e-6` the three
+  starts agree (1.085-1.094), the bundled fit converges in 2 iterations, and
+  the 50k trait in 7 instead of 16 to the same answer. The 50k trait under
+  #124 alone still converges to 0.967-0.973 from four starts. [DECISION]:
+  decouple `tol.coef` from `tol`; every step-1 golden moves again, the
+  bundled fit by 1.6% (beyond the 1e-2 theta tolerance), and #122's guard
+  becomes second order. Details in the row and the handoff.
 - **FlexRV study S2-S4 RUN (2026-09-10, night; provenance: measured,
   `harness/sim/flexrv_study/results-2026-09-10.txt`, NOTES.md).** Null
   calibration fine; the positive control FAILED on `y_quant` (no method

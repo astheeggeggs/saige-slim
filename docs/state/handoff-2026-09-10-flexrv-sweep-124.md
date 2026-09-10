@@ -142,3 +142,27 @@ re-baseline gate are worth the owner's eye: the comparator floor
 (`043011ea`, one commit to revert) and `test-unit-varianceratio.R`, which
 hard-codes golden numbers and would be better reading them from the file
 it parses.
+
+## #125 measured to its mechanism (2026-09-10, late night): the shared `tol`
+
+Owner's question was whether we were going round in circles. The fitter
+rows are a chain, not a circle, and it closes here. Under #124 the 50k trait
+still converges to 0.967-0.973 from four starts (the guard works where #122
+found the cycle). The dense PQL reference for the planted 3% trait gives a
+fixed point of 1.056 with se(tau2) = 0.71 (exact AI 2.0), so the three SAIGE
+answers 0.89 / 1.24 / 1.28 are all within 0.3 se of it; and SAIGE's own
+score along the iteration is four times noisier than the exact score at the
+same tau because `Get_Coef` converges the inner (alpha, b) pass only to
+`tol.coef = tol = 0.02`. The drill that settles it: force `tol.coef = 1e-6`
+and the three starts report 1.085-1.094 in 3-5 iterations with no cycle,
+the bundled fit converges in 2 iterations (to 0.3326, 1.6% from today's
+0.3274), and at 50k the default start takes 7 iterations instead of 16 to
+the same answer (0.9705 vs 0.9735). The #122 guard was a patch over noise
+the inner loop makes; it still helps at 50k (6 iterations to 0.958 without
+it) but is second order. Candidate fix: decouple `tol.coef` from `tol` (a
+CLI knob or a fixed 1e-4). It is the owner's decision because every step-1
+golden moves again by more than the 1e-2 theta tolerance (the bundled fit
+by 1.6%), i.e. the same blast radius as #124 plus a re-baseline of the
+step-1 tolerance's meaning. Scripts and outputs:
+`harness/work/flexrv_study/ledger125/` (gitignored; `dense_score.R`,
+`score_child2.R`, `k50_child.R`, `dense_score.out`, the logs).
