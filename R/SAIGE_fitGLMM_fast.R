@@ -183,6 +183,7 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
 
   guard <- tauGuardInit()   # LEDGER #122
   critPrev <- FALSE
+  didConverge <- FALSE   # LEDGER #123: set by the two exits that mean it
   for (i in seq_len(maxiter)) {
     if (verbose) cat("\nIteration ", i, tau, ":\n")
     alpha0 <- re.coef$alpha
@@ -212,6 +213,7 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
       Y <- re.coef$Y
       mu <- re.coef$mu
       cat("tau2 = 0 is the optimum: the REML score at 0 is ", score, "\n")
+      didConverge <- TRUE
       break
     }
     prop <- tauProposalBinary(tau0[2], re$YPAPY, re$Trace, re$AI, tol)
@@ -245,7 +247,10 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
     # and today's iteration count (the dense-GRM golden has exactly that).
     tauRaw <- c(tau0[1], prop[["raw"]])
     critNow <- max(abs(tauRaw - tau0) / (abs(tauRaw) + abs(tau0) + tol)) < tol
-    if (critNow && i > 1 && (!guard$fired || critPrev)) break
+    if (critNow && i > 1 && (!guard$fired || critPrev)) {
+      didConverge <- TRUE
+      break
+    }
     critPrev <- critNow
 
     if (max(tau) > tol^(-2)) {
@@ -266,7 +271,9 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
   Y <- re.coef$Y
   mu <- re.coef$mu
 
-  converged <- ifelse(i < maxiter, TRUE, FALSE)
+  # LEDGER #123: the flag records the exit, not the iteration count (a fit that
+  # met the criterion on its last allowed iteration was flagged unconverged).
+  converged <- didConverge
   res <- y - mu
 
   mu2 <- mu * (1 - mu)

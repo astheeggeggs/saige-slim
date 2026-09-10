@@ -80,7 +80,7 @@ sg_fit <- function(pheno, col, covar, qcovar, tau_init = NULL, extra = character
     "--sampleIDColinphenoFile=IID", "--IsOverwriteVarianceRatioFile=TRUE",
     "--maxiter=40",
     if (!is.null(tau_init)) paste0("--tauInit=1,", tau_init),
-    extra,
+    extra, # last value wins in optparse (measured 2026-09-10), so a caller's --maxiter overrides
     paste0("--outputPrefix=", prefix)
   ))
   expect_cli_ok(st)
@@ -88,7 +88,8 @@ sg_fit <- function(pheno, col, covar, qcovar, tau_init = NULL, extra = character
   e <- new.env()
   load(paste0(prefix, ".rda"), e)
   trace <- as.numeric(sub("^tau: +1 +", "", grep("^tau: ", log, value = TRUE)))
-  list(theta = e$modglmm$theta, iters = sum(grepl("^Iteration", log)), trace = trace, log = log)
+  list(theta = e$modglmm$theta, converged = e$modglmm$converged,
+       iters = sum(grepl("^Iteration", log)), trace = trace, log = log)
 }
 # nolint end
 
@@ -131,4 +132,14 @@ test_that("a healthy planted trait keeps its pre-guard fit exactly", {
   f <- sg_fit(sg_pheno_file(), "b_tau0.5", "x1,x2", "x2")
   expect_equal(f$iters, 3)
   expect_equal(f$theta[2], 0.1475275, tolerance = 1e-6) # measured before the guard, 2026-09-10
+})
+
+test_that("#123: a fit converging on its last allowed iteration is flagged converged", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  # the planted 3% trait converges at iteration 12 from the default start
+  f <- sg_fit(sg_pheno_file(), "c_K03_t1", "x1,x2", "x2", extra = "--maxiter=12")
+  expect_equal(f$iters, 12)
+  expect_true(f$theta[2] > 0.5) # it did converge: the iterate is at the fixed point
+  expect_true(f$converged)
 })
