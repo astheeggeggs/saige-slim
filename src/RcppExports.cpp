@@ -1285,6 +1285,19 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// tauStepBinary
+float tauStepBinary(float tau0, float Dtau, float tol);
+RcppExport SEXP _SAIGE_tauStepBinary(SEXP tau0SEXP, SEXP DtauSEXP, SEXP tolSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< float >::type tau0(tau0SEXP);
+    Rcpp::traits::input_parameter< float >::type Dtau(DtauSEXP);
+    Rcpp::traits::input_parameter< float >::type tol(tolSEXP);
+    rcpp_result_gen = Rcpp::wrap(tauStepBinary(tau0, Dtau, tol));
+    return rcpp_result_gen;
+END_RCPP
+}
 // fitglmmaiRPCG
 Rcpp::List fitglmmaiRPCG(arma::fvec& Yvec, arma::fmat& Xmat, arma::fvec& wVec, arma::fvec& tauVec, arma::fvec& Sigma_iY, arma::fmat& Sigma_iX, arma::fmat& cov, int nrun, int maxiterPCG, float tolPCG, float tol, float traceCVcutoff);
 RcppExport SEXP _SAIGE_fitglmmaiRPCG(SEXP YvecSEXP, SEXP XmatSEXP, SEXP wVecSEXP, SEXP tauVecSEXP, SEXP Sigma_iYSEXP, SEXP Sigma_iXSEXP, SEXP covSEXP, SEXP nrunSEXP, SEXP maxiterPCGSEXP, SEXP tolPCGSEXP, SEXP tolSEXP, SEXP traceCVcutoffSEXP) {
@@ -2215,6 +2228,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_getCoefficients_LOCO", (DL_FUNC) &_SAIGE_getCoefficients_LOCO, 6},
     {"_SAIGE_getCoefficients_q_LOCO", (DL_FUNC) &_SAIGE_getCoefficients_q_LOCO, 6},
     {"_SAIGE_getAIScore", (DL_FUNC) &_SAIGE_getAIScore, 11},
+    {"_SAIGE_tauStepBinary", (DL_FUNC) &_SAIGE_tauStepBinary, 3},
     {"_SAIGE_fitglmmaiRPCG", (DL_FUNC) &_SAIGE_fitglmmaiRPCG, 12},
     {"_SAIGE_getSigma_X", (DL_FUNC) &_SAIGE_getSigma_X, 5},
     {"_SAIGE_getSigma_X_LOCO", (DL_FUNC) &_SAIGE_getSigma_X_LOCO, 5},

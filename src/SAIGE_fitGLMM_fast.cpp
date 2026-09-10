@@ -3702,6 +3702,27 @@ int nrun, int maxiterPCG, float tolPCG, float traceCVcutoff){
   	return Rcpp::List::create(Named("YPAPY") = YPAPY, Named("Trace") = Trace, Named("PY") = PY1, Named("AI") = AI);
 }
 
+// LEDGER #121: the binary AI-REML variance-component update for the one free
+// component, tau0 + Dtau with a floor at tol and a step-halving loop.
+// Extracted from fitglmmaiRPCG unchanged so the rule can be pinned to closed
+// forms (tests/testthat/test-unit-tau-step.R). Today's order: the tol floor
+// runs BEFORE the halving, so a step that lands below tol from ANY tau0 is
+// already 0 when the loop tests `< 0` and the halving never runs. The
+// quantitative copy (fitglmmaiRPCG_q, `zeroVec`) and GMMAT floor first only
+// when tau0 was itself already below tol.
+// [[Rcpp::export]]
+float tauStepBinary(float tau0, float Dtau, float tol) {
+  float tau = tau0 + Dtau;
+  if (tau < tol) tau = 0;
+  float step = 1.0;
+  while (tau < 0.0) {
+    step = step * 0.5;
+    tau = tau0 + step * Dtau;
+  }
+  if (tau < tol) tau = 0;
+  return tau;
+}
+
 //Rcpp::List fitglmmaiRPCG(arma::fvec& Yvec, arma::fmat& Xmat, arma::fvec& wVec,  arma::fvec& tauVec,
 // Modified by SLEE, 04/16/2017
 // Modified that (Sigma_iY, Sigma_iX, cov) are input parameters. Previously they are calculated in the function
@@ -3725,31 +3746,9 @@ int nrun, int maxiterPCG, float tolPCG, float tol, float traceCVcutoff){
   	float AI1 = re["AI"];
   	float Dtau = score1/AI1;
   	arma::fvec tau0 = tauVec;
-  	tauVec(1) = tau0(1) + Dtau;
-        //std::cout << "fitglmmaiRPCG ends" << std::endl;
-        //std::cout << "AI1: " << AI1 << std::endl;
-        //std::cout << "score1: " << score1 << std::endl;
-        //std::cout << "Dtau: " << Dtau << std::endl;
-
-  	for(int i=0; i<tauVec.n_elem; ++i) {
-    		if (tauVec(i) < tol){
-      			tauVec(i) = 0;
-    		}
-  	}
-
-  	float step = 1.0;
-  	while (tauVec(1) < 0.0){
-
-    		step = step*0.5;
-    		tauVec(1) = tau0(1) + step * Dtau;
-
-  	}
-
-  	for(int i=0; i<tauVec.n_elem; ++i) {
-    		if (tauVec(i) < tol){
-      			tauVec(i) = 0;
-    		}
-  	}
+  	// LEDGER #121: the update rule lives in tauStepBinary so it can be pinned.
+  	tauVec(1) = tauStepBinary(tau0(1), Dtau, tol);
+  	if (tauVec(0) < tol) tauVec(0) = 0;   // the fixed component, floored as before
         //process_mem_usage(mem1, mem2);
    	//std::cout << "VM 3: " << mem1 << "; RSS 3: " << mem2<< std::endl;
   	return List::create(Named("tau") = tauVec);
