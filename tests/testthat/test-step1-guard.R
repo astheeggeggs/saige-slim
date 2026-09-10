@@ -20,7 +20,7 @@
 # A planted trait whose fixed point is the boundary (score at 0 negative)
 # must still stop at 0, and now says so.
 #
-# Tier: standard (~8 step-1 fits of ~3 s).
+# Tier: standard (~18 step-1 fits of ~3 s, half of them in-process controls).
 
 # The helpers below call run_saige_cli / expect_cli_ok / saige_extdata from
 # helper-saige.R, which lintr does not see; only that linter is silenced.
@@ -94,6 +94,56 @@ sg_fit <- function(pheno, col, covar, qcovar, tau_init = NULL, extra = character
   list(theta = e$modglmm$theta, converged = e$modglmm$converged,
        iters = sum(grepl("^Iteration", log)), trace = trace, log = log)
 }
+
+# The guard-disabled CONTROL. The same fit in a child process with the CLI's
+# conventions (covariates as an offset, relatednessCutoff 0, which is what
+# makes it reproduce sg_fit's theta exactly), once as installed and once with
+# tauGuardApply replaced in the namespace by a pass-through. "The guard is
+# inert on this fit" then means the two .rda files are byte-identical, at any
+# curvature; a positive control (a fit where the guard does act) shows the
+# replacement takes effect. Returns the .rda path and theta.
+sg_fit_inproc <- function(pheno, col, covar, qcovar, guard, offset = TRUE) {
+  prefix <- file.path(tempfile(paste0("guardctl_", col, "_")), "fit")
+  dir.create(dirname(prefix), recursive = TRUE)
+  script <- tempfile(fileext = ".R")
+  writeLines(c(
+    "suppressPackageStartupMessages(library(SAIGE))",
+    if (!guard) c('ns <- asNamespace("SAIGE"); unlockBinding("tauGuardApply", ns)',
+                  'assign("tauGuardApply",',
+                  "       function(state, tau0, raw, step, ...) list(p = step, state = state), ns)",
+                  'lockBinding("tauGuardApply", ns)'),
+    paste0('sg <- "output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed',
+           '.sparseGRM.mtx"'),
+    paste0('fitNULLGLMM(plinkFile = "./input/nfam_100_nindep_0_step1_',
+           'includeMoreRareVariants_poly_22chr",'),
+    '  sparseGRMFile = sg, sparseGRMSampleIDFile = paste0(sg, ".sampleIDs.txt"),',
+    "  useSparseGRMtoFitNULL = TRUE, useSparseGRMforVarRatio = TRUE,",
+    sprintf('  skipVarianceRatioEstimation = TRUE, phenoFile = "%s", phenoCol = "%s",', pheno, col),
+    sprintf("  covarColList = c(%s), qCovarCol = c(%s),",
+            paste0('"', strsplit(covar, ",")[[1]], '"', collapse = ", "),
+            paste0('"', strsplit(qcovar, ",")[[1]], '"', collapse = ", ")),
+    '  sampleIDColinphenoFile = "IID", traitType = "binary", IsOverwriteVarianceRatioFile = TRUE,',
+    sprintf("  maxiter = 40, isCovariateOffset = %s, relatednessCutoff = 0,",
+            if (offset) "TRUE" else "FALSE"),
+    sprintf('  outputPrefix = "%s")', prefix)
+  ), script)
+  owd <- setwd(saige_extdata)
+  on.exit(setwd(owd), add = TRUE)
+  st <- suppressWarnings(system2(file.path(R.home("bin"), "Rscript"), script,
+                                 stdout = FALSE, stderr = FALSE))
+  expect_identical(as.integer(st), 0L)
+  e <- new.env()
+  load(paste0(prefix, ".rda"), e)
+  list(rda = paste0(prefix, ".rda"), theta = e$modglmm$theta)
+}
+
+# Guard live vs guard neutralised, and the CLI fit they must agree with.
+expect_guard_inert <- function(pheno, col, covar, qcovar, cli_theta2) {
+  g <- sg_fit_inproc(pheno, col, covar, qcovar, guard = TRUE)
+  u <- sg_fit_inproc(pheno, col, covar, qcovar, guard = FALSE)
+  expect_files_byte_identical(g$rda, u$rda)
+  expect_equal(g$theta[2], cli_theta2, tolerance = 1e-8)
+}
 # nolint end
 
 test_that("a healthy fit is untouched: the bundled binary fit's trace equals the golden log's", {
@@ -106,6 +156,21 @@ test_that("a healthy fit is untouched: the bundled binary fit's trace equals the
   expect_equal(f$iters, length(golden))
   expect_equal(f$trace, golden, tolerance = 1e-6)
   expect_equal(f$theta[2], golden[length(golden)], tolerance = 1e-6)
+  # the control: with the guard neutralised the fit is the same file
+  expect_guard_inert("./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt",
+                     "y_binary", "x1,x2,a9,a10", "a9,a10", f$theta[2])
+})
+
+test_that("the guard-disabled control is not vacuous: a fit the guard acts on differs", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  # the planted 3% trait under the FULL covariate model (offset = FALSE) is a
+  # fit where the guard damps: 1.089 with it, 1.208 without (2026-09-10)
+  ph <- sg_pheno_file()
+  g <- sg_fit_inproc(ph, "c_K03_t1", "x1,x2", "x2", guard = TRUE, offset = FALSE)
+  u <- sg_fit_inproc(ph, "c_K03_t1", "x1,x2", "x2", guard = FALSE, offset = FALSE)
+  expect_false(tools::md5sum(g$rda) == tools::md5sum(u$rda))
+  expect_gt(abs(g$theta[2] - u$theta[2]), 0.05)
 })
 
 test_that("LEDGER #125 (open): the planted 3% trait reports a different tau2 from each start", {
@@ -124,6 +189,9 @@ test_that("LEDGER #125 (open): the planted 3% trait reports a different tau2 fro
   expect_equal(tau, c(1.2797, 1.2357, 0.8906), tolerance = 1e-3)
   expect_gt(max(tau) / min(tau) - 1, 0.03)
   expect_false(all(abs(tau - 1.056) < 0.1))
+  # and the guard never acted: with it neutralised the default-start fit is
+  # the same file (the positive control below shows the neutralising works)
+  expect_guard_inert(ph, "c_K03_t1", "x1,x2", "x2", tau[1])
 })
 
 test_that("a planted trait whose fixed point is the boundary stops at 0 and says why", {
@@ -143,6 +211,7 @@ test_that("a healthy planted trait keeps its pre-guard fit exactly", {
   # damping: still the guard-free path)
   expect_equal(f$iters, 4)
   expect_equal(f$theta[2], 0.14645, tolerance = 1e-4)
+  expect_guard_inert(sg_pheno_file(), "b_tau0.5", "x1,x2", "x2", f$theta[2])
 })
 
 test_that("#123: a fit converging on its last allowed iteration is flagged converged", {

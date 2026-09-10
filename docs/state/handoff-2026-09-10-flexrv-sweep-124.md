@@ -125,3 +125,20 @@ Two other re-pins in the same commit: the golden variance-ratio numbers in
 magnitude of a cancelled conditional variance, not its sign (the re-baseline
 flipped -1.4e-14). The 50k `y_binary` trait was NOT re-measured under #124;
 do that before touching the guard.
+
+**The guard-disabled control (owner's request, the commit after #124).**
+`test-step1-guard.R` now fits each "healthy" trait twice in-process with the
+CLI's conventions (`isCovariateOffset = TRUE`, `relatednessCutoff = 0`,
+which is what makes an in-process fit reproduce `sg_fit`'s theta to the
+digit), once as installed and once with `tauGuardApply` replaced in the
+namespace by a pass-through, and requires the two `.rda` files to be
+byte-identical: "the guard is inert here" is then a control at any
+curvature, not a pinned number. A positive control (the planted 3% trait
+under the full covariate model, where the guard damps: 1.089 with, 1.208
+without) shows the replacement takes effect. The #125 characterization
+carries the same control, which is the bug stated directly: the guard
+neutralised gives the identical file. Two further reactive edits from the
+re-baseline gate are worth the owner's eye: the comparator floor
+(`043011ea`, one commit to revert) and `test-unit-varianceratio.R`, which
+hard-codes golden numbers and would be better reading them from the file
+it parses.
