@@ -14,13 +14,16 @@
 #    accepted on its first iteration). The dense PQL fixed point is 1.056.
 #    Under the guard and the WRONG AI curvature (before LEDGER #124) the three
 #    starts agreed near 1.05; with the curvature fixed the same guard never
-#    damps here (it arms on the second reversal but halves only from the
-#    third, and the 2% single-pair criterion passes first) and the starts
-#    report 1.280 / 1.236 / 0.891. That is LEDGER #125, characterized below.
+#    damped here and the starts reported 1.280 / 1.236 / 0.891 (LEDGER #125).
+#    The mechanism was the inner (alpha, b) pass converging only to the shared
+#    tol = 0.02, which left the outer REML score four times noisier than the
+#    exact score; with the inner pass at tolCoef = 1e-5 (the #125 fix) the
+#    three starts agree at 1.085-1.094 and --tolCoef=0.02 reproduces the old
+#    start-dependent stop, which is how the flag is pinned below.
 # A planted trait whose fixed point is the boundary (score at 0 negative)
 # must still stop at 0, and now says so.
 #
-# Tier: standard (~18 step-1 fits of ~3 s, half of them in-process controls).
+# Tier: standard (~19 step-1 fits of ~3 s, half of them in-process controls).
 
 # The helpers below call run_saige_cli / expect_cli_ok / saige_extdata from
 # helper-saige.R, which lintr does not see; only that linter is silenced.
@@ -102,7 +105,7 @@ sg_fit <- function(pheno, col, covar, qcovar, tau_init = NULL, extra = character
 # inert on this fit" then means the two .rda files are byte-identical, at any
 # curvature; a positive control (a fit where the guard does act) shows the
 # replacement takes effect. Returns the .rda path and theta.
-sg_fit_inproc <- function(pheno, col, covar, qcovar, guard, offset = TRUE) {
+sg_fit_inproc <- function(pheno, col, covar, qcovar, guard, offset = TRUE, tol_coef = NULL) {
   prefix <- file.path(tempfile(paste0("guardctl_", col, "_")), "fit")
   dir.create(dirname(prefix), recursive = TRUE)
   script <- tempfile(fileext = ".R")
@@ -125,6 +128,7 @@ sg_fit_inproc <- function(pheno, col, covar, qcovar, guard, offset = TRUE) {
     '  sampleIDColinphenoFile = "IID", traitType = "binary", IsOverwriteVarianceRatioFile = TRUE,',
     sprintf("  maxiter = 40, isCovariateOffset = %s, relatednessCutoff = 0,",
             if (offset) "TRUE" else "FALSE"),
+    if (!is.null(tol_coef)) sprintf("  tolCoef = %s,", format(tol_coef)),
     sprintf('  outputPrefix = "%s")', prefix)
   ), script)
   owd <- setwd(saige_extdata)
@@ -164,16 +168,17 @@ test_that("a healthy fit is untouched: the bundled binary fit's trace equals the
 test_that("the guard-disabled control is not vacuous: a fit the guard acts on differs", {
   skip_unless_level("standard")
   skip_if_no_goldens()
-  # the planted 3% trait under the FULL covariate model (offset = FALSE) is a
-  # fit where the guard damps: 1.089 with it, 1.208 without (2026-09-10)
+  # the planted 3% trait under the FULL covariate model (offset = FALSE) with
+  # the OLD inner tolerance (tolCoef = 0.02) is a fit where the guard damps:
+  # 1.089 with it, 1.208 without (2026-09-10)
   ph <- sg_pheno_file()
-  g <- sg_fit_inproc(ph, "c_K03_t1", "x1,x2", "x2", guard = TRUE, offset = FALSE)
-  u <- sg_fit_inproc(ph, "c_K03_t1", "x1,x2", "x2", guard = FALSE, offset = FALSE)
+  g <- sg_fit_inproc(ph, "c_K03_t1", "x1,x2", "x2", guard = TRUE, offset = FALSE, tol_coef = 0.02)
+  u <- sg_fit_inproc(ph, "c_K03_t1", "x1,x2", "x2", guard = FALSE, offset = FALSE, tol_coef = 0.02)
   expect_false(tools::md5sum(g$rda) == tools::md5sum(u$rda))
   expect_gt(abs(g$theta[2] - u$theta[2]), 0.05)
 })
 
-test_that("LEDGER #125 (open): the planted 3% trait reports a different tau2 from each start", {
+test_that("#125: with the inner pass converged, the planted 3% trait agrees from three starts", {
   skip_unless_level("standard")
   skip_if_no_goldens()
   ph <- sg_pheno_file()
@@ -182,16 +187,18 @@ test_that("LEDGER #125 (open): the planted 3% trait reports a different tau2 fro
   # no fit may accept its first proposal (the cold start at 2 did, before #122)
   expect_true(all(vapply(fits, function(f) f$iters, numeric(1)) > 1))
   expect_true(all(vapply(fits, function(f) isTRUE(f$converged), logical(1))))
-  # TODAY: every fit "converges" on a single pair inside 2% while the trace
-  # is still swinging (default start: 1.47 1.70 1.09 0.62 0.88 1.25 1.28), no
-  # step is ever damped, and the three answers straddle the fixed point 1.056
-  # by more than the trace estimator's se (~0.025). Invert with the #125 fix.
-  expect_equal(tau, c(1.2797, 1.2357, 0.8906), tolerance = 1e-3)
-  expect_gt(max(tau) / min(tau) - 1, 0.03)
-  expect_false(all(abs(tau - 1.056) < 0.1))
-  # and the guard never acted: with it neutralised the default-start fit is
-  # the same file (the positive control below shows the neutralising works)
-  expect_guard_inert(ph, "c_K03_t1", "x1,x2", "x2", tau[1])
+  # 1.091 / 1.094 / 1.085 in 5 / 3 / 3 iterations (2026-09-10): the dense PQL
+  # fixed point is 1.056 and the trace estimator's se here is ~0.025
+  expect_lt(max(tau) / min(tau) - 1, 0.03)
+  expect_true(all(abs(tau - 1.056) < 0.1))
+  # (the guard still acts mildly on the default start here, 1.0914 with it and
+  # 1.0878 without, both inside the trace noise; inertness is the HEALTHY fits'
+  # claim, tested above and below, not this trait's)
+  # the knob is wired: the old inner tolerance reproduces the old stop on a
+  # single pair inside 2% while the trace still swings (7 iterations, 1.2797)
+  old <- sg_fit(ph, "c_K03_t1", "x1,x2", "x2", extra = "--tolCoef=0.02")
+  expect_equal(old$iters, 7)
+  expect_equal(old$theta[2], 1.2797, tolerance = 1e-3)
 })
 
 test_that("a planted trait whose fixed point is the boundary stops at 0 and says why", {
@@ -206,25 +213,25 @@ test_that("a healthy planted trait keeps its pre-guard fit exactly", {
   skip_unless_level("standard")
   skip_if_no_goldens()
   f <- sg_fit(sg_pheno_file(), "b_tau0.5", "x1,x2", "x2")
-  # 3 iterations and 0.1475275 before LEDGER #124 corrected the AI curvature;
-  # 4 and 0.14645 after (trace 0.141 0.154 0.148 0.146, one reversal, no
-  # damping: still the guard-free path)
-  expect_equal(f$iters, 4)
-  expect_equal(f$theta[2], 0.14645, tolerance = 1e-4)
+  # 3 iterations and 0.1475275 before LEDGER #124 corrected the AI curvature,
+  # 4 and 0.14645 after it, 2 and 0.14676 with the inner pass at tolCoef =
+  # 1e-5 (#125; trace 0.1411 0.1468, no reversal, no damping)
+  expect_equal(f$iters, 2)
+  expect_equal(f$theta[2], 0.14676, tolerance = 1e-4)
   expect_guard_inert(sg_pheno_file(), "b_tau0.5", "x1,x2", "x2", f$theta[2])
 })
 
 test_that("#123: a fit converging on its last allowed iteration is flagged converged", {
   skip_unless_level("standard")
   skip_if_no_goldens()
-  # the planted 3% trait meets the criterion at iteration 7 from the default
-  # start (12 before LEDGER #124 corrected the AI curvature)
-  f <- sg_fit(sg_pheno_file(), "c_K03_t1", "x1,x2", "x2", extra = "--maxiter=7")
-  expect_equal(f$iters, 7)
-  expect_true(f$theta[2] > 0.5) # it did meet the criterion (see #125 for what that is worth)
+  # the planted 3% trait meets the criterion at iteration 5 from the default
+  # start (12 before LEDGER #124, 7 before #125)
+  f <- sg_fit(sg_pheno_file(), "c_K03_t1", "x1,x2", "x2", extra = "--maxiter=5")
+  expect_equal(f$iters, 5)
+  expect_true(f$theta[2] > 0.5) # it did converge: the iterate is at the fixed point
   expect_true(f$converged)
   # the contrast: one iteration fewer and the flag says so
-  g <- sg_fit(sg_pheno_file(), "c_K03_t1", "x1,x2", "x2", extra = "--maxiter=6")
-  expect_equal(g$iters, 6)
+  g <- sg_fit(sg_pheno_file(), "c_K03_t1", "x1,x2", "x2", extra = "--maxiter=4")
+  expect_equal(g$iters, 4)
   expect_false(g$converged)
 })

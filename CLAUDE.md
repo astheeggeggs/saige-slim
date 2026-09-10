@@ -381,7 +381,12 @@ silently leaves stale values. `Main.hpp` declarations are stale (LEDGER #5).
   when mmap fails; force it with `SAIGE_PLINK_NO_MMAP=1` (it refuses to clone).
 - `R/SAIGE_fitGLMM_fast.R::fitNULLGLMM` is ONE body for both traits (the
   glm family and the fitter are chosen by trait; the four lines that differ
-  in arithmetic are marked "by trait"); its phenotype preparation is
+  in arithmetic are marked "by trait"). **A binary fit's inner (alpha, b)
+  pass converges to `tolCoef` (1e-5, `--tolCoef`), decoupled from `tol`
+  since LEDGER #125**: tied to `tol = 0.02` it left the outer REML score
+  four times noisier than the exact score, which is what the #122 guard
+  was built to survive; `--tolCoef=0.02` reproduces the pre-#125 fitter.
+  Its phenotype preparation is
   `preparePhenotypeFrame` in `R/PhenoPrep.R`, shared with `getNeff`
   (`R/SAIGE_extractNeff.R`, LEDGER #100). Region weight sets are described by
   `weightSetDescriptor` in `R/WeightSets.R`, the only constructor

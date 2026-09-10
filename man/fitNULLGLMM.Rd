@@ -22,6 +22,7 @@ fitNULLGLMM(
   qCovarCol = NULL,
   sampleIDColinphenoFile = "",
   tol = 0.02,
+  tolCoef = 1e-05,
   maxiter = 20,
   tolPCG = 1e-05,
   maxiterPCG = 500,
@@ -105,6 +106,8 @@ specified, 'plink2File'.psam will be used}
 \item{sampleIDColinphenoFile}{character. Column name for the sample IDs in the phenotype file e.g. "IID".}
 
 \item{tol}{numeric. The tolerance for fitting the null model to converge. By default, 0.02.}
+
+\item{tolCoef}{numeric. The tolerance of the inner (alpha, b) pass of a binary fit at each variance-component iterate (LEDGER #125: it was tied to tol, which left the REML score noisier than its own signal). By default, 1e-5. Quantitative fits solve that pass directly and ignore it.}
 
 \item{maxiter}{integer. The maximum number of iterations used to fit the null GLMMM. By default, 20.}
 

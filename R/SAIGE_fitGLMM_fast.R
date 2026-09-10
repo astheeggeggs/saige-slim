@@ -76,7 +76,7 @@ Get_Coef_LOCO <- function(y, X, tau, family, alpha0, eta0, offset, maxiterPCG, t
 
 
 # Fits the null glmm for binary traits
-glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovariateOffset, fit0, tau = c(0, 0), fixtau = c(0, 0), maxiter = 20, tol = 0.02, verbose = TRUE, nrun = 30, tolPCG = 1e-5, maxiterPCG = 500, subPheno, indicatorGenoSamplesWithPheno, obj.noK, out.transform, tauInit, memoryChunk, LOCO, chromosomeStartIndexVec, chromosomeEndIndexVec, traceCVcutoff, isCovariateTransform, isDiagofKinSetAsOne, isLowMemLOCO, genoIn = NULL, ingestGates = NULL) {
+glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovariateOffset, fit0, tau = c(0, 0), fixtau = c(0, 0), maxiter = 20, tol = 0.02, tolCoef = 1e-5, verbose = TRUE, nrun = 30, tolPCG = 1e-5, maxiterPCG = 500, subPheno, indicatorGenoSamplesWithPheno, obj.noK, out.transform, tauInit, memoryChunk, LOCO, chromosomeStartIndexVec, chromosomeEndIndexVec, traceCVcutoff, isCovariateTransform, isDiagofKinSetAsOne, isLowMemLOCO, genoIn = NULL, ingestGates = NULL) {
   # Fits the null generalized linear mixed model for a binary trait
   # Args:
   #  genofile: string. Plink file for the M1 markers to be used to construct the genetic relationship matrix
@@ -170,7 +170,10 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
   cat("inital tau is ", tau, "\n")
   tau0 <- tau
 
-  re.coef <- Get_Coef(y, X, tau, family, alpha0, eta0, offset, verbose = verbose, maxiterPCG = maxiterPCG, tolPCG = tolPCG, maxiter = maxiter, tol.coef = tol)
+  # LEDGER #125: the inner (alpha, b) pass converges to tolCoef, not to the outer
+  # tol: at tol = 0.02 the REML score at a fixed tau was four times noisier than
+  # the exact score, which is what the #122 guard was built to survive.
+  re.coef <- Get_Coef(y, X, tau, family, alpha0, eta0, offset, verbose = verbose, maxiterPCG = maxiterPCG, tolPCG = tolPCG, maxiter = maxiter, tol.coef = tolCoef)
   re <- getAIScore(re.coef$Y, X, re.coef$W, tau, re.coef$Sigma_iY, re.coef$Sigma_iX, re.coef$cov, nrun, maxiterPCG, tolPCG = tolPCG, traceCVcutoff = traceCVcutoff)
 
 
@@ -192,7 +195,7 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
     eta0 <- eta
     # use Get_Coef before getAIScore
     t_begin_Get_Coef <- proc.time()
-    re.coef <- Get_Coef(y, X, tau, family, alpha0, eta0, offset, verbose = verbose, maxiterPCG = maxiterPCG, tolPCG = tolPCG, maxiter = maxiter, tol.coef = tol)
+    re.coef <- Get_Coef(y, X, tau, family, alpha0, eta0, offset, verbose = verbose, maxiterPCG = maxiterPCG, tolPCG = tolPCG, maxiter = maxiter, tol.coef = tolCoef)
     t_end_Get_Coef <- proc.time()
     # cat("t_end_Get_Coef - t_begin_Get_Coef\n")
     cat("Updating fix effect coeffcieints took\n")
@@ -263,7 +266,7 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
   if (verbose) cat("\nFinal ", tau, ":\n")
 
   # added these steps after tau is estimated 04-14-2018
-  re.coef <- Get_Coef(y, X, tau, family, alpha, eta, offset, verbose = verbose, maxiterPCG = maxiterPCG, tolPCG = tolPCG, maxiter = maxiter, tol.coef = tol)
+  re.coef <- Get_Coef(y, X, tau, family, alpha, eta, offset, verbose = verbose, maxiterPCG = maxiterPCG, tolPCG = tolPCG, maxiter = maxiter, tol.coef = tolCoef)
   cov <- re.coef$cov
   alpha <- re.coef$alpha
   eta <- re.coef$eta
@@ -303,7 +306,7 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
         cat("leave chromosome ", j, " out\n")
         setStartEndIndex(startIndex, endIndex, j - 1)
         t_begin_Get_Coef_LOCO <- proc.time()
-        re.coef_LOCO <- Get_Coef_LOCO(y, X, tau, family, alpha, eta, offset, verbose = verbose, maxiterPCG = maxiterPCG, tolPCG = tolPCG, maxiter = maxiter, tol.coef = tol)
+        re.coef_LOCO <- Get_Coef_LOCO(y, X, tau, family, alpha, eta, offset, verbose = verbose, maxiterPCG = maxiterPCG, tolPCG = tolPCG, maxiter = maxiter, tol.coef = tolCoef)
         t_end_Get_Coef_LOCO <- proc.time()
         # cat("t_end_Get_Coef_LOCO - t_begin_Get_Coef_LOCO\n")
         cat("Updating fix effect coeffcieints and model residuals took\n")
@@ -349,7 +352,7 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
 
 
 # Fits the null glmm for a quantitative trait
-glmmkin.ai_PCG_Rcpp_Quantitative <- function(bedFile, bimFile, famFile, Xorig, isCovariateOffset, fit0, tau = c(0, 0), fixtau = c(0, 0), maxiter = 20, tol = 0.02, verbose = TRUE, nrun = 30, tolPCG = 1e-5, maxiterPCG = 500, subPheno, indicatorGenoSamplesWithPheno, obj.noK, out.transform, tauInit, memoryChunk, LOCO, chromosomeStartIndexVec, chromosomeEndIndexVec, traceCVcutoff, isCovariateTransform, isDiagofKinSetAsOne, isLowMemLOCO, genoIn = NULL, ingestGates = NULL) {
+glmmkin.ai_PCG_Rcpp_Quantitative <- function(bedFile, bimFile, famFile, Xorig, isCovariateOffset, fit0, tau = c(0, 0), fixtau = c(0, 0), maxiter = 20, tol = 0.02, tolCoef = 1e-5, verbose = TRUE, nrun = 30, tolPCG = 1e-5, maxiterPCG = 500, subPheno, indicatorGenoSamplesWithPheno, obj.noK, out.transform, tauInit, memoryChunk, LOCO, chromosomeStartIndexVec, chromosomeEndIndexVec, traceCVcutoff, isCovariateTransform, isDiagofKinSetAsOne, isLowMemLOCO, genoIn = NULL, ingestGates = NULL) {
   # Fits the null linear mixed model for a quantitative trait
   # Args:
   #  genofile: string. Plink file for the M1 markers to be used to construct the genetic relationship matrix
@@ -674,6 +677,10 @@ solveSpMatrixUsingArma <- function(sparseGRMtest) {
 #' @param qCovarCol vector of characters. Categorical covariates to be used in the null model. All categorical covariates listed in qCovarCol must be also in covarColList,  e,g c("Sex").
 #' @param sampleIDColinphenoFile character. Column name for the sample IDs in the phenotype file e.g. "IID".
 #' @param tol numeric. The tolerance for fitting the null model to converge. By default, 0.02.
+#' @param tolCoef numeric. The tolerance of the inner (alpha, b) pass of a binary fit at each
+#'   variance-component iterate (LEDGER #125: it was tied to tol, which left the REML score
+#'   noisier than its own signal). By default, 1e-5. Quantitative fits solve that pass directly
+#'   and ignore it.
 #' @param maxiter integer. The maximum number of iterations used to fit the null GLMMM. By default, 20.
 #' @param tolPCG numeric. The tolerance for PCG to converge. By default, 1e-5.
 #' @param maxiterPCG integer. The maximum number of iterations for PCG. By default, 500.
@@ -744,6 +751,7 @@ fitNULLGLMM <- function(plinkFile = "",
                         qCovarCol = NULL,
                         sampleIDColinphenoFile = "",
                         tol = 0.02,
+                        tolCoef = 1e-5,
                         maxiter = 20,
                         tolPCG = 1e-5,
                         maxiterPCG = 500,
@@ -1194,7 +1202,7 @@ fitNULLGLMM <- function(plinkFile = "",
       re_fit <- system.time(modglmm <- fitter(bedFile, bimFile, famFile, Xorig, isCovariateOffset,
         fit0,
         tau = c(0, 0), fixtau = c(0, 0), maxiter = maxiter,
-        tol = tol, verbose = TRUE, nrun = nrun, tolPCG = tolPCG,
+        tol = tol, tolCoef = tolCoef, verbose = TRUE, nrun = nrun, tolPCG = tolPCG,
         maxiterPCG = maxiterPCG, subPheno = dataMerge_sort, indicatorGenoSamplesWithPheno = indicatorGenoSamplesWithPheno,
         obj.noK = obj.noK, out.transform = out.transform,
         tauInit = tauInit, memoryChunk = memoryChunk,
@@ -1307,7 +1315,7 @@ fitNULLGLMM <- function(plinkFile = "",
             cat("leave chromosome ", j, " out\n")
             setStartEndIndex(startIndex, endIndex, j - 1)
                         # by trait: the quantitative refit never passed tol.coef (default 0.1)
-            re.coef_LOCO <- Get_Coef_LOCO(y, X = model.matrix(fit0), tau, family = fit0$family, alpha = alpha0, eta = eta0, offset = offset0, verbose = TRUE, maxiterPCG = maxiterPCG, tolPCG = tolPCG, maxiter = maxiter, tol.coef = if (isBinary) tol else 0.1)
+            re.coef_LOCO <- Get_Coef_LOCO(y, X = model.matrix(fit0), tau, family = fit0$family, alpha = alpha0, eta = eta0, offset = offset0, verbose = TRUE, maxiterPCG = maxiterPCG, tolPCG = tolPCG, maxiter = maxiter, tol.coef = if (isBinary) tolCoef else 0.1)
             cov <- re.coef_LOCO$cov
             alpha <- re.coef_LOCO$alpha
             eta <- re.coef_LOCO$eta

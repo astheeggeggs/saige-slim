@@ -435,9 +435,13 @@ deliberately did NOT change:
   upstream intends is not known, and either choice moves every binary LOCO model.
   [ASSUMPTION: the warm start is the whole cause -- derived from the code, and the
   chr1-exact/chr2-loose pattern matches it; not isolated by forcing the start.]
+  **RESOLVED by LEDGER #125 (2026-09-10, late night):** with the inner pass at
+  `tolCoef = 1e-5` the two layouts reach the same point from their different
+  starts (chr2 coefficients identical, `S_a` within 5e-4); the test now asserts
+  agreement. The start-dependence was the loose inner tolerance, not the start.
 - **Two by-trait asymmetries in the low-memory refit, preserved.** The binary
   refit passes the glm's offset (none unless `isCovariateOffset`) and
-  `tol.coef = tol`; the quantitative refit passes the model's covariate offset
+  `tol.coef = tolCoef` (was `tol`, LEDGER #125); the quantitative refit passes the model's covariate offset
   (`X[, -1] %*% coef[-1]`, alongside the same X and alpha) and the default
   `tol.coef = 0.1`. Both mirror what each trait's fitter does in its own LOCO
   loop, so the layouts agree per trait; whether the quantitative offset is

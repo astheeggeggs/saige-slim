@@ -88,7 +88,12 @@ test_that("binary: the low-memory per-chromosome files match the in-memory LOCO 
   plink <- file.path(tempfile("twochr_"), "sub")
   dir.create(dirname(plink), recursive = TRUE)
   sm_two_chr_fixture(plink)
-  ll_check_trait("binary", plink, chr_tol = c(1e-10, 1e-4), sa_agrees = c(TRUE, FALSE))
+  # chromosome 2's refit used to stop at a different point in the two layouts
+  # (the in-memory path warm-starts from chromosome 1's alpha, the low-memory
+  # path from the full model's, and at tol.coef = 0.02 that was the answer);
+  # with the inner pass at tolCoef = 1e-5 (LEDGER #125) both reach the same
+  # point: coefficients identical, S_a within 5e-4 (measured 2026-09-10)
+  ll_check_trait("binary", plink, chr_tol = c(1e-10, 1e-3), sa_agrees = c(TRUE, TRUE))
 })
 
 test_that("quantitative: the low-memory per-chromosome files match the in-memory LOCO results", {

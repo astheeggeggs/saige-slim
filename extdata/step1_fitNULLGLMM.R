@@ -156,6 +156,14 @@ option_list <- list(
     help = "Optional. Tolerance for fitting the null GLMM to converge [default=0.02]."
   ),
   make_option(
+    "--tolCoef",
+    type = "double",
+    default = 1e-5,
+    help = paste0("Optional. Tolerance of the inner coefficient pass at each variance-component ",
+                  "iterate of a binary fit (LEDGER #125; --tolCoef=0.02 reproduces the old ",
+                  "behaviour, where it was tied to --tol) [default=1e-5].")
+  ),
+  make_option(
     "--maxiter",
     type = "integer",
     default = 20L,
@@ -567,6 +575,7 @@ fitNULLGLMM_multi(
   covarColList = covars,
   qCovarCol = qcovars,
   tol = opt$tol,
+  tolCoef = opt$tolCoef,
   maxiter = opt$maxiter,
   tolPCG = opt$tolPCG,
   maxiterPCG = opt$maxiterPCG,

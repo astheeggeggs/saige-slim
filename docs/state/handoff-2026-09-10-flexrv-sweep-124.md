@@ -195,3 +195,36 @@ against our pre-#124 0.3324, attributed to #53 (upstream still packs the
 first four samples of every marker from an uninitialised byte). Upstream
 wires `tol.coef = tol` exactly as we did, so #125's mechanism is upstream's
 too; #121, #122/#125 and #124 are all candidates for an upstream issue.
+
+## #125 LANDED (2026-09-10, late night): `tolCoef`
+
+Owner's go-ahead on 1e-5 as a flag. `fitNULLGLMM(tolCoef = 1e-5)` /
+`--tolCoef` is the inner pass's tolerance for binary fits; quantitative fits
+accept and ignore it (direct solve). `--tolCoef=0.02` reproduces the old
+fitter exactly and is how the flag is pinned. Every golden re-baselined
+again (the prediction file names which files move; the quantitative goldens
+and the 35 step-2 prefixes on frozen or quantitative models stay
+byte-identical). The row's earlier STATUS text, with the mechanism, the cost
+sweep and the upstream check, is preserved here in full for the record:
+
+> OPEN, mechanism found. The 50k trait under #124 still converges to
+> 0.967-0.973 from four starts. Dense PQL reference for the planted trait:
+> fixed point 1.056 (offset) / 1.070 (full), exact AI 2.0, se(tau2) 0.71;
+> exact score +0.38 at 0.90 and -0.44 at 1.25 against SAIGE's +1.64 at 0.88
+> and -0.04 at 0.90 along its iteration (inner pass at tol.coef = tol =
+> 0.02). Drill: tol.coef = 1e-6 gives 1.091 / 1.094 / 1.085 in 5 / 3 / 3
+> iterations, the bundled fit 2 iterations to 0.3326. 50k: guard live 7
+> iterations to 0.9705 (16 to 0.9735 today), neutralised 6 to 0.958. Cost
+> sweep: inner solves +2..3 in total while outer iterations halve, wall
+> never rises; 1e-5 is the loosest settled value. Upstream 365deeff
+> reproduces every pre-fix behaviour (sparse trace to the digit, planted
+> 1.1436 / 1.0397 / 1.9933, 50k to 0 in 4 iterations); its dense fit differs
+> by #53.
+
+The test changes are the ones a reader should check for tinkering: the
+three-start test is INVERTED (agreement, not a pinned disagreement), the
+healthy planted trait's pin moved to 2 iterations / 0.14676 with the
+guard-disabled control still asserting inertness, the #123 scenario to
+`--maxiter=5`, and the guard's positive control moved behind
+`tolCoef = 0.02` because under 1e-5 the guard acts only mildly on that
+trait (1.0914 vs 1.0878 neutralised).
