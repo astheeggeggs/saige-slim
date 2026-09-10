@@ -3696,7 +3696,10 @@ int nrun, int maxiterPCG, float tolPCG, float traceCVcutoff){
 	//tauVec.print("tauVec");
 	//PAPY_1.print("PAPY_1");
 
-  	arma::fvec PAPY = PAPY_1 - Sigma_iX * (cov * (Sigma_iXt * PAPY_1));
+  	// LEDGER #124: P v = Sigma^-1 v - Sigma_iX cov X' Sigma^-1 v, so the
+  	// projection reads X' Sigma^-1 APY = Sigma_iXt * APY (as PY1 above does),
+  	// not Sigma_iXt * PAPY_1 = X' Sigma^-2 APY.
+  	arma::fvec PAPY = PAPY_1 - Sigma_iX * (cov * (Sigma_iXt * APY));
   	float AI = dot(APY, PAPY);
 
   	return Rcpp::List::create(Named("YPAPY") = YPAPY, Named("Trace") = Trace, Named("PY") = PY1, Named("AI") = AI);
@@ -3967,13 +3970,14 @@ int nrun, int maxiterPCG, float tolPCG, float traceCVcutoff){
 
   	arma::fmat AI(2,2);
   	arma::fvec PA0PY_1 = getPCG1ofSigmaAndVector(wVec, tauVec, A0PY, maxiterPCG, tolPCG);
-  	arma::fvec PA0PY = PA0PY_1 - Sigma_iX * (cov1 * (Sigma_iXt * PA0PY_1));
+  	// LEDGER #124: the projection reads the unsolved vector (see getAIScore).
+  	arma::fvec PA0PY = PA0PY_1 - Sigma_iX * (cov1 * (Sigma_iXt * A0PY));
 
   	AI(0,0) =  dot(A0PY, PA0PY);
 
   	//cout << "A1(0,0) " << AI(0,0)  << endl;
   	arma::fvec PAPY_1 = getPCG1ofSigmaAndVector(wVec, tauVec, APY, maxiterPCG, tolPCG);
-  	arma::fvec PAPY = PAPY_1 - Sigma_iX * (cov1 * (Sigma_iXt * PAPY_1));
+  	arma::fvec PAPY = PAPY_1 - Sigma_iX * (cov1 * (Sigma_iXt * APY));
   	AI(1,1) = dot(APY, PAPY);
 
   	AI(0,1) = dot(A0PY, PAPY);

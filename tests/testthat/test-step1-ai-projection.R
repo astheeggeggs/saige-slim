@@ -1,33 +1,25 @@
-# LEDGER #124: the covariate projection inside the AI term. CHARACTERIZATION:
-# this file asserts what the code does TODAY and is inverted with the fix.
+# LEDGER #124: the covariate projection inside the AI term.
 #
 # P v = Sigma^-1 v - Sigma^-1 X (X' Sigma^-1 X)^-1 X' Sigma^-1 v, and the
 # average-information term is APY' P APY with APY = G P Y. The kernels
 # getAIScore (binary) and getAIScore_q (quantitative, the 2 x 2 matrix) solve
-# Sigma^-1 APY by PCG and then apply the projection to THAT solved vector,
+# Sigma^-1 APY by PCG and then applied the projection to THAT solved vector,
 # X' Sigma^-2 APY, instead of to APY; PY1 two lines above and GetTrace project
-# correctly. Only the curvature is wrong, so every Newton step length is off
-# by under 1% on the bundled fixture and no fixed point moves.
+# correctly. Only the curvature was wrong, so every Newton step length was off
+# by under 1% on the bundled fixture and no fixed point moved.
 #
 # The kernels read the GRM from C++ globals, so each trait is fitted in a child
 # process (the sparse-GRM fit of the bundled N = 1,000 fixture, ~3 s) and the
 # kernel is then called at the fitted theta with the solved covariate vectors
 # computed DENSELY in R from the same W, tau and GRM. Two dense evaluations of
-# the AI term at those inputs, the projection applied to APY (right) and to
-# Sigma^-1 APY (wrong), bracket the kernel. Measured 2026-09-10: at HEAD the
-# kernel equals the wrong one to 1e-8 and misses the right one by 6.4e-3
-# (binary, tau2 = 0.39) and by 1.3e-3 / 2.6e-4 / 4.7e-4 (the quantitative
-# entries); with the one-token fix in a scratch build it equals the right one
-# to 1e-7. The control is the kernel's returned PY against the dense PY (1e-7),
-# which fails if the sample order or Sigma were not the kernel's; the two
-# dense values must themselves differ by more than the "differs" margin, or
-# the fixture could not tell the formulas apart.
-#
-# The fix is held for the owner (the ledger row): it moves every step-1
-# golden at 1e-4, which the byte-mode standard tier pins exactly. To invert
-# this file with the fix, swap `right` and `wrong` in ap_check's second and
-# third expectations (the file as it must read then is
-# harness/work/flexrv_study/ledger124/test-step1-ai-projection-INVERTED.R).
+# the AI term at those inputs, the projection applied to APY and applied to
+# Sigma^-1 APY, bracket the kernel. Measured 2026-09-10: at unpatched HEAD the
+# kernel equalled the second to 1e-8 and missed the first by 6.4e-3 (binary,
+# tau2 = 0.39) and by 1.3e-3 / 2.6e-4 / 4.7e-4 (the quantitative entries);
+# fixed, it equals the first to 1e-7. The control is the kernel's returned PY
+# against the dense PY (1e-7), which fails if the sample order or Sigma were
+# not the kernel's; the two dense values must themselves differ by more than
+# the "differs" margin, or the fixture could not tell the formulas apart.
 #
 # Tier: standard (two child fits).
 
@@ -101,15 +93,14 @@ ap_rel <- function(a, b) abs(a - b) / abs(b)
 ap_check <- function(code, d, entries) {
   for (k in entries) {
     expect_gt(ap_rel(d$right[[k]], d$wrong[[k]]), 1e-4, label = paste("fixture discriminates", k))
-    # TODAY (#124 open): the kernel equals the projection of Sigma^-1 APY.
-    expect_lt(ap_rel(code[[k]], d$wrong[[k]]), 1e-6,
-              label = paste("kernel vs projection of Sigma^-1 APY", k))
-    expect_gt(ap_rel(code[[k]], d$right[[k]]), 1e-4,
+    expect_lt(ap_rel(code[[k]], d$right[[k]]), 1e-6,
               label = paste("kernel vs projection of APY", k))
+    expect_gt(ap_rel(code[[k]], d$wrong[[k]]), 1e-4,
+              label = paste("kernel vs projection of Sigma^-1 APY", k))
   }
 }
 
-test_that("the binary AI term projects Sigma^-1 APY, not APY (LEDGER #124, open)", {
+test_that("the binary AI term projects APY, not Sigma^-1 APY", {
   skip_unless_level("standard")
   s <- ap_kernel_state("binary")
   d <- ap_dense(s)
@@ -117,7 +108,7 @@ test_that("the binary AI term projects Sigma^-1 APY, not APY (LEDGER #124, open)
   ap_check(c(a11 = s$re$AI), d, "a11")
 })
 
-test_that("the quantitative AI matrix projects the solves, not A0PY and APY (#124, open)", {
+test_that("the quantitative AI matrix projects A0PY and APY, not their solves", {
   skip_unless_level("standard")
   s <- ap_kernel_state("quant")
   d <- ap_dense(s)

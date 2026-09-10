@@ -93,3 +93,35 @@ line, and rows 118-120. saige-ae holds `test-step2-skato-parallel.R`,
    in-process kernel-call pattern in `test-step1-ai-projection.R` is the
    reusable piece (intercept `getAIScore*` in the namespace, dense inputs).
 3. #114-#118 as before.
+
+## Addendum (2026-09-10, later): #124 LANDED on the owner's go-ahead
+
+The owner said "let's go"; the row is authoritative. Every golden was
+re-baselined from one regeneration proved byte-reproducible twice, the
+prediction of which step-2 files move (the 23 group runs on the frozen
+`extdata/output` model stay, the other 38 move) held file for file, and the
+permuted-phenotype controls were regenerated the same way. Method worth
+keeping: `harness/work/flexrv_study/ledger124/prediction-regen.txt` was
+written BEFORE `make_goldens.sh` ran; the parsed-table check over every
+moved step-2 file (shape, labels, NA pattern, worst relative cell) is what
+separates "the model moved 1e-4" from "something else changed". Not added:
+three step-1 pgen twins and two control pgen files that `make_goldens.sh` /
+`make_controls.sh` produce but the committed set never held; and the stray
+`plink_marker_missing_imputed.txt.index`. Section 2 above ("HELD") is
+history now; the patch directory is no longer needed.
+
+**What the re-baseline gate then found (LEDGER #125, open).** With the
+curvature corrected, `test-step1-guard.R`'s three-start test went red: the
+planted 3% trait reports 1.280 / 1.236 / 0.891 (fixed point 1.056), every
+fit "converged" on a single pair inside 2% while the trace still swings, and
+the #122 guard never damped because damping halves only from the THIRD
+reversal and none came. Before #124 the same guard landed the three starts
+near 1.05, which #122's test took as its proof; that was an accident of the
+wrong step lengths. The test is now #125's characterization (pinned values,
+tolerance 1e-3); the healthy planted trait's pin moved to 4 iterations /
+0.14645 and the #123 scenario to `--maxiter=7` with a `--maxiter=6` contrast.
+Two other re-pins in the same commit: the golden variance-ratio numbers in
+`test-unit-varianceratio.R`, and `test-step2-cond-highld.R` asserts the
+magnitude of a cancelled conditional variance, not its sign (the re-baseline
+flipped -1.4e-14). The 50k `y_binary` trait was NOT re-measured under #124;
+do that before touching the guard.

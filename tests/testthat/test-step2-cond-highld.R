@@ -194,7 +194,9 @@ test_that("LEDGER #66 FIXED: collinear conditioning reports NA, not cancelled no
     expect_lt(vc, 1e-10)
     # ... and still ~294 orders of magnitude ABOVE the absolute guard at
     # src/SAIGE_test.cpp, which is why an absolute test could never catch it
-    expect_gt(vc, 1e-100)
+    # (its SIGN is float noise too: the #124 re-baseline of the model flipped
+    # it to -1.4e-14 on two rows, so the magnitude is what is asserted)
+    expect_gt(abs(vc), 1e-100)
     # what the RELATIVE test sees: machine epsilon, far below n*eps
     expect_lt(ratio(adj, r), thr / 10)
     # so the effect size is declined rather than published

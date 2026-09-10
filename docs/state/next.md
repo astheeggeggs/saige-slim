@@ -1062,13 +1062,21 @@ profile above exists.
   0.13 at N = 1,000 and the `set_seed(200)` makes it repeatable, so a
   same-sign offset in tau2 across traits is the trace, not a bug (this
   cost an hour). LEDGER #124 (AI projection slip) fell out of it.
-- **LEDGER #124 measured and HELD (2026-09-10, night; provenance: measured,
-  the row and `handoff-2026-09-10-flexrv-sweep-124.md`).** The three-token
-  fix moves every step-1 golden at 1e-4 and the byte-mode standard tier pins
-  those bytes (multipheno, spsolve-cache, the guard test's golden-log trace),
-  so landing it regenerates every step-1 AND step-2 golden. Owner's decision;
-  characterization committed in its TODAY form; patch + inverted test under
-  `harness/work/flexrv_study/ledger124/`.
+- **LEDGER #124 FIXED (2026-09-10, night, owner's go-ahead; provenance:
+  measured, the row and the addendum in
+  `handoff-2026-09-10-flexrv-sweep-124.md`).** Every golden re-baselined
+  (one regeneration, byte-reproducible twice, the moved-file prediction held
+  file for file). What this leaves: `make_goldens.sh` produces three step-1
+  pgen twins and `make_controls.sh` two control pgen files that are not in
+  the committed set, and `plink_marker_missing_imputed.txt.index` is a stray
+  committed index with no run -- tidy or leave, owner's call.
+- **LEDGER #125 OPEN (2026-09-10, night; provenance: measured, the row).**
+  The #122 guard is inert on a cycle whose slow phase passes the 2%
+  single-pair criterion before a third reversal: the planted 3% trait
+  reports 1.28 / 1.24 / 0.89 from three starts under the corrected AI, and
+  #122's "three starts agree" was an accident of the wrong curvature. The
+  candidates are in the row; re-measure the 50k `y_binary` trait under #124
+  first (its 0.968-0.973 from four starts predates the fix).
 - **FlexRV study S2-S4 RUN (2026-09-10, night; provenance: measured,
   `harness/sim/flexrv_study/results-2026-09-10.txt`, NOTES.md).** Null
   calibration fine; the positive control FAILED on `y_quant` (no method

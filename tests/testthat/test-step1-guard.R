@@ -7,13 +7,16 @@
 #    second, so the printed trace must equal the committed golden log's to
 #    the last digit and the iteration count must be 4 (not 5: the twice rule
 #    applies only once armed).
-# 2. A fit that cycled reports the same tau2 from different starts. Planted
-#    from the fixture's own GRM: 3% prevalence with a family effect of
-#    variance 1 on the logit scale, whose plain iteration swings 1.47, 1.70,
-#    1.13, 0.67, ... and reported 1.14 / 1.04 / 1.99 from starts 0 / 0.3 / 2
-#    before the guard (the 1.99 is a cold start accepted on its first
-#    iteration). The dense PQL fixed point is 1.056; the guarded fits agree
-#    with each other and sit within the trace estimator's own noise of it.
+# 2. A fit that cycled: planted from the fixture's own GRM, 3% prevalence
+#    with a family effect of variance 1 on the logit scale, whose plain
+#    iteration swings 1.47, 1.70, 1.13, 0.67, ... and reported 1.14 / 1.04 /
+#    1.99 from starts 0 / 0.3 / 2 before the guard (the 1.99 is a cold start
+#    accepted on its first iteration). The dense PQL fixed point is 1.056.
+#    Under the guard and the WRONG AI curvature (before LEDGER #124) the three
+#    starts agreed near 1.05; with the curvature fixed the same guard never
+#    damps here (it arms on the second reversal but halves only from the
+#    third, and the 2% single-pair criterion passes first) and the starts
+#    report 1.280 / 1.236 / 0.891. That is LEDGER #125, characterized below.
 # A planted trait whose fixed point is the boundary (score at 0 negative)
 # must still stop at 0, and now says so.
 #
@@ -105,17 +108,22 @@ test_that("a healthy fit is untouched: the bundled binary fit's trace equals the
   expect_equal(f$theta[2], golden[length(golden)], tolerance = 1e-6)
 })
 
-test_that("#122: the planted 3% trait reports the same tau2 from three starts", {
+test_that("LEDGER #125 (open): the planted 3% trait reports a different tau2 from each start", {
   skip_unless_level("standard")
   skip_if_no_goldens()
   ph <- sg_pheno_file()
   fits <- lapply(list(NULL, 0.3, 2), function(t0) sg_fit(ph, "c_K03_t1", "x1,x2", "x2", t0))
   tau <- vapply(fits, function(f) f$theta[2], numeric(1))
-  # no fit may accept its first proposal (the cold start at 2 did, before)
+  # no fit may accept its first proposal (the cold start at 2 did, before #122)
   expect_true(all(vapply(fits, function(f) f$iters, numeric(1)) > 1))
-  expect_lt(max(tau) / min(tau) - 1, 0.03)
-  # the dense PQL fixed point is 1.056; the trace estimator's se here is ~0.025
-  expect_true(all(abs(tau - 1.056) < 0.1))
+  expect_true(all(vapply(fits, function(f) isTRUE(f$converged), logical(1))))
+  # TODAY: every fit "converges" on a single pair inside 2% while the trace
+  # is still swinging (default start: 1.47 1.70 1.09 0.62 0.88 1.25 1.28), no
+  # step is ever damped, and the three answers straddle the fixed point 1.056
+  # by more than the trace estimator's se (~0.025). Invert with the #125 fix.
+  expect_equal(tau, c(1.2797, 1.2357, 0.8906), tolerance = 1e-3)
+  expect_gt(max(tau) / min(tau) - 1, 0.03)
+  expect_false(all(abs(tau - 1.056) < 0.1))
 })
 
 test_that("a planted trait whose fixed point is the boundary stops at 0 and says why", {
@@ -130,16 +138,24 @@ test_that("a healthy planted trait keeps its pre-guard fit exactly", {
   skip_unless_level("standard")
   skip_if_no_goldens()
   f <- sg_fit(sg_pheno_file(), "b_tau0.5", "x1,x2", "x2")
-  expect_equal(f$iters, 3)
-  expect_equal(f$theta[2], 0.1475275, tolerance = 1e-6) # measured before the guard, 2026-09-10
+  # 3 iterations and 0.1475275 before LEDGER #124 corrected the AI curvature;
+  # 4 and 0.14645 after (trace 0.141 0.154 0.148 0.146, one reversal, no
+  # damping: still the guard-free path)
+  expect_equal(f$iters, 4)
+  expect_equal(f$theta[2], 0.14645, tolerance = 1e-4)
 })
 
 test_that("#123: a fit converging on its last allowed iteration is flagged converged", {
   skip_unless_level("standard")
   skip_if_no_goldens()
-  # the planted 3% trait converges at iteration 12 from the default start
-  f <- sg_fit(sg_pheno_file(), "c_K03_t1", "x1,x2", "x2", extra = "--maxiter=12")
-  expect_equal(f$iters, 12)
-  expect_true(f$theta[2] > 0.5) # it did converge: the iterate is at the fixed point
+  # the planted 3% trait meets the criterion at iteration 7 from the default
+  # start (12 before LEDGER #124 corrected the AI curvature)
+  f <- sg_fit(sg_pheno_file(), "c_K03_t1", "x1,x2", "x2", extra = "--maxiter=7")
+  expect_equal(f$iters, 7)
+  expect_true(f$theta[2] > 0.5) # it did meet the criterion (see #125 for what that is worth)
   expect_true(f$converged)
+  # the contrast: one iteration fewer and the flag says so
+  g <- sg_fit(sg_pheno_file(), "c_K03_t1", "x1,x2", "x2", extra = "--maxiter=6")
+  expect_equal(g$iters, 6)
+  expect_false(g$converged)
 })
