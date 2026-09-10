@@ -166,3 +166,22 @@ by 1.6%), i.e. the same blast radius as #124 plus a re-baseline of the
 step-1 tolerance's meaning. Scripts and outputs:
 `harness/work/flexrv_study/ledger125/` (gitignored; `dense_score.R`,
 `score_child2.R`, `k50_child.R`, `dense_score.out`, the logs).
+
+**The `tol.coef` cost sweep (2026-09-10, late night; `ledger125/tolcoef_sweep.out`).**
+Outer iterations / total inner `getCoefficients` calls / tau2, VR skipped:
+
+| tol.coef | dense golden | sparse bundled | planted 3% | 50k y_binary |
+|---|---|---|---|---|
+| 0.02 (today, = tol) | 3 / 5 / 0.3322 | 4 / 6 / 0.3274 | 7 / 9 / 1.280 | 16 / 18 / 0.9735 |
+| 1e-3 | 3 / 6 / 0.3344 | 4 / 7 / 0.3270 | 6 / 12 / 1.089 | 14 / 19 / 0.9711 |
+| 1e-4 | 2 / 6 / 0.3335 | 2 / 6 / 0.3326 | 5 / 13 / 1.089 | 8 / 17 / 0.958 |
+| 1e-5 | 2 / 7 / 0.3335 | 2 / 7 / 0.3326 | 5 / 16 / 1.091 | 8 / 20 / 0.9705 |
+| 1e-6 | 2 / 8 / 0.3335 | 2 / 8 / 0.3326 | 5 / 17 / 1.091 | 7 / 22 / 0.9705 |
+
+Dense wall 17.7 / 15.2 / 11.1 / 13.7 / 14.0 s down the rows (noise-level
+differences, never a rise). The tighter inner loop costs two or three
+solves in total while every outer iteration it removes carries the 30-probe
+trace estimate, so the total PCG work falls. Recommended default 1e-5, the
+loosest value at which every answer and outer count stop changing (1e-4
+still leaves the 50k trait on a single-pair stop at 0.958). The decision and
+its re-baseline are the owner's; nothing in the tree implements it yet.
