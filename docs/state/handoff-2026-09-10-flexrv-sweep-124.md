@@ -228,3 +228,14 @@ guard-disabled control still asserting inertness, the #123 scenario to
 `--maxiter=5`, and the guard's positive control moved behind
 `tolCoef = 0.02` because under 1e-5 the guard acts only mildly on that
 trait (1.0914 vs 1.0878 neutralised).
+
+**CI on the re-baselined tree (runs 34535082405, 34536414003, then the
+fix).** The first run died at the ledger lint: the committed `LEDGER.md`
+lacked rows 118-120 (only in the working tree) and had 121-125 in commit
+order; committed as written (`0f586cbd`, rows 119/120 say "fixed in the
+working tree, awaiting the owner's commit", which is true at HEAD). The
+second run passed every golden at the numeric tolerance on Linux, including
+the two re-baselines, and failed exactly one test: the #122 session's
+"healthy fit untouched" test read `harness/goldens/logs/`, which is
+gitignored; it now pins the committed golden `.rda`'s theta and the trace.
+That test had never run on CI before (the #121-#123 session pushed nothing).

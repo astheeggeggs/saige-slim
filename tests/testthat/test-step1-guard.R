@@ -150,16 +150,21 @@ expect_guard_inert <- function(pheno, col, covar, qcovar, cli_theta2) {
 }
 # nolint end
 
-test_that("a healthy fit is untouched: the bundled binary fit's trace equals the golden log's", {
+test_that("a healthy fit is untouched: the bundled binary fit's trace equals the golden's", {
   skip_unless_level("standard")
   skip_if_no_goldens()
-  gl <- readLines(file.path(saige_goldens, "logs", "step1_binary_sparseGRM_a.log"), warn = FALSE)
-  golden <- as.numeric(sub("^tau: +1 +", "", grep("^tau: ", gl, value = TRUE)))
+  # The committed golden .rda carries the final theta; the trace is pinned from
+  # the golden's log (harness/goldens/logs is gitignored, so it is not read
+  # here: on CI it does not exist). Tolerances are the harness's numeric-mode
+  # ones, since a Linux fit sits ~1e-5 from a macOS golden.
+  e <- new.env()
+  load(file.path(saige_goldens, "step1", "binary_sparseGRM_a.rda"), e)
+  golden <- c(0.3359452, e$modglmm$theta[2]) # 2 iterations since LEDGER #125
   f <- sg_fit("./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt", "y_binary",
               "x1,x2,a9,a10", "a9,a10")
   expect_equal(f$iters, length(golden))
-  expect_equal(f$trace, golden, tolerance = 1e-6)
-  expect_equal(f$theta[2], golden[length(golden)], tolerance = 1e-6)
+  expect_equal(f$trace, golden, tolerance = 1e-4)
+  expect_equal(f$theta[2], golden[length(golden)], tolerance = 1e-4)
   # the control: with the guard neutralised the fit is the same file
   expect_guard_inert("./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt",
                      "y_binary", "x1,x2,a9,a10", "a9,a10", f$theta[2])
