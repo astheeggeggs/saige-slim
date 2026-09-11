@@ -123,6 +123,9 @@ $PY $S/02_build_dataset.py --trees "$D/chr20.trees" --outdir "$D" \
     ${PREVALENCE:+--prevalence $PREVALENCE} ${NCP_LADDER:+--ncp-ladder $NCP_LADDER} \
     ${H2_BINARY_MULT:+--h2-binary-mult $H2_BINARY_MULT} \
     ${H2:+--h2 $H2} ${H2_PC:+--h2-pc $H2_PC} ${SEED:+--seed $SEED} \
+    ${FRAC_DIRECTIONAL:+--frac-directional $FRAC_DIRECTIONAL} \
+    ${ANNO_TABLE:+--anno-table $ANNO_TABLE} ${WITHIN_CLASS_SD:+--within-class-sd $WITHIN_CLASS_SD} \
+    ${LINK_MIX:+--link-mix $LINK_MIX} ${FRAC_CAUSAL:+--frac-causal-genes $FRAC_CAUSAL} \
     2>&1 | tee "$D/02_build.log"
 fi
 

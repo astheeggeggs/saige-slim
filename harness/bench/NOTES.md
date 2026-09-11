@@ -1673,3 +1673,126 @@ before the run.
 one thread; `skatoDedupe` itself 0.78 s per run (in-process timer).
 4-thread pairs are +-10% on this box (the thinned OLD arm's user CPU spans
 178-198 s across its own reps), so quote the 1-thread ratios.
+
+## FlexRV F5 at N = 50,000: where the 192 sets spend their time (2026-09-10)
+
+The question: should twin FlexRV sets be served from a memo on the BURDEN
+path, as the SKAT-O identical-cell memo (2026-09-09) already does? The SKAT-O
+memo fires on FlexRV twins unchanged (bundled fixture, quant, 192 sets:
+384 cells asked, 203 evaluated, 181 served). BURDEN is the recommended FlexRV
+run and has no memo, so this measures what one could save.
+
+Setup: sim50k, `y_null` (quantitative, frozen model), pedigree-truth sparse
+GRM, ONE cell `high:medium` at the paper's max MAF 0.001, `--r.corr=1
+--is_fastTest=FALSE --nThreads=1`, a synthetic score line (`high` = 1,
+`medium` = 0.5 + 0.5u, `low` = 0.5u, u ~ U(0,1), seed 20260910;
+`harness/work/flexrv50k/groupFile_flexrv.txt`, generator in that directory's
+`run.sh`/`analyse.R`). 210 genes, 13,218 markers in the cell, 12,520 of them
+collapsed (MAC <= 10 at N = 50k is MAF <= 1e-4). Arms alternated, 2 reps,
+`SAIGE_PROFILE_REGION=1` (LEDGER #120 fixed first: the FlexRV memory line had
+left `std::cout` at one significant digit, so the first run's buckets were
+unreadable), `/usr/bin/time -l`, load 2.5-3, `SAIGE.so` md5 `57285a58`,
+outputs byte-identical rep to rep.
+
+| arm | user s | peak RSS | C++ total | prepare | urPass | emit | of which emitTest |
+|---|---|---|---|---|---|---|---|
+| k192 (default 16 x 12) | 35.1 | 805 MB | 33.2 | 4.4 | 11.4 | 14.2 | 9.1 |
+| k1 (unw x unw) | 7.6 | 506 MB | 5.1 | 4.4 | 0.5 | 0.1 | 0.08 |
+| plain (No_Weights, no FlexRV) | 7.7 | 506 MB | 4.9 | 4.3 | 0.5 | 0.1 | 0.07 |
+
+- **The FlexRV plumbing costs nothing at K = 1**: k1 and plain agree to the
+  noise, and their rows are identical (p, BETA, MAC).
+- **The K-dependent cost is 28 s of C++ for 191 extra sets, 144 ms per set
+  over 210 genes, and it splits 39% ultra-rare pass (`urPass`, the per-set
+  collapse and its N-length records), 32% the per-cell BURDEN tests
+  (`emitTest`, D2), 18% the rest of the emitter (D1: `find` over the N-length
+  `genoSumMat` column, the copies into the persistent cell records).** Memory:
+  +300 MB for 191 sets, 1.57 MB per set, i.e. 4 N-length doubles per set as
+  the memory line's formula says (3 GB per cell at N = 500k).
+- **Twins at this N: 42% of the 192 rows per gene (111 distinct of 191).**
+  They are the MAC ladder above the cell's largest MAC, nothing else:
+  MAC100/200/500 equal `unw` on every gene (MAF < 0.001 is MAC <= 100 here),
+  MAC50 on 87%, MAC25 on 56%, MAC10 on the 16% of genes with no real marker;
+  `mafbeta2/5` never, `lof_unw` never (the score has an interior part on
+  every gene). At N = 500k the cell runs to MAC 1000 and only the ladder
+  above the gene's largest MAC repeats, so the fraction falls with N.
+
+**What a BURDEN test memo would buy: twin fraction x emitTest share =
+0.42 x 0.32 = ~14% of the K-dependent C++, ~12% of the run at one thread --
+and less at `--nThreads=4`, where the D2 tests are already the threaded part
+(`runCellTests`) while `urPass` and D1 stay serial.** The two levers that
+touch the other 57% are the design doc's memory levers (hoist the per-set
+N-copy of `genoURMat_noweights` out of the set loop; derive the zero-index
+vectors at test time), which are shared-path changes and would ALSO cut the
+per-set memory. Decision recorded in `docs/state/next.md`: the test memo is
+not worth a C++ change on its own; if the collapse pass is restructured, add
+the compute-once-and-copy memo in the same change, keyed on the bitwise
+`genoSumVec` column, byte-identical by construction.
+
+Not done here (the plan's F5 controls): the >= 2-carriers-per-gene fraction
+that bounds the `max` vs additive collapse gap, the null KS on `p_FlexRV`,
+and a binary arm.
+
+## FlexRV simulation study S2-S4: the 144-run sweep (2026-09-10, late)
+
+Design `docs/design/flexrv-sim-study.md`; driver `harness/sim/flexrv_study/`
+(`study.sh 3` -> `run.sh` per run -> `analyse.R`); the full analysis output is
+`harness/sim/flexrv_study/results-2026-09-10.txt`. Fixture: the 2026-09-10
+50k rebuild (`$D = SAIGE-sim/harness/work/sim50k`, seed 7), the four null
+models refitted under the #122 guard (`y_binary` tau2 0.9728). Grid: 4 traits
+x 2 collapse cutoffs (0, 10) x [3 score arms x {flex192, flexscore, flexmaf,
+flex1} + {unw, beta, skato, grid} + synonymous x {flex192, unw}] = 144 runs,
+3 at a time, 8-20 s (one set), 35-70 s (flex192), 100-120 s (grid) user each.
+Provenance per row (commit `5dc679c3` dirty, `SAIGE.so` `db0fcf54`; the 16
+synonymous runs were re-run last under the #124 install `7155bd3f`, whose only
+change is a step-1 kernel step 2 never executes).
+
+Two driver bugs found by the run and fixed in `run.sh`/`study.sh`: the
+synonymous arm passed `--flexRV_lofAnno=high` into a group file with only
+`low` labels (the CLI refuses an all-zero LoF mask), so that arm now drops the
+`lof` score transform and is 15 x 12 = 180 sets; and `study.sh`'s "skip"
+message went into the job stream (`$3 unbound`). A third, mine, put
+`CELL=low` after the line that reads it, which wrote 16 header-only files
+that `run.sh` reported as successes (`exit=0`, "421 rows" for a 1-line file):
+the row count printed by `run.sh` is `grep -c .` of the OUTPUT and does not
+distinguish a header from a result. All 144 outputs were re-checked for rows.
+
+Controls, read before anything else:
+- **Null calibration (control 1/1b).** 288 (cell, alpha) lines over
+  `y_null`, `y_null_bin` and the non-causal genes of the signal traits; 8
+  outside their binomial 95% interval (2.8%, chance rate 5%), in both
+  directions and never at both alphas of one cell: over at alpha 0.05
+  `y_null` flex192 uninformative 0.090 (both collapses, the same rows) and
+  `y_null` grid c10 0.095; under `y_null_bin` skato c0 0.014 and `y_quant`
+  non-causal flexscore uninformative 0.014; `y_null_bin` flex192 synonymous
+  0.043 at alpha 0.01 (both collapses). No method is inflated across arms.
+- **Positive control (control 2) FAILED on `y_quant`.** Spearman(NCP,
+  -log10 p) over the 63 causal genes is -0.16..0.25 for EVERY method and 0-3
+  of 63 genes reach the Bonferroni gene-level alpha; the planted quantitative
+  signal is undetectable at this N, so nothing below is read on `y_quant`.
+  On `y_binary` rho is 0.26-0.38 (below the design's 0.5, signal present):
+  detections 7-13 of 63.
+- **Two control expectations were mis-specified in the design**, not
+  violated by the engine: (i) the "uninformative" arm randomises only the SIM
+  score; the `lof` score transform is the annotation mask and the 12 MAF
+  transforms are score-free, so flex192 on an uninformative score keeps most
+  of its sets' information and beats the single unweighted burden (12 vs 8
+  on `y_binary`; flexscore uninformative 11 vs flex1 8 is the `lof` set);
+  (ii) the synonymous-style mask (the `low` class) detects 7/63 (flex192) and
+  6/63 (unw) causal genes on `y_binary`, so `low` variants carry effects in
+  this simulation and "expected null on the signal traits" does not hold
+  for it as built. Both need a design decision before the power question
+  can be answered with these arms.
+
+What the `y_binary` rows say, with those caveats (detections of 63 causal
+genes at alpha 0.05/210, c0 / c10): flex192 informative 13/13, realistic
+12/12, uninformative 12/12; flexscore 11/11 (all arms); flexmaf 9/9; flex1 =
+unw = beta 8/8; grid (SKAT-O over high, high:medium x three MAFs, Cauchy)
+10/11; skato 7/9. The score arm moves flex192 by one gene; the sets that are
+not the score (lof, MAF ladder) carry the gain over the burden. The pooled
+Cauchy beats the Bonferroni best-set oracle (13 vs 11 informative). Collapse
+0 vs 10 (flex192): median |delta log10 p| <= 0.004 on every trait/arm, max
+0.16-0.76, 1.67 on `y_binary` synonymous; the count of genes under 1e-3 is
+unchanged in every pair. Per-set 5-carrier exclusion (the paper's second
+check) was not applied. Everything under `harness/work/flexrv_study/results/`
+(gitignored) is the raw material; `analyse.R` re-derives the file above.

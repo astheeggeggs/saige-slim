@@ -122,20 +122,51 @@ telling you whether the model that predicted it was right.
 
 ## Run order
 
+One command does the whole chain -- simulation, genotypes, annotations, traits,
+PLINK + PGEN conversion, PCs, step 0, steps 1 and 2 for every trait, and the
+comparison against the simulated truth:
+
 ```sh
-PY=<venv with msprime,stdpopsim>/bin/python
-$PY harness/sim/01_simulate.py --out harness/work/sim/chr20.trees      # ~17 min
-$PY harness/sim/02_build_dataset.py --trees harness/work/sim/chr20.trees \
-      --outdir harness/work/sim                                        # ~15 min
-bash harness/sim/03_plink_prep.sh                                      # ~8 min
-$PY harness/sim/04_add_pcs.py harness/work/sim 4
-$PY harness/sim/03b_pedigree_grm.py --dir harness/work/sim  # exact GRM, instant
-SAIGE_LIB=<lib> NTHREADS=6 RELCUT=0.125 NRANDMARK=3000 \
-  bash harness/sim/04_run_saige.sh step0                     # a CONTROL, not a dep
-.pixi/envs/default/bin/Rscript harness/sim/05_check_grm.R              # GRM vs pedigree
-RELCUT=0.125 NRANDMARK=3000 NTHREADS=6 bash harness/sim/07_run_pipeline.sh
-.pixi/envs/default/bin/Rscript harness/sim/06_analyse.R                # results vs truth
+bash harness/sim/run_all.sh            # ~80 min, ~7 GB, N=10,000 chr20
 ```
+
+Outputs land in `harness/work/sim/`; the summary is `.../RESULTS.txt`. Knobs,
+all optional environment variables:
+
+| var | default | meaning |
+|---|---|---|
+| `SIMDIR`    | `harness/work/sim` | output directory |
+| `RELCUT`    | `0.125` | step-0 relatedness cutoff (see above) |
+| `NRANDMARK` | `3000`  | relatedness-screen markers; auto-capped to 85% of the pruned set |
+| `NTHREADS`  | `6`     | threads for step 0 and the single-variant scan |
+| `RIGHT`     | full chr20 | truncate the simulated region |
+| `NEUR` `NSING` `NFAM` `NGENES` | 9000 / 8000 / 500 / 550 | sample and gene counts |
+
+`run_all.sh` calls the numbered scripts in order, so any stage can still be run
+on its own; it sources `00_env.sh` for every interpreter, so no stage needs the
+old `SAIGE_LIB=<lib>` / `PY=<venv>` indirection. `03b_pedigree_grm.py` (exact
+GRM from the pedigree) is not in the chain -- see "Step 0 is a control".
+
+A ~4 minute end-to-end check, run green on 2026-09-01 and producing every
+deliverable (bed/bim/fam, pgen/pvar/psam, phenotypes, group file, truth tables,
+sparse GRM, 5 step-1 models, 15 group + 5 single step-2 tables):
+
+```sh
+SIMDIR=harness/work/sim_smoke RIGHT=2000000 NEUR=600 NSING=400 NFAM=50 \
+  NGENES=40 NRANDMARK=200 NTHREADS=2 NEED_GB=1 bash harness/sim/run_all.sh
+```
+
+### Toolchain
+
+`00_env.sh` resolves everything; nothing else hardcodes a path.
+
+- **Python** `/Users/dpalmer/miniconda3/bin/python3` -- msprime 1.3.3,
+  stdpopsim 0.2.0, tskit 0.5.8, numpy 1.26.4. (The pixi env has no Python.)
+  Authored against msprime 1.4.3 / stdpopsim 0.3.0 and re-verified end to end
+  on the miniconda stack.
+- **R** `.pixi/envs/default/lib/R/bin/Rscript` with SAIGE installed
+  (`bash harness/build.sh`); verified against SAIGE 1.5.2.
+- **plink2** `.pixi/envs/default/bin/plink2` (v2.0.0-a.6.9).
 
 ## What is simulated
 
@@ -185,7 +216,8 @@ RELCUT=0.125 NRANDMARK=3000 NTHREADS=6 bash harness/sim/07_run_pipeline.sh
 4. **`--useSparseGRMforVarRatio TRUE` is required** in step 1. Without it the
    variance-ratio file has no `sparse` rows and step 2 hard-stops when given
    `--sparseGRMFile` (`R/readInGLMM.R`, `Get_Variance_Ratio`).
-5. **PGEN psam must put IID first** — see the reader limitation below.
+5. **PGEN psam must put IID first** — applied automatically by `03_plink_prep.sh`;
+   see the reader limitation below.
 
 ## Generator invariants that are asserted, not assumed
 

@@ -79,6 +79,20 @@ ap.add_argument("--h2-binary-mult", default="1.0",
                      "\"auto\" solves for the multiplier that equalises the two "
                      "arms at the current --prevalence, so it cannot go stale when "
                      "the prevalence changes; a number sets it directly.")
+ap.add_argument("--anno-table", default="",
+                help="TSV (class, maf_lo, maf_hi, count) from real exome summary statistics: "
+                     "the annotation class is drawn from its P(class | MAF bin) on a separate "
+                     "RNG stream instead of being cut from the latent (default: latent model)")
+ap.add_argument("--within-class-sd", type=float, default=1.0,
+                help="with --anno-table: sd of the latent shared by the score and the true "
+                     "effect class WITHIN an annotation class (0 severs the link)")
+ap.add_argument("--link-mix", default="",
+                help="comma list of per-causal-gene link shapes drawn on a separate RNG stream: "
+                     "step (P(causal|class), the default), lof (causal only in the true high "
+                     "class), graded (P(causal) logistic in the latent)")
+ap.add_argument("--frac-directional", type=float, default=0.0,
+                help="fraction of causal GENES whose causal effects are all drawn "
+                     "same-sign (a separate RNG stream; 0 changes nothing)")
 ap.add_argument("--thin-intergenic", type=float, default=1.0,
                 help="retention probability for RARE INTERGENIC variants (1.0 = keep "
                      "everything, the default). Thinning must never be uniform: the "
@@ -346,8 +360,77 @@ P_HIGH, P_MED = 0.05, 0.30
 def cut(x, p_hi, p_mid):
     q = np.quantile(x, [1 - p_hi - p_mid, 1 - p_hi])
     return np.digitize(x, q)          # 0 = low, 1 = medium, 2 = high
-anno = cut(a_lat, P_HIGH, P_MED)
-eclass = cut(e_lat, P_HIGH, P_MED)
+if a.anno_table:
+    # --anno-table (FlexRV simulation study, 2026-09-10): the annotation class
+    # is drawn from an EMPIRICAL P(class | MAF bin) estimated from real exome
+    # summary statistics (docs/design/flexrv-sim-study.md, "Annotation x MAF
+    # from real summary statistics") instead of being cut from the latent.
+    # Columns: class (low/medium/high), maf_lo, maf_hi (half-open [lo, hi)),
+    # count. Bins are matched by PROPORTION within the bin, so the table's N
+    # need not be this fixture's. Own RNG stream: every draw of the main stream
+    # -- genotypes, y_null, the effect draws below -- is byte-identical to a
+    # run without the table. The latent a_lat/e_lat are then re-centred on the
+    # ASSIGNED class (the class-conditional mean of a standard normal under the
+    # P_HIGH/P_MED split), so the score and the true effect class still track
+    # the annotation as they did under the latent model.
+    import csv
+    rows = list(csv.DictReader((l for l in open(a.anno_table) if not l.startswith("#")),
+                               delimiter="\t"))   # '#' lines carry provenance
+    cls_code = {"low": 0, "medium": 1, "high": 2}
+    bins = sorted({(float(r["maf_lo"]), float(r["maf_hi"])) for r in rows})
+    P = np.zeros((len(bins), 3))
+    for r in rows:
+        P[bins.index((float(r["maf_lo"]), float(r["maf_hi"]))), cls_code[r["class"]]] += float(r["count"])
+    assert (P.sum(1) > 0).all(), "every MAF bin of --anno-table needs a positive count"
+    P /= P.sum(1, keepdims=True)
+    lo = np.array([b[0] for b in bins]); hi = np.array([b[1] for b in bins])
+    assert (lo[1:] >= hi[:-1]).all(), "--anno-table MAF bins overlap"
+    bidx = np.searchsorted(hi, cmaf, side="right")       # first bin with hi > maf
+    bidx = np.clip(bidx, 0, len(bins) - 1)
+    outside = (cmaf < lo[bidx]) | (cmaf >= hi[bidx])
+    if outside.any():
+        print(f"WARNING: {int(outside.sum())} coding variants fall outside every --anno-table "
+              f"bin; assigned from the nearest bin", flush=True)
+    rng_anno = np.random.default_rng(a.seed + 90004)
+    u_cls = rng_anno.random(len(cmaf))
+    cum = np.cumsum(P[bidx], axis=1)
+    anno = (u_cls[:, None] >= cum).sum(1)
+    anno = np.clip(anno, 0, 2)
+    # class-conditional means of N(0,1) under the split, so the latents keep
+    # their scale: E[z | z > q_hi], E[z | q_lo < z <= q_hi], E[z | z <= q_lo]
+    ANN_NAMES = ["low", "medium", "high"]
+    _nd = statistics.NormalDist()
+    q_lo, q_hi = _nd.inv_cdf(1 - P_HIGH - P_MED), _nd.inv_cdf(1 - P_HIGH)
+    phi = _nd.pdf
+    Phi = _nd.cdf
+    mu = np.array([-phi(q_lo) / Phi(q_lo),
+                   (phi(q_lo) - phi(q_hi)) / (Phi(q_hi) - Phi(q_lo)),
+                   phi(q_hi) / (1 - Phi(q_hi))])
+    # A SHARED within-class latent, as in the latent model (there both readouts
+    # were d + noise): the score (a_lat) and the true effect class (e_lat) must
+    # co-vary WITHIN a class, or a pathogenicity score can carry no information
+    # beyond the class mask and FlexRV's within-class ranking has nothing to
+    # find. --within-class-sd sets its scale; 0 severs the link (a negative
+    # control of the study's power claim, not a default).
+    d_within = rng_anno.normal(0, a.within_class_sd, len(anno))
+    a_lat = mu[anno] + d_within + rng_anno.normal(0, SIG_A, len(anno))
+    e_lat = mu[anno] + d_within + rng_anno.normal(0, SIG_E, len(anno))
+    eclass = cut(e_lat, P_HIGH, P_MED)
+    for c in (1, 0):
+        m = anno == c
+        if m.sum() > 2:
+            say(f"   within {ANN_NAMES[c]}: cor(a_lat, e_lat) = "
+                f"{np.corrcoef(a_lat[m], e_lat[m])[0, 1]:.3f}, P(effect class high) = "
+                f"{(eclass[m] == 2).mean():.3f}")
+    say(f"--anno-table {a.anno_table}: {len(bins)} MAF bins; realised class x bin table:")
+    for k, (l_, h_) in enumerate(bins):
+        m = bidx == k
+        say(f"   [{l_:.2e}, {h_:.2e}) n={int(m.sum()):6d}  low/med/high = "
+            + "/".join(f"{(anno[m] == c).mean():.3f}" if m.any() else "nan" for c in (0, 1, 2))
+            + "   table = " + "/".join(f"{P[k, c]:.3f}" for c in (0, 1, 2)))
+else:
+    anno = cut(a_lat, P_HIGH, P_MED)
+    eclass = cut(e_lat, P_HIGH, P_MED)
 ANN = np.array(["low", "medium", "high"])
 say("annotation x MAF: " + ", ".join(
     f"{ANN[c]} n={int((anno == c).sum())} medianMAF={np.median(cmaf[anno == c]):.2e}"
@@ -373,7 +456,37 @@ scale = (2 * cmaf * (1 - cmaf)) ** (a.alpha / 2)      # slab sd multiplier
 PI = np.array([0.02, 0.35, 0.55])                     # P(causal | true class)
 SD = np.array([0.25, 1.00, 1.20])                     # slab sd  | true class
 beta_c = np.zeros(len(cod_idx))
-causal = (rng.random(len(cod_idx)) < PI[eclass]) & is_cg
+# --link-mix (FlexRV simulation study, 2026-09-10): the relationship between a
+# variant's latent pathogenicity and its chance of being causal, drawn PER
+# CAUSAL GENE from the listed shapes (separate RNG stream; the per-variant
+# uniform below is the main stream's single draw as before, so step-only genes
+# are byte-identical to a run without the flag):
+#   step    P(causal | true class) = PI, the original model
+#   lof     causal only in the true high (LoF-like) class, at PI[2]
+#   graded  P(causal) = PI[2] * sigmoid(2 (e_lat - q_mid)), continuous in the
+#           latent, so the fine ranking a score gives within a class matters
+# The paper's claim is that the best weight function differs by gene; with one
+# shape a single fixed weighting is always near-optimal and that claim cannot
+# be tested.
+LINKS = ("step", "lof", "graded")
+link_code = np.full(a.n_genes, -1, dtype=int)
+if a.link_mix:
+    _mix = [x.strip() for x in a.link_mix.split(",") if x.strip()]
+    assert all(x in LINKS for x in _mix), f"--link-mix wants a subset of {LINKS}"
+    rng_link = np.random.default_rng(a.seed + 90005)
+    for _g in causal_genes:
+        link_code[int(_g)] = LINKS.index(rng_link.choice(_mix))
+else:
+    link_code[causal_genes] = 0
+p_var = PI[eclass].astype(float)
+_q_mid = np.quantile(e_lat, 1 - P_HIGH - P_MED)
+for _g in causal_genes:
+    _m = gcode == _g
+    if link_code[int(_g)] == 1:
+        p_var[_m] = np.where(eclass[_m] == 2, PI[2], 0.0)
+    elif link_code[int(_g)] == 2:
+        p_var[_m] = PI[2] / (1.0 + np.exp(-2.0 * (e_lat[_m] - _q_mid)))
+causal = (rng.random(len(cod_idx)) < p_var) & is_cg
 # Causal variants are drawn independently per variant, so a causal gene can come
 # out with ZERO of them -- it then has h2 exactly 0 while still counting as a
 # positive control, which drags the control's rank statistic toward the null and
@@ -385,7 +498,7 @@ for _gi in causal_genes:
     _m = np.where(gcode == _gi)[0]
     if causal[_m].any():
         continue
-    _w = PI[eclass[_m]]
+    _w = p_var[_m] if p_var[_m].sum() > 0 else PI[eclass[_m]]
     causal[_m[rng.choice(len(_m), p=_w / _w.sum())]] = True
     n_forced += 1
 _have = np.array([bool(causal[gcode == g].any()) for g in causal_genes])
@@ -394,7 +507,30 @@ draw = rng.normal(0, SD[eclass] * scale)
 # class 2 (pLoF-like) is directional: 90% positive
 flip = np.where(rng.random(len(cod_idx)) < 0.90, 1.0, -1.0)
 draw = np.where(eclass == 2, flip * np.abs(draw), draw)
+# --frac-directional (FlexRV simulation study, 2026-09-10): a fraction of the
+# causal GENES have every causal effect drawn same-sign, so a burden method has
+# a regime it can win in (measured on the 2026-09-01 build: |sum b| / sum |b|
+# spanned 0.02-0.50 over every causal gene, because ~28 causal variants of mixed
+# sign cancel at gene level). The gene's sign is the sign of its net effect as
+# already drawn, and WHICH genes are directional comes from a separate RNG
+# stream, so the main stream's draws -- and hence the genotypes, y_null and
+# every non-directional gene -- are byte-identical to a run without the flag.
+directional_genes = np.zeros(0, dtype=int)
+if a.frac_directional > 0 and len(causal_genes) > 0:
+    rng_dir = np.random.default_rng(a.seed + 90003)
+    n_dir = int(round(a.frac_directional * len(causal_genes)))
+    directional_genes = np.sort(rng_dir.choice(causal_genes, n_dir, replace=False))
+    for _g in directional_genes:
+        _m = (gcode == _g) & causal
+        if not _m.any():
+            continue
+        _s = 1.0 if draw[_m].sum() >= 0 else -1.0
+        draw[_m] = _s * np.abs(draw[_m])
+    say(f"{n_dir} of {len(causal_genes)} causal genes made directional (--frac-directional "
+        f"{a.frac_directional})")
+is_dir_gene = np.isin(np.arange(a.n_genes), directional_genes)
 beta_c[causal] = draw[causal]
+say("link shapes over causal genes: " + ", ".join(f"{k}={int((link_code == i).sum())}" for i, k in enumerate(LINKS)))
 say(f"{n_causal_genes} causal genes; {int(causal.sum()):,} causal coding variants "
     f"({causal.sum() / max(is_cg.sum(), 1) * 100:.1f}% of variants in causal genes); "
     f"{n_forced} gene(s) needed a forced variant")
@@ -617,12 +753,21 @@ ecl_all[cod_idx] = eclass
 gname = np.where(gene >= 0, np.char.add("GENE", np.char.zfill((gene + 1).astype(str), 4)), ".")
 is_causal_gene = np.isin(gene, causal_genes)
 
+# a_lat / e_lat: the latent deleteriousness the annotation and the true effect
+# class are cut from, written since 2026-09-10 (FlexRV study: the pathogenicity
+# score is derived from a_lat by harness/sim/flexrv_study/make_scores.py);
+# "." off the coding set. Two extra columns, no extra random draw.
+alat_all = np.full(n_kept, ".", dtype=object)
+elat_all = np.full(n_kept, ".", dtype=object)
+alat_all[cod_idx] = [f"{v:.5f}" for v in a_lat]
+elat_all[cod_idx] = [f"{v:.5f}" for v in e_lat]
 with gzip.open(f"{a.outdir}/variants.tsv.gz", "wt") as fh:
-    fh.write("ID\tCHR\tPOS\tAC\tAF\tMAF\tgene\tcausal_gene\tanno\ttrue_class\tbeta\n")
+    fh.write("ID\tCHR\tPOS\tAC\tAF\tMAF\tgene\tcausal_gene\tanno\ttrue_class\tbeta\t"
+             "a_lat\te_lat\n")
     for i in range(n_kept):
         fh.write(f"{bim_ids[i]}\t20\t{pos[i]}\t{ac[i]}\t{af[i]:.6g}\t{maf[i]:.6g}\t"
                  f"{gname[i]}\t{int(is_causal_gene[i])}\t{anno_all[i]}\t{ecl_all[i]}\t"
-                 f"{beta_all[i]:.6g}\n")
+                 f"{beta_all[i]:.6g}\t{alat_all[i]}\t{elat_all[i]}\n")
 
 # SAIGE group file, keyed on bim column 2
 with open(f"{a.outdir}/groupFile.txt", "w") as fh:
@@ -644,19 +789,24 @@ say(f"group file: {ngw} genes")
 with open(f"{a.outdir}/truth_genes.tsv", "w") as fh:
     # NCP_quant/NCP_binary are what the Spearman(NCP, -log10 p) control is run
     # against; NCP_target is the ladder draw, so target-vs-realised is auditable.
+    # directional: 1 if --frac-directional made this gene same-sign; dir_index is
+    # |sum b| / sum |b| over the gene's causal variants (1 = fully directional)
     fh.write("gene\tcausal\tn_var\tn_high\tn_medium\tn_low\tn_causal_var\th2\t"
-             "NCP_target\tNCP_quant\tNCP_binary\n")
+             "NCP_target\tNCP_quant\tNCP_binary\tdirectional\tdir_index\tlink\n")
     _bmul = a.h2_binary_mult * BIN_NCP_FRAC
     for gi in range(a.n_genes):
         m = gcode == gi
         if not m.any():
             continue
         nq = N * gene_h2[gi]
+        _bc = beta_c[m & causal]
+        _di = abs(_bc.sum()) / np.abs(_bc).sum() if len(_bc) and np.abs(_bc).sum() > 0 else 0.0
         fh.write(f"GENE{gi + 1:04d}\t{int(gi in causal_genes)}\t{int(m.sum())}\t"
                  f"{int((anno[m] == 2).sum())}\t{int((anno[m] == 1).sum())}\t"
                  f"{int((anno[m] == 0).sum())}\t{int((causal & m).sum())}\t"
                  f"{gene_h2[gi]:.4e}\t{ncp_target[gi]:.2f}\t{nq:.2f}\t"
-                 f"{nq * _bmul:.2f}\n")
+                 f"{nq * _bmul:.2f}\t{int(is_dir_gene[gi])}\t{_di:.3f}\t"
+                 f"{LINKS[link_code[gi]] if link_code[gi] >= 0 else '.'}\n")
 
 json.dump({"N": N, "n_variants": int(n_kept), "n_coding": int(len(cod_idx)),
            "n_genes": a.n_genes, "n_causal_genes": int(n_causal_genes),
@@ -666,6 +816,9 @@ json.dump({"N": N, "n_variants": int(n_kept), "n_coding": int(len(cod_idx)),
            "n_singletons": a.n_singletons, "n_forced_causal_var": int(n_forced),
            "h2_realised": float(H2), "h2_primary_arm": float(H2_PRIMARY),
            "ncp_ladder": a.ncp_ladder, "h2_binary_mult": a.h2_binary_mult,
+           "frac_directional": a.frac_directional, "link_mix": a.link_mix,
+           "n_genes_by_link": {k: int((link_code == i).sum()) for i, k in enumerate(LINKS)},
+           "n_directional_genes": int(len(directional_genes)),
            "binary_ncp_frac": float(BIN_NCP_FRAC),
            # the genome-wide SFS is deliberately distorted by thinning; it is
            # EXACT inside genes and at MAF >= thin_maf (amendment A5)
