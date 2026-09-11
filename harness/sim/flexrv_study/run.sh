@@ -62,8 +62,8 @@ out=$OUT/$tag.txt; log=$OUT/$tag.log
   echo "tag=$tag start=$(date '+%F %T') load=$load nthreads=$NT cell=$CELL maxmaf=$MAXMAF"
   echo "head=$(git rev-parse --short HEAD) dirty=$(git status --porcelain | grep -c .) so_md5=$(md5 -q .pixi/envs/default/lib/R/library/SAIGE/libs/SAIGE.so) seed=$(python3 -c "import json;print(json.load(open('$D/sim_meta.json'))['seed'])")"
   cd extdata
-  /usr/bin/time -l $RS step2_SPAtests.R $ARGS --SAIGEOutputFile=$out
-  echo "end=$(date '+%F %T') exit=$?"
+  /usr/bin/time -l $RS step2_SPAtests.R $ARGS --SAIGEOutputFile=$out; rc=$?   # captured BEFORE the $(date) below, which resets $?
+  echo "end=$(date '+%F %T') exit=$rc"
 } > $log 2>&1
 n=$(grep -c . $out 2>/dev/null || echo 0)
 echo "$tag: $n rows, $(grep -E ' real ' $log | awk '{print $3 " s user"}')"
