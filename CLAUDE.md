@@ -465,9 +465,12 @@ an earlier cell's is served that answer (`skatoDedupe`/`skatoMemoKernel`,
 `SKAT-O cells: N asked for, M evaluated, K served`. Printed-equal rows are
 not always bit-equal cells, so **K is a measurement and no test may assert its
 value**: P6 has 4 twin rows and this box serves 3 (GENE2 at max_MAF 0.01 is one
-Phi entry ~2 ULP off), while ubuntu-24.04 image 20260907 serves all 4 with the
-golden bytes unchanged and image 20260831 served 3 -- same commit, CI red for a
-docs-only push (run 34403657864). Assert the cell grid, that the line adds up,
+Phi entry ~2 ULP off), while CI has served all 4 with the golden bytes unchanged
+-- same commit, CI red for a docs-only push (run 34403657864). **What makes the
+count differ is NOT identified**: ubuntu-24.04 image 20260907.300.1 served 4 in
+run 34403657864 and 3 in run 34538797394, so the runner image is falsified as
+the discriminator and no other cause has been measured. That is the reason the
+bound, not the number, is what a test may assert. Assert the cell grid, that the line adds up,
 that K >= 1 and K <= the twin count, and the golden bytes. One deliberate
 degradation: a
 reader that cannot clone (only the PLINK pread fallback now) drops to one

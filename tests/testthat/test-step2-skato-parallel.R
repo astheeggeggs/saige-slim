@@ -159,11 +159,20 @@ test_that("fastTest escalation inside a batch keeps the single rows in region or
 # HOW MANY of the 4 are served is a MEASUREMENT, not a constant, because the
 # memo's predicate is `identical()` on (Score, Phi, r.corr) and two printed-equal
 # cells need not be bit-equal. On this box 3 are served and the fourth (GENE2 at
-# max_MAF 0.01) differs by one ULP in one off-diagonal Phi entry; ubuntu-24.04
-# runner image 20260907 serves all 4 with the golden bytes unchanged, and image
-# 20260831 served 3, on the SAME commit (CI run 34403657864 vs 34401162577,
-# docs-only diff). Asserting c(12L, 9L, 3L) therefore pinned this box's libm and
-# broke CI without a code change. What is asserted instead is what holds
+# max_MAF 0.01) differs by one ULP in one off-diagonal Phi entry; CI has served
+# all 4 with the golden bytes unchanged, on a docs-only diff (run 34403657864,
+# `actual: 12 8 4`). Asserting c(12L, 9L, 3L) therefore broke CI without a code
+# change.
+#
+# WHAT MAKES THE COUNT DIFFER IS NOT IDENTIFIED, and this comment deliberately
+# names no cause. ubuntu-24.04 runner image 20260907.300.1 served 4 in run
+# 34403657864 and 3 in run 34538797394 (verified from the jobs' "Runner Image"
+# log group), so the image version is falsified as the discriminator; the
+# machine's libm or CPU is a guess that has not been measured. Not knowing the
+# cause is exactly why the BOUND is asserted and the number is not -- a test
+# that pins an unexplained value pins whatever produced it.
+#
+# What is asserted instead is what holds
 # everywhere: the cell grid (12), the arithmetic of the printed line, that the
 # memo fired at all (LEDGER #30 shape) and that it served no more than the twin
 # rows -- plus the golden bytes, which is what catches a memo that fired wrongly.

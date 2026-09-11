@@ -93,10 +93,15 @@ RULES = [
     dict(
         id="skato-served-count",
         pattern=r"P6: 4 twin rows\s+3\s+served",
-        why="K is a per-machine measurement, not a constant: the same commit served 3 on "
-            "ubuntu-24.04 image 20260831 and 4 on image 20260907, which turned CI red on "
-            "a docs-only push. A test may bound K, never assert it",
-        evidence="CI runs 34401162577 (pass) vs 34403657864 (fail), identical test code; "
+        why="K is a measurement, not a constant: the same commit served 3 in one CI run "
+            "and 4 in another, which turned CI red on a docs-only push. WHAT makes it "
+            "differ is not identified -- image 20260907.300.1 gave both values, so the "
+            "runner image is falsified as the cause and none has replaced it. A test may "
+            "bound K, never assert it, and no doc may name a cause for the difference",
+        evidence="CI runs 34401162577 (pass, image 20260831.293.1) vs 34403657864 (fail, "
+                 "image 20260907.300.1, actual 12 8 4) vs 34538797394 (pass, SAME image "
+                 "20260907.300.1) -- identical test code, image versions read from each "
+                 "job's 'Runner Image' log group; "
                  "tests/testthat/test-step2-skato-parallel.R::expect_memo_counts",
         canary="Printed-equal rows are not always bit-equal cells (P6: 4 twin rows, 3 "
                "served, one Phi entry 2 ULP off), so read K as a measurement.",
