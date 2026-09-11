@@ -387,6 +387,22 @@ region_postprocess <- function(outList,
           }
           if (m <= maxMAF0) {
             tempPos <- which(annoMAFIndicatorMat[, jmr] == 1)
+            # LEDGER #117. A weight of exactly 0 means the marker is not in this
+            # set, so it must not reach the kernel. Left in, it zeroes its row
+            # and column of the weighted Phi, and the binary-trait Phi
+            # adjustment then computes Score^2 / diag(Phi) = 0/0: the NaN
+            # propagates and the WHOLE CELL comes back NA for Pvalue,
+            # Pvalue_Burden and Pvalue_SKAT through the #57 failure path. The
+            # harm is not one NA row -- the failed set drops silently out of the
+            # region's Cauchy combination, which then reports a surviving set's
+            # p-value verbatim (#127 route (a)).
+            # The gate is an identity, not a golden: zeroing a marker must equal
+            # DELETING it from the group file, which the BURDEN path already
+            # satisfies to every printed digit. Applied for both traits --
+            # quantitative never enters the failing kernel, but "weight 0 means
+            # not in the set" is the same statement there, and it matches the
+            # per-set counters of #118, which are gated on the same predicate.
+            tempPos <- tempPos[AnnoWeights[tempPos] != 0]
             # LEDGER #126. The C++ BURDEN emitter refuses a cell on
             #   indexNonZeroVec_arma.n_elem > 0 && MAC >= min_gourpmac_for_burdenonly
             # and this is the same predicate on the same quantity: length(tempPos)

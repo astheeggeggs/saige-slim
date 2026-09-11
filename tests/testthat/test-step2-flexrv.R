@@ -173,23 +173,27 @@ test_that("SKAT-O on a reduced spec: schema, rows, and unw_unw against the legac
   # the sbeta2 sets differ from unw (the score axis is live on this fixture)
   expect_false(identical(rows$Pvalue[rows$Weight == "REVEL_unw_unw"],
                          rows$Pvalue[rows$Weight == "REVEL_sbeta2_unw"]))
-  # LEDGER #117 CHARACTERIZATION (pre-existing; a zero CUSTOM weight does the
-  # same): every real marker in the cell has MAC > 10, so the MAC5 sets give
-  # them weight exactly 0, and the binary SKAT-O kernel's Phi adjustment
-  # divides by that marker's zero variance. The cell's three p-values are NA
-  # through the SKAT-failure path, the ACAT-V (which skips no marker) is not,
-  # and the sidecar names the four cells. Invert when #117 is fixed.
+  # LEDGER #117 FIXED 2026-09-11; this block is the INVERTED characterization.
+  # Every real marker in the cell has MAC > 10, so the MAC5 sets weight them
+  # exactly 0. That used to leave their zero-variance rows in the weighted Phi,
+  # and the binary SKAT-O kernel's adjustment computed Score^2 / 0 -- the cell's
+  # three p-values came back NA through the #57 failure path and the gene's
+  # Cauchy row silently combined only the survivors (#127 route (a)).
+  # A zero weight now means the marker is not in the set, so what is left of a
+  # MAC5 cell is its collapsed ultra-rare pseudo-marker, which a custom or
+  # transform set weights 1: a one-marker cell, which SKAT-O reduces to burden.
   mac5 <- rows[grepl("_MAC5$", rows$Weight), ]
   expect_identical(nrow(mac5), 4L)
   for (cc in c("Pvalue", "Pvalue_Burden", "Pvalue_SKAT", "BETA_Burden", "SE_Burden")) {
-    expect_true(all(mac5[[cc]] == "NA"), label = cc)
+    expect_true(all(mac5[[cc]] != "NA"), label = cc)
   }
   expect_true(all(mac5$Pvalue_ACATV != "NA"))
-  side <- read_saige_table(paste0(r$path, ".skatFailures.txt"))
-  expect_identical(nrow(side), 4L)
-  expect_identical(sort(side$Weight), sort(mac5$Weight))
-  expect_true(all(side$Error == "missing value where TRUE/FALSE needed"))
-  expect_true(fx_log_has(r, "SKAT failures: 4 cell(s) in 2 region(s)"))
+  # a one-marker SKAT-O cell IS its burden test, which is the check that what
+  # survived is the pseudo-marker alone rather than something arbitrary
+  expect_identical(mac5$Pvalue, mac5$Pvalue_Burden)
+  # nothing failed, so no sidecar and the summary says zero
+  expect_false(file.exists(paste0(r$path, ".skatFailures.txt")))
+  expect_true(fx_log_has(r, "SKAT failures: 0 cells returned NA"))
 })
 
 test_that("--nThreads=4 is byte-identical to one thread on the 192-set BURDEN run, and says so", {

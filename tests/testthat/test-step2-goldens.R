@@ -206,7 +206,11 @@ test_that("step2 FlexRV 192-set BURDEN (quantitative, no collapse) matches golde
 
 test_that("step2 FlexRV reduced-spec SKAT-O (2 x 2 sets) matches golden", {
   # max MAF 0.02 and mafbeta rather than a MAC threshold, so no in-cell weight
-  # is exactly 0 (LEDGER #117: a zero weight NAs a binary SKAT-O cell)
+  # is exactly 0. That was chosen when LEDGER #117 made such a cell NA out;
+  # #117 is FIXED (2026-09-11, a zero weight now drops the marker), so the
+  # avoidance is no longer load-bearing -- the golden is kept because it gates
+  # the reduced spec, the transformWeightMat export and the per-set ACAT
+  # columns, and test-step2-flexrv.R covers the zero-weight case directly.
   run_step2_case("plink_group_flexrv_skato.txt",
     c(PLINK_ARGS(), GRP_MODEL, SG_ARGS,
       "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",

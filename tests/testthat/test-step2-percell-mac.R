@@ -279,3 +279,53 @@ test_that("LEDGER #126: gate 0 and gate 1 agree byte for byte on both paths", {
     expect_true(files_byte_identical(a$path, b$path), label = paste("gate 0 vs 1", rc))
   }
 })
+
+# ---------------------------------------------------------------------------
+# LEDGER #117: on the SKAT-O path too, a weight of exactly 0 must equal deleting
+# the marker. Same identity as the first block, the other estimator.
+# ---------------------------------------------------------------------------
+
+PC_SKATO <- c("--annotation_in_groupTest=lof", "--maxMAF_in_groupTest=0.01",
+              "--r.corr=0", "--is_fastTest=FALSE")
+
+test_that("LEDGER #117: zeroing a marker equals deleting it on the binary SKAT-O path", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  masked <- pc_run(pc_mask_groupfile("rs4"), PC_SKATO)
+  dropped <- pc_run(pc_drop_groupfile("rs4"), PC_SKATO)
+  kept <- pc_run(pc_mask_groupfile(character(0)), PC_SKATO)
+  m <- pc_cells(masked)
+  d <- pc_cells(dropped)
+  k <- pc_cells(kept)
+
+  # the cell is not NA any more -- that is the whole of #117
+  expect_false(any(m$Pvalue == "NA"))
+  expect_false(file.exists(paste0(masked$path, ".skatFailures.txt")))
+
+  # and it is the SAME cell as the one with rs4 deleted. Two different INPUTS,
+  # not one path re-run: the deleted run's VarMat is one row and column smaller,
+  # so the SKAT-O kernel's eigen-decomposition differs in the last bits and
+  # `expect_identical` on a p-value is the comparison CLAUDE.md forbids (it
+  # fired here at 1 ULP -- 0.406760386386861 against 0.40676038638686). The
+  # genotype accounting is exact arithmetic over the same markers and IS
+  # compared exactly; the statistics are compared at 1e-12 relative.
+  expect_identical(pc_key(m), pc_key(d))
+  for (col in c("MAC", "MAC_case", "MAC_control", "Number_rare", "Number_ultra_rare")) {
+    expect_identical(m[[col]], d[[col]], label = paste("zeroed vs deleted:", col))
+  }
+  for (col in c("Pvalue", "Pvalue_Burden", "Pvalue_SKAT", "BETA_Burden", "SE_Burden")) {
+    expect_lt(rel_err(m[[col]], d[[col]]), 1e-12)
+  }
+  # POSITIVE CONTROL: rs4 at weight 1 gives a different answer, so the identity
+  # above is not the trivial one.
+  expect_false(identical(k$Pvalue, d$Pvalue))
+  expect_identical(m$Region[m$Pvalue != k$Pvalue], "GENE1")
+
+  # the region's pooled row follows: with the cell restored to a real p-value
+  # the Cauchy combination is no longer a surviving set's row verbatim (#127
+  # route (a)).
+  cauchy_m <- masked$rows[masked$rows$Group == "Cauchy", , drop = FALSE]
+  cauchy_d <- dropped$rows[dropped$rows$Group == "Cauchy", , drop = FALSE]
+  expect_lt(rel_err(cauchy_m$Pvalue, cauchy_d$Pvalue), 1e-12)
+  expect_false(any(cauchy_m$Pvalue == "NA"))
+})
