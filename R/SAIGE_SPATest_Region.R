@@ -238,6 +238,14 @@ region_postprocess <- function(outList,
       })
     } else if (sum(WEIGHT) > 0) {
       AnnoWeights <- c(WEIGHT, rep(1, outList$numofUR))
+    } else if (identical(ws_kind, "transform")) {
+      # LEDGER #119 FIXED. A FlexRV spec that selects ONE transform set
+      # (e.g. unw x unw) is K = 1 on the legacy schema, with WEIGHT == 0
+      # because the group file has no weight line; before this branch the
+      # single set fell through to the implicit-beta arm below, whose guard
+      # stopped the run. The set is a custom set here: its exported column,
+      # 1 on every collapsed pseudo-marker.
+      AnnoWeights <- c(outList$transformWeightMat[, 1], rep(1, outList$numofUR))
     }
   }
   if (!is_rerun) {
@@ -299,8 +307,9 @@ region_postprocess <- function(outList,
 
     if (isMultiWeight) {
       AnnoWeightsList <- lapply(AnnoWeightsList, function(w) w[noNAIndices])
-    } else if (sum(WEIGHT) > 0) {
+    } else if (sum(WEIGHT) > 0 || identical(ws_kind, "transform")) {
       # AnnoWeights = AnnoWeights[varTestedIndices]
+      # (a single FlexRV transform set is a custom set here, LEDGER #119)
       AnnoWeights <- AnnoWeights[noNAIndices]
     } else {
       # LEDGER #19 FIXED. On the legacy single-set unweighted path the one
