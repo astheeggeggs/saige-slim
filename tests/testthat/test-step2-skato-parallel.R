@@ -154,18 +154,40 @@ test_that("fastTest escalation inside a batch keeps the single rows in region or
 # Identical cells evaluated once (2026-09-09, R/SkatoParallel.R). P6's fixture
 # has no synonymous marker under the cutoffs, so `missense;lof;synonymous`
 # holds the same markers as `missense;lof` in both genes: 4 twin rows in the
-# golden. Three of the four cells are bit-identical in (Score, Phi) and are
-# served from their twin; the fourth (GENE2 at max_MAF 0.01) differs by one
-# ULP in one off-diagonal Phi entry, and the memo correctly leaves it alone.
-# The counts are asserted so a memo that never fired cannot pass as green
-# (LEDGER #30 shape), and the golden bytes so a memo that fired wrongly
-# cannot either.
+# golden, and only those 4 cells can ever be served.
+#
+# HOW MANY of the 4 are served is a MEASUREMENT, not a constant, because the
+# memo's predicate is `identical()` on (Score, Phi, r.corr) and two printed-equal
+# cells need not be bit-equal. On this box 3 are served and the fourth (GENE2 at
+# max_MAF 0.01) differs by one ULP in one off-diagonal Phi entry; ubuntu-24.04
+# runner image 20260907 serves all 4 with the golden bytes unchanged, and image
+# 20260831 served 3, on the SAME commit (CI run 34403657864 vs 34401162577,
+# docs-only diff). Asserting c(12L, 9L, 3L) therefore pinned this box's libm and
+# broke CI without a code change. What is asserted instead is what holds
+# everywhere: the cell grid (12), the arithmetic of the printed line, that the
+# memo fired at all (LEDGER #30 shape) and that it served no more than the twin
+# rows -- plus the golden bytes, which is what catches a memo that fired wrongly.
 # ---------------------------------------------------------------------------
+
+# The batch line's distinct count and the summary line's evaluated count are the
+# same quantity reached two ways (there is one batch here and, with
+# is_fastTest=FALSE, no escalated batch); they must reconcile.
+N_CELLS <- 12L    # 2 genes x 3 annotation groups x 3 max MAFs, minus the empty cells
+N_TWINS <- 4L     # `missense;lof;synonymous` == `missense;lof` in both genes
 
 cells_reported <- function(lg) {
   l <- grep("^SKAT-O cells: ", lg, value = TRUE)
   testthat::expect_length(l, 1L)
   as.integer(regmatches(l, gregexpr("[0-9]+", l))[[1]])   # asked, evaluated, served
+}
+
+expect_memo_counts <- function(lg) {
+  n <- cells_reported(lg)
+  testthat::expect_identical(n[1], N_CELLS)
+  testthat::expect_identical(n[2] + n[3], n[1])
+  testthat::expect_gte(n[3], 1L)          # the memo fired
+  testthat::expect_lte(n[3], N_TWINS)     # and served only cells that have a twin
+  n
 }
 
 test_that("--nThreads=1: identical cells are served once, bytes unchanged", {
@@ -174,7 +196,7 @@ test_that("--nThreads=1: identical cells are served once, bytes unchanged", {
 
   r <- skato_run(1)
   expect_cli_ok(r$status)
-  expect_identical(cells_reported(r$log), c(12L, 9L, 3L))
+  expect_memo_counts(r$log)
   expect_output_matches_golden(P6g, r$path)
 })
 
@@ -185,8 +207,11 @@ test_that("--nThreads=4: the batch line reports the distinct count, bytes unchan
   r <- skato_run(4)
   expect_cli_ok(r$status)
   expect_identical(regions_per_batch(r$log), 2L)
+  n <- expect_memo_counts(r$log)
   b <- grep("^SKAT-O batch: .* from [0-9]+ region", r$log, value = TRUE)
-  expect_true(grepl("(9 distinct)", b, fixed = TRUE))
-  expect_identical(cells_reported(r$log), c(12L, 9L, 3L))
+  expect_length(b, 1L)
+  bn <- as.integer(regmatches(b, gregexpr("[0-9]+", b))[[1]])  # cells, regions, distinct
+  expect_identical(bn[1], n[1])
+  expect_identical(bn[3], n[2])
   expect_output_matches_golden(P6g, r$path)
 })

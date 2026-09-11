@@ -463,8 +463,13 @@ once (2026-09-09):** a cell whose (Score, Phi, r.corr) is `identical()` to
 an earlier cell's is served that answer (`skatoDedupe`/`skatoMemoKernel`,
 `R/SkatoParallel.R`), the rows still emitted; the run prints
 `SKAT-O cells: N asked for, M evaluated, K served`. Printed-equal rows are
-not always bit-equal cells (P6: 4 twin rows, 3 served, one Phi entry 2 ULP
-off), so read K as a measurement. One deliberate degradation: a
+not always bit-equal cells, so **K is a measurement and no test may assert its
+value**: P6 has 4 twin rows and this box serves 3 (GENE2 at max_MAF 0.01 is one
+Phi entry ~2 ULP off), while ubuntu-24.04 image 20260907 serves all 4 with the
+golden bytes unchanged and image 20260831 served 3 -- same commit, CI red for a
+docs-only push (run 34403657864). Assert the cell grid, that the line adds up,
+that K >= 1 and K <= the twin count, and the golden bytes. One deliberate
+degradation: a
 reader that cannot clone (only the PLINK pread fallback now) drops to one
 thread with a printed reason and an R `warning()`.
 

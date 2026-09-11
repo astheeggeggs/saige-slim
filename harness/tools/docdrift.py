@@ -91,6 +91,17 @@ RULES = [
                "model's file byte-identical to its own single-model run)",
     ),
     dict(
+        id="skato-served-count",
+        pattern=r"P6: 4 twin rows\s+3\s+served",
+        why="K is a per-machine measurement, not a constant: the same commit served 3 on "
+            "ubuntu-24.04 image 20260831 and 4 on image 20260907, which turned CI red on "
+            "a docs-only push. A test may bound K, never assert it",
+        evidence="CI runs 34401162577 (pass) vs 34403657864 (fail), identical test code; "
+                 "tests/testthat/test-step2-skato-parallel.R::expect_memo_counts",
+        canary="Printed-equal rows are not always bit-equal cells (P6: 4 twin rows, 3 "
+               "served, one Phi entry 2 ULP off), so read K as a measurement.",
+    ),
+    dict(
         id="manifest-single-variant-only",
         pattern=r"Single-variant tests only",
         why="a group test takes a manifest as well; only more than ONE sample-set "
