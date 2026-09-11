@@ -1674,6 +1674,29 @@ one thread; `skatoDedupe` itself 0.78 s per run (in-process timer).
 4-thread pairs are +-10% on this box (the thinned OLD arm's user CPU spans
 178-198 s across its own reps), so quote the 1-thread ratios.
 
+## The urPass half of that cost, removed (2026-09-11, later)
+
+`genoSumcount_noweight`'s per-set accumulation replaced `arma::find` + gather
+(plus a 400 KB `.col()` copy) with one guarded pass over a non-owning view.
+Bit-identical by construction -- same non-zero terms, same increasing-index
+order, same accumulator -- and `arma::accu` is deliberately NOT used, because
+armadillo unrolls it into partial accumulators and that is a different
+summation order.
+
+| arm | urPass (r1/r2) | emitTest (r1/r2) | peak RSS |
+|---|---|---|---|
+| before (`0c1edfb2`) | 15.21 / 14.66 | 15.12 / 14.32 | 879 / 875 MB |
+| after | 13.92 / 13.90 | 14.17 / 14.81 | 877 / 879 MB |
+
+**Output byte-identical** (`cmp` on the 40,196-row region file), which is the
+claim that matters. **urPass ~-1.0 s (-7%)**, against the ~2.4 s the widening
+added: about 40% of it, not the "most of it" predicted. The rest is presumably
+the cache cost of writing into 192 separate N-columns instead of one, which
+this change does not address. `emitTest` and RSS are unchanged, as they should
+be. CAVEAT: the box was loaded and unevenly so (6-16), and NOTES' own rule is
+that bucket SHARES are robust to load and seconds are not -- so treat the 1.0 s
+as approximate. The byte-identity is exact; the timing is indicative.
+
 ## What LEDGER #118 cost the F5 profile, and what it bought (2026-09-11)
 
 Re-ran the F5 k192/k1/plain arms paired and alternated, control `35654e19`

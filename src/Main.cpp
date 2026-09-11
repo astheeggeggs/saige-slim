@@ -3063,19 +3063,37 @@ if(i2 > 0){
 	jmr = jm*q_weight + r;
 	arma::vec genoURVec = genoURMat.col(jmr);
 	// LEDGER #118: set r's OWN unweighted collapse (its ultra-rare markers
-	// with w_r != 0, raw genotypes).
-	arma::vec genoURVec_noweights = genoURMat_noweights.col(jmr);
+	// with w_r != 0, raw genotypes). A non-owning view: the copy this used to
+	// make was 400 KB at N = 50,000 and happened once per SET rather than once
+	// per cell (see the accumulation below).
+	const arma::vec genoURVec_noweights(genoURMat_noweights.colptr(jmr), t_n, false, true);
 	if(q_weight > 1){
 	  // Fix (C5 review #1), now per set (LEDGER #118): the weight-independent
 	  // count must not depend on any OTHER set's support, and must not count
-	  // markers THIS set zeroed. Accumulated over set r's own unweighted
-	  // collapse, replicating the legacy per-sample additions in the same
-	  // index order. At q_weight == 1 this is skipped: the accumulation
-	  // happens inside the single set's emission loop below, textually the
-	  // legacy code (and its vectors are unchanged).
-	  arma::uvec indexForNonZero_nw = arma::find(genoURVec_noweights != 0);
-	  for(unsigned int k = 0; k < indexForNonZero_nw.n_elem; k++){
-	    genoSumcount_noweight(jmr) = genoSumcount_noweight(jmr) + genoURVec_noweights(indexForNonZero_nw(k));
+	  // markers THIS set zeroed. At q_weight == 1 this is skipped: the
+	  // accumulation happens inside the single set's emission loop below,
+	  // textually the legacy code (and its vectors are unchanged).
+	  //
+	  // One guarded pass over the column instead of `find` + gather. The
+	  // ARITHMETIC IS BIT-IDENTICAL BY CONSTRUCTION: the same non-zero terms,
+	  // in the same increasing-index order, added into the same accumulator,
+	  // which still carries the non-collapsed markers' contribution. What goes
+	  // is the `arma::find` (a second scan plus a uvec allocation) and the
+	  // 400 KB column COPY above.
+	  //
+	  // `arma::accu` would be the obvious spelling and is NOT used: armadillo
+	  // unrolls it into several partial accumulators, which is a different
+	  // summation order and may round differently -- exactly the kind of
+	  // 1-ULP change that moves a printed golden.
+	  //
+	  // Measured 2026-09-11: find + gather here cost +2.4 s of `urPass` on
+	  // sim50k, because LEDGER #118 moved this inside the weight-set loop and
+	  // it went from 210 executions to 210 x 192 (harness/bench/NOTES.md).
+	  const double * colptr_nw = genoURMat_noweights.colptr(jmr);
+	  double & acc_nw = genoSumcount_noweight(jmr);
+	  for(unsigned int k = 0; k < t_n; k++){
+	    const double v_nw = colptr_nw[k];
+	    if(v_nw != 0){ acc_nw += v_nw; }
 	  }
 	}
 	int n = genoURVec.size();
