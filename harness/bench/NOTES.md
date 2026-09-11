@@ -1674,6 +1674,53 @@ one thread; `skatoDedupe` itself 0.78 s per run (in-process timer).
 4-thread pairs are +-10% on this box (the thinned OLD arm's user CPU spans
 178-198 s across its own reps), so quote the 1-thread ratios.
 
+## What LEDGER #118 cost the F5 profile, and what it bought (2026-09-11)
+
+Re-ran the F5 k192/k1/plain arms paired and alternated, control `35654e19`
+against HEAD `0c1edfb2`, same fixture and same recipe as the 2026-09-10 section
+below; the libraries are the only difference (`R_LIBS` per arm, driver records
+the lib and its `SAIGE.so` md5). Absolute seconds are NOT comparable to the
+2026-09-10 row -- this box measured the control at 41 s where that row says
+35 s -- so only the ctl-vs-head deltas below mean anything.
+
+| bucket | ctl (r1/r2) | head (r1/r2) | delta |
+|---|---|---|---|
+| peak RSS, k192 | 797 / 801 MB | 844 / 877 MB | +47 to +76 MB |
+| peak RSS, k1 | 507 / 507 MB | 505 / 505 MB | 0 |
+| peak RSS, plain | 504 / 504 MB | 503 / 505 MB | 0 |
+| urPass | 13.61 / 13.49 | 20.21 / 15.93 | +2.4 s (rep 2) |
+| emitTest | 13.15 / 12.87 | 24.31 / 16.91 | +4.0 s (rep 2) |
+| emit - emitTest | 6.02 / 6.01 | 8.43 / 5.87 | ~0 |
+
+**Memory: one array's worth, as designed.** #118 widened
+`genoURMat_noweights` from `q_anno_maf` to `q_anno_maf_weight`; at N = 50,000
+and 192 sets that is 76.8 MB against 0.4 MB. The k1 and plain arms are the
+negative control and did not move at all, which is what confines the growth to
+`q_weight > 1`. At the largest configuration the CLI allows for FlexRV
+(N = 500k, 192 sets, ONE cell -- `R/SAIGE_Test_main.R:392-400` rejects more) it
+is 768 MB, not the 9 GB a 12-cell figure would suggest; 12 cells and 192 sets
+cannot co-occur in a FlexRV run.
+
+**CPU +26%, and only half of it is overhead.**
+* `emitTest` +4.0 s is the price of correctness. `useSparseGRM` is
+  `MAC > m_cateVarRatioMinMACVecExclude.back()` (20.5 by default), so a set
+  whose real MAC is small now takes the sparse-GRM score test that the cell's
+  MAC used to let it skip. Counted on the two output files: rows with
+  MAC <= 20.5 went **2,722 -> 4,287 (+57%)**.
+* `urPass` +2.4 s IS removable overhead. The `genoSumcount_noweight`
+  accumulation moved inside the weight-set loop, so an `arma::find` over an
+  N-vector plus a 400 KB `.col()` copy now runs 210 x 192 = 40,320 times where
+  it ran 210 times. `arma::accu()` over the subview is the same sum (adding
+  exact zeros is exact) with no find, no uvec and no copy. NOT DONE.
+
+**The statistical size of #118 at realistic N, which the bundled fixture hides.**
+Over 40,196 cell rows: `MAC` moved on 96.4%, `Pvalue_Burden` on 8.8%, median
+relative move 0.8%, **max 20%**. The band ratio alone (this model's two `null`
+ratios are 1.0892 and 1.0951, 0.54% apart) can only explain ~0.3%; the rest is
+the `useSparseGRM` flip above -- a different variance ESTIMATOR, not a
+different band. Do not quote the bundled fixture's "SE moves 0.29%" as the
+size of #118 on real data.
+
 ## FlexRV F5 at N = 50,000: where the 192 sets spend their time (2026-09-10)
 
 The question: should twin FlexRV sets be served from a memo on the BURDEN
