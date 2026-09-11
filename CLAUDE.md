@@ -362,7 +362,11 @@ and names the beta sets `mafbeta<b>@M`. Every set's row is written
   The default is 1 because SAIGE-GENE+ describes no minimum-MAC filter at all
   and upstream's 5 has no published rationale. **Gate 1 is inert by
   construction** (a surviving cell has at least one allele), so a test that
-  wants the gate must name a value.
+  wants the gate must name a value. **A raised gate can kill a SKAT-O run**
+  (LEDGER #128, open): a region with two or more cells all refused dies in
+  `regionFinish`'s `rbind`; one cell or `--r.corr=1` escapes. The MAC 1-4
+  cells gate 1 admits are calibrated on sim50k, both traits
+  (`docs/state/prediction-126-null-calibration.md`).
 - **The pooled (Cauchy) row now discloses how it was made** (LEDGER #127):
   `<SAIGEOutputFile>.pooledTests.txt` records per region the rows combined, the
   cells the gate refused, and WHICH CCT rule fired (`Cauchy`, or the

@@ -1,7 +1,8 @@
-# What is worth doing next (2026-09-03, updated 2026-09-11; read docs/state/handoff-2026-09-11-evening-117-115-114.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-12; read docs/state/handoff-2026-09-12-126-null-calibration.md first)
 
-**Current handoff: `docs/state/handoff-2026-09-11-evening-117-115-114.md`**
-(previous: `handoff-2026-09-11-percell-mac-implemented.md`, which is what
+**Current handoff: `docs/state/handoff-2026-09-12-126-null-calibration.md`**
+(previous: `handoff-2026-09-11-evening-117-115-114.md` -- what #118 cost and
+bought, and the disk clear-out; then `handoff-2026-09-11-percell-mac-implemented.md`, which is what
 #118/#126/#127 ARE and how they were gated -- still worth reading; then
 `handoff-2026-09-11-percell-mac.md` -- the DECISIONS handoff for
 #118/#126/#127, still the place to read WHY each choice was made, but two of its
@@ -19,6 +20,8 @@ its "NEXT UP: eight open ledger rows" is out of date (five are now closed), and
 `handoff-2026-09-08-ledger-zero-and-coverage.md`'s claim that the 2026-09-01
 `step2_group_y_null.txt` is "a genuine BEFORE baseline" is WRONG -- ~80 commits
 separate it from HEAD. `docs/state/handoff-2026-09-04.md` is where CI lives.
+
+**2026-09-12: the #126 null-calibration check is DONE and it passed** (`docs/state/prediction-126-null-calibration.md`, prediction before the runs, outcome appended; summary on the #126 row). The MAC 1-4 cells the default now admits are uniform on the quantitative null in every stratum and conservative on the binary null by discreteness; gate 5 removes exactly those rows; the 63 causal genes (not 21 -- the 2026-09-10 rebuild) are detected equally at both gates on burden and FlexRV and 16 -> 15 on the SKAT-O grid by CCT dilution within the bound. It found **LEDGER #128 (OPEN)**: a SKAT-O run dies when a region with two or more cells has every cell refused by a RAISED `--minGroupMAC_in_BurdenTest` (unreachable at the default 1); characterization test in place, fix candidates on the row, best decided together with #116, which it re-observed (an empty region is an `NA` Cauchy row on the burden path and nothing on the SKAT-O path). One open observation, not a gate effect: **the pooled Cauchy row reads 0.06-0.08 at alpha 0.05 on the quantitative null in every arm** (on target at 0.01) -- [ASSUMPTION: CCT over nested, positively dependent cells is mildly liberal at large alpha]; worth one dedicated look with an independent-cells control before anyone quotes the pooled row's size at 0.05.
 
 **Read the handoff, then this file, then
 `python3 harness/tools/ledger.py open`.** Never write a hand-counted "N open of
