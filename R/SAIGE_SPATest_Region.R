@@ -141,6 +141,12 @@ region_postprocess <- function(outList,
                                is_rerun,
                                resultDF_carryover = NULL,
                                weight_sets,
+                               # LEDGER #126: the min-group-MAC gate, applied on
+                               # THIS path too. The burden path enforces it in
+                               # C++ (src/Main.cpp, the BURDEN emitter) on the
+                               # same per-set MAC, so the two paths refuse the
+                               # same cells.
+                               minGroupMAC_in_BurdenTest = 0,
                                # 1-based index of the null model this call is
                                # post-processing, for the LEDGER #127 sidecar
                                model_index = 1L,
@@ -360,6 +366,10 @@ region_postprocess <- function(outList,
     # gc()
 
     annoMAFIndVec <- c()
+    # LEDGER #127: cells this region refused on the gate, counted where the
+    # decision is made. Local to the call, so a region that takes the fastTest
+    # escalation pass records its two passes separately.
+    nRefusedMAC <- 0L
     for (j in 1:length(annolistsub)) {
       AnnoName <- annolistsub[j]
       maxMAF0 <- outList$q_maf_for_annoVec[j]
@@ -377,7 +387,17 @@ region_postprocess <- function(outList,
           }
           if (m <= maxMAF0) {
             tempPos <- which(annoMAFIndicatorMat[, jmr] == 1)
-            if (length(tempPos) > 0) {
+            # LEDGER #126. The C++ BURDEN emitter refuses a cell on
+            #   indexNonZeroVec_arma.n_elem > 0 && MAC >= min_gourpmac_for_burdenonly
+            # and this is the same predicate on the same quantity: length(tempPos)
+            # is the cell's marker support and MAC_GroupVec[jmr] is the MAC C++
+            # accumulated for it. A refused cell emits no row and clears the
+            # carry-forward flag, exactly as `c.tested == false` does on the
+            # burden path.
+            cellMAC <- outList$MAC_GroupVec[jmr]
+            gateOK <- length(cellMAC) == 1 && !is.na(cellMAC) &&
+              cellMAC >= minGroupMAC_in_BurdenTest
+            if (length(tempPos) > 0 && gateOK) {
               isPolyRegionVec[r] <- TRUE
               annoMAFIndVec <- c(annoMAFIndVec, jmr)
               Phi <- if (isMultiWeight) {
@@ -541,6 +561,10 @@ region_postprocess <- function(outList,
               resultDFList[[r]] <- resultDF
             } else {
               # if(length(tempPos) > 0){
+              if (length(tempPos) > 0) {
+                # LEDGER #126/#127: refused by the gate rather than empty.
+                nRefusedMAC <- nRefusedMAC + 1L
+              }
               isPolyRegionVec[r] <- FALSE
             }
           } else {
@@ -709,7 +733,7 @@ region_postprocess <- function(outList,
     pooledRecord(
       regionName, model_index,
       rows = length(pooledCellRows),
-      refused = 0L,
+      refused = nRefusedMAC,
       combined = sum(!is.na(pooledCellRows)),
       rule = pooledRule(pooledCellRows),
       pvalue = if (length(pooledP) == 1) as.numeric(pooledP) else NA_real_
@@ -766,6 +790,11 @@ SAIGE.Region <- function(mu,
                          # lofAnno, maxMAF). The transform sets it describes are
                          # composed right after the group file's custom sets.
                          flexRV = NULL,
+                         # LEDGER #126: the min-group-MAC gate. C++ applies it on
+                         # the BURDEN path; region_postprocess applies the same
+                         # predicate on the SKAT-O path, which also reports
+                         # Pvalue_Burden.
+                         minGroupMAC_in_BurdenTest = 0,
                          # Workers for the SKAT-O post-processing only. The C++
                          # region loop stays single-threaded; this parallelises
                          # the 45% of a group run that Rprof puts in
@@ -1277,6 +1306,7 @@ SAIGE.Region <- function(mu,
       # list(resultDF), exactly the legacy carry-over (NULL on the first pass)
       resultDF_carryover = if (is_rerun) S$resultDFListK[[k]] else NULL,
       weight_sets = weight_sets,
+      minGroupMAC_in_BurdenTest = minGroupMAC_in_BurdenTest,
       model_index = k
     )
   }
@@ -1428,7 +1458,13 @@ SAIGE.Region <- function(mu,
     End <<- (indexChunk == nRegions)
     if (regionTestType != "BURDEN") {
       for (k in seq_len(nModels)) {
-        pval.Region.all[[k]] <<- rbind(pval.Region.all[[k]], S$pvalRegionK[[k]])
+        # `[k] <<- list(...)`, not `[[k]] <<-`: rbind(NULL, NULL) is NULL, and
+        # assigning NULL into a list DELETES the element and shifts every model
+        # after it, so the NEXT region's `[[k]]` reads out of bounds and the run
+        # dies with "subscript out of bounds". Latent until LEDGER #126 gave the
+        # SKAT-O path a way to produce a region with no rows at all -- the same
+        # trap `takePost` above is commented for, met a second time.
+        pval.Region.all[k] <<- list(rbind(pval.Region.all[[k]], S$pvalRegionK[[k]]))
       }
     }
     invisible(NULL)

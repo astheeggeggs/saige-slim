@@ -74,12 +74,14 @@ test_that("the MAC ladder == --maxMAC_in_groupTest cells where both burdens shar
   expect_true(fx_log_has(plain, "maxMAC_in_groupTest:  1 3 5 10  is specified"))
   mac <- fx_mac_from_single(q)
   gene_of <- function(ids) ifelse(as.integer(sub("^rs", "", ids)) <= 50, "GENE1", "GENE2")
-  # the cells the plain run wrote: 3, 5, 10 and the 0.01 cell. The MAC<=1 cell
-  # is the singletons alone -- 4 in GENE1, 3 in GENE2, both under
-  # --minGroupMAC_in_BurdenTest=5 -- and a plain burden cell under that gate
-  # is not written (the FlexRV MAC1 set IS: see the characterization below)
+  # the cells the plain run wrote: 1, 3, 5, 10 and the 0.01 cell. The MAC<=1
+  # cell is the singletons alone -- 4 in GENE1, 3 in GENE2 -- and it IS written
+  # now: LEDGER #126 moved --minGroupMAC_in_BurdenTest's default from 5 to 1.
+  # It used to be refused, which is half of what the characterization below
+  # turned on; the other half, the FlexRV set's own MAC, is LEDGER #118 and is
+  # still open here.
   expect_equal(sort(unique(as.numeric(fx_rows(plain)$max_MAF))),
-               c(3 / 2000, 5 / 2000, 10 / 2000, 0.01), tolerance = 1e-12)
+               c(1 / 2000, 3 / 2000, 5 / 2000, 10 / 2000, 0.01), tolerance = 1e-12)
   for (g in c("GENE1", "GENE2")) {
     expect_identical(sum(mac[gene_of(names(mac)) == g & mac <= 1]), if (g == "GENE1") 4 else 3)
   }
@@ -130,11 +132,13 @@ test_that("LEDGER #118 CHARACTERIZATION: a set's VR band and MAC gate read the c
   expect_equal(as.numeric(a$BETA_Burden) / as.numeric(b$BETA_Burden), ratio, tolerance = 1e-4)
   expect_false(isTRUE(all.equal(as.numeric(a$Pvalue_Burden), as.numeric(b$Pvalue_Burden),
                                 tolerance = 1e-5)))
-  # the MAC<=1 set (4 singletons, MAC 4 < --minGroupMAC_in_BurdenTest=5) is
-  # written by the FlexRV run because the gate saw 121
+  # the MAC<=1 set is 4 singletons. Both parameterizations write it at the
+  # default gate (1 since LEDGER #126), but they do not agree: the FlexRV set
+  # still reports the CELL's MAC, which is what #118 is.
   expect_identical(nrow(fx_ladder_row(q, "GENE1", 1)), 1L)
   expect_identical(fx_ladder_row(q, "GENE1", 1)$MAC, "121")
-  expect_identical(nrow(fx_cell_row(plain, "GENE1", 1)), 0L)
+  expect_identical(nrow(fx_cell_row(plain, "GENE1", 1)), 1L)
+  expect_identical(as.numeric(fx_cell_row(plain, "GENE1", 1)$MAC), 4)
   # ... and it is the ENGINE's semantics, not FlexRV's: a K = 1 custom 0/1
   # mask over the same markers gives the FlexRV row, not the plain cell
   mask <- fx_weight_groupfile(fx_mac_from_single(q), "MASK3",

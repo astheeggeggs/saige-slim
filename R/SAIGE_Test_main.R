@@ -88,7 +88,7 @@ parse_X_PARregion_token <- function(token) {
 #' @param groups_per_chunk character. Number of groups/sets to be read in and tested in each chunk in the set-based assoc tests. By default, 100
 #' @param is_output_moreDetails logical. Whether to output heterozygous and homozygous counts in cases and controls. By default, FALSE. If True, the columns homN_Allele2_cases, hetN_Allelelogical2_cases, homN_Allele2_ctrls, hetN_Allele2_ctrls will be output. By default, FALSE
 #' @param is_overwrite_output logical. Whether to overwrite the output file if it exists. If FALSE, the program will continue the unfinished analysis instead of starting over from the beginining. By default, TRUE
-#' @param minGroupMAC_in_BurdenTest numeric. Only applied when only Burden tests are performed (r.corr=1). Minimum minor allele count in the Burden test for the psueodo marker. By default, 5
+#' @param minGroupMAC_in_BurdenTest numeric. Minimum minor allele count of a (annotation x max_MAF x weight set) cell for its burden test to be performed. Applied on BOTH the burden-only (r.corr=1) and the SKAT-O path, which also reports Pvalue_Burden (LEDGER #126). The count is an unweighted allele count over the markers the weight set keeps (LEDGER #118). By default, 1
 #' @param groupFile character. Path to the file containing the group information for gene-based tests. Each gene/set has 2 + K lines in the group file (K >= 0 weight lines). The first element of each line is the gene/set name. The second element indicates whether the line contains variant IDs (var), annotations (anno), or weights. A weight line's second element is 'weight' (weight set named "WEIGHT"), or 'weight:NAME' / 'weight,NAME' to name the weight set NAME. Weight lines are optional; with none, the default weights are generated based on beta(MAF, 1, 25) (use weights.beta to change the parameters). With more than one weight line per gene/set (each named, same names and order in every gene/set), each weight line defines one weight set and results are output per (annotation, max MAF, weight set) with a Weight column labeling the set (plus Pvalue_ACATV/Pvalue_ACATO columns for SKAT-O). The variant ids must match the genotype input's marker IDs (bim column 2 for PLINK). Elements are seperated by tab or space.
 #' @param sparseGRMFile character. Path to the pre-calculated sparse GRM file that was used in Step 1
 #' @param sparseGRMSampleIDFile character. Path to the sample ID file for the pre-calculated sparse GRM. No header is included. The order of sample IDs is corresponding to sample IDs in the sparse GRM
@@ -190,7 +190,7 @@ SPAGMMATtest <- function(bedFile = "",
                          annotation_in_groupTest = c("lof", "missense;lof", "missense;lof;synonymous"), # new
                          maxMAF_in_groupTest = c(0.01),
                          maxMAC_in_groupTest = c(0),
-                         minGroupMAC_in_BurdenTest = 5,
+                         minGroupMAC_in_BurdenTest = 1,
                          is_Firth_beta = FALSE,
                          pCutoffforFirth = 0.01,
                          firth_solver = "closed",
@@ -806,6 +806,9 @@ SPAGMMATtest <- function(bedFile = "",
       weights_beta_mat = weights.beta,
       is_output_weight_column = is_output_weight_column,
       flexRV = flexRV,
+      # LEDGER #126: the gate now applies on the SKAT-O path too, where it is
+      # enforced in R (the cells are tested there, not in C++).
+      minGroupMAC_in_BurdenTest = minGroupMAC_in_BurdenTest,
       nThreadsSKATO = nThreadsSKATO,
       nThreads = nThreads
     )

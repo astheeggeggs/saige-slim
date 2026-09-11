@@ -352,6 +352,15 @@ and names the beta sets `mafbeta<b>@M`. Every set's row is written
   same markers run as a `--maxMAC_in_groupTest=3` cell by exactly the VR ratio
   when the two MACs fall in different bands. `test-step2-flexrv-reconcile.R`
   characterizes it.
+- **`--minGroupMAC_in_BurdenTest` applies on BOTH region paths and defaults to
+  1** (LEDGER #126). The SKAT-O path reports `Pvalue_Burden`, so gating burden
+  testing only on `--r.corr=1` was incoherent; the SKAT-O half is enforced in
+  `region_postprocess` on `MAC_GroupVec`, the C++ half in the BURDEN emitter on
+  `genoSumcount_noweight`, and those are the same quantity computed two ways.
+  The default is 1 because SAIGE-GENE+ describes no minimum-MAC filter at all
+  and upstream's 5 has no published rationale. **Gate 1 is inert by
+  construction** (a surviving cell has at least one allele), so a test that
+  wants the gate must name a value.
 - **The pooled (Cauchy) row now discloses how it was made** (LEDGER #127):
   `<SAIGEOutputFile>.pooledTests.txt` records per region the rows combined, the
   cells the gate refused, and WHICH CCT rule fired (`Cauchy`, or the

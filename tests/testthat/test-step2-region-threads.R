@@ -109,8 +109,10 @@ test_that("the quantitative BURDEN and SKAT-O arms are byte-identical on 4 threa
 # missense markers, rs55 and rs62, each with ONE minor allele among the 1,000
 # analysed samples: under --annotation_in_groupTest=lof,missense B's missense
 # cell is present (so R keeps the annotation and the cell count matches A's)
-# but untested (MAC 2 < --minGroupMAC_in_BurdenTest 5), right after a region
-# A (GENE1) whose missense cell was tested (MAC 5). A missense annotation with
+# but untested (MAC 2 < --minGroupMAC_in_BurdenTest, passed explicitly as 5
+# below: LEDGER #126 moved the DEFAULT to 1, where this cell would be tested
+# and the fixture would stop reaching the stale-record branch), right after a
+# region A (GENE1) whose missense cell was tested (MAC 5). A missense annotation with
 # NO markers would not do: R drops absent annotations per region, the record
 # count changes, and the records are rebuilt.
 rt_group_lines <- function() {
@@ -137,6 +139,9 @@ rt_run_burden_gf <- function(groupFile, nThreads) {
               # 0.001 first: region A's first missense cell must be TESTED for
               # a stale flag to exist (no bundled marker has MAF <= 0.0001)
               "--maxMAF_in_groupTest=0.001,0.01",
+              # LEDGER #126: the default is 1 now, so the gate this fixture
+              # needs is named rather than inherited.
+              "--minGroupMAC_in_BurdenTest=5",
               "--r.corr=1", "--is_fastTest=FALSE",
               paste0("--nThreads=", nThreads),
               paste0("--SAIGEOutputFile=", out)),

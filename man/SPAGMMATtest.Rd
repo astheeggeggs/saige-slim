@@ -49,7 +49,7 @@ SPAGMMATtest(
   annotation_in_groupTest = c("lof", "missense;lof", "missense;lof;synonymous"),
   maxMAF_in_groupTest = c(0.01),
   maxMAC_in_groupTest = c(0),
-  minGroupMAC_in_BurdenTest = 5,
+  minGroupMAC_in_BurdenTest = 1,
   is_Firth_beta = FALSE,
   pCutoffforFirth = 0.01,
   firth_solver = "closed",
@@ -172,7 +172,7 @@ is_imputed_data = TRUE. By default, 10}
 
 \item{maxMAC_in_groupTest}{character. Max MAC for markers tested in the group test, separated by comma, e.g. '1,2'. Combined with maxMAF_in_groupTest. By default, '0', i.e. no maxMAC cutoff}
 
-\item{minGroupMAC_in_BurdenTest}{numeric. Only applied when only Burden tests are performed (r.corr=1). Minimum minor allele count in the Burden test for the psueodo marker. By default, 5}
+\item{minGroupMAC_in_BurdenTest}{numeric. Minimum minor allele count of a (annotation x max_MAF x weight set) cell for its burden test to be performed. Applied on BOTH the burden-only (r.corr=1) and the SKAT-O path, which also reports Pvalue_Burden (LEDGER #126). The count is an unweighted allele count over the markers the weight set keeps (LEDGER #118). By default, 1}
 
 \item{is_Firth_beta}{logical. Whether to estimate effect sizes using approx Firth, only for binary traits. By default, FALSE}
 

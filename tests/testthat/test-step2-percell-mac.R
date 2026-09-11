@@ -1,5 +1,6 @@
-# LEDGER #127, the pooled row's provenance, end to end through the step-2 CLI.
-# Tier: standard. (#118 and #126 add their own blocks to this file.)
+# LEDGER #126 (the min-group-MAC gate on both region paths) and #127 (the
+# pooled row's provenance), end to end through the step-2 CLI. Tier: standard.
+# (#118 adds its own blocks to this file.)
 #
 # The reconciliation each block runs is named in its comment; nothing here
 # compares two different code paths' p-values (the two burden estimators differ
@@ -123,7 +124,30 @@ pc_tiny_groupfile <- function() {
 PC_TINY <- c("--annotation_in_groupTest=lof", "--maxMAF_in_groupTest=0.01",
              "--MACCutoff_to_CollapseUltraRare=0", "--is_fastTest=FALSE")
 
-test_that("LEDGER #127: a region with nothing tested reports NA, not 0.5", {
+test_that("LEDGER #126: both region paths refuse the same cells at the same gate", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  gf <- pc_tiny_groupfile()
+  b5 <- pc_run(gf, c(PC_TINY, "--r.corr=1", "--minGroupMAC_in_BurdenTest=5"))
+  s5 <- pc_run(gf, c(PC_TINY, "--r.corr=0", "--minGroupMAC_in_BurdenTest=5"))
+  b1 <- pc_run(gf, c(PC_TINY, "--r.corr=1", "--minGroupMAC_in_BurdenTest=1"))
+  s1 <- pc_run(gf, c(PC_TINY, "--r.corr=0", "--minGroupMAC_in_BurdenTest=1"))
+
+  # cell identity only -- NEVER the p-values: the two paths do not share a
+  # burden estimator and disagree 2.76x at this MAC (LEDGER #126).
+  expect_identical(pc_key(pc_cells(b5)), pc_key(pc_cells(s5)))
+  expect_identical(pc_key(pc_cells(b1)), pc_key(pc_cells(s1)))
+  # GENET (MAC 2) is refused on BOTH paths at 5 and tested on both at 1;
+  # GENEU is present throughout, which is what makes the files comparable.
+  expect_identical(pc_cells(b5)$Region, "GENEU")
+  expect_identical(pc_cells(s5)$Region, "GENEU")
+  expect_identical(sort(pc_cells(b1)$Region), c("GENET", "GENEU"))
+  expect_identical(sort(pc_cells(s1)$Region), c("GENET", "GENEU"))
+  expect_identical(pc_cells(b1)$MAC[pc_cells(b1)$Region == "GENET"], "2")
+  expect_identical(pc_cells(s1)$MAC[pc_cells(s1)$Region == "GENET"], "2")
+})
+
+test_that("LEDGER #126/#127: a region with nothing tested reports NA, not 0.5", {
   skip_unless_level("standard")
   skip_if_no_goldens()
   # CCT of no inputs is the Cauchy CDF at 0, i.e. 0.5 -- a well-formed number
@@ -138,12 +162,10 @@ test_that("LEDGER #127: a region with nothing tested reports NA, not 0.5", {
 })
 
 test_that("LEDGER #127: the sidecar names the refused cells and the CCT rule", {
-  # BURDEN only for now: the SKAT-O path has no min-group-MAC gate until
-  # LEDGER #126, which adds the --r.corr=0 arm to this loop.
   skip_unless_level("standard")
   skip_if_no_goldens()
   gf <- pc_tiny_groupfile()
-  for (rc in c("--r.corr=1")) {
+  for (rc in c("--r.corr=1", "--r.corr=0")) {
     r5 <- pc_run(gf, c(PC_TINY, rc, "--minGroupMAC_in_BurdenTest=5"))
     expect_true(file.exists(r5$pooled), label = paste("sidecar written", rc))
     tab <- read_saige_table(r5$pooled)
@@ -161,3 +183,19 @@ test_that("LEDGER #127: the sidecar names the refused cells and the CCT rule", {
   expect_false(file.exists(r1$pooled))
 })
 
+test_that("LEDGER #126: gate 0 and gate 1 agree byte for byte on both paths", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  # Gate 1 is inert BY CONSTRUCTION once the MAC is an allele count: a cell that
+  # survives `indexNonZeroVec_arma.n_elem > 0` carries at least one allele. This
+  # is what makes the new default safe to ship, so it is asserted rather than
+  # assumed -- and it is a claim about ONE path re-run, not two paths compared.
+  gf <- withr::with_dir(saige_extdata, normalizePath("./input/group_new_snpid.txt"))
+  args <- c("--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+            "--maxMAF_in_groupTest=0.0001,0.001,0.01", "--is_fastTest=FALSE")
+  for (rc in c("--r.corr=1", "--r.corr=0")) {
+    a <- pc_run(gf, c(args, rc, "--minGroupMAC_in_BurdenTest=0"))
+    b <- pc_run(gf, c(args, rc, "--minGroupMAC_in_BurdenTest=1"))
+    expect_true(files_byte_identical(a$path, b$path), label = paste("gate 0 vs 1", rc))
+  }
+})

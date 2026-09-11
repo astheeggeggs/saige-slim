@@ -122,10 +122,16 @@ option_list <- list(
   make_option(
     "--minGroupMAC_in_BurdenTest",
     type = "double",
-    default = 5,
+    default = 1,
     help = paste0(
-      "Only applied when only Burden tests are performed (r.corr=1). Minimum ",
-      "minor allele count in the Burden test for the psueodo marker. [default=5]."
+      "Minimum minor allele count of a (annotation x max_MAF x weight set) ",
+      "cell for its burden test to be performed. LEDGER #126: applied on BOTH ",
+      "region paths -- the SKAT-O path reports Pvalue_Burden too, so a gate on ",
+      "burden testing that skipped it was incoherent -- and the default is 1 ",
+      "rather than upstream's 5, which has no published rationale ",
+      "(SAIGE-GENE+ describes no minimum-MAC filter at all). The count is an ",
+      "unweighted allele count of the markers the weight set keeps ",
+      "(LEDGER #118). [default=1]."
     )
   ),
   make_option(
