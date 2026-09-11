@@ -22,3 +22,8 @@ harness/bench/prof*.txt
 harness/bench/prof*.txt.index
 harness/bench/prof*.rda
 harness/bench/profiles/
+
+# The FlexRV paper (Schwartzentruber et al., bioRxiv 2025.11.04.686320), 5.7 MB.
+# Not committed: docs/design/flexrv-design.md pins its 16x12 table verbatim with
+# every closed form derived and every ambiguity resolved, and SUPERSEDES it.
+flexrv.pdf
