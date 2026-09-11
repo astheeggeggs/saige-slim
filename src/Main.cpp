@@ -2049,13 +2049,20 @@ Rcpp::List mainRegionInCPP(
         const double m1c = std::max((double)g_cfg.region_maxMarkers_cutoff, cells);
         bytes += (double)P * (perN * cells + 2.0 * perN * m1c);
       }
+      // LEDGER #120 FIXED: the stream's flags AND precision are restored.
+      // setprecision(1) persisted (only the float field was cleared), so
+      // every double C++ printed to stdout after this line -- the
+      // SAIGE_PROFILE_REGION buckets among them -- came out at one digit.
+      const std::ios_base::fmtflags coutFlags = std::cout.flags();
+      const std::streamsize coutPrec = std::cout.precision();
       std::cout << "FlexRV: " << q_weight_transform << " transform sets over "
                 << q_anno_maf << " (annotation x max_MAF) cell(s) = " << q_anno_maf_weight
                 << " weighted cells per region; the dense per-cell working memory is at least "
                 << std::fixed << std::setprecision(1) << (bytes / 1048576.0) << " MB at N = " << t_n
                 << (t_regionTestType == "BURDEN" ? " (BURDEN)" : " (SKAT-O, plus the per-chunk P1/P2 rows)")
                 << std::endl;
-      std::cout.unsetf(std::ios_base::floatfield);
+      std::cout.flags(coutFlags);
+      std::cout.precision(coutPrec);
     }
   }
   arma::mat genoURMat(t_n, q_anno_maf_weight, arma::fill::zeros);
