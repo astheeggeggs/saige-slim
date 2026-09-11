@@ -1,7 +1,8 @@
-# What is worth doing next (2026-09-03, updated 2026-09-10 night; read docs/state/handoff-2026-09-10-flexrv-sweep-124.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-11; read docs/state/handoff-2026-09-11-percell-mac.md first)
 
-**Current handoff: `docs/state/handoff-2026-09-10-flexrv-sweep-124.md`**
-(previous: `handoff-2026-09-10-fitter-guard.md`, then
+**Current handoff: `docs/state/handoff-2026-09-11-percell-mac.md`**
+(previous: `handoff-2026-09-10-flexrv-sweep-124.md`, then
+`handoff-2026-09-10-fitter-guard.md`, then
 `handoff-2026-09-09-flexrv-e2e.md`, then `handoff-2026-09-09-flexrv-f2-f4.md`, then
 `handoff-2026-09-09-flexrv-f0.md`, then
 `handoff-2026-09-09-skato-identical-cells.md`)
