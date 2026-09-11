@@ -91,6 +91,23 @@ RULES = [
                "model's file byte-identical to its own single-model run)",
     ),
     dict(
+        id="flexrv-percell-mac-upstream",
+        pattern=r"genoSumcount_noweight\s+upstream s semantics",
+        why="LEDGER #118 (a set's burden tested with the CELL's MAC) is NOT inherited from "
+            "upstream and must not be attributed to it. Upstream 365deeff has no per-set "
+            "dimension at all: `jmr` appears zero times in its src/Main.cpp and MAC_GroupVec, "
+            "NumRare_GroupVec and NumUltraRare_GroupVec are all declared q_anno_maf (per cell) "
+            "and mutually consistent. Phase 5 of THIS branch widened them to "
+            "q_anno_maf_weight but left the accumulations unconditional, so the defect is a gap "
+            "in our own multi-weight generalisation. The attribution matters because bug-for-bug "
+            "preservation protects upstream behaviour, and there is none here to protect",
+        evidence="cd ../SAIGE-main && grep -c jmr src/Main.cpp -> 0; "
+                 "grep -n 'arma::vec MAC_GroupVec' src/Main.cpp -> q_anno_maf, against "
+                 "q_anno_maf_weight at src/Main.cpp:2106 here; LEDGER #118 STATUS",
+        canary="A set's burden is tested with the CELL's unweighted MAC (LEDGER #118, "
+               "the engine's `genoSumcount_noweight`, upstream's semantics): variance-ratio",
+    ),
+    dict(
         id="skato-served-count",
         pattern=r"P6: 4 twin rows\s+3\s+served",
         why="K is a measurement, not a constant: the same commit served 3 in one CI run "

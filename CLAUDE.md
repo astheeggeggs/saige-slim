@@ -340,12 +340,18 @@ and names the beta sets `mafbeta<b>@M`. Every set's row is written
 - **A weight of exactly 0 inside a binary SKAT-O cell returns NA** (LEDGER
   #117, pre-existing, custom weights too), which the `lof` mask and every MAC
   threshold produce; on a binary trait FlexRV is a `--r.corr=1` run.
-- **A set's burden is tested with the CELL's unweighted MAC** (LEDGER #118,
-  the engine's `genoSumcount_noweight`, upstream's semantics): variance-ratio
-  band, ER eligibility, the min-group-MAC gate and the printed `MAC` column
-  all read it, so a `MAC<=3` set differs from the same markers run as a
-  `--maxMAC_in_groupTest=3` cell by exactly the VR ratio when the two MACs
-  fall in different bands. `test-step2-flexrv-reconcile.R` characterizes it.
+- **A set's burden is tested with the CELL's unweighted MAC** (LEDGER #118).
+  This is NOT upstream's semantics -- upstream has no per-set dimension at all
+  (`jmr` appears zero times in its `Main.cpp`; `MAC_GroupVec`, `NumRare_GroupVec`
+  and `NumUltraRare_GroupVec` are all `q_anno_maf`, per CELL, and mutually
+  consistent). Phase 5 widened all three to `q_anno_maf_weight` but left the
+  accumulations unconditional, so the non-collapsed part of `MAC` and both
+  counters still describe the cell while the collapsed part describes the set.
+  Variance-ratio band, ER eligibility, the min-group-MAC gate and the printed
+  `MAC` column all read the cell quantity, so a `MAC<=3` set differs from the
+  same markers run as a `--maxMAC_in_groupTest=3` cell by exactly the VR ratio
+  when the two MACs fall in different bands. `test-step2-flexrv-reconcile.R`
+  characterizes it.
 `opt$flexRV_score` partial-matches `--flexRV_scoreTransforms` when the flag is
 absent: the CLI reads the five flags with `[[ ]]`. The memory line a FlexRV run
 prints once is the formula in the design doc's "Implementation notes", not a
