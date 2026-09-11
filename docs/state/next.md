@@ -647,15 +647,32 @@ What is NOT done, in order of value:
   a binary arm.
 - **LEDGER #117** (a zero weight NAs a binary SKAT-O cell; pre-existing) is
   the owner's decision: drop weight-0 markers before the kernel, or leave it
-  and keep FlexRV-on-binary a `--r.corr=1` run.
+  and keep FlexRV-on-binary a `--r.corr=1` run. **Measured 2026-09-11**: the
+  harm is not one NA row -- the gene's Cauchy row silently becomes the
+  surviving set's row verbatim (0.6787 where the control gives 0.5319). The
+  fix target is now exact and needs no new golden: weighting a marker 0 must
+  equal deleting it, which the BURDEN path already satisfies to every printed
+  digit.
 - **The FlexRV simulation study** (`docs/design/flexrv-sim-study.md`): S0
   landed 2026-09-10, blocked on the owner's annotation + BMI summary
   statistics; then the 50k rebuild (~70 min, `NEED_GB=12`), checksum gate,
   step 1 for the redrawn traits, and stages S2-S4 (~2 h of runs).
-- **LEDGER #118** (the cell's unweighted MAC drives a set's VR band, ER and
-  min-group-MAC gate) is the owner's decision too: a per-set count would move
-  P58/P59/P61 and needs a ruling on the weighted pseudo-marker; the
-  characterization in `test-step2-flexrv-reconcile.R` is inverted with it.
+- **LEDGER #118 is DECIDED (2026-09-11): the per-set MAC, everywhere** --
+  variance-ratio band, ER eligibility, the min-group-MAC gate and the printed
+  column. Measured over P58's 384 sets: 45.3% of printed MACs count markers
+  the set zeroed (median 2.83x), 20.6% change VR band (but only 0.29% of SE on
+  this model), and 8.3% would be REFUSED on the per-set MAC. It travels with
+  two new rows and should be implemented as ONE piece of work: **#126** (the
+  min-group-MAC gate has a single read in `src/`, inside the BURDEN branch, so
+  it does not apply to SKAT-O -- which still reports a `Pvalue_Burden` column;
+  decided: extend it, default 1, with the global-vs-SKAT-O-only sub-question
+  open) and **#127** (the pooled Cauchy row records nothing about what entered
+  it, so #117, a fully-refused region and #118's own refusals all degrade it
+  silently). The implementation gate is in #126: two runs, at gate 1 and gate
+  5, and the ONLY cross-path assertion permitted is that the SET of refused
+  cells agrees -- never the p-values, which differ 2.76x at MAC 2 because the
+  two paths do not share a burden estimator. The characterization in
+  `test-step2-flexrv-reconcile.R` is inverted with it.
 - `--flexRV_output_sets` (decided, not implemented); a native `sum_geno`
   collapse if F5 says the operator matters. The conditional reconciliation
   test is DONE (`test-step2-flexrv-cond.R`).
