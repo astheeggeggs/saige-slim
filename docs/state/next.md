@@ -22,6 +22,13 @@ separate it from HEAD. `docs/state/handoff-2026-09-04.md` is where CI lives.
 `python3 harness/tools/ledger.py open`.** Never write a hand-counted "N open of
 M" here; the lint rejects it, because the count drifted every time.
 
+**2026-09-11 (evening) also closed #117 and #115**, and removed ~40% of the CPU
+#118 added (`harness/bench/NOTES.md`). #117's fix -- a weight of exactly 0 drops
+the marker -- means **binary FlexRV is no longer restricted to `--r.corr=1`**.
+Two rows remain: #114 (the owner's decision) and #116 (needs its mechanism
+diagnosed; a NEIGHBOURING route was diagnosed and fixed with #126 and is
+recorded on the row as explicitly NOT #116's).
+
 **2026-09-11 closed #118, #126 and #127** (the per-set MAC, the min-group-MAC
 gate on both region paths at a default of 1, and the pooled row's
 `.pooledTests.txt` sidecar). Twelve group goldens were re-baselined, predicted
