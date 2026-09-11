@@ -94,10 +94,22 @@ fx_burden_quant <- function() {
          "quant")
 }
 
+# The rows of a region table, the pooled Cauchy row, and a log predicate.
+fx_rows <- function(res) res$region[res$region$Group != "Cauchy", ]
+fx_cauchy <- function(res) res$region[res$region$Group == "Cauchy", ]
+fx_log_has <- function(res, pattern) any(grepl(pattern, res$log, fixed = TRUE))
+
 # Numeric columns of two region tables compared cell for cell at a relative
 # tolerance, rows matched by (Region, Group, max_MAF, key) where `key` names
 # the row within the cell (a Weight label, or NULL for the legacy schema).
-fx_num_cols <- c("Pvalue", "Pvalue_Burden", "Pvalue_SKAT", "BETA_Burden", "SE_Burden")
+# The conditional BURDEN columns are included when both tables carry them.
+#
+# On the tolerance: the tables are PRINTED at 6-7 significant digits, so two
+# runs that differ by one ULP can print one digit apart in the last place, and
+# a cross-path comparison cannot honestly demand more than ~1e-5 relative
+# (the numeric compare mode's bound). 1e-10 is only for two runs of ONE path.
+fx_num_cols <- c("Pvalue", "Pvalue_Burden", "Pvalue_SKAT", "BETA_Burden", "SE_Burden",
+                 "Pvalue_Burden_c", "Beta_Burden_c", "seBeta_Burden_c")
 fx_expect_rows_equal <- function(a, b, cols = NULL, tol = 1e-10, label = "rows") {
   if (is.null(cols)) {
     cols <- intersect(fx_num_cols, intersect(colnames(a), colnames(b)))
@@ -109,4 +121,217 @@ fx_expect_rows_equal <- function(a, b, cols = NULL, tol = 1e-10, label = "rows")
     testthat::expect_identical(is.na(x), is.na(y), label = paste(label, cc, "NA pattern"))
     testthat::expect_equal(x[!is.na(x)], y[!is.na(y)], tolerance = tol, label = paste(label, cc))
   }
+}
+# The allele accounting is weight-independent (real markers) or set by the
+# collapse (the pseudo-marker) and must agree to the printed digit.
+fx_acct_cols <- c("MAC", "MAC_case", "MAC_control", "Number_rare", "Number_ultra_rare")
+fx_expect_accounting_identical <- function(a, b, label = "accounting") {
+  for (cc in intersect(fx_acct_cols, intersect(colnames(a), colnames(b)))) {
+    testthat::expect_identical(a[[cc]], b[[cc]], label = paste(label, cc))
+  }
+}
+
+# ---- the in-sample MAC per marker, from two independent sources ------------
+# Every step-1 golden and the bundled example model carry the same 1,000-sample
+# vector (test-step2-region-multimodel.R relies on it), and no bundled marker
+# has a missing call, so MAC == AC_Allele2 and MAF == MAC / 2000 for every
+# marker of every run here.
+#  - fx_mac_from_golden(): P1's golden, --minMAC=1, every polymorphic marker.
+#  - fx_mac_from_single(res): the run's own .singleAssoc.txt -- only markers
+#    that survived the ultra-rare collapse appear there, so it is complete only
+#    when the collapse cutoff is 0.
+fx_mac_from_golden <- function() {
+  gold <- get("saige_goldens", envir = parent.frame())
+  d <- fx_read(file.path(gold, "step2", "plink_marker_binary.txt"))
+  stopifnot(all(d$MissingRate == "0"))
+  stats::setNames(as.numeric(d$AC_Allele2), d$MarkerID)
+}
+fx_mac_from_single <- function(res) {
+  d <- fx_read(paste0(res$path, ".singleAssoc.txt"))
+  d <- d[grepl("^rs", d$MarkerID), ]
+  stopifnot(all(d$MissingRate == "0"))
+  stats::setNames(as.numeric(d$AC_Allele2), d$MarkerID)
+}
+
+# ---- the external route: weights written out as custom `weight:NAME` lines --
+# One group file with the fixture's var/anno lines and K weight lines per
+# region, the weights computed in R by `weightFun(score, isLof, MAF, MAC)`
+# (a q x K matrix) and written at 17 digits. A marker absent from `mac` is
+# monomorphic in the model's samples (MAC 0): it fails QC in every run, so its
+# weight never enters a test. Run as ordinary custom sets, this is the
+# reference the internal transform expansion is reconciled against.
+fx_weight_groupfile <- function(mac, setNames, weightFun,
+                                path = tempfile("flexrv_external_", fileext = ".txt")) {
+  ext <- get("saige_extdata", envir = parent.frame())
+  fixture <- readLines(file.path(ext, "input", "group_new_snpid_flexrv.txt"))
+  out <- character(0)
+  for (i in seq(1, length(fixture), by = 3)) {
+    var <- strsplit(fixture[i], " ")[[1]]
+    anno <- strsplit(fixture[i + 1], " ")[[1]]
+    sc <- strsplit(fixture[i + 2], " ")[[1]]
+    stopifnot(var[2] == "var", anno[2] == "anno", sc[2] == "score:REVEL")
+    ids <- var[-(1:2)]
+    m <- unname(mac[ids])
+    m[is.na(m)] <- 0
+    W <- weightFun(as.numeric(sc[-(1:2)]), as.numeric(anno[-(1:2)] == "lof"), m / 2000, m)
+    stopifnot(nrow(W) == length(ids), ncol(W) == length(setNames))
+    out <- c(out, fixture[i], fixture[i + 1])
+    for (k in seq_len(ncol(W))) {
+      out <- c(out, paste(c(var[1], paste0("weight:", setNames[k]), format(W[, k], digits = 17)),
+                          collapse = " "))
+    }
+  }
+  writeLines(out, path)
+  path
+}
+# The transform table's sets, under the internal run's own set names, so the
+# two runs' Weight columns match label for label. flexrvWeightsR is the R
+# route written from the paper's dbeta forms, not from the C++ closed forms.
+fx_external_groupfile <- function(mac, scoreSpec = SAIGE::flexrvDefaultScoreSpec,
+                                  mafSpec = SAIGE::flexrvDefaultMAFSpec, maxMAF = 0.01) {
+  tt <- SAIGE::flexrvTransformTable(scoreSpec, mafSpec, "REVEL", maxMAF = maxMAF)
+  path <- fx_weight_groupfile(mac, tt$names, function(s, isLof, maf, m) {
+    SAIGE::flexrvWeightsR(tt$table, s, isLof, maf, m, maxMAF)
+  })
+  list(path = path, names = tt$names)
+}
+
+# ---- run builders shared by the test-step2-flexrv-*.R files ----------------
+# Defined HERE and not in the test files because lintr's object-usage check
+# cannot see another file's objects from inside a function body (FX_G, fx_run
+# and friends are visible in this file, where they are defined).
+
+# The quantitative run with the collapse off (P59's command) plus
+# --is_single_in_groupTest, so the run itself reports every marker's in-sample AC.
+fx_quant_single <- function() {
+  fx_run(c(FX_G, fx_quant(), FX_COMMON, FX_FLEX, FX_BURDEN, "--MACCutoff_to_CollapseUltraRare=0",
+           "--is_single_in_groupTest=TRUE"), "quant-single")
+}
+# A plain (no --flexRV_score) custom-weight run of an external group file on
+# the given model, with P58/P59's other flags.
+fx_external_run <- function(path, model, extra, tag) {
+  fx_run(c(FX_G, model, "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
+           paste0("--groupFile=", path), "--annotation_in_groupTest=lof:missense",
+           "--maxMAF_in_groupTest=0.01", FX_BURDEN, extra), tag)
+}
+# The MAC ladder's second parameterization: a plain unweighted run whose
+# --maxMAC_in_groupTest=t cells are the marker subsets the MAC<=t sets weight 1.
+fx_maxmac_run <- function() {
+  fx_run(c(FX_G, fx_quant(), FX_COMMON, "--annotation_in_groupTest=lof:missense",
+           "--maxMAF_in_groupTest=0.01", "--maxMAC_in_groupTest=1,3,5,10",
+           "--is_no_weight_in_groupTest=TRUE", "--MACCutoff_to_CollapseUltraRare=0", FX_BURDEN),
+         "maxmac")
+}
+fx_ladder_row <- function(q, gene, t) {
+  r <- fx_rows(q)
+  r[r$Region == gene & r$Weight == paste0("REVEL_unw_MAC", t), ]
+}
+fx_cell_row <- function(plain, gene, t) {
+  r <- fx_rows(plain)
+  r[r$Region == gene & abs(as.numeric(r$max_MAF) - t / 2000) < 1e-12, ]
+}
+# the `null` variance ratios of the quantitative model, named by MAC category
+fx_quant_vr <- function() {
+  vr <- utils::read.table(sub("^--varianceRatioFile=", "", fx_quant()[2]), header = FALSE,
+                          stringsAsFactors = FALSE)
+  vr <- vr[vr$V2 == "null", ]
+  stats::setNames(vr$V1, vr$V3)
+}
+# The reduced-spec SKAT-O run (golden P60's command): 2 x 2 sets at max MAF
+# 0.02 with mafbeta rather than a MAC threshold, so no in-cell weight is 0
+# (LEDGER #117).
+fx_skato <- function(extra = character(0), tag = "skato-p60") {
+  fx_run(c(FX_G, FX_BIN, FX_SG, FX_COMMON, "--flexRV_score=REVEL", "--flexRV_maxMAF=0.02",
+           "--annotation_in_groupTest=lof:missense", "--flexRV_scoreTransforms=unw;sbeta:2",
+           "--flexRV_MAFTransforms=unw;mafbeta:2", "--is_fastTest=FALSE", extra), tag)
+}
+fx_default_names <- function() {
+  SAIGE::flexrvTransformTable(SAIGE::flexrvDefaultScoreSpec, SAIGE::flexrvDefaultMAFSpec,
+                              "REVEL", maxMAF = 0.01)$names
+}
+fx_fixture_lines <- function() {
+  ext <- get("saige_extdata", envir = parent.frame())
+  readLines(file.path(ext, "input", "group_new_snpid_flexrv.txt"))
+}
+
+# The whole-table reconciliation: an internal 192-set run against its external
+# weight-line twin, rows at the printed precision, accounting exact, the
+# Cauchy row, and a positive control that the comparison tells sets apart.
+fx_expect_int_eq_ext <- function(int, ext, label) {
+  a <- fx_rows(int)
+  b <- fx_rows(ext)
+  testthat::expect_identical(nrow(a), 384L, label = label)
+  testthat::expect_identical(a$Weight, b$Weight, label = label)
+  testthat::expect_identical(a$Weight, rep(fx_default_names(), 2), label = label)
+  fx_expect_rows_equal(a, b, tol = 1e-5, label = label)
+  fx_expect_accounting_identical(a, b, label = label)
+  testthat::expect_equal(as.numeric(fx_cauchy(int)$Pvalue_Burden),
+                         as.numeric(fx_cauchy(ext)$Pvalue_Burden), tolerance = 1e-5,
+                         label = paste(label, "Cauchy"))
+  # unw_unw against the steepest score transform, and against the MAC10 mask
+  p <- function(d, w) as.numeric(d$Pvalue_Burden[d$Weight == w])
+  testthat::expect_false(isTRUE(all.equal(p(a, "REVEL_unw_unw"), p(b, "REVEL_sbeta20_unw"),
+                                          tolerance = 1e-5)))
+  testthat::expect_false(isTRUE(all.equal(p(a, "REVEL_unw_unw"), p(b, "REVEL_unw_MAC10"),
+                                          tolerance = 1e-5)))
+}
+
+# ---- several null models in one pass (test-step2-flexrv-multimodel.R) ------
+# The two step-1 goldens fitted on the SAME 1,000 samples; the quantitative
+# model's VR file has only `null` rows, so no sparse GRM is passed.
+FXM_MODELS <- c(binary = "binary_sparseGRM_a", quant = "quant_sparseGRM")
+
+fxm_model <- function(prefix) {
+  gold <- get("saige_goldens", envir = parent.frame())
+  c(rda = file.path(gold, "step1", paste0(prefix, ".rda")),
+    vr = file.path(gold, "step1", paste0(prefix, ".varianceRatio.txt")))
+}
+fxm_manifest <- function() {
+  path <- tempfile("flexrv_manifest_", fileext = ".txt")
+  writeLines(vapply(names(FXM_MODELS), function(nm) {
+    p <- fxm_model(FXM_MODELS[[nm]])
+    paste(nm, p[["rda"]], p[["vr"]])
+  }, character(1)), path)
+  path
+}
+fxm_single_model <- function(nm) {
+  p <- fxm_model(FXM_MODELS[[nm]])
+  c(paste0("--GMMATmodelFile=", p[["rda"]]), paste0("--varianceRatioFile=", p[["vr"]]))
+}
+fxm_expect_same_files <- function(a, b) {
+  for (suffix in c("", ".singleAssoc.txt")) {
+    fa <- paste0(a, suffix)
+    fb <- paste0(b, suffix)
+    testthat::expect_identical(file.exists(fa), file.exists(fb), label = fa)
+    if (file.exists(fa)) {
+      testthat::expect_identical(readLines(fa), readLines(fb), label = fa)
+    }
+  }
+}
+# `flags`: everything but the model. The manifest run's per-model files are
+# <path>_<name>; each must be byte-identical to that model's own run's.
+fxm_check <- function(flags, tag) {
+  man <- fx_run(c(FX_G, FX_COMMON, flags,
+                  paste0("--GMMATmodel_varianceRatio_multiTraits_File=", fxm_manifest())),
+                paste0(tag, "-manifest"))
+  fx_ok(man)
+  testthat::expect_true(fx_log_has(man, "Region tests will run 2 null model(s) over one sample"))
+  for (nm in names(FXM_MODELS)) {
+    single <- fx_run(c(FX_G, FX_COMMON, flags, fxm_single_model(nm)), paste0(tag, "-", nm))
+    fx_ok(single)
+    fxm_expect_same_files(paste0(man$path, "_", nm), single$path)
+    testthat::expect_true(file.exists(paste0(man$path, "_", nm, ".index")))
+  }
+  man
+}
+
+# ---- one transform set, K = 1 (test-step2-flexrv-k1.R) ---------------------
+# quantitative, collapse off, so a comparison is between burdens over the
+# same real markers with no pseudo-marker in play
+fxk_flex <- function(extra, tag) {
+  fx_run(c(FX_G, fx_quant(), FX_COMMON, FX_FLEX, "--MACCutoff_to_CollapseUltraRare=0", extra), tag)
+}
+fxk_plain <- function(extra, tag) {
+  fx_run(c(FX_G, fx_quant(), FX_COMMON, "--annotation_in_groupTest=lof:missense",
+           "--maxMAF_in_groupTest=0.01", "--MACCutoff_to_CollapseUltraRare=0", extra), tag)
 }

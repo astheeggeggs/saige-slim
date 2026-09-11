@@ -3,8 +3,6 @@
 # shape). Split from test-step2-flexrv.R so the two files can run in parallel
 # workers; scaffolding in helper-step2-flexrv.R. Tier: standard.
 
-fx_log_has <- function(res, pattern) any(grepl(pattern, res$log, fixed = TRUE))
-
 test_that("a FlexRV run needs the group file's score line, under the given name", {
   # no score line at all
   r <- fx_run(c(FX_G, FX_BIN, FX_SG, "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",

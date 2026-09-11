@@ -13,10 +13,6 @@ fx_names <- function(scoreSpec = SAIGE::flexrvDefaultScoreSpec,
                      mafSpec = SAIGE::flexrvDefaultMAFSpec) {
   SAIGE::flexrvTransformTable(scoreSpec, mafSpec, "REVEL", maxMAF = 0.01)$names
 }
-fx_rows <- function(res) res$region[res$region$Group != "Cauchy", ]
-fx_cauchy <- function(res) res$region[res$region$Group == "Cauchy", ]
-fx_log_has <- function(res, pattern) any(grepl(pattern, res$log, fixed = TRUE))
-
 test_that("the default run writes 192 sets per gene, in the normative order, plus one Cauchy row", {
   r <- fx_burden_bin()
   fx_ok(r)
@@ -80,28 +76,12 @@ test_that("internal expansion == the external weight-line route (score transform
   # transforms written out as 16 `weight:NAME` lines at full precision, run as
   # ordinary custom sets, must give the transform sets' rows. MAF unw keeps
   # the weights free of in-sample quantities, which a file cannot carry.
+  # (test-step2-flexrv-reconcile.R does the same for all 192 sets, with the
+  # in-sample MAC from two sources; this one needs no MAC at all)
   fx_skip("standard")
-  fixture <- readLines(file.path(saige_extdata, "input", "group_new_snpid_flexrv.txt"))
-  tt <- flexrvTransformTable(flexrvDefaultScoreSpec, "unw", "REVEL", maxMAF = 0.01)
-  out <- character(0)
-  for (i in seq(1, length(fixture), by = 3)) {
-    var <- fixture[i]
-    anno <- strsplit(fixture[i + 1], " ")[[1]]
-    sc <- strsplit(fixture[i + 2], " ")[[1]]
-    stopifnot(anno[2] == "anno", sc[2] == "score:REVEL")
-    s <- as.numeric(sc[-(1:2)])
-    isLof <- as.numeric(anno[-(1:2)] == "lof")
-    W <- flexrvWeightsR(tt$table, s, isLof, rep(0, length(s)), rep(1, length(s)), 0.01)
-    out <- c(out, var, fixture[i + 1])
-    for (k in seq_len(ncol(W))) {
-      out <- c(out, paste(c(anno[1], paste0("weight:", tt$scoreSuffix[k]),
-                            format(W[, k], digits = 17)), collapse = " "))
-    }
-  }
-  wf <- tempfile("flexrv_external_", fileext = ".txt")
-  writeLines(out, wf)
+  gf <- fx_external_groupfile(numeric(0), mafSpec = "unw")
   ext <- fx_run(c(FX_G, FX_BIN, FX_SG, "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
-                  paste0("--groupFile=", wf), "--annotation_in_groupTest=lof:missense",
+                  paste0("--groupFile=", gf$path), "--annotation_in_groupTest=lof:missense",
                   "--maxMAF_in_groupTest=0.01", FX_BURDEN), "external")
   fx_ok(ext)
   int <- fx_run(c(FX_G, FX_BIN, FX_SG, FX_COMMON, FX_FLEX, FX_BURDEN,
@@ -110,19 +90,18 @@ test_that("internal expansion == the external weight-line route (score transform
   a <- fx_rows(int)
   b <- fx_rows(ext)
   expect_identical(nrow(a), 32L)
-  expect_identical(a$Weight, paste0("REVEL_", b$Weight, "_unw"))
+  expect_identical(a$Weight, rep(gf$names, 2))
+  expect_identical(a$Weight, b$Weight)
   fx_expect_rows_equal(a, b, label = "internal vs external")
   # the allele accounting is weight-independent and must match exactly
-  for (cc in c("MAC", "MAC_case", "MAC_control", "Number_rare", "Number_ultra_rare")) {
-    expect_identical(a[[cc]], b[[cc]], label = cc)
-  }
+  fx_expect_accounting_identical(a, b)
   expect_equal(as.numeric(fx_cauchy(int)$Pvalue_Burden), as.numeric(fx_cauchy(ext)$Pvalue_Burden),
                tolerance = 1e-10)
   # positive control on the comparison: the internal run's OTHER MAF
   # transforms are not the external rows
   full <- fx_rows(fx_burden_bin())
   expect_false(isTRUE(all.equal(as.numeric(full$Pvalue_Burden[full$Weight == "REVEL_sbeta5_MAC5"]),
-                                as.numeric(b$Pvalue_Burden[b$Weight == "sbeta5"]),
+                                as.numeric(b$Pvalue_Burden[b$Weight == "REVEL_sbeta5_unw"]),
                                 tolerance = 1e-10)))
 })
 
