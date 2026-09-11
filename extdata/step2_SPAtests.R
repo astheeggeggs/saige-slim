@@ -163,7 +163,7 @@ option_list <- list(
       "(2*allele frequency). minor: missing dosages are imputed as minor allele ",
       "homozygotes. NOTE: for variants with MAC <= --dosage_zerod_MAC_cutoff, ",
       "what mean writes is then zeroed by --dosage_zerod_cutoff, so mean and ",
-      "minor agree there unless that cutoff is set to 0 [default=minor]"
+      "minor agree there unless that cutoff is set to 0 [default=best_guess]"
     )
   ),
   make_option(
@@ -547,7 +547,7 @@ option_list <- list(
     default = FALSE,
     help = paste0(
       "Whether to output the marker lists included in the set-based tests for ",
-      "each mask.[default=TRUE]"
+      "each mask. [default=FALSE]"
     )
   ),
   make_option(
