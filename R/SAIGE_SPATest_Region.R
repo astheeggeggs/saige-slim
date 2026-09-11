@@ -141,6 +141,18 @@ region_postprocess <- function(outList,
                                is_rerun,
                                resultDF_carryover = NULL,
                                weight_sets,
+                               # 1-based index of the null model this call is
+                               # post-processing, for the LEDGER #127 sidecar
+                               model_index = 1L,
+                               # FALSE on skatoCollect's drive: the parallel
+                               # path runs this body twice (collect, then serve)
+                               # and only the SERVE pass holds real p-values, so
+                               # only it may record. The same discipline
+                               # `skat_fun`'s stub answer already imposes on
+                               # skatFailureRecord, made explicit here because
+                               # the pooled record does not depend on an error
+                               # field to stay silent.
+                               record_pooled = TRUE,
                                # The SKAT-O evaluator, injected so the cell loop
                                # can be driven twice by skato_parallel(): once to
                                # COLLECT every (Score, Phi) it would test, once to
@@ -567,6 +579,19 @@ region_postprocess <- function(outList,
       pval.Region$Number_ultra_rare <- outList$NumUltraRare_GroupVec[annoMAFIndVec]
     }
 
+    # LEDGER #127: this region's pooled-row provenance, taken BEFORE the pooled
+    # row is appended (so `pval.Region` still holds only the cell rows). The
+    # pooled statistic on this path is `Pvalue` -- SKAT-O's own -- and the rule
+    # named here is the one CCT takes on exactly this vector.
+    pooledCellRows <- if (is.null(pval.Region)) {
+      numeric(0)
+    } else if ("Pvalue" %in% colnames(pval.Region)) {
+      as.numeric(pval.Region$Pvalue)
+    } else {
+      as.numeric(pval.Region$Pvalue_Burden)
+    }
+    pooledP <- NA_real_
+
     if (length(annolistsub) > 1 | length(maxMAFlist) > 1 | isMultiWeight) {
       if (is.null(pval.Region)) {
         # Degenerate corner: run_core was TRUE (the region has rare/ultra-rare
@@ -623,6 +648,7 @@ region_postprocess <- function(outList,
           cctVec <- c(cctVec, NA, NA)
         }
         cctVec <- c(cctVec, NA, NA)
+        pooledP <- if (regionTestType != "BURDEN") cctpval else cctpval_Burden
         pval.Region <- rbind(pval.Region, cctVec)
       } else {
         # Exactly ONE pooled Cauchy row per region, combining every
@@ -668,12 +694,26 @@ region_postprocess <- function(outList,
           }
         }
 
+        pooledP <- if (regionTestType != "BURDEN") cctRow$Pvalue else cctRow$Pvalue_Burden
         pval.Region <- rbind(pval.Region, unlist(cctRow))
       } # if (is.null(pval.Region)) ... else
     } else {
       if (!is_rerun) {
         cctpval <- 1
       }
+    }
+    # LEDGER #127. One record per (region, model, pass). A region with one cell
+    # writes no pooled row at all; it is still recorded, because a reader cannot
+    # otherwise see that the region produced nothing.
+    if (record_pooled) {
+    pooledRecord(
+      regionName, model_index,
+      rows = length(pooledCellRows),
+      refused = 0L,
+      combined = sum(!is.na(pooledCellRows)),
+      rule = pooledRule(pooledCellRows),
+      pvalue = if (length(pooledP) == 1) as.numeric(pooledP) else NA_real_
+    )
     }
   }
 
@@ -776,6 +816,7 @@ SAIGE.Region <- function(mu,
   cat("Region marker loop will use ", nThreads, " in-process threads.\n", sep = "")
   skatFailureReset() # LEDGER #57: per-run accounting, R/SkatFailures.R
   skatoDedupeReset() # identical cells evaluated once: per-run counts, R/SkatoParallel.R
+  pooledReset() # LEDGER #127: pooled-row provenance, R/PooledRow.R
 
   # LEDGER #25 FIXED: the index is written and validated with the SAME nEachChunk.
   # It records completed REGIONS one per line, so the chunk size it states is 1
@@ -1235,7 +1276,8 @@ SAIGE.Region <- function(mu,
       # the per-set carry-forward cache of the first pass; at K = 1 this is
       # list(resultDF), exactly the legacy carry-over (NULL on the first pass)
       resultDF_carryover = if (is_rerun) S$resultDFListK[[k]] else NULL,
-      weight_sets = weight_sets
+      weight_sets = weight_sets,
+      model_index = k
     )
   }
   # Bind one model's post-processing result into the region's state.
@@ -1789,6 +1831,11 @@ SAIGE.Region <- function(mu,
   # beside the FIRST model's file (the per-cell record has no model column).
   skatFailureSummary(OutputFile)
   skatoDedupeSummary()
+  # LEDGER #127: how each region's pooled (Cauchy) row was formed -- cells
+  # tested, cells the min-group-MAC gate refused, p-values that entered, and
+  # which CCT rule produced the number -- with a sidecar beside the FIRST
+  # model's file when any region has something to disclose.
+  pooledSummary(OutputFile)
 
   message <- "Analysis done!"
   message <- paste0(

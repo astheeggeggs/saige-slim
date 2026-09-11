@@ -9,6 +9,14 @@ flexrvWeightsInCPP <- function(t_table, t_score, t_isLof, t_MAF, t_MAC, t_maxMAF
     .Call('_SAIGE_flexrvWeightsInCPP', PACKAGE = 'SAIGE', t_table, t_score, t_isLof, t_MAF, t_MAC, t_maxMAF)
 }
 
+resetPooledRecordsInCPP <- function() {
+    invisible(.Call('_SAIGE_resetPooledRecordsInCPP', PACKAGE = 'SAIGE'))
+}
+
+getPooledRecordsInCPP <- function() {
+    .Call('_SAIGE_getPooledRecordsInCPP', PACKAGE = 'SAIGE')
+}
+
 setAssocTest_GlobalVarsInCPP <- function(t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_min_info_marker, t_dosage_zerod_cutoff, t_dosage_zerod_MAC_cutoff, t_weights_beta, t_outputFilePrefix, t_MACCutoffforER) {
     invisible(.Call('_SAIGE_setAssocTest_GlobalVarsInCPP', PACKAGE = 'SAIGE', t_impute_method, t_missing_cutoff, t_min_maf_marker, t_min_mac_marker, t_min_info_marker, t_dosage_zerod_cutoff, t_dosage_zerod_MAC_cutoff, t_weights_beta, t_outputFilePrefix, t_MACCutoffforER))
 }

@@ -34,7 +34,14 @@ test_that("skatoEvaluate returns the serial answers in job order whatever the so
 test_that("skatoCollect gathers the drive's cells and skatoServe checks the count", {
   # a stand-in for region_postprocess that asks for two cells and returns
   # what it was told, so the served answers are visible in the result
-  fake_post <- function(tag, skat_fun = SAIGE:::get_SKAT_pvalue) {
+  # `record_pooled` is captured rather than ignored: LEDGER #127 records the
+  # pooled row's provenance from inside region_postprocess, and the parallel
+  # path drives that body TWICE, so only the SERVE drive may record. A
+  # collecting drive that recorded would double-count every region silently.
+  seen <- new.env(parent = emptyenv())
+  seen$record <- list()
+  fake_post <- function(tag, skat_fun = SAIGE:::get_SKAT_pvalue, record_pooled = TRUE) {
+    seen$record[[length(seen$record) + 1L]] <- record_pooled
     a <- skat_fun(c(1, 2), diag(2), 0, "SKAT-O")
     b <- skat_fun(3, matrix(4), 0, "SKAT-O")
     list(pval.Region = list(tag = tag, a = a, b = b))
@@ -42,12 +49,14 @@ test_that("skatoCollect gathers the drive's cells and skatoServe checks the coun
   testthat::local_mocked_bindings(region_postprocess = fake_post, .package = "SAIGE")
 
   jobs <- SAIGE:::skatoCollect(list("t1"))
+  expect_identical(seen$record, list(FALSE))
   expect_length(jobs, 2L)
   expect_identical(jobs[[1]]$Score, c(1, 2))
   expect_identical(jobs[[2]]$Phi, matrix(4))
 
   answers <- list(list(p = "first"), list(p = "second"))
   out <- SAIGE:::skatoServe(list("t1"), answers)
+  expect_identical(seen$record, list(FALSE, TRUE))   # collect, then serve
   expect_identical(out$pval.Region$tag, "t1")
   expect_identical(out$pval.Region$a, answers[[1]])
   expect_identical(out$pval.Region$b, answers[[2]])

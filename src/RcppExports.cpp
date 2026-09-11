@@ -38,6 +38,25 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// resetPooledRecordsInCPP
+void resetPooledRecordsInCPP();
+RcppExport SEXP _SAIGE_resetPooledRecordsInCPP() {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    resetPooledRecordsInCPP();
+    return R_NilValue;
+END_RCPP
+}
+// getPooledRecordsInCPP
+Rcpp::List getPooledRecordsInCPP();
+RcppExport SEXP _SAIGE_getPooledRecordsInCPP() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(getPooledRecordsInCPP());
+    return rcpp_result_gen;
+END_RCPP
+}
 // setAssocTest_GlobalVarsInCPP
 void setAssocTest_GlobalVarsInCPP(std::string t_impute_method, double t_missing_cutoff, double t_min_maf_marker, double t_min_mac_marker, double t_min_info_marker, double t_dosage_zerod_cutoff, double t_dosage_zerod_MAC_cutoff, arma::vec& t_weights_beta, std::string t_outputFilePrefix, double t_MACCutoffforER);
 RcppExport SEXP _SAIGE_setAssocTest_GlobalVarsInCPP(SEXP t_impute_methodSEXP, SEXP t_missing_cutoffSEXP, SEXP t_min_maf_markerSEXP, SEXP t_min_mac_markerSEXP, SEXP t_min_info_markerSEXP, SEXP t_dosage_zerod_cutoffSEXP, SEXP t_dosage_zerod_MAC_cutoffSEXP, SEXP t_weights_betaSEXP, SEXP t_outputFilePrefixSEXP, SEXP t_MACCutoffforERSEXP) {
@@ -2146,6 +2165,8 @@ END_RCPP
 static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_CCT_cpp", (DL_FUNC) &_SAIGE_CCT_cpp, 1},
     {"_SAIGE_flexrvWeightsInCPP", (DL_FUNC) &_SAIGE_flexrvWeightsInCPP, 6},
+    {"_SAIGE_resetPooledRecordsInCPP", (DL_FUNC) &_SAIGE_resetPooledRecordsInCPP, 0},
+    {"_SAIGE_getPooledRecordsInCPP", (DL_FUNC) &_SAIGE_getPooledRecordsInCPP, 0},
     {"_SAIGE_setAssocTest_GlobalVarsInCPP", (DL_FUNC) &_SAIGE_setAssocTest_GlobalVarsInCPP, 10},
     {"_SAIGE_setAssocTest_GlobalVarsInCPP_indexInModel_male", (DL_FUNC) &_SAIGE_setAssocTest_GlobalVarsInCPP_indexInModel_male, 1},
     {"_SAIGE_setAssocTest_GlobalVarsInCPP_X_PARregion_mat", (DL_FUNC) &_SAIGE_setAssocTest_GlobalVarsInCPP_X_PARregion_mat, 1},

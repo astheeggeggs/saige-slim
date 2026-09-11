@@ -164,6 +164,71 @@ static RegionWriter & regionWriter(int t_modelIndex){
 }
 
 
+// ---------------------------------------------------------------------------
+// LEDGER #127: what went into the pooled (Group == "Cauchy") row.
+//
+// The row itself is unchanged -- its arithmetic, including the Bonferroni
+// fallback when some cell p-value is exactly 1, is SAIGE-GENE+'s own
+// prescription (see LEDGER #86). What was missing is DISCLOSURE: a reader
+// could not tell how many cells were asked for, how many were refused by the
+// min-group-MAC gate, how many NA'd out of the combination, or which of CCT's
+// rules produced the number. One record per (region, model, pass) is kept
+// here on the BURDEN path -- where the row is written from C++ -- and the
+// SKAT-O path records its own in R (R/PooledRow.R); both end up in one
+// sidecar, written only when there is something to disclose.
+// ---------------------------------------------------------------------------
+struct PooledRegionRecord {
+  std::string region;
+  unsigned int model = 0;          // 1-based
+  unsigned int rows = 0;           // cell rows the region emitted
+  unsigned int combined = 0;       // of those, the p-values that entered the CCT
+  unsigned int refusedMAC = 0;     // cells refused by --minGroupMAC_in_BurdenTest
+  std::string rule;                // "Cauchy" | "min-p Bonferroni" | "zero" | "none"
+  double pval = 0.0;
+};
+static std::vector<PooledRegionRecord> g_pooledRecords;
+
+// The CCT rule CCT_cpp will take on this vector, decided by the same
+// predicates it uses (src/CCT.cpp) and in the same order.
+static std::string pooledCCTRule(const arma::vec & t_pvals){
+  if(t_pvals.n_elem == 0){ return "none"; }
+  if(!arma::all(t_pvals)){ return "zero"; }
+  const arma::uvec notOne = arma::find(t_pvals != 1.0);
+  if(notOne.n_elem < t_pvals.n_elem){ return "min-p Bonferroni"; }
+  return "Cauchy";
+}
+
+// [[Rcpp::export]]
+void resetPooledRecordsInCPP(){
+  g_pooledRecords.clear();
+}
+
+// [[Rcpp::export]]
+Rcpp::List getPooledRecordsInCPP(){
+  const unsigned int n = g_pooledRecords.size();
+  Rcpp::CharacterVector region(n), rule(n);
+  Rcpp::IntegerVector model(n), rows(n), refused(n), combined(n);
+  Rcpp::NumericVector pval(n);
+  for(unsigned int k = 0; k < n; k++){
+    const PooledRegionRecord & rec = g_pooledRecords[k];
+    region[k] = rec.region;
+    model[k] = (int)rec.model;
+    rows[k] = (int)rec.rows;
+    refused[k] = (int)rec.refusedMAC;
+    combined[k] = (int)rec.combined;
+    rule[k] = rec.rule;
+    pval[k] = rec.pval;
+  }
+  return Rcpp::List::create(
+    Rcpp::Named("Region") = region,
+    Rcpp::Named("Model") = model,
+    Rcpp::Named("Rows") = rows,
+    Rcpp::Named("Pvalues_combined") = combined,
+    Rcpp::Named("Cells_refused_minGroupMAC") = refused,
+    Rcpp::Named("Rule") = rule,
+    Rcpp::Named("Pvalue_pooled") = pval);
+}
+
 
 
 
@@ -3456,6 +3521,9 @@ if(t_regionTestType == "BURDEN"){
        burdenCells[k].tested = false;
      }
      std::vector<unsigned int> burdenTested;   // jmr of the tested cells, in cell order
+     // LEDGER #127: the pooled row's provenance, counted where the decision is
+     // made rather than inferred from the rows afterwards.
+     unsigned int nRefusedMAC = 0;
      // D1
      for(unsigned int j = 0; j < q_anno; j++){
        q_maf_m = q_maf_for_anno(j);
@@ -3477,6 +3545,9 @@ if(t_regionTestType == "BURDEN"){
 		MAF = std::min(altFreq, 1 - altFreq);
 		MAC = MAF*2*t_n;
 	}
+        if(indexNonZeroVec_arma.n_elem > 0 && MAC < g_cfg.min_gourpmac_for_burdenonly){
+          nRefusedMAC += 1;
+        }
         if(indexNonZeroVec_arma.n_elem > 0 && MAC >= g_cfg.min_gourpmac_for_burdenonly){
           for(unsigned int km = 0; km < P; km++){
             const SAIGE::SAIGEClass & model = *W[km].model;
@@ -3638,11 +3709,33 @@ if(t_regionTestType == "BURDEN"){
 	  }
 
 	  arma::vec nonMissingPvalVec = arma::conv_to< arma::vec >::from(nonMissingPvalVec_std);
-	   w.cctpval = CCT_cpp(nonMissingPvalVec);
+	   // LEDGER #127: CCT_cpp of NO inputs returns 0.5 -- the Cauchy CDF at a
+	   // statistic of zero -- which is a well-formed number that is not a
+	   // result. A region in which nothing was tested reports NA instead.
+	   const bool anyCombined = (nonMissingPvalVec.n_elem > 0);
+	   w.cctpval = anyCombined ? CCT_cpp(nonMissingPvalVec) : NA_REAL;
            if(isCondition){
 		arma::vec nonMissingPvalVec_cond  = arma::conv_to< arma::vec >::from(nonMissingPvalVec_c_std);
-	   	w.cctpval_cond = CCT_cpp(nonMissingPvalVec_cond);
+	   	w.cctpval_cond = (nonMissingPvalVec_cond.n_elem > 0) ? CCT_cpp(nonMissingPvalVec_cond) : NA_REAL;
            }
+	   {
+	     PooledRegionRecord rec;
+	     rec.region = regionName;
+	     rec.model = km + 1;
+	     // On this path a cell whose test returned "NA" writes no row at all,
+	     // so Rows == Pvalues_combined here by construction; the NA route of
+	     // LEDGER #127 (a) is visible on the SKAT-O path, which keeps its NA
+	     // rows. Both columns are still written, so the two paths' rows have
+	     // the same shape.
+	     rec.rows = (unsigned int)nonMissingPvalVec.n_elem;
+	     rec.combined = (unsigned int)nonMissingPvalVec.n_elem;
+	     rec.refusedMAC = nRefusedMAC;
+	     rec.rule = pooledCCTRule(nonMissingPvalVec);
+	     rec.pval = w.cctpval;
+	     g_pooledRecords.push_back(rec);
+	   }
+
+
 
 
 	   if(!t_isFastTest){
@@ -3652,7 +3745,11 @@ if(t_regionTestType == "BURDEN"){
 		if(isEscalatedPass){
 			w.iswriteOutput = true;
 		}else{
-		  if(w.cctpval >= 0.1){
+		  // LEDGER #127: `!anyCombined` reproduces the old decision exactly.
+		  // Nothing tested used to give cctpval == 0.5, which passes this
+		  // test; the value is NA now, and a NaN comparison would silently
+		  // flip the decision instead of only the printed number.
+		  if(!anyCombined || w.cctpval >= 0.1){
 			w.iswriteOutput = true;
 		  }
 		}
@@ -4802,10 +4899,11 @@ void writeOutfile_BURDEN(std::string regionName,
        // the single pooled Cauchy row is not tied to one weight set
        rw.group << "NA\t";
      }
-     rw.group << cctpval;
+     // LEDGER #127: NA when nothing entered the combination (see the caller).
+     writeNumOrNA(rw.group, cctpval);
      rw.group << "\tNA\tNA\t";	
      if(isCondition){
-	rw.group << cctpval_cond;
+	writeNumOrNA(rw.group, cctpval_cond);
 	rw.group << "\tNA\tNA\t";
      }
      rw.group << "NA\t";

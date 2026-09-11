@@ -13,6 +13,13 @@
 # - Step-1 runs write to $GOLD/step1/ and never overwrite extdata/output/.
 # - Nothing writes into extdata/output/ at all; the tree stays clean.
 # - Every run sources harness/env.sh (step 1 is irreproducible without it; see LEDGER.md #7/#8).
+# - LEDGER #127: a group run also writes `<out>.pooledTests.txt` when a region's
+#   pooled (Cauchy) row was NOT a plain Cauchy combination of every cell it
+#   tested. Five runs produce one -- the quantitative SKAT-O goldens, whose
+#   saturated cells (Pvalue exactly 1) send CCT down its min(1, n*min(p))
+#   fallback, which is LEDGER #86. They are committed like any other output, so
+#   compare_goldens.sh gates the disclosure; every other run writes no file, and
+#   a new one appearing means a region started combining something differently.
 
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"

@@ -352,6 +352,14 @@ and names the beta sets `mafbeta<b>@M`. Every set's row is written
   same markers run as a `--maxMAC_in_groupTest=3` cell by exactly the VR ratio
   when the two MACs fall in different bands. `test-step2-flexrv-reconcile.R`
   characterizes it.
+- **The pooled (Cauchy) row now discloses how it was made** (LEDGER #127):
+  `<SAIGEOutputFile>.pooledTests.txt` records per region the rows combined, the
+  cells the gate refused, and WHICH CCT rule fired (`Cauchy`, or the
+  `min(1, n*min(p))` Bonferroni fallback of #86, or `none`), and a region in
+  which nothing was tested prints `NA` rather than 0.5, which is the CCT of no
+  inputs. Sidecar only, written only when a region has something to disclose --
+  no result file moves, and the arithmetic is unchanged because it is the
+  paper's own.
 `opt$flexRV_score` partial-matches `--flexRV_scoreTransforms` when the flag is
 absent: the CLI reads the five flags with `[[ ]]`. The memory line a FlexRV run
 prints once is the formula in the design doc's "Implementation notes", not a

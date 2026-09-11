@@ -140,7 +140,10 @@ skatoCollect <- function(args) {
     list(Pvalue_SKATO = 0.5, Pvalue_Burden = 0.5, Pvalue_SKAT = 0.5,
          BETA_Burden = 0, SE_Burden = 1)
   }
-  invisible(do.call(region_postprocess, c(args, list(skat_fun = collect))))
+  # record_pooled = FALSE: this drive's p-values are the 0.5 placeholders above,
+  # so only the SERVE drive may make the LEDGER #127 record.
+  invisible(do.call(region_postprocess,
+                    c(args, list(skat_fun = collect, record_pooled = FALSE))))
   st$jobs
 }
 
