@@ -1,7 +1,9 @@
-# What is worth doing next (2026-09-03, updated 2026-09-11; read docs/state/handoff-2026-09-11-percell-mac-implemented.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-11; read docs/state/handoff-2026-09-11-evening-117-115-114.md first)
 
-**Current handoff: `docs/state/handoff-2026-09-11-percell-mac-implemented.md`**
-(previous: `handoff-2026-09-11-percell-mac.md` -- the DECISIONS handoff for
+**Current handoff: `docs/state/handoff-2026-09-11-evening-117-115-114.md`**
+(previous: `handoff-2026-09-11-percell-mac-implemented.md`, which is what
+#118/#126/#127 ARE and how they were gated -- still worth reading; then
+`handoff-2026-09-11-percell-mac.md` -- the DECISIONS handoff for
 #118/#126/#127, still the place to read WHY each choice was made, but two of its
 predictions are corrected by the one above; then
 `handoff-2026-09-10-flexrv-sweep-124.md`, then
