@@ -1,7 +1,10 @@
-# What is worth doing next (2026-09-03, updated 2026-09-11; read docs/state/handoff-2026-09-11-percell-mac.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-11; read docs/state/handoff-2026-09-11-percell-mac-implemented.md first)
 
-**Current handoff: `docs/state/handoff-2026-09-11-percell-mac.md`**
-(previous: `handoff-2026-09-10-flexrv-sweep-124.md`, then
+**Current handoff: `docs/state/handoff-2026-09-11-percell-mac-implemented.md`**
+(previous: `handoff-2026-09-11-percell-mac.md` -- the DECISIONS handoff for
+#118/#126/#127, still the place to read WHY each choice was made, but two of its
+predictions are corrected by the one above; then
+`handoff-2026-09-10-flexrv-sweep-124.md`, then
 `handoff-2026-09-10-fitter-guard.md`, then
 `handoff-2026-09-09-flexrv-e2e.md`, then `handoff-2026-09-09-flexrv-f2-f4.md`, then
 `handoff-2026-09-09-flexrv-f0.md`, then
@@ -19,9 +22,17 @@ separate it from HEAD. `docs/state/handoff-2026-09-04.md` is where CI lives.
 `python3 harness/tools/ledger.py open`.** Never write a hand-counted "N open of
 M" here; the lint rejects it, because the count drifted every time.
 
+**2026-09-11 closed #118, #126 and #127** (the per-set MAC, the min-group-MAC
+gate on both region paths at a default of 1, and the pooled row's
+`.pooledTests.txt` sidecar). Twelve group goldens were re-baselined, predicted
+per file and per value beforehand in
+`docs/state/prediction-118-126-127.md`.
+
 **2026-09-09 closed #107-#113 and opened #115/#116.** What remains is one
-owner's decision (#114), two one-line help fixes (#115), and one row that needs
-its mechanism diagnosed before it can be decided (#116). The 50k
+owner's decision (#114), two one-line help fixes (#115), one row that needs
+its mechanism diagnosed before it can be decided (#116), and #117 (a weight of
+exactly 0 inside a binary SKAT-O cell returns NA), which is now the only place
+where a zero weight is still not honest. The 50k
 strip-vs-upstream benchmark was re-run with a Firth-off arm:
 `harness/sim/upstream_compare/RESULTS-2026-09-09.md`.
 

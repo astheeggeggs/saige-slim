@@ -12,11 +12,12 @@
 #  3. a K = 1 custom 0/1 mask, which says whether what (2) finds is FlexRV's
 #     or the engine's.
 #
-# (2) is where LEDGER #118 lives: a burden cell's variance-ratio category, ER
-# eligibility and --minGroupMAC_in_BurdenTest gate read the cell's UNWEIGHTED
-# MAC (`genoSumcount_noweight`, upstream's semantics), so a set whose weights
-# zero most of the cell is tested as if it were the whole cell. The block
-# marked CHARACTERIZATION pins that; invert it when #118 is decided and fixed.
+# (2) is where LEDGER #118 lived: a burden cell's variance-ratio category, ER
+# eligibility and --minGroupMAC_in_BurdenTest gate used to read the CELL's
+# unweighted MAC, shared by every set, so a set whose weights zeroed most of the
+# cell was tested as if it were the whole cell. FIXED 2026-09-11 -- the count is
+# per set now -- and the block that used to be marked CHARACTERIZATION is
+# INVERTED below: the two parameterizations must agree.
 #
 # Cross-path comparisons are at 1e-5 (the printed precision); the accounting
 # columns exactly. Tier: standard.
@@ -76,18 +77,18 @@ test_that("the MAC ladder == --maxMAC_in_groupTest cells where both burdens shar
   gene_of <- function(ids) ifelse(as.integer(sub("^rs", "", ids)) <= 50, "GENE1", "GENE2")
   # the cells the plain run wrote: 1, 3, 5, 10 and the 0.01 cell. The MAC<=1
   # cell is the singletons alone -- 4 in GENE1, 3 in GENE2 -- and it IS written
-  # now: LEDGER #126 moved --minGroupMAC_in_BurdenTest's default from 5 to 1.
-  # It used to be refused, which is half of what the characterization below
-  # turned on; the other half, the FlexRV set's own MAC, is LEDGER #118 and is
-  # still open here.
+  # now: LEDGER #126 moved --minGroupMAC_in_BurdenTest's default from 5 to 1,
+  # where it is inert by construction. It used to be refused, which is what the
+  # old characterization below turned on.
   expect_equal(sort(unique(as.numeric(fx_rows(plain)$max_MAF))),
                c(1 / 2000, 3 / 2000, 5 / 2000, 10 / 2000, 0.01), tolerance = 1e-12)
   for (g in c("GENE1", "GENE2")) {
     expect_identical(sum(mac[gene_of(names(mac)) == g & mac <= 1]), if (g == "GENE1") 4 else 3)
   }
-  # where both burdens have MAC > 20.5 (the last cateVarRatioMinMACVecExclude
-  # entry), the same VR band: rows equal, and the plain cell's MAC is the sum
-  # of the selected markers' MACs
+  # LEDGER #118 FIXED: the two parameterizations agree at EVERY rung, not only
+  # where both burdens happened to land in the same variance-ratio band. The
+  # rungs 5 and 10 were green before the fix too (they were the control); 1 and
+  # 3 are the ones that moved, and they are asserted in the block below.
   for (g in c("GENE1", "GENE2")) {
     for (t in c(5, 10)) {
       a <- fx_ladder_row(q, g, t)
@@ -106,14 +107,14 @@ test_that("the MAC ladder == --maxMAC_in_groupTest cells where both burdens shar
   fx_expect_rows_equal(a, b, tol = 1e-5, label = "GENE2 MAC 3")
 })
 
-test_that("LEDGER #118 CHARACTERIZATION: a set's VR band and MAC gate read the cell's total MAC", {
-  # GENE1's MAC<=3 burden has MAC 19 (10 markers). The plain 0.0015 cell
-  # selects the variance ratio for MAC 19 (band 1); the FlexRV MAC3 set is
-  # tested with the CELL's unweighted MAC, 121 (band 2), and its MAC column
-  # says 121. The two rows therefore differ by exactly the ratio of the two
-  # `null` variance ratios, in SE^2 and in BETA (a burden's BETA is Score/Var).
-  # Invert when #118 is fixed (the rows should then be equal at 1e-5, as the
-  # MAC 5/10 rows above already are).
+test_that("LEDGER #118 FIXED: a set's VR band, MAC gate and MAC column are the set's own", {
+  # GENE1's MAC<=3 burden is 10 markers with MAC 19. Before the fix it was
+  # tested with the CELL's unweighted MAC, 121 (band 2) where the plain 0.0015
+  # cell selects band 1, and printed MAC 121 and Number_rare 21; the two rows
+  # differed by exactly the ratio of the two `null` variance ratios in BETA and
+  # in SE^2. They are the same row now. (Inverted from the CHARACTERIZATION
+  # block in the same commit as the fix; the ratio identity below is kept as the
+  # measurement of what the bug was worth, now asserted to be ABSENT.)
   fx_skip("standard")
   skip_if_no_goldens()
   q <- fx_quant_single()
@@ -122,25 +123,29 @@ test_that("LEDGER #118 CHARACTERIZATION: a set's VR band and MAC gate read the c
   b <- fx_cell_row(plain, "GENE1", 3)
   expect_identical(as.numeric(b$MAC), 19)
   expect_identical(as.numeric(b$Number_rare), 10)
-  expect_identical(a$MAC, "121")
-  expect_identical(a$Number_rare, "21")
+  expect_identical(a$MAC, "19")
+  expect_identical(a$Number_rare, "10")
+  fx_expect_rows_equal(a, b, tol = 1e-5, label = "GENE1 MAC 3")
+  # the bands really are distinguishable on this model, so the equality above
+  # is a statement about the code and not about a degenerate variance-ratio
+  # file (the control the old characterization needed, kept)
   vr <- fx_quant_vr()
   expect_identical(names(vr), c("1", "2"))
-  ratio <- vr[["1"]] / vr[["2"]]
-  expect_gt(abs(ratio - 1), 1e-3)   # the bands differ, so the test can see the choice
-  expect_equal((as.numeric(a$SE_Burden) / as.numeric(b$SE_Burden))^2, ratio, tolerance = 1e-4)
-  expect_equal(as.numeric(a$BETA_Burden) / as.numeric(b$BETA_Burden), ratio, tolerance = 1e-4)
-  expect_false(isTRUE(all.equal(as.numeric(a$Pvalue_Burden), as.numeric(b$Pvalue_Burden),
-                                tolerance = 1e-5)))
-  # the MAC<=1 set is 4 singletons. Both parameterizations write it at the
-  # default gate (1 since LEDGER #126), but they do not agree: the FlexRV set
-  # still reports the CELL's MAC, which is what #118 is.
-  expect_identical(nrow(fx_ladder_row(q, "GENE1", 1)), 1L)
-  expect_identical(fx_ladder_row(q, "GENE1", 1)$MAC, "121")
-  expect_identical(nrow(fx_cell_row(plain, "GENE1", 1)), 1L)
-  expect_identical(as.numeric(fx_cell_row(plain, "GENE1", 1)$MAC), 4)
-  # ... and it is the ENGINE's semantics, not FlexRV's: a K = 1 custom 0/1
-  # mask over the same markers gives the FlexRV row, not the plain cell
+  expect_gt(abs(vr[["1"]] / vr[["2"]] - 1), 1e-3)
+
+  # the MAC<=1 set is 4 singletons, MAC 4. At the default gate (1 since LEDGER
+  # #126) both parameterizations write it; before, the FlexRV set was written
+  # because the gate saw 121 while the plain cell was refused at 5.
+  a1 <- fx_ladder_row(q, "GENE1", 1)
+  b1 <- fx_cell_row(plain, "GENE1", 1)
+  expect_identical(nrow(a1), 1L)
+  expect_identical(nrow(b1), 1L)
+  expect_identical(a1$MAC, "4")
+  expect_identical(as.numeric(b1$MAC), 4)
+  fx_expect_rows_equal(a1, b1, tol = 1e-5, label = "GENE1 MAC 1")
+
+  # ... and it is the ENGINE's semantics, not FlexRV's, in both directions: a
+  # K = 1 custom 0/1 mask over the same markers gives the same row as well.
   mask <- fx_weight_groupfile(fx_mac_from_single(q), "MASK3",
                               function(s, isLof, maf, m) matrix(as.numeric(m <= 3), ncol = 1))
   k1 <- fx_external_run(mask, fx_quant(), "--MACCutoff_to_CollapseUltraRare=0", "mask3")
@@ -149,8 +154,7 @@ test_that("LEDGER #118 CHARACTERIZATION: a set's VR band and MAC gate read the c
   expect_identical(nrow(m1), 2L)
   expect_false("Weight" %in% colnames(m1))   # K = 1, legacy schema
   m1g <- m1[m1$Region == "GENE1", ]
-  expect_identical(m1g$MAC, "121")
+  expect_identical(m1g$MAC, "19")
   fx_expect_rows_equal(a, m1g, tol = 1e-5, label = "K=1 mask vs FlexRV MAC3")
-  expect_false(isTRUE(all.equal(as.numeric(m1g$Pvalue_Burden), as.numeric(b$Pvalue_Burden),
-                                tolerance = 1e-5)))
+  fx_expect_rows_equal(b, m1g, tol = 1e-5, label = "K=1 mask vs plain cell")
 })

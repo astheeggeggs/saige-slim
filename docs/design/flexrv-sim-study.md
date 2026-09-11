@@ -57,8 +57,10 @@ individuals, no GRM, and a common-variant PGS as a covariate:
 
 One methods detail that matters here: **a weight function is excluded for a
 gene when fewer than 5 individuals carry a non-zero-weight variant** -- a
-per-SET carrier gate, which is exactly what LEDGER #118 says this engine does
-not have (its `--minGroupMAC_in_BurdenTest` reads the cell's unweighted MAC).
+per-SET carrier gate. Since LEDGER #118/#126 (2026-09-11) this engine has the
+nearest thing to it: `--minGroupMAC_in_BurdenTest` reads the SET's unweighted
+MAC on both region paths. It is still not the same gate -- alleles, not
+carriers -- and its default is 1 rather than 5.
 
 What this study adds that the paper could not: known truth (power against
 the generating model, and the informativeness dependence); relatedness

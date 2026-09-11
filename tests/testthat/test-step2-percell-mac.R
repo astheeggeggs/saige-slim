@@ -1,6 +1,6 @@
-# LEDGER #126 (the min-group-MAC gate on both region paths) and #127 (the
-# pooled row's provenance), end to end through the step-2 CLI. Tier: standard.
-# (#118 adds its own blocks to this file.)
+# LEDGER #118 (the per-set MAC), #126 (the min-group-MAC gate on both region
+# paths) and #127 (the pooled row's provenance), end to end through the step-2
+# CLI. Tier: standard.
 #
 # The reconciliation each block runs is named in its comment; nothing here
 # compares two different code paths' p-values (the two burden estimators differ
@@ -59,13 +59,14 @@ pc_mask_groupfile <- function(zero) {
   g <- withr::with_dir(pc_extdata(), readLines("./input/group_new_snpid.txt"))
   tok <- strsplit(g, " ", fixed = TRUE)
   out <- character(0)
-  for (k in seq_along(tok)) {
-    out <- c(out, g[k])
-    if (identical(tok[[k]][2], "var")) {
-      ids <- tok[[k]][-(1:2)]
-      w <- ifelse(ids %in% zero, 0, 1)
-      out <- c(out, paste(c(tok[[k]][1], "weight:MASK", format(w)), collapse = " "))
-    }
+  # var, anno, weight -- in that order. checkGroupFile reads the lines in
+  # order and stops with "No anno is specified" if the weight line comes
+  # between them.
+  for (k in seq(1, length(tok), by = 2)) {
+    ids <- tok[[k]][-(1:2)]
+    w <- ifelse(ids %in% zero, 0, 1)
+    out <- c(out, g[k], g[k + 1],
+             paste(c(tok[[k]][1], "weight:MASK", format(w)), collapse = " "))
   }
   f <- tempfile("group_mask_", fileext = ".txt")
   writeLines(out, f)
@@ -93,6 +94,85 @@ pc_drop_groupfile <- function(drop) {
 
 PC_BURDEN <- c("--annotation_in_groupTest=lof", "--maxMAF_in_groupTest=0.01",
                "--r.corr=1", "--is_fastTest=FALSE")
+
+test_that("LEDGER #118: weighting a marker 0 equals deleting it, in every column", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  # rs4 is a NON-collapsed marker of the GENE1 lof cell (MAC 20 > the default
+  # collapse cutoff of 10) -- the arm where the counters were wrong. Weighting
+  # it 0 must now agree with removing it from the group file, and the ledger's
+  # measurement says the burden STATISTIC already did.
+  masked <- pc_run(pc_mask_groupfile("rs4"), PC_BURDEN)
+  dropped <- pc_run(pc_drop_groupfile("rs4"), PC_BURDEN)
+  kept <- pc_run(pc_mask_groupfile(character(0)), PC_BURDEN)
+
+  m <- pc_cells(masked)
+  d <- pc_cells(dropped)
+  k <- pc_cells(kept)
+  expect_identical(pc_key(m), pc_key(d))
+  for (col in c("MAC", "MAC_case", "MAC_control", "Number_rare", "Number_ultra_rare",
+                "Pvalue_Burden", "BETA_Burden", "SE_Burden")) {
+    expect_identical(m[[col]], d[[col]], label = paste("zeroed vs deleted:", col))
+  }
+  # POSITIVE CONTROL: the same run with rs4 at weight 1 differs, so the
+  # comparison above is not vacuous.
+  expect_false(identical(k$MAC, d$MAC))
+  expect_false(identical(k$Number_rare, d$Number_rare))
+  expect_false(identical(k$Pvalue_Burden, d$Pvalue_Burden))
+  # and the drop really removed one rare marker rather than nothing -- from
+  # GENE1, which contains rs4, and from GENE1 only, which is the second
+  # control: a group file's other genes must not notice.
+  expect_identical(d$Region, c("GENE1", "GENE2"))
+  expect_identical(as.integer(k$Number_rare) - as.integer(d$Number_rare), c(1L, 0L))
+  expect_identical(m$Region[m$MAC != k$MAC], "GENE1")
+})
+
+test_that("LEDGER #118: an ultra-rare marker weighted 0 leaves the counter honest", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  # rs3 is ultra-rare (MAC 2), so it is inside the collapse. A zero weight
+  # already excluded it from the pseudo-marker's VALUE for free -- the paper's
+  # weight-before-collapse order -- but `Number_ultra_rare` still counted it.
+  masked <- pc_run(pc_mask_groupfile("rs3"), PC_BURDEN)
+  dropped <- pc_run(pc_drop_groupfile("rs3"), PC_BURDEN)
+  m <- pc_cells(masked)
+  d <- pc_cells(dropped)
+  expect_identical(m$Number_ultra_rare, d$Number_ultra_rare)
+  expect_identical(m$MAC, d$MAC)
+  expect_identical(m$Pvalue_Burden, d$Pvalue_Burden)
+})
+
+test_that("LEDGER #118: every weight set of a cell reports the plain run's MAC", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  # The custom-weight group files have `var`/`anno` lines identical to the
+  # unweighted one, so the accounting columns are a property of the CELL and
+  # every set of that cell must print them. Before the fix the pseudo-marker's
+  # contribution was the WEIGHTED sum, which is what made these columns
+  # fractional and set-dependent.
+  args <- c("--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+            "--maxMAF_in_groupTest=0.0001,0.001,0.01", "--is_fastTest=TRUE")
+  plain <- pc_run(withr::with_dir(saige_extdata,
+                                  normalizePath("./input/group_new_snpid.txt")), args)
+  multi <- pc_run(withr::with_dir(saige_extdata,
+                                  normalizePath("./input/group_new_snpid_multiWeights.txt")),
+                  args)
+  p <- pc_cells(plain)
+  m <- pc_cells(multi)
+  expect_true("Weight" %in% colnames(m))
+  expect_identical(sort(unique(m$Weight)), c("CADD", "REVEL"))
+  cols <- c("MAC", "MAC_case", "MAC_control", "Number_rare", "Number_ultra_rare")
+  pk <- paste(p$Region, p$Group, p$max_MAF, sep = "|")
+  mk <- paste(m$Region, m$Group, m$max_MAF, sep = "|")
+  expect_true(all(mk %in% pk))
+  idx <- match(mk, pk)
+  for (col in cols) {
+    expect_identical(m[[col]], p[[col]][idx], label = paste("per-set vs cell:", col))
+  }
+  # ... and they are integers, which is the point of option (b): a MAC is an
+  # allele count, so a gate threshold of 1 or 5 literally means alleles.
+  expect_true(all(as.numeric(m$MAC) == round(as.numeric(m$MAC))))
+})
 
 # ---------------------------------------------------------------------------
 # LEDGER #126: the gate on both paths.

@@ -174,19 +174,28 @@ test_that("multi-weight goldens: K rows per cell, weight innermost, one Cauchy r
   }
 })
 
-test_that("MAC is set-dependent exactly when the ultra-rare collapse is weighted", {
+test_that("MAC is a property of the CELL, whatever the weight set (LEDGER #118)", {
   skip_if_no_goldens()
-  # Design D2: a custom (group-file) set collapses its ultra-rare markers as
-  # max(w_r * G), so the pseudo-marker's allele count carries that set's
-  # weights and the cell's MAC differs per set. Beta and No_Weights sets
-  # collapse UNWEIGHTED, so their MAC is the single-weight golden's.
+  # INVERTED 2026-09-11 with the LEDGER #118 fix. It used to read "MAC is
+  # set-dependent exactly when the ultra-rare collapse is weighted": a custom
+  # (group-file) set collapses its ultra-rare markers as max(w_r * G), and the
+  # pseudo-marker's WEIGHTED allele count went into the MAC column, so the same
+  # cell printed a different MAC for each set (38.4 for CADD against 3.34 for
+  # REVEL) and neither matched the unweighted run. Under option (b) the column
+  # is an allele count throughout -- the pseudo-marker contributes its
+  # UNWEIGHTED collapse -- so every set of a cell prints the cell's own numbers.
+  # The group files make this exact: group_new_snpid_multiWeights.txt has
+  # `var`/`anno` lines byte-identical to group_new_snpid.txt, so this is one
+  # quantity computed two ways and equality is the only correct answer.
   p2r <- local({ d <- golden2("plink_group_fastTest.txt"); d[d$Group != "Cauchy", ] })
 
   custom <- local({ d <- golden2("plink_group_multiweight.txt"); d[d$Group != "Cauchy", ] })
   bySet <- split(num(custom$MAC), custom$Weight)
   expect_identical(length(bySet), 2L)
-  expect_false(isTRUE(all.equal(bySet[[1]], bySet[[2]])))
-  expect_false(isTRUE(all.equal(bySet[[1]], num(p2r$MAC))))
+  expect_identical(bySet[[1]], bySet[[2]])
+  for (s in bySet) expect_identical(unname(s), num(p2r$MAC))
+  # ... and it is an allele count, not a weighted sum: every value an integer
+  expect_identical(num(custom$MAC), round(num(custom$MAC)))
 
   composed <- local({ d <- golden2("plink_group_composed.txt"); d[d$Group != "Cauchy", ] })
   bySet2 <- split(num(composed$MAC), composed$Weight)
@@ -403,7 +412,11 @@ test_that("FlexRV goldens: a MAC threshold above every MAC is unw, and the axis 
   # coincide) and, with the collapse on, the four low MAC sets differ only
   # through the pseudo-marker. A change here is a change in which sets the
   # fixture can tell apart, which is exactly what a coverage claim rests on.
-  distinct <- list(plink_group_flexrv_burden.txt = c(GENE1 = 100L, GENE2 = 102L),
+  # GENE2's count moved 102 -> 104 with the LEDGER #118 fix: two sets whose
+  # per-set MAC now lands in a different variance-ratio band from the cell's
+  # became distinguishable. It is a COVERAGE measurement of this fixture, so it
+  # is re-measured when the numbers legitimately move, never predicted.
+  distinct <- list(plink_group_flexrv_burden.txt = c(GENE1 = 100L, GENE2 = 104L),
                    plink_group_flexrv_burden_quant.txt = c(GENE1 = 111L, GENE2 = 111L))
   for (f in names(flexrv_goldens)) {
     d <- golden2(f)

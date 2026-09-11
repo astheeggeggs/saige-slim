@@ -340,18 +340,20 @@ and names the beta sets `mafbeta<b>@M`. Every set's row is written
 - **A weight of exactly 0 inside a binary SKAT-O cell returns NA** (LEDGER
   #117, pre-existing, custom weights too), which the `lof` mask and every MAC
   threshold produce; on a binary trait FlexRV is a `--r.corr=1` run.
-- **A set's burden is tested with the CELL's unweighted MAC** (LEDGER #118).
-  This is NOT upstream's semantics -- upstream has no per-set dimension at all
-  (`jmr` appears zero times in its `Main.cpp`; `MAC_GroupVec`, `NumRare_GroupVec`
-  and `NumUltraRare_GroupVec` are all `q_anno_maf`, per CELL, and mutually
-  consistent). Phase 5 widened all three to `q_anno_maf_weight` but left the
-  accumulations unconditional, so the non-collapsed part of `MAC` and both
-  counters still describe the cell while the collapsed part describes the set.
-  Variance-ratio band, ER eligibility, the min-group-MAC gate and the printed
-  `MAC` column all read the cell quantity, so a `MAC<=3` set differs from the
-  same markers run as a `--maxMAC_in_groupTest=3` cell by exactly the VR ratio
-  when the two MACs fall in different bands. `test-step2-flexrv-reconcile.R`
-  characterizes it.
+- **A set's MAC is the set's own, and it is an allele count** (LEDGER #118,
+  FIXED 2026-09-11). `MAC`, `MAC_case`, `MAC_control`, `Number_rare` and
+  `Number_ultra_rare` count only the markers the set keeps (`w_r != 0`), the
+  ultra-rare pseudo-marker contributes its UNWEIGHTED collapse
+  (`genoURMat_noweights`, widened to `jmr`), and `genoSumcount_noweight` --
+  which the variance-ratio band, ER eligibility and the min-group-MAC gate read
+  -- is per set. So a `MAC<=3` set now equals the same markers run as a
+  `--maxMAC_in_groupTest=3` cell, which is what
+  `test-step2-flexrv-reconcile.R` asserts. Two consequences to hold on to: a
+  CUSTOM-weighted cell's printed MAC stopped being the weighted pseudo-marker
+  sum (the fractional MACs -- 3.34, 82.517 -- are gone, and every weight set of
+  a cell now prints the SAME MAC as the plain unweighted run of that cell,
+  which is the check to make); and on the user-weights path that is a knowing
+  divergence from upstream, whose pseudo contribution stays weighted.
 - **`--minGroupMAC_in_BurdenTest` applies on BOTH region paths and defaults to
   1** (LEDGER #126). The SKAT-O path reports `Pvalue_Burden`, so gating burden
   testing only on `--r.corr=1` was incoherent; the SKAT-O half is enforced in

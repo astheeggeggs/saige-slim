@@ -268,20 +268,27 @@ The cascade, in order:
    `max(w_r * G)` (`src/Main.cpp` ~:2598), weight `w0 = 1` unscaled (LEDGER #17);
 6. only then `w = w_score * w_MAF` on the surviving real markers.
 
-**The cell's MAC, not the set's, drives three choices (LEDGER #118, found
-2026-09-09 by the end-to-end reconciliation).** The count a burden cell is
-tested with -- `genoSumcount_noweight` in `src/Main.cpp` -- is accumulated
-once per (annotation x max_MAF) cell over every QC-passing marker and shared
-by every weight set of that cell. It selects the variance-ratio band, decides
-ER eligibility on a binary trait, and is what `--minGroupMAC_in_BurdenTest`
-gates; it is also the printed `MAC` column. So a `MAC<=3` set whose weights
-zero all but 10 markers is tested with the whole cell's MAC (121 on the
-fixture), and differs from the same 10 markers run as a
-`--maxMAC_in_groupTest=3` cell by exactly the ratio of the two variance
-ratios whenever the two MACs fall in different bands. This is upstream's
-semantics and the engine's (a K = 1 custom 0/1 mask does the same), not
-FlexRV's; it is recorded, not fixed. Read a MAC ladder set as "the cell's
-burden restricted to these markers, tested as the cell".
+**The SET's MAC drives three choices, and it is an allele count (LEDGER #118,
+found 2026-09-09, FIXED 2026-09-11).** The count a burden cell is tested with
+-- `genoSumcount_noweight` in `src/Main.cpp` -- used to be accumulated once
+per (annotation x max_MAF) cell over every QC-passing marker and shared by
+every weight set of that cell, so a `MAC<=3` set whose weights zero all but 10
+markers was tested with the whole cell's MAC (121 on the fixture). It is now
+per set: only the markers with `w_r != 0` are counted, and the ultra-rare
+pseudo-marker contributes its UNWEIGHTED collapse. The same quantity selects
+the variance-ratio band, decides ER eligibility on a binary trait, is what
+`--minGroupMAC_in_BurdenTest` gates (on BOTH region paths since LEDGER #126),
+and is the printed `MAC` column, along with `MAC_case`, `MAC_control`,
+`Number_rare` and `Number_ultra_rare`. So a `MAC<=3` set now EQUALS the same
+markers run as a `--maxMAC_in_groupTest=3` cell, which is what
+`test-step2-flexrv-reconcile.R` asserts. Read a MAC ladder set as what it
+says: the burden of the markers it keeps.
+
+One consequence outside FlexRV: a custom-weighted cell's printed MAC is no
+longer the weighted pseudo-marker sum, so the fractional MACs the goldens used
+to carry are gone and every weight set of a cell prints the same MAC as the
+plain unweighted run of that cell. On the user-weights path that is a knowing
+divergence from upstream, whose pseudo contribution stays weighted.
 
 **Step 5 collides with four of the twelve MAF transforms.** `MAC<=1`, `<=3`,
 `<=5` and `<=10` sit at or below the default collapse cutoff, so every variant

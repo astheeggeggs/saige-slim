@@ -231,7 +231,6 @@ Rcpp::List getPooledRecordsInCPP(){
 
 
 
-
 // [[Rcpp::export]]
 void setAssocTest_GlobalVarsInCPP(std::string t_impute_method,
 		double t_missing_cutoff,
@@ -2095,7 +2094,8 @@ Rcpp::List mainRegionInCPP(
   if(q_weight_transform > 0){
     // Printed once per process: the dense N-length structures below are
     // per (anno x max_MAF x set) cell, so at Kt = 192 they are the memory
-    // of the run. Counted: genoURMat + genoSumMat (2 columns per cell), the
+    // of the run. Counted: genoURMat + its unweighted twin + genoSumMat
+    // (3 columns per cell), the
     // persistent ultra-rare cell records (a collapsed vector plus its
     // zero-index vector, ~2N each), and for BURDEN the burden cell records
     // (the same shape); a SKAT-O run adds each model's residualised copy of
@@ -2107,7 +2107,9 @@ Rcpp::List mainRegionInCPP(
       s_flexMemPrinted = true;
       const double cells = (double)q_anno_maf_weight;
       const double perN = 8.0 * (double)t_n;
-      double bytes = perN * cells * 4.0;   // genoURMat, genoSumMat, UR records (vec + zero idx)
+      // LEDGER #118 widened genoURMat_noweights from per-cell to per-set, so
+      // the unweighted twin is now one more dense N x cells matrix.
+      double bytes = perN * cells * 5.0;   // genoURMat(+twin), genoSumMat, UR records (vec + zero idx)
       if(t_regionTestType == "BURDEN"){
         bytes += perN * cells * 2.0;       // burden cell records
       }else{
@@ -2131,7 +2133,11 @@ Rcpp::List mainRegionInCPP(
     }
   }
   arma::mat genoURMat(t_n, q_anno_maf_weight, arma::fill::zeros);
-  arma::mat genoURMat_noweights(t_n, q_anno_maf, arma::fill::zeros);  // jm-indexed (weight-independent)
+  // LEDGER #118: jmr-indexed (per weight set). The unweighted twin of
+  // genoURMat: the collapse over the ultra-rare markers set r actually keeps
+  // (w_r != 0), with the RAW genotypes. It is what the reported MAC and the
+  // weight-independent count are built from under option (b).
+  arma::mat genoURMat_noweights(t_n, q_anno_maf_weight, arma::fill::zeros);
   unsigned int q = q0 + q_anno_maf_weight;
   arma::imat annoMAFIndicatorMat(q, q_anno_maf_weight, arma::fill::zeros);
   arma::ivec annoMAFIndicatorVec(q_anno_maf_weight);
@@ -2162,7 +2168,11 @@ Rcpp::List mainRegionInCPP(
   arma::mat w0G2Mat_cond(q_cond, q_cond);
   w0G2Mat_cond = w0G2Vec_cond * (w0G2Vec_cond.t());
   arma::mat genoSumMat(t_n, q_anno_maf_weight, arma::fill::zeros); //for Phi_cc for binary traits and BURDEN test
-  arma::vec genoSumcount_noweight(q_anno_maf, arma::fill::zeros);  // jm-indexed (weight-independent)
+  // LEDGER #118: jmr-indexed (per weight set). Unweighted allele count of the
+  // markers set r keeps; the burden gate, the variance-ratio band and the ER
+  // predicate all read it, so a set that zeroes most of its cell is no longer
+  // tested as if it were the whole cell.
+  arma::vec genoSumcount_noweight(q_anno_maf_weight, arma::fill::zeros);
   //arma::sp_mat genoSumMat_sp(t_n, q_anno_maf); //for Phi_cc for binary traits and BURDEN test
   //std::vector<double> pval_cVec(q, arma::datum::nan);
   //std::vector<double> pvalNA_cVec(q, arma::datum::nan);
@@ -2666,21 +2676,34 @@ Rcpp::List mainRegionInCPP(
               for(unsigned int r = 0; r < q_weight; r++){
                 jmr = jm*q_weight + r;
                 annoMAFIndicatorVec(jmr) = 1;
-                MAC_GroupVec(jmr) = MAC_GroupVec(jmr) + pr.MAC;
-                for(unsigned int km = 0; km < P; km++){
-                  if(W[km].traitType == "binary"){
-                    W[km].MACCase_GroupVec(jmr) = W[km].MACCase_GroupVec(jmr) + pr.m[km].MACcasegroup;
-                    W[km].MACControl_GroupVec(jmr) = W[km].MACControl_GroupVec(jmr) + pr.m[km].MACcontrolgroup;
+                // LEDGER #118: a marker set r weights 0 adds w_r*g == 0 to the
+                // burden below, i.e. nothing -- measured identical to deleting
+                // it from the group file -- so it must not be counted in set
+                // r's MAC, its case/control halves, its rare count, or the
+                // unweighted count the gate/variance-ratio band/ER read.
+                // At q_weight == 1 with a non-zero weight every branch here is
+                // the legacy unconditional accumulation, byte for byte.
+                // (annoMAFIndicatorVec is deliberately NOT gated: which markers
+                // enter the SKAT-O kernel is LEDGER #117, still open.)
+                const bool inSet = (pr.w0(r) != 0);
+                if(inSet){
+                  MAC_GroupVec(jmr) = MAC_GroupVec(jmr) + pr.MAC;
+                  for(unsigned int km = 0; km < P; km++){
+                    if(W[km].traitType == "binary"){
+                      W[km].MACCase_GroupVec(jmr) = W[km].MACCase_GroupVec(jmr) + pr.m[km].MACcasegroup;
+                      W[km].MACControl_GroupVec(jmr) = W[km].MACControl_GroupVec(jmr) + pr.m[km].MACcontrolgroup;
+                    }
                   }
                 }
                 for(unsigned int k2 = 0; k2 < nNonZero; k2++){
                   genoSumMat(pr.nz(k2), jmr) = genoSumMat(pr.nz(k2), jmr) + pr.w0(r)*pr.gnz(k2);
-                  // jm-indexed, weight-independent: accumulate once per (j,m)
-                  if(r == 0){
-                    genoSumcount_noweight(jm) = genoSumcount_noweight(jm) + pr.gnz(k2);
+                  if(inSet){
+                    genoSumcount_noweight(jmr) = genoSumcount_noweight(jmr) + pr.gnz(k2);
                   }
                 }
-                NumRare_GroupVec(jmr) = NumRare_GroupVec(jmr) + 1;
+                if(inSet){
+                  NumRare_GroupVec(jmr) = NumRare_GroupVec(jmr) + 1;
+                }
               }
             }
           }
@@ -2724,35 +2747,38 @@ Rcpp::List mainRegionInCPP(
                 jmr = jm*q_weight + r;
                 annoMAFIndicatorVec(jmr) = 2;
                 if(setKindVec[r] != SET_CUSTOM && setKindVec[r] != SET_TRANSFORM){
-                  // beta / No_Weights sets: unweighted collapse (per-kind table above)
+                  // beta / No_Weights sets: unweighted collapse (per-kind table
+                  // above), so the set's unweighted twin IS its own collapse.
+                  // LEDGER #118 widened the twin to jmr and it is now filled at
+                  // every q_weight -- at q_weight == 1 it holds exactly what
+                  // genoURMat holds, so the numbers read off it below are the
+                  // legacy ones (max is idempotent; repeats are exact).
                   for(unsigned int k2 = 0; k2 < nNonZero; k2++){
                     genoURMat(pr.nz(k2), jmr) = std::max(genoURMat(pr.nz(k2), jmr), pr.gnz(k2));
+                    genoURMat_noweights(pr.nz(k2), jmr) = std::max(genoURMat_noweights(pr.nz(k2), jmr) , (pr.gnz(k2)));
                   }
-                  if(q_weight > 1){
-                    // keep the jm-indexed unweighted collapse authoritative for
-                    // every set composition (beta-only included): the once-per-jm
-                    // genoSumcount_noweight accumulation reads its support. At
-                    // q_weight == 1 this never runs -- legacy leaves the matrix
-                    // untouched on the beta path (max is idempotent, so repeats
-                    // across sets are exact).
-                    for(unsigned int k2 = 0; k2 < nNonZero; k2++){
-                      genoURMat_noweights(pr.nz(k2), jm) = std::max(genoURMat_noweights(pr.nz(k2), jm) , (pr.gnz(k2)));
-                    }
-                  }
+                  NumUltraRare_GroupVec(jmr) = NumUltraRare_GroupVec(jmr) + 1;
                 }else{
-                  // custom set: collapse the w_r-weighted genotypes; the jm-indexed
-                  // unweighted collapse is kept for the count accumulators (max is
-                  // idempotent, so repeating it per custom set is exact).
+                  // custom set: collapse the w_r-weighted genotypes; the twin
+                  // collapses the RAW ones over the same markers.
                   // A FlexRV transform set collapses the same way with its
                   // computed weight (pr.w0(r); for a custom set that is the very
                   // same double as t_weight(i, col), which is kept textually).
+                  //
+                  // LEDGER #118: a zero weight already excludes the marker from
+                  // genoURMat for free (max(x, 0*g) == x, the paper's weight-
+                  // before-collapse order), so this gate changes only the twin
+                  // and the ultra-rare COUNT -- which is why Number_ultra_rare
+                  // used to name markers the set had dropped.
                   const double wUR = (setKindVec[r] == SET_CUSTOM) ? t_weight(i, setColVec[r]) : pr.w0(r);
-                  for(unsigned int k2 = 0; k2 < nNonZero; k2++){
-                    genoURMat(pr.nz(k2), jmr) = std::max(genoURMat(pr.nz(k2), jmr) , wUR * (pr.gnz(k2)));
-                    genoURMat_noweights(pr.nz(k2), jm) = std::max(genoURMat_noweights(pr.nz(k2), jm) , (pr.gnz(k2)));
+                  if(wUR != 0){
+                    for(unsigned int k2 = 0; k2 < nNonZero; k2++){
+                      genoURMat(pr.nz(k2), jmr) = std::max(genoURMat(pr.nz(k2), jmr) , wUR * (pr.gnz(k2)));
+                      genoURMat_noweights(pr.nz(k2), jmr) = std::max(genoURMat_noweights(pr.nz(k2), jmr) , (pr.gnz(k2)));
+                    }
+                    NumUltraRare_GroupVec(jmr) = NumUltraRare_GroupVec(jmr) + 1;
                   }
                 }
-                NumUltraRare_GroupVec(jmr) = NumUltraRare_GroupVec(jmr) + 1;
               }
             }
           }
@@ -3033,24 +3059,25 @@ if(i2 > 0){
   for(unsigned int j = 0; j < q_anno; j++){
      for(unsigned int m = 0; m < q_maf; m++){
 	jm = j*q_maf+m;
-	if(q_weight > 1){
-	  // Fix (C5 review #1): the jm-indexed weight-independent count must
-	  // not depend on any one set's weighted support (a zero weight in
-	  // custom set 0 would undercount the altCounts every set's BURDEN
-	  // reads). Accumulate once per (j,m) over the unweighted collapse's
-	  // own support, replicating the legacy per-sample additions. At
-	  // q_weight == 1 this is skipped: the accumulation happens inside the
-	  // single set's emission loop below, textually the legacy code.
-	  arma::vec genoURVec_noweights_jm = genoURMat_noweights.col(jm);
-	  arma::uvec indexForNonZero_nw = arma::find(genoURVec_noweights_jm != 0);
-	  for(unsigned int k = 0; k < indexForNonZero_nw.n_elem; k++){
-	    genoSumcount_noweight(jm) = genoSumcount_noweight(jm) + genoURVec_noweights_jm(indexForNonZero_nw(k));
-	  }
-	}
 	for(unsigned int r = 0; r < q_weight; r++){
 	jmr = jm*q_weight + r;
 	arma::vec genoURVec = genoURMat.col(jmr);
-	arma::vec genoURVec_noweights = genoURMat_noweights.col(jm);
+	// LEDGER #118: set r's OWN unweighted collapse (its ultra-rare markers
+	// with w_r != 0, raw genotypes).
+	arma::vec genoURVec_noweights = genoURMat_noweights.col(jmr);
+	if(q_weight > 1){
+	  // Fix (C5 review #1), now per set (LEDGER #118): the weight-independent
+	  // count must not depend on any OTHER set's support, and must not count
+	  // markers THIS set zeroed. Accumulated over set r's own unweighted
+	  // collapse, replicating the legacy per-sample additions in the same
+	  // index order. At q_weight == 1 this is skipped: the accumulation
+	  // happens inside the single set's emission loop below, textually the
+	  // legacy code (and its vectors are unchanged).
+	  arma::uvec indexForNonZero_nw = arma::find(genoURVec_noweights != 0);
+	  for(unsigned int k = 0; k < indexForNonZero_nw.n_elem; k++){
+	    genoSumcount_noweight(jmr) = genoSumcount_noweight(jmr) + genoURVec_noweights(indexForNonZero_nw(k));
+	  }
+	}
 	int n = genoURVec.size();
 	arma::uvec indexForNonZero = arma::find(genoURVec != 0);
 	i = q0 + jmr;
@@ -3067,14 +3094,27 @@ if(i2 > 0){
     	  double MAF = std::min(altFreq, 1 - altFreq);
 	  double w0;
 	  double MAC = MAF * 2 * t_n * (1 - missingRate);
+	  // LEDGER #118, option (b): the REPORTED group MAC is a genuine allele
+	  // count, so the pseudo-marker contributes the MAC of set r's UNWEIGHTED
+	  // collapse rather than the weighted sum. On a beta / No_Weights set the
+	  // twin IS the collapse, so MAC_nw == MAC and nothing moves; on a custom
+	  // or transform set this is the divergence from upstream recorded in the
+	  // row (upstream's pseudo contribution stays weighted on that path).
+	  // Computed from the same pre-imputeGenoAndFlip vector the weighted MAC
+	  // above is, and with the same (1 - missingRate) factor.
+	  const double altFreq_nw = arma::mean(genoURVec_noweights) / 2;
+	  const double MAF_nw = std::min(altFreq_nw, 1 - altFreq_nw);
+	  const double MAC_nw = MAF_nw * 2 * t_n * (1 - missingRate);
 	  std::vector<uint32_t> indexForMissing;
     	  flip = imputeGenoAndFlip(genoURVec, altFreq, altCounts, indexForMissing, g_cfg.impute_method, g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC, indexZeroVec, indexNonZeroVec);
 	  // Count/emission split (C5 review #1): at q_weight == 1 each branch's
 	  // first arm is textually the legacy loop -- genoSumcount_noweight
 	  // gated on THIS set's collapse support (for a weighted file that is
 	  // the WEIGHTED support, exactly as upstream). At q_weight > 1 the
-	  // count was already accumulated once per (j,m) before the r loop, so
-	  // the emission loops touch genoSumMat only.
+	  // count was already accumulated for this set at the top of the r loop,
+	  // so the emission loops touch genoSumMat only.
+	  // (jmr == jm at q_weight == 1, so these three sites address the same
+	  // slot they always did; LEDGER #118 only renamed the index.)
 	  if(setKindVec[r] == SET_CUSTOM || setKindVec[r] == SET_TRANSFORM){
 	    // (a FlexRV transform set is a custom set here: its weight is
 	    // already inside the collapse, so the pseudo-marker carries 1)
@@ -3097,7 +3137,7 @@ if(i2 > 0){
 	    if(q_weight == 1){
 	      for(unsigned int k = 0; k < indexForNonZero.n_elem; k++){
                 genoSumMat(indexForNonZero(k), jmr) = genoSumMat(indexForNonZero(k), jmr) + genoURVec(indexForNonZero(k));
-	 	genoSumcount_noweight(jm) = genoSumcount_noweight(jm) + genoURVec_noweights(indexForNonZero(k));
+	 	genoSumcount_noweight(jmr) = genoSumcount_noweight(jmr) + genoURVec_noweights(indexForNonZero(k));
 	      }
 	    }else{
 	      for(unsigned int k = 0; k < indexForNonZero.n_elem; k++){
@@ -3109,7 +3149,7 @@ if(i2 > 0){
 	        if(q_weight == 1){
 	        for(unsigned int k = 0; k < indexForNonZero.n_elem; k++){
                 genoSumMat(indexForNonZero(k), jmr) = genoSumMat(indexForNonZero(k), jmr) + genoURVec(indexForNonZero(k)) * w0;
-	 	genoSumcount_noweight(jm) = genoSumcount_noweight(jm) + genoURVec(indexForNonZero(k));
+	 	genoSumcount_noweight(jmr) = genoSumcount_noweight(jmr) + genoURVec(indexForNonZero(k));
 	        }
 	        }else{
 	        for(unsigned int k = 0; k < indexForNonZero.n_elem; k++){
@@ -3126,7 +3166,7 @@ if(i2 > 0){
 	        if(q_weight == 1){
 	        for(unsigned int k = 0; k < indexForNonZero.n_elem; k++){
                 genoSumMat(indexForNonZero(k), jmr) = genoSumMat(indexForNonZero(k), jmr) + genoURVec(indexForNonZero(k));
-	 	genoSumcount_noweight(jm) = genoSumcount_noweight(jm) + genoURVec(indexForNonZero(k));
+	 	genoSumcount_noweight(jmr) = genoSumcount_noweight(jmr) + genoURVec(indexForNonZero(k));
 	        }
 	        }else{
 	        for(unsigned int k = 0; k < indexForNonZero.n_elem; k++){
@@ -3209,7 +3249,11 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
 	      std::string wname = (r < t_weightNames.size()) ? t_weightNames.at(r) : ("W" + std::to_string(r + 1));
 	      markerVec.at(i) = markerVec.at(i) + ":" + wname;
 	    }
-            MAC_GroupVec(jmr) = MAC_GroupVec(jmr) + MAC;
+            // LEDGER #118 (b): the REPORTED MAC and its case/control halves take
+            // the pseudo-marker's UNWEIGHTED collapse; dosage_case/dosage_ctrl
+            // below keep the weighted, imputed vector, because AF_case, AF_ctrl
+            // and the hom/het counts describe the marker that is TESTED.
+            MAC_GroupVec(jmr) = MAC_GroupVec(jmr) + MAC_nw;
             for(unsigned int km = 0; km < P; km++){
             RegionModelWork & w = W[km];
             const SAIGE::SAIGEClass & model = *w.model;
@@ -3217,8 +3261,8 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
             if(w.traitType == "binary"){
                         dosage_case = genoURVec.elem(model.m_case_indices);
                         dosage_ctrl = genoURVec.elem(model.m_ctrl_indices);
-                        MACcasegroup = arma::accu(dosage_case);
-                        MACcontrolgroup = arma::accu(dosage_ctrl);
+                        MACcasegroup = arma::accu(genoURVec_noweights.elem(model.m_case_indices));
+                        MACcontrolgroup = arma::accu(genoURVec_noweights.elem(model.m_ctrl_indices));
                         w.MACCase_GroupVec(jmr) = w.MACCase_GroupVec(jmr) + MACcasegroup;
                         w.MACControl_GroupVec(jmr) = w.MACControl_GroupVec(jmr) + MACcontrolgroup;
             }
@@ -3274,16 +3318,14 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
         urTested.push_back(jmr);
       }
     }else{//if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
-            MAC_GroupVec(jmr) = MAC_GroupVec(jmr) + MAC;
+            // LEDGER #118 (b): the twin of the block above.
+            MAC_GroupVec(jmr) = MAC_GroupVec(jmr) + MAC_nw;
             for(unsigned int km = 0; km < P; km++){
             RegionModelWork & w = W[km];
             const SAIGE::SAIGEClass & model = *w.model;
-	                arma::vec dosage_case, dosage_ctrl;
             if(w.traitType == "binary"){
-                        dosage_case = genoURVec.elem(model.m_case_indices);
-                        dosage_ctrl = genoURVec.elem(model.m_ctrl_indices);
-                        MACcasegroup = arma::accu(dosage_case);
-                        MACcontrolgroup = arma::accu(dosage_ctrl);
+                        MACcasegroup = arma::accu(genoURVec_noweights.elem(model.m_case_indices));
+                        MACcontrolgroup = arma::accu(genoURVec_noweights.elem(model.m_ctrl_indices));
                         w.MACCase_GroupVec(jmr) = w.MACCase_GroupVec(jmr) + MACcasegroup;
                         w.MACControl_GroupVec(jmr) = w.MACControl_GroupVec(jmr) + MACcontrolgroup;
             }
@@ -3535,7 +3577,11 @@ if(t_regionTestType == "BURDEN"){
         arma::vec genoSumVec = genoSumMat.col(jmr);
         arma::uvec indexNonZeroVec_arma = arma::find(genoSumVec != 0);
 	arma::uvec indexZeroVec_arma = arma::find(genoSumVec == 0);
-	double altCounts =  genoSumcount_noweight(jm);   // weight-independent count
+	// LEDGER #118: per-SET now (jmr, not jm). This is the quantity the
+	// min-group-MAC gate, the variance-ratio band and the ER predicate all
+	// read below, so a set that zeroes most of its cell is no longer tested
+	// with the whole cell's MAC.
+	double altCounts =  genoSumcount_noweight(jmr);   // weight-independent count
 	double altFreq = altCounts/(2*t_n);
 	double MAC, MAF;
 	if(altFreq > 1){
@@ -3734,8 +3780,6 @@ if(t_regionTestType == "BURDEN"){
 	     rec.pval = w.cctpval;
 	     g_pooledRecords.push_back(rec);
 	   }
-
-
 
 
 	   if(!t_isFastTest){
