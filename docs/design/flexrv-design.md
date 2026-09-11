@@ -268,6 +268,21 @@ The cascade, in order:
    `max(w_r * G)` (`src/Main.cpp` ~:2598), weight `w0 = 1` unscaled (LEDGER #17);
 6. only then `w = w_score * w_MAF` on the surviving real markers.
 
+**The cell's MAC, not the set's, drives three choices (LEDGER #118, found
+2026-09-09 by the end-to-end reconciliation).** The count a burden cell is
+tested with -- `genoSumcount_noweight` in `src/Main.cpp` -- is accumulated
+once per (annotation x max_MAF) cell over every QC-passing marker and shared
+by every weight set of that cell. It selects the variance-ratio band, decides
+ER eligibility on a binary trait, and is what `--minGroupMAC_in_BurdenTest`
+gates; it is also the printed `MAC` column. So a `MAC<=3` set whose weights
+zero all but 10 markers is tested with the whole cell's MAC (121 on the
+fixture), and differs from the same 10 markers run as a
+`--maxMAC_in_groupTest=3` cell by exactly the ratio of the two variance
+ratios whenever the two MACs fall in different bands. This is upstream's
+semantics and the engine's (a K = 1 custom 0/1 mask does the same), not
+FlexRV's; it is recorded, not fixed. Read a MAC ladder set as "the cell's
+burden restricted to these markers, tested as the cell".
+
 **Step 5 collides with four of the twelve MAF transforms.** `MAC<=1`, `<=3`,
 `<=5` and `<=10` sit at or below the default collapse cutoff, so every variant
 they select has already been collapsed: every real marker gets weight 0 and the
@@ -530,6 +545,27 @@ indices at test time, which halves the per-cell memory; and
 `genoURMat_noweights.col(jm)` is copied N-long once per SET inside the
 ultra-rare pass where once per cell would do. F5 decides.
 
+**5. The cell's unweighted MAC drives a set's variance-ratio band, ER
+eligibility and min-group-MAC gate (LEDGER #118).** Found by the end-to-end
+suite's second parameterization of the MAC ladder (`--maxMAC_in_groupTest`
+cells of a plain run); the "What enters the test" section above has the
+mechanism. Not FlexRV's code: upstream's and the engine's.
+
+**6. Can beta(1,25) be applied on top of a transform weight? No, and the
+one path where it could have was a stop, now fixed (LEDGER #119).** The
+implicit beta set is composed in C++ only when NO custom, transform, beta
+or No_Weights set exists (`useImplicitBeta`); `boost::math::pdf(beta)` is
+evaluated only for `SET_BETA` sets; the conditioning markers' beta default
+is replaced by the mandatory `--weights_for_condition`; and in R the
+`transform` descriptor kind reads the exported column. At K = 1 (a spec that
+selects one set) `region_postprocess`'s legacy fall-through reached the
+implicit-beta arm, whose `stopifnot` (LEDGER #19) stopped the run rather
+than weighting the set twice; both K = 1 branches now treat a transform set
+as a custom set. Bounded by tests: `--weights.beta=1,1` byte-inert on the
+192-set run, on the conditional run and on a single-set run; a single
+`unw x unw` set equals the No_Weights run and differs from the beta run,
+BURDEN and SKAT-O (`test-step2-flexrv-k1.R`).
+
 **Testing shape, for the record.** The unit tier pins every kernel against
 the paper's dbeta forms written out in R (two routes, 1e-12) on a grid with
 every boundary named above, plus a positive control that a perturbed table
@@ -542,3 +578,24 @@ row, the omitted-row Cauchy pool against a recomputed CCT, `--weights.beta`
 and `--nThreads=4` as byte-inert, and every guard's message. The goldens were
 each generated twice into separate trees and `cmp`-identical before being
 committed; the pgen mirror is byte-identical to its PLINK twin.
+
+**End-to-end suite (2026-09-09, late; four more files over the same
+helper).** `test-step2-flexrv-reconcile.R`: all 192 sets against 192
+external weight lines, binary with the collapse on (in-sample MAC from P1's
+golden) and quantitative with it off (MAC from the run's own
+`.singleAssoc.txt`, the two MAC sources checked against each other); the MAC
+ladder against `--maxMAC_in_groupTest` cells (equal wherever both burdens
+share a variance-ratio band) and the #118 characterization with a K = 1
+custom mask as the control that says whose semantics they are.
+`test-step2-flexrv-cond.R`: `--condition` + `--weights_for_condition`,
+internal against external on the conditional columns too, the pooled row's
+conditional CCT, and the unconditional columns unchanged.
+`test-step2-flexrv-paths.R`: `--flexRV_lofAnno` on a relabelled fixture
+(bytes equal after the label is mapped back) and with both labels (the
+`lof_*` rows become the `unw_*` rows); `--markers_per_chunk_in_groupTest=10`
+and SKAT-O `--nThreads=4` byte-inert, each asserted to have arrived.
+`test-step2-flexrv-multimodel.R`: two null models per pass, BURDEN and the
+reduced-spec SKAT-O, each model's files byte-identical to its own run, the
+expansion printed once. Cross-path comparisons are at 1e-5 -- the tables are
+printed at 6-7 digits, so that is the honest bound -- with the allele
+accounting exact.

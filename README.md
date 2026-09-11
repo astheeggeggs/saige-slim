@@ -383,6 +383,56 @@ One deliberate limitation: conditioning-marker weights are a **single** vector
 across all weight sets (`--weights_for_condition`, else `beta(1, 25)`). Per-set
 conditioning weights are not implemented.
 
+### FlexRV: 192 weight sets from one pathogenicity score
+
+FlexRV (Schwartzentruber et al., bioRxiv 2025.11.04.686320) is a fourth kind of
+weight set, expanded inside SAIGE rather than written into the group file: 16
+transforms of a per-marker pathogenicity score times 12 transforms of the
+in-sample MAF/MAC, one burden test per product, Cauchy-combined into the
+region's pooled row (`p_FlexRV`). The group file carries the score on one
+line per region, **immediately after the `anno` line and before any `weight`
+line**, values in [0, 1]:
+
+```
+GENE1 var   rs1 rs2 rs3 ...
+GENE1 anno  lof lof missense ...
+GENE1 score:REVEL  1 1 0.8 ...
+```
+
+```sh
+R2 step2_SPAtests.R ... --groupFile=group.txt --flexRV_score=REVEL \
+  --flexRV_maxMAF=0.001 --annotation_in_groupTest=lof:missense --r.corr=1
+```
+
+- `--flexRV_score=NAME` switches it on and names the score line. A FlexRV run
+  tests exactly **one** annotation group and **one** max MAF: `--flexRV_maxMAF`
+  (the paper's 0.001) replaces `--maxMAF_in_groupTest`, which is an error when
+  given with a different value, and `--maxMAC_in_groupTest` is refused.
+- `--flexRV_scoreTransforms` / `--flexRV_MAFTransforms` are `;`-separated
+  families (`unw;lof;cbrt:0.2,...;sbeta:1.5,...` and
+  `unw;mafbeta:2,5;mac:1,3,...`); the defaults are the paper's 16 and 12. Quote
+  the value because of the semicolons. `--flexRV_lofAnno` (default `lof`) names
+  the annotation label(s) the `lof` transform keys on; each must occur in the
+  file.
+- Sets are named `<score>_<scoreTransform>_<MAFTransform>` and every set's row
+  is written, after any custom sets, in the multi-weight schema above. A max MAF
+  other than 0.001 rescales the `mafbeta` transforms to the new boundary and
+  names them `mafbeta<b>@<maxMAF>`; the MAC ladder does not rescale.
+- The transform sets take the custom-set semantics: weighted ultra-rare
+  collapse, `--weights.beta` inert, and `--condition` requires
+  `--weights_for_condition`. With the default collapse, `mac:1,3,5,10` test only
+  the collapsed pseudo-marker; `--MACCutoff_to_CollapseUltraRare=0` is the
+  paper's unbinned burden (recommended for quantitative traits).
+- `--r.corr=1` is the recommended run. On a binary trait it is the only sound
+  one: a weight of exactly 0 inside a binary SKAT-O cell returns NA (LEDGER
+  #117), which the `lof` mask and every MAC threshold produce.
+
+Two facts about what a set's row means (`docs/design/flexrv-design.md`): a
+set can only re-weight the cell's markers, never add one; and the burden of a
+set is tested with the variance-ratio band, ER eligibility and
+`--minGroupMAC_in_BurdenTest` gate of the **whole cell's** MAC, not of the
+markers the set left non-zero (LEDGER #118, the engine's semantics).
+
 ### Several null models in one genotype pass
 
 ```sh
@@ -402,9 +452,15 @@ decode per marker; that is where the saving comes from. Sample sets are **groupe
 never unioned**, so per-marker `AC_Allele2` / `AF_Allele2` / `MissingRate` / N are
 always computed over that model's own samples.
 
+Region tests (`--groupFile`) take a manifest too: every marker is prepared once
+and tested for every model, one region call per gene, and each model's region
+file, single-in-group file and marker list are byte-identical to that model's
+own single-model run. Every model in a region manifest must have been fitted on
+the **same** sample set (identical step-1 sample-ID vectors); more than one
+sample-set group is refused.
+
 Restrictions, all refused in R before any work starts:
 
-- single-variant tests only — no `--groupFile`
 - no `--is_rewrite_XnonPAR_forMales`
 - no `--subSampleFile`
 

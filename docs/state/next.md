@@ -615,27 +615,50 @@ Decided order for what remained. **Steps 3b, 4 and 5 all landed on
   REGIONS rather than markers, which approaches the hardware ceiling
   (~2.9x at 4 threads here).
 
-## FlexRV: F0-F4 LANDED, F5 (the RAM/CPU measurement) is what is left (upd. 2026-09-09 evening)
+## FlexRV: F0-F4 LANDED, F5 (the RAM/CPU measurement) is what is left (upd. 2026-09-09 late)
 
-[Grounded; `docs/state/handoff-2026-09-09-flexrv-f2-f4.md`.] The feature
-runs end to end: `--flexRV_score` expands the 192 sets in C++, four goldens
-(P58-P61) gate it, the internal expansion reconciles against the external
-weight-line route at 1e-10, and every pre-existing golden stayed
-byte-identical in both compare modes. What is NOT done, in order of value:
-- **F5, the only thing that answers the RAM/CPU question.** The N = 1,000
-  fixture is startup-bound (192 sets and 1 set both ~14 s, ~219 MB). The
-  formula the run prints says 4.6 GB at N = 500k for BURDEN; the two levers
-  identified (derive the cell records' zero-index vectors at test time;
-  hoist the per-set N-copy of `genoURMat_noweights` out of the r loop) are
-  each a shared-path change that must be gated on the 50k fixture. Also F5's
-  controls: null KS on `p_FlexRV`, the >= 2-carriers-per-gene fraction that
-  bounds the `max` vs additive collapse gap.
+[Grounded; `docs/state/handoff-2026-09-09-flexrv-e2e.md`, before it
+`handoff-2026-09-09-flexrv-f2-f4.md`.] The feature runs end to end:
+`--flexRV_score` expands the 192 sets in C++, four goldens (P58-P61) gate it,
+and every pre-existing golden stayed byte-identical in both compare modes.
+**The end-to-end suite landed 2026-09-09 (late)**: all 192 sets reconciled
+against 192 external weight lines (binary collapse-on and quantitative
+collapse-off, two MAC sources), the MAC ladder against `--maxMAC_in_groupTest`
+cells, `--condition` internal-vs-external on the conditional columns, the
+`--flexRV_lofAnno` positive path, chunking and SKAT-O threads byte-inert, and
+two null models per pass (`test-step2-flexrv-{reconcile,cond,paths,multimodel}.R`).
+It opened **LEDGER #118**: a set's burden is tested with the CELL's unweighted
+MAC (VR band, ER, the min-group-MAC gate, the printed `MAC`), upstream's and
+the engine's semantics, the owner's decision. It also found and fixed
+**LEDGER #119** (a one-set FlexRV spec stopped every SKAT-O run at K = 1;
+the beta(1,25) set never reaches a transform set, `test-step2-flexrv-k1.R`).
+What is NOT done, in order of value:
+- **F5 timing DONE 2026-09-10** (`harness/bench/NOTES.md`, "FlexRV F5 at
+  N = 50,000"): 192 sets cost 35 s user / 805 MB against 8 s / 506 MB for one
+  set on sim50k `y_null` BURDEN at one cell; the K-dependent C++ is 39%
+  ultra-rare pass, 32% per-cell tests, 18% emitter bookkeeping; 42% of rows
+  are twins (the MAC ladder above the cell's largest MAC, shrinking with N).
+  **Decided: no BURDEN test memo on its own** (~12% of a 1-thread run, less
+  threaded). The two memory levers (hoist the per-set N-copy of
+  `genoURMat_noweights`; derive the zero-index vectors at test time) are
+  the item, and a compute-once-and-copy memo keyed on the bitwise
+  `genoSumVec` column rides along if that pass is restructured. Still open
+  from F5: the >= 2-carriers-per-gene fraction, the null KS on `p_FlexRV`,
+  a binary arm.
 - **LEDGER #117** (a zero weight NAs a binary SKAT-O cell; pre-existing) is
   the owner's decision: drop weight-0 markers before the kernel, or leave it
   and keep FlexRV-on-binary a `--r.corr=1` run.
-- `--flexRV_output_sets` (decided, not implemented); the conditional
-  reconciliation test (only the missing-`--weights_for_condition` error is
-  tested); a native `sum_geno` collapse if F5 says the operator matters.
+- **The FlexRV simulation study** (`docs/design/flexrv-sim-study.md`): S0
+  landed 2026-09-10, blocked on the owner's annotation + BMI summary
+  statistics; then the 50k rebuild (~70 min, `NEED_GB=12`), checksum gate,
+  step 1 for the redrawn traits, and stages S2-S4 (~2 h of runs).
+- **LEDGER #118** (the cell's unweighted MAC drives a set's VR band, ER and
+  min-group-MAC gate) is the owner's decision too: a per-set count would move
+  P58/P59/P61 and needs a ruling on the weighted pseudo-marker; the
+  characterization in `test-step2-flexrv-reconcile.R` is inverted with it.
+- `--flexRV_output_sets` (decided, not implemented); a native `sum_geno`
+  collapse if F5 says the operator matters. The conditional reconciliation
+  test is DONE (`test-step2-flexrv-cond.R`).
 Everything below this line in this section is the pre-F2 history.
 
 

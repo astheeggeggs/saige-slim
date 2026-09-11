@@ -9,9 +9,12 @@
      "Implementation notes" section of docs/design/flexrv-design.md, which
      record what this plan got wrong (the fixture's in-sample N is 1,000, not
      10,000) and what was found on the way (LEDGER #117: a zero weight NAs a
-     binary SKAT-O cell). NOT done: --flexRV_output_sets (every set's row is
-     always written), the conditional reconciliation test (only the error path
-     is tested), F5 (the N = 50k measurement, which is where the RAM/CPU
+     binary SKAT-O cell). 2026-09-09 (late): the end-to-end suite landed
+     (test-step2-flexrv-{reconcile,cond,paths,multimodel}.R, see
+     docs/state/handoff-2026-09-09-flexrv-e2e.md) and opened LEDGER #118 (a
+     set's burden is tested with the cell's unweighted MAC). NOT done:
+     --flexRV_output_sets (every set's row is
+     always written), F5 (the N = 50k measurement, which is where the RAM/CPU
      question is actually answered -- the N = 1,000 fixture is startup-bound
      and cannot see it), F6's roxygen for the R API is done but the CLAUDE.md
      paragraph is the one in this commit series. The multi-weight engine this
