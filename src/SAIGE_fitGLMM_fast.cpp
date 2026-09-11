@@ -2024,6 +2024,24 @@ void setupSparseGRM(int r, arma::umat & locationMatinR, arma::vec & valueVecinR)
     //return x;
 }
 
+// LEDGER #114, DECIDED 2026-09-11 by the owner: RETAINED, not deleted -- but
+// flagged as a removal candidate. Both flags are written ONLY by
+// setisUsePrecondM / setisUseSparseSigmaforInitTau below, and nothing in R/,
+// extdata/, tests/, harness/ or src/ calls either, so they are false in every
+// run this branch can make. That makes the `else` arms at the two
+// `if (!isUsePrecondM)` sites unreachable, and reduces
+// `isUseSparseSigmaforInitTau | isUseSparseSigmaforModelFitting` to its second
+// operand.
+//
+// DO NOT DELETE THE DEAD ARMS IN PASSING. Removing them moves no golden -- they
+// cannot execute today -- but it forecloses the preconditioner, and the owner
+// has chosen to keep that option open.
+//
+// They ARE reachable from R: both setters carry [[Rcpp::export]], so
+// `SAIGE:::setisUsePrecondM(TRUE)` before a fit turns the branch on. Anyone who
+// does should know it has never executed on this branch: zero golden coverage,
+// zero test coverage, and coverage tooling cannot see it because the lines
+// never run. Validate it before trusting it.
 bool isUsePrecondM = false;
 bool isUseSparseSigmaforInitTau = false;
 bool isUseSparseSigmaforModelFitting = false;
@@ -3035,6 +3053,11 @@ if(isUseSparseSigmaforInitTau){
         if (!isUsePrecondM){
                 z1Vec = minvVec % r1Vec;
         }else{
+		// LEDGER #114: unreachable today (isUsePrecondM has no caller),
+		// RETAINED by decision. Note this arm is not rotten code around a
+		// dead helper -- gen_spsolve_v4 is the LIVE sparse solve (#91);
+		// it is the Jacobi-vs-sparse-solve preconditioner choice that
+		// cannot currently be made.
 		z1Vec = gen_spsolve_v4(wVec, tauVec, r1Vec);
                 //z1Vec = arma::spsolve(sparseGRMinC, r1Vec) ;
         }

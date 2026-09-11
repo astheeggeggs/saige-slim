@@ -25,9 +25,14 @@ M" here; the lint rejects it, because the count drifted every time.
 **2026-09-11 (evening) also closed #117 and #115**, and removed ~40% of the CPU
 #118 added (`harness/bench/NOTES.md`). #117's fix -- a weight of exactly 0 drops
 the marker -- means **binary FlexRV is no longer restricted to `--r.corr=1`**.
-Two rows remain: #114 (the owner's decision) and #116 (needs its mechanism
-diagnosed; a NEIGHBOURING route was diagnosed and fixed with #126 and is
-recorded on the row as explicitly NOT #116's).
+**#114 was DECIDED the same evening: RETAIN the preconditioner option**, with a
+note that we may want to remove it. The unreachable arms stay, commented at the
+three places a reader would tidy them away. It is a REMOVAL CANDIDATE, not a
+resolved design: revisit if a dense-GRM fit at biobank N ever needs a better
+preconditioner, or at the next dead-surface audit if it is still uncalled. One
+row remains OPEN, #116 (a region analysed but contributing no row leaves a
+zero-byte file; mechanism NOT diagnosed -- a NEIGHBOURING route was diagnosed
+and fixed with #126 and is recorded on that row as explicitly NOT #116's).
 
 **2026-09-11 closed #118, #126 and #127** (the per-set MAC, the min-group-MAC
 gate on both region paths at a default of 1, and the pooled row's
