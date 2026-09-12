@@ -1866,3 +1866,44 @@ Cauchy beats the Bonferroni best-set oracle (13 vs 11 informative). Collapse
 unchanged in every pair. Per-set 5-carrier exclusion (the paper's second
 check) was not applied. Everything under `harness/work/flexrv_study/results/`
 (gitignored) is the raw material; `analyse.R` re-derives the file above.
+
+## FlexRV simulation study: the sweep re-run at HEAD (2026-09-12)
+
+The 2026-09-10 sweep ran before #118 / #126 / #127 / #117 and its raw outputs
+were deleted on 2026-09-11, so its FlexRV numbers were pre-#118 numbers. The
+same 144-run grid was re-run at `38eee5f5` (pinned library, `SAIGE.so` md5
+`fd02953542c492c2b17c7d4f3cd94f0b`), prediction first:
+`docs/state/prediction-flexrv-rerun-2026-09-12.md` (outcome appended there);
+analysis `harness/sim/flexrv_study/results-2026-09-12.txt`; line-by-line
+diff against 2026-09-10 by `compare_results.py` (drilled with a null and a
+planted control). 41 min wall at four wide; peak RSS 0.8 GB (flex192) and
+1.1 GB (grid) per run.
+
+- **Pipeline control held exactly**: the 40 `skato`/`grid` summary lines (the
+  beta-weight SKAT-O path, which none of the four rows touch) reproduced
+  2026-09-10 to the digit. `unw`/`beta` changed only through the two genes
+  the gate now admits (`GENE0039` MAC 3, `GENE0167` MAC 4): rho by <= 0.02,
+  nothing else.
+- **FlexRV moved inside the pre-registered bounds and in one direction**: on
+  `y_binary` every FlexRV detection count fell by 1-2 and none rose (flex192
+  13 -> 11, flexscore 11 -> 10, flexmaf 9 -> 8; `flex1` = `unw` = `beta` = 8
+  unchanged; grid 11, skato 9 unchanged). Null calibration lines moved by at
+  most one gene. Mechanism: the per-set MAC (#118) routes small-support sets
+  to the sparse-GRM estimator and their own variance-ratio band, which is
+  more conservative on this fixture. **At HEAD FlexRV-192 equals the standard
+  grid (11 = 11) and beats the single burden by 3**; the 2026-09-10 margin
+  over the grid was pre-#118.
+- **LEDGER #129 (new, open)**: the dosage-zeroing filter (`--dosage_zerod_cutoff`
+  0.2 at MAC <= 10) is applied to the WEIGHTED ultra-rare pseudo-marker in
+  weight units. Sets whose whole support is ultra-rare with weights <= 0.2
+  vanish at collapse 10 (20 / 45 / 44 / 21 rows per trait across the four
+  score arms, never the reverse; `collapse_presence.py`), and partially
+  zeroed sets are tested on the surviving carriers while the MAC columns
+  count everyone: `GENE0181 sbeta10` 1.7e-3 at collapse 0, 2.9e-9 at collapse
+  10, and 1.710212E-03 again at collapse 10 with `--dosage_zerod_cutoff=0`
+  (`zerod_check.sh`). That is the 4.45-log10 outlier in the COLLAPSE section.
+  The collapse-0 column of the results is the #129-free one.
+- **The three [DECISION]s are unchanged by the re-run**, as predicted: the
+  uninformative arm still beats `unw` (structural), the `low` mask still
+  detects causal genes (the generator), `y_quant` is still undetectable.
+  Decision memo: `docs/state/flexrv-study-decisions-2026-09-12.md`.

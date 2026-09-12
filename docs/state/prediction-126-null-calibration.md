@@ -275,11 +275,11 @@ this trait is 0.004 [.001,.009], the same conservatism one stratum up.
 
 63 causal genes, threshold 0.05 / 210 on the pooled row:
 
-| arm | gate 5 | gate 1 | reference (2026-09-10, pre-#118) |
+| arm | gate 5 | gate 1 | 2026-09-10 sweep, pre-#118 (like-for-like only for `flex`) |
 |---|---|---|---|
-| `plain` | 14 causal, 0 non-causal | 14, 0 | 8 (`unw`) |
-| `flex` | 11, 0 | 11, 0 | 13 (informative) |
-| `grid` | 16, 1 (`GENE0094`) | 15, 1 | 11 (`grid`) |
+| `plain` | 14 causal, 0 non-causal | 14, 0 | 8 (`unw`, ONE cell: high:medium x 0.001) |
+| `flex` | 11, 0 | 11, 0 | 13 (informative, same cell, same 192 sets) |
+| `grid` | 16, 1 (`GENE0094`) | 15, 1 | 11 (`grid`, SIX cells: high, high:medium x 3 MAFs) |
 
 The one loss is `GENE0183` on `grid`: pooled p 2.17e-4 at gate 5 (9% inside
 the threshold 2.38e-4) and 2.62e-4 at gate 1, ratio 1.21 against the (n+k)/n
@@ -289,11 +289,14 @@ the printed 2.62e-4 exactly. Over every gene with gate-5 pooled p < 0.01 the
 ratio never exceeds the bound by more than 1.1% (a cell at p > 0.5 pulls
 harder than the bound assumes, by that much). The two sub-5 FlexRV rows at
 p < 1e-4 on the signal trait (`GENE0010`, `GENE0150`, `lof_MAC3`, MAC 4 with
-3 case alleles) are both causal genes and both already detected. `plain`
-14 against the reference 8 and `grid` 16 against 11 are more than the +-2
-predicted; #118 is the only code change between the two measurements on these
-paths and moved 8.8% of burden p-values by up to 20%, but that attribution is
-not measured here.
+3 case alleles) are both causal genes and both already detected. **CORRECTION
+(2026-09-12 02:50):** the `plain` and `grid` "references" are NOT like-for-like
+and the +-2 prediction did not apply to them -- the sweep's `unw` is one cell
+and its `grid` six, where these arms run nine (adding `high` alone and
+`high:medium:low`), so 14 against 8 and 16 against 11 compare different cell
+grids, not two code versions. Only `flex` (11 against 13) is the same
+configuration, and it is inside +-2. The like-for-like numbers come from the
+re-run of the sweep at HEAD (`prediction-flexrv-rerun-2026-09-12.md`).
 
 ## What the check found that it was not looking for
 

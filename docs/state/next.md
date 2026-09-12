@@ -1,7 +1,8 @@
-# What is worth doing next (2026-09-03, updated 2026-09-12; read docs/state/handoff-2026-09-12-126-null-calibration.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-12; read docs/state/handoff-2026-09-12-flexrv-rerun-129.md first)
 
-**Current handoff: `docs/state/handoff-2026-09-12-126-null-calibration.md`**
-(previous: `handoff-2026-09-11-evening-117-115-114.md` -- what #118 cost and
+**Current handoff: `docs/state/handoff-2026-09-12-flexrv-rerun-129.md`**
+(previous: `handoff-2026-09-12-126-null-calibration.md` -- the #126 null
+calibration and #128; then `handoff-2026-09-11-evening-117-115-114.md` -- what #118 cost and
 bought, and the disk clear-out; then `handoff-2026-09-11-percell-mac-implemented.md`, which is what
 #118/#126/#127 ARE and how they were gated -- still worth reading; then
 `handoff-2026-09-11-percell-mac.md` -- the DECISIONS handoff for
@@ -20,6 +21,8 @@ its "NEXT UP: eight open ledger rows" is out of date (five are now closed), and
 `handoff-2026-09-08-ledger-zero-and-coverage.md`'s claim that the 2026-09-01
 `step2_group_y_null.txt` is "a genuine BEFORE baseline" is WRONG -- ~80 commits
 separate it from HEAD. `docs/state/handoff-2026-09-04.md` is where CI lives.
+
+**2026-09-12 (morning): the FlexRV sweep was RE-RUN at HEAD** (prediction `docs/state/prediction-flexrv-rerun-2026-09-12.md`, outcome appended; NOTES.md "the sweep re-run at HEAD"). The beta-weight SKAT-O lines reproduce 2026-09-10 to the digit (the pipeline control); every FlexRV detection count fell by 1-2 through #118 (flex192 now 11 = grid 11 > unw 8 on `y_binary`). It found **LEDGER #129 (OPEN)**: the dosage-zeroing filter is applied to the WEIGHTED ultra-rare pseudo-marker in weight units, so transform sets with weights <= 0.2 vanish at collapse 10 and partially-zeroed sets are tested on the surviving carriers (`GENE0181 sbeta10`: 1.7e-3 at collapse 0, 2.9e-9 at collapse 10, 1.7e-3 again with `--dosage_zerod_cutoff=0`); characterization test in place, two local fixes on the row, goldens P58-P61 to be predicted before either lands. Read the collapse-0 column of the study until it is fixed. The three study [DECISION]s stand; the memo is `docs/state/flexrv-study-decisions-2026-09-12.md`.
 
 **2026-09-12: the #126 null-calibration check is DONE and it passed** (`docs/state/prediction-126-null-calibration.md`, prediction before the runs, outcome appended; summary on the #126 row). The MAC 1-4 cells the default now admits are uniform on the quantitative null in every stratum and conservative on the binary null by discreteness; gate 5 removes exactly those rows; the 63 causal genes (not 21 -- the 2026-09-10 rebuild) are detected equally at both gates on burden and FlexRV and 16 -> 15 on the SKAT-O grid by CCT dilution within the bound. It found **LEDGER #128 (OPEN)**: a SKAT-O run dies when a region with two or more cells has every cell refused by a RAISED `--minGroupMAC_in_BurdenTest` (unreachable at the default 1); characterization test in place, fix candidates on the row, best decided together with #116, which it re-observed (an empty region is an `NA` Cauchy row on the burden path and nothing on the SKAT-O path). One open observation, not a gate effect: **the pooled Cauchy row reads 0.06-0.08 at alpha 0.05 on the quantitative null in every arm** (on target at 0.01) -- [ASSUMPTION: CCT over nested, positively dependent cells is mildly liberal at large alpha]; worth one dedicated look with an independent-cells control before anyone quotes the pooled row's size at 0.05.
 
@@ -682,10 +685,13 @@ What is NOT done, in order of value:
   fix target is now exact and needs no new golden: weighting a marker 0 must
   equal deleting it, which the BURDEN path already satisfies to every printed
   digit.
-- **The FlexRV simulation study** (`docs/design/flexrv-sim-study.md`): S0
-  landed 2026-09-10, blocked on the owner's annotation + BMI summary
-  statistics; then the 50k rebuild (~70 min, `NEED_GB=12`), checksum gate,
-  step 1 for the redrawn traits, and stages S2-S4 (~2 h of runs).
+- **The FlexRV simulation study** (`docs/design/flexrv-sim-study.md`): the
+  144-run S2-S4 grid ran 2026-09-10 (pre-#118) and was RE-RUN at HEAD
+  2026-09-12 (`harness/sim/flexrv_study/results-2026-09-12.txt`;
+  `docs/state/prediction-flexrv-rerun-2026-09-12.md`): `skato`/`grid`
+  reproduce exactly, every FlexRV count fell by 1-2 (flex192 11 = grid 11 >
+  `unw` 8 on `y_binary`; read the collapse-0 column, #129-free). Blocked on
+  the owner's decisions -- memo `docs/state/flexrv-study-decisions-2026-09-12.md`.
 - **LEDGER #118 is DECIDED (2026-09-11): the per-set MAC, everywhere** --
   variance-ratio band, ER eligibility, the min-group-MAC gate and the printed
   column. Measured over P58's 384 sets: 45.3% of printed MACs count markers

@@ -1,6 +1,6 @@
 # FlexRV simulation study: realistic MAF, annotations and scores at large N
 
-<!-- Written 2026-09-10. Status: S0-S4 RUN 2026-09-10 late (harness/bench/NOTES.md "FlexRV simulation study S2-S4", harness/sim/flexrv_study/results-2026-09-10.txt): null calibration fine, the positive control FAILED on y_quant, two control expectations mis-specified (NOTES). S6 write-up is that section. Decisions for the owner
+<!-- Written 2026-09-10. Status (2026-09-12): the S2-S4 grid was RE-RUN at HEAD after #118/#126/#127/#117 (harness/sim/flexrv_study/results-2026-09-12.txt, prediction+outcome docs/state/prediction-flexrv-rerun-2026-09-12.md): skato/grid reproduce 2026-09-10 exactly, every FlexRV detection count fell by 1-2 (flex192 now 11 = grid 11 > unw 8 on y_binary), LEDGER #129 found (weighted pseudo-marker zeroing; read the collapse-0 column); the three decisions stand, memo docs/state/flexrv-study-decisions-2026-09-12.md. Earlier status: S0-S4 RUN 2026-09-10 late (harness/bench/NOTES.md "FlexRV simulation study S2-S4", harness/sim/flexrv_study/results-2026-09-10.txt): null calibration fine, the positive control FAILED on y_quant, two control expectations mis-specified (NOTES). S6 write-up is that section. Decisions for the owner
      are marked [DECISION]. Builds on harness/sim/ (the msprime/stdpopsim
      generator, README there) and on the F5 timing of 2026-09-10
      (harness/bench/NOTES.md, "FlexRV F5 at N = 50,000"). -->
