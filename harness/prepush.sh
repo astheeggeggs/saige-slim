@@ -58,33 +58,85 @@ cpu_idle() {
   }'
 }
 
-run_tier() {
+# The two compare modes run CONCURRENTLY (2026-09-12). They are independent
+# processes: their own testthat worker pool, their own log, read-only goldens,
+# and no standard-tier test writes to a fixed path (audited -- every output goes
+# through tempfile(); the only writers into extdata/output are the full-tier
+# regeneration tests, which skip here).
+#
+# The worker budget is SPLIT, not doubled: each mode gets ceil(nproc/2), so the
+# two together ask for the parallelism one mode used to ask for alone. The
+# reason that is close to free is that a mode's wall time is bounded by its
+# SLOWEST FILE (CLAUDE.md), not by its total CPU, so half the box sat idle for
+# much of a serial mode; concurrency fills it with the other mode's long pole
+# instead of queueing behind it. That is a hypothesis, and the measurement is
+# in harness/bench/NOTES.md -- not an argument for taking it on faith.
+#
+# SAIGE_PREPUSH_CONCURRENT=0 runs them one after the other: the escape hatch if
+# the two are ever found to interfere.
+CONCURRENT="${SAIGE_PREPUSH_CONCURRENT:-1}"
+NPROC=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
+
+run_tier() {   # everything into the mode's own log; nonzero return on failure
   local mode=$1 log="harness/work/prepush-$1.log"
   local t0 idle ld secs
   t0=$(date +%s)
   idle=$(cpu_idle)
   ld=$(uptime | sed 's/.*load averages*: //')
-  echo "== standard tier, SAIGE_COMPARE_MODE=$mode (log: $log)"
-  echo "   start $(date '+%H:%M:%S')  load [$ld]  idle ${idle:-?}%"
   {
     echo "prepush: mode=$mode start=$(date '+%F %T') load=[$ld] idle=${idle:-?}%"
+    echo "prepush: mode=$mode workers=${TESTTHAT_CPUS:-default} concurrent=$CONCURRENT"
   } > "$log"
   if ! SAIGE_COMPARE_MODE="$mode" bash harness/run_tests.sh standard >> "$log" 2>&1; then
     secs=$(elapsed "$t0")
-    echo "prepush: FAILED in $mode mode after $(hms "$secs"); last failures from $log:" >&2
-    grep -nE 'FAIL|Error|Failure' "$log" | tail -20 >&2
-    exit 1
+    echo "prepush: mode=$mode result=FAILED wall_seconds=$secs" >> "$log"
+    return 1
   fi
   secs=$(elapsed "$t0")
-  echo "prepush: mode=$mode wall=${secs}s ($(hms "$secs"))" >> "$log"
-  printf '%s   %s wall %s\n' "$(grep -E '^\[ FAIL' "$log" | tail -1)" "$mode" "$(hms "$secs")"
-  eval "SECS_$mode=$secs"
+  echo "prepush: mode=$mode result=OK wall_seconds=$secs" >> "$log"
+  return 0
+}
+
+tier_secs() {
+  sed -n "s/^prepush: mode=$1 result=.* wall_seconds=\([0-9]*\)/\1/p" \
+    "harness/work/prepush-$1.log" | tail -1
+}
+tier_report() {
+  local mode=$1 rc=$2 log="harness/work/prepush-$1.log"
+  printf '   %-8s wall %-8s %s\n' "$mode" "$(hms "$(tier_secs "$mode")")" \
+    "$(grep -E '^\[ FAIL' "$log" | tail -1)"
+  if [ "$rc" != 0 ]; then
+    echo "prepush: FAILED in $mode mode; last failures from $log:" >&2
+    grep -nE 'FAIL|Error|Failure' "$log" | tail -20 >&2
+  fi
 }
 
 GATE_T0=$(date +%s)
-run_tier byte
-run_tier numeric
+if [ "$CONCURRENT" = 1 ]; then
+  HALF=$(( (NPROC + 1) / 2 ))
+  echo "== standard tier, BOTH compare modes at once, $HALF testthat workers each"
+  echo "   start $(date '+%H:%M:%S')  load [$(uptime | sed 's/.*load averages*: //')]  idle $(cpu_idle)%"
+  ( export TESTTHAT_CPUS=$HALF; run_tier byte )    & pid_byte=$!
+  ( export TESTTHAT_CPUS=$HALF; run_tier numeric ) & pid_numeric=$!
+  wait "$pid_byte";    rc_byte=$?
+  wait "$pid_numeric"; rc_numeric=$?
+else
+  echo "== standard tier, one mode then the other (SAIGE_PREPUSH_CONCURRENT=0)"
+  run_tier byte;    rc_byte=$?
+  run_tier numeric; rc_numeric=$?
+fi
 GATE_SECS=$(elapsed "$GATE_T0")
+
+# Both modes are reported, and both RUN even when one fails. The byte/numeric
+# split exists because a cross-run comparison passed in one mode and went red
+# in the other -- so WHICH of the two failed is the answer the gate is for, and
+# the old version exited on the first failure and never ran the second.
+tier_report byte    "$rc_byte"
+tier_report numeric "$rc_numeric"
+if [ "$rc_byte" != 0 ] || [ "$rc_numeric" != 0 ]; then
+  echo "prepush: FAILED (byte=$rc_byte numeric=$rc_numeric) after $(hms "$GATE_SECS")" >&2
+  exit 1
+fi
 
 # The tree, not the commit: a dirty tree is what a green run then licensed.
 DIRTY=$(git status --porcelain -- src R tests extdata harness | head -5)
@@ -95,4 +147,8 @@ if [ -n "$DIRTY" ]; then
 else
   echo "prepush gate OK at $(git rev-parse --short HEAD) (clean tree)"
 fi
-echo "prepush timing: byte $(hms "${SECS_byte:-0}") + numeric $(hms "${SECS_numeric:-0}") = $(hms "$GATE_SECS") total"
+if [ "$CONCURRENT" = 1 ]; then
+  echo "prepush timing: byte $(hms "$(tier_secs byte)") | numeric $(hms "$(tier_secs numeric)") | gate $(hms "$GATE_SECS") wall (concurrent)"
+else
+  echo "prepush timing: byte $(hms "$(tier_secs byte)") + numeric $(hms "$(tier_secs numeric)") = $(hms "$GATE_SECS") total (serial)"
+fi
