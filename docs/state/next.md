@@ -83,6 +83,25 @@ change to that path's hot scratch. Also: the claim that
 propagated into my own summary, is FALSE -- the `region` workload was there all
 along; it had merely never been run on this work.
 
+**2026-09-12 also opened LEDGER #136 and #137**, from a fan-out inventory of all
+139 CLI options that traced each from its `make_option()` to the code consuming
+it (write-up: `docs/cli-options-and-group-file.md`, which also records which
+options are refused, inert, trait-gated or path-gated, and the group-file format
+with and without weights and with FlexRV). #136: SIX help strings and roxygen
+lines state something the code does not do -- `--pval_cutoff_for_fastTest`
+claims no effect on single-variant runs while `src/Main.cpp:1006` IS the
+single-variant escalation gate; `--X_PARregion` documents `start:end` while the
+parser splits on `-`; `--is_output_moreDetails` names four columns no writer
+emits; `chr:pos_ref/alt` appears in six places where the branch matches bim
+column 2; `isCateVarianceRatio`'s "If TRUE then LOCO=FALSE" is enforced nowhere;
+and the `--IsOverwriteVarianceRatioFile` refusal is a `stop()` that opens
+"WARNING" and describes work it will not do. Each was re-verified by hand before
+the row was written. #137: the multi-model manifest's help promises to refuse
+`--varianceRatioFile` and `resolveModelSpecs` refuses only `--GMMATmodelFile`,
+so the flag is accepted and silently ignored. Both are docs-or-one-clause fixes
+that move no golden; #136's fix must add a `docdrift.py` rule per sentence,
+which is that tool's stated admission criterion.
+
 **The five open region-path issues are summarised on ONE page**:
 `docs/state/open-allele-and-weight-issues-2026-09-12.md` -- #131 (decided),
 #132, #133, #134, #135, what each costs to ignore, which goldens each would
