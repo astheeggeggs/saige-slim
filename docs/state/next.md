@@ -690,11 +690,19 @@ What is NOT done, in order of value:
   N-length cell records, the reductions over the carriers, and identical
   BURDEN cells evaluated once. sim50k k192 BURDEN: RSS 874 -> ~520 MB, wall
   57 -> 19 s at 1 thread, 41 -> 13 s at 4 (loaded box), byte-identical at
-  both thread counts and every golden unchanged. Open from it: a quiet-box
-  4-thread timing, a binary arm at 50k, a characterization test for the
-  flip drill (max MAF 0.5 + collapse cutoff > 2N on the bundled binary model
-  reaches the flipped pseudo-marker; no golden), and `harness/prepush.sh`
-  before the push. The F5 bullet below is history.
+  both thread counts and every golden unchanged. Of the four open items,
+  TWO ARE DONE (2026-09-12): `harness/prepush.sh` is green at `2f1c1960` in
+  BOTH compare modes (4428 / 4628) and again at `17676759` with the new test
+  (4497 / 4697); and the flip drill is now
+  `tests/testthat/test-step2-region-flip.R`, which found LEDGER #130 (above).
+  **The quiet-box 4-thread timing was ATTEMPTED and REFUSED**: sampled eight
+  times over 25 minutes after the gate, the 1-minute load plateaued at
+  2.7-3.7 (never below 2.72) with no SAIGE process running -- that is this
+  box's ambient level with several editor and agent sessions live, so the
+  57 -> 19 / 41 -> 13 s numbers above are still loaded-box numbers and must
+  not be quoted as scaling. Re-time when the box is actually idle, and check
+  `uptime` first. Still open: the binary arm at 50k. The F5 bullet below is
+  history.
 - **F5 timing DONE 2026-09-10** (`harness/bench/NOTES.md`, "FlexRV F5 at
   N = 50,000"): 192 sets cost 35 s user / 805 MB against 8 s / 506 MB for one
   set on sim50k `y_null` BURDEN at one cell; the K-dependent C++ is 39%
