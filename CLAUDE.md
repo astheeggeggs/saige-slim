@@ -376,10 +376,18 @@ and names the beta sets `mafbeta<b>@M`. Every set's row is written
   no result file moves, and the arithmetic is unchanged because it is the
   paper's own.
 `opt$flexRV_score` partial-matches `--flexRV_scoreTransforms` when the flag is
-absent: the CLI reads the five flags with `[[ ]]`. The memory line a FlexRV run
-prints once is the formula in the design doc's "Implementation notes", not a
-measurement; the N = 1,000 fixture is startup-bound and cannot see the 192x
-work, so RAM/CPU at scale is F5's open measurement on the 50k fixture.
+absent: the CLI reads the five flags with `[[ ]]`. **The region path's three
+per-(sample x cell) matrices live in carrier space since 2026-09-12**
+(`CarrierStore`, `src/Main.cpp`: one column per carrier of the region; the
+per-cell N-vector a test needs is scattered into the worker's scratch and
+cleared after; the reductions over the carriers reproduce armadillo's
+two-accumulator sums bit for bit, a flipped pseudo-marker keeps the dense
+routines), the per-set prepares run on the cell pool, and identical BURDEN
+cells are evaluated once (`BURDEN cells: ... served`, a measurement like the
+SKAT-O line). The memory line a FlexRV run prints once is an estimate of the
+SKAT-O terms only (0 N-dependent bytes per cell on BURDEN), not a measurement.
+Measured on sim50k, 192 sets, BURDEN: peak RSS 874 -> ~520 MB, wall 57 -> 19 s
+at 1 thread (`docs/state/handoff-2026-09-12-flexrv-ram-levers.md`).
 
 ## Architecture
 

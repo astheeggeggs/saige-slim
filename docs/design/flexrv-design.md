@@ -552,6 +552,35 @@ indices at test time, which halves the per-cell memory; and
 `genoURMat_noweights.col(jm)` is copied N-long once per SET inside the
 ultra-rare pass where once per cell would do. F5 decides.
 
+**Update 2026-09-12 (F5 measured, the levers pulled; commits `bb4003a0`,
+`a1f44cdd`, `d73a9981`, `6ffa219a` and the memo commit after them;
+`docs/state/prediction-flexrv-ram-levers-2026-09-12.md` holds each
+prediction and outcome).** The formula above no longer describes the code.
+The three per-(sample x cell) matrices live in CARRIER SPACE
+(`CarrierStore` in `src/Main.cpp`: one q-double column per carrier of the
+region, q = anno x max_MAF x set), the persistent cell records hold no
+N-length data, and the zero-index list a test reads is derived into the
+worker's scratch. The per-cell N-length vector a test needs is scattered
+into the worker's scratch for the call and cleared afterwards; the
+reductions the ultra-rare pass and the burden prepare make (find, accu,
+mean, the imputation's recount, the case/control gathers) run over the
+carriers in sample order and reproduce armadillo's two-accumulator sums bit
+for bit (control: 20,000 random sparse vectors, 0 mismatches; a plain
+left-to-right sum differs on 88%). A FLIPPED pseudo-marker (alt frequency
+> 0.5, every non-carrier becomes 2) is carried as a per-cell fill and keeps
+the dense routines; it is unreachable on any real fixture and is gated by a
+drill (max MAF 0.5, collapse cutoff > 2N on the bundled binary model). The
+memory line now prints 0 N-dependent bytes per cell for BURDEN and only the
+SKAT-O terms otherwise; the per-set prepares run one cell per task on the
+cell pool, and identical BURDEN cells are evaluated once (`BURDEN cells:
+... served from an identical cell`, `R/BurdenMemo.R`). Measured on sim50k,
+192 sets, one cell, BURDEN, HEAD -> after: peak RSS 874 -> ~520 MB (the
+K = 1 run is ~505), wall 56 -> 23 s at 1 thread and 40 -> 17 s at 4
+(`harness/bench/NOTES.md`, "FlexRV RAM/CPU levers"). SKAT-O at K = 192 is
+unchanged in shape: each model's dense residualised `genoSumMat`, the P1/P2
+scratch and the chunk store are still N x cells, which is why the
+recommended run stays `--r.corr=1`.
+
 **5. The cell's unweighted MAC drives a set's variance-ratio band, ER
 eligibility and min-group-MAC gate (LEDGER #118).** Found by the end-to-end
 suite's second parameterization of the MAC ladder (`--maxMAC_in_groupTest`

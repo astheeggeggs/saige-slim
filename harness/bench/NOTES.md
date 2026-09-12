@@ -1907,3 +1907,55 @@ planted control). 41 min wall at four wide; peak RSS 0.8 GB (flex192) and
   uninformative arm still beats `unw` (structural), the `low` mask still
   detects causal genes (the generator), `y_quant` is still undetectable.
   Decision memo: `docs/state/flexrv-study-decisions-2026-09-12.md`.
+
+## FlexRV RAM/CPU levers on the step-2 region path (2026-09-12)
+
+The owner asked for the five levers the threading/RAM assessment named
+(same session, earlier: at 192 sets only the burden tests ran on the pool,
+the per-set prepares were serial, ~2 MB of resident memory per set at
+N = 50k). One gated commit each; prediction before every gate and the
+outcome beside it in `docs/state/prediction-flexrv-ram-levers-2026-09-12.md`.
+Fixture: sim50k `y_null`, pedigree-truth sparse GRM, ONE cell `high:medium`
+at max MAF 0.001, BURDEN, `--flexRV_score=SIM` (192 sets), the
+`harness/work/flexrv50k/run.sh` recipe; reference = a scratch install of
+`48ea91a8` (`R_LIBS`), arms alternated, `/usr/bin/time -l`; box at load
+3-10 from other sessions' R throughout, so wall seconds are noisy and RSS
+and byte identity are what each row proves. Every row: the 50k output
+byte-identical to the reference at 1 AND 4 threads; every golden
+byte-identical in both compare modes.
+
+| build | 1 thr real / user | 4 thr real / user | peak RSS 1 / 4 thr | 1-thr C++: urPass, emit-emitTest, emitTest |
+|---|---|---|---|---|
+| HEAD `48ea91a8` | 56-60 / 45-48 | 40-48 / 62-73 | 874 / 889-894 MB | 14.0-14.5, 5.2-5.6, 13.8-15.4 |
+| + levers 3+4 `bb4003a0` (records point at columns; zero list per worker) | 46.7 / 41.2 | 36.1 / 61.5 | 736 / 751 | 12.8, 2.8, 14.8 |
+| + lever 2 `a1f44cdd` (per-set prepares on the cell pool) | 53.4 / 45.0 | 34.1 / 75.0 | 731 / 743 | (profile off at > 1 thread) |
+| + lever 1 storage `d73a9981` (carrier space) | 38.4 / 36.3 | 24.1 / 67.5 | 522 / 541 | -- |
+| + lever 1 CPU `6ffa219a` (reductions over the carriers) | 23.3 / 22.0 | 16.6 / 46.1 | 518 / 539 | 0.79, 1.3, 13.4 |
+| + lever 5 `4535ee99` (identical BURDEN cells evaluated once: 40196 asked, 23680 evaluated, 16516 served) | 19.4 / 17.9 | 12.6 / 31.1 | 522 / 538 | 0.85, 1.0, 9.2 |
+
+- **What the K-dependent cost is now:** the burden tests themselves
+  (`emitTest` 9.2 of 15.6 s of C++ at 1 thread after the memo; threaded),
+  i.e. one sparse-GRM score test per DISTINCT set column with MAC <= 20.5
+  (LEDGER #118's price). The prepares are O(carriers). End to end at 4
+  threads: 41 -> 12.6 s wall on this loaded box.
+- **Memory:** 874 -> ~520 MB at K = 192 against ~505 MB at K = 1. Stage 1
+  alone removed only 138 of the 300 MB its prediction claimed and the
+  remainder was never located; the carrier-space stage removed the rest,
+  so whatever was resident was inside the dense matrices' pages.
+- **Threads:** 4 threads now 1.4x over 1 thread at the end (23.3 -> 16.6 s)
+  on a box at load 3-6; the lever-2 prediction of ">= 2x" was measured at
+  1.56x under load 6-10 and never confirmed on a quiet box. What stays
+  serial: the marker loop's phase-2 accumulate and the region setup.
+- **The flip path** (a pseudo-marker with alt frequency > 0.5; unreachable
+  on sim50k) is gated by a drill: max MAF 0.5 and a collapse cutoff above
+  2N on the bundled binary model make `GENE1 missense;lof`'s pseudo-marker
+  0.778 and flipped; SKAT-O and BURDEN arms, main and single-variant
+  files, byte-identical to the reference at every stage, and a planted
+  build that drops the flipped fill differs on exactly those cells
+  (`scratchpad/thr/flipdrill.sh`; not in the repo).
+- **The summation-order control** that licenses the carrier-space
+  reductions: 20,000 random sparse vectors against RcppArmadillo 15.4.2,
+  `accu`/`sum`/`mean` bit-equal to the two-accumulator parity split over
+  the nonzeros, and a plain left-to-right sum differing on 88%. The first
+  version of that control was vacuous (20-bit mantissas, every partial sum
+  exact, 0/2000 differences) and was replaced before it counted.

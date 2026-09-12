@@ -1,6 +1,8 @@
-# What is worth doing next (2026-09-03, updated 2026-09-12; read docs/state/handoff-2026-09-12-flexrv-rerun-129.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-12; read docs/state/handoff-2026-09-12-flexrv-ram-levers.md first)
 
-**Current handoff: `docs/state/handoff-2026-09-12-flexrv-rerun-129.md`**
+**Current handoff: `docs/state/handoff-2026-09-12-flexrv-ram-levers.md`** (the
+five RAM/CPU levers on the FlexRV region path, one gated commit each; before
+it `docs/state/handoff-2026-09-12-flexrv-rerun-129.md`)
 (previous: `handoff-2026-09-12-126-null-calibration.md` -- the #126 null
 calibration and #128; then `handoff-2026-09-11-evening-117-115-114.md` -- what #118 cost and
 bought, and the disk clear-out; then `handoff-2026-09-11-percell-mac-implemented.md`, which is what
@@ -665,6 +667,19 @@ the engine's semantics, the owner's decision. It also found and fixed
 **LEDGER #119** (a one-set FlexRV spec stopped every SKAT-O run at K = 1;
 the beta(1,25) set never reaches a transform set, `test-step2-flexrv-k1.R`).
 What is NOT done, in order of value:
+- **The five RAM/CPU levers LANDED 2026-09-12** (`bb4003a0`, `a1f44cdd`,
+  `d73a9981`, `6ffa219a`, `4535ee99`; `docs/state/handoff-2026-09-12-flexrv-ram-levers.md`,
+  predictions and outcomes in `docs/state/prediction-flexrv-ram-levers-2026-09-12.md`,
+  NOTES.md "FlexRV RAM/CPU levers"): carrier-space storage for the three
+  per-(sample x cell) matrices, per-set prepares on the cell pool, no
+  N-length cell records, the reductions over the carriers, and identical
+  BURDEN cells evaluated once. sim50k k192 BURDEN: RSS 874 -> ~520 MB, wall
+  57 -> 19 s at 1 thread, 41 -> 13 s at 4 (loaded box), byte-identical at
+  both thread counts and every golden unchanged. Open from it: a quiet-box
+  4-thread timing, a binary arm at 50k, a characterization test for the
+  flip drill (max MAF 0.5 + collapse cutoff > 2N on the bundled binary model
+  reaches the flipped pseudo-marker; no golden), and `harness/prepush.sh`
+  before the push. The F5 bullet below is history.
 - **F5 timing DONE 2026-09-10** (`harness/bench/NOTES.md`, "FlexRV F5 at
   N = 50,000"): 192 sets cost 35 s user / 805 MB against 8 s / 506 MB for one
   set on sim50k `y_null` BURDEN at one cell; the K-dependent C++ is 39%
