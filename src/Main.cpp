@@ -633,6 +633,7 @@ struct CarrierStore {
     for(std::size_t k = 0; k < carriers.size(); k++){ o[carriers[k]] = 0.0; }
   }
 };
+
 static CarrierStore g_carrierStore;
 
 
@@ -3518,6 +3519,15 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
       for(unsigned int km = 0; km < P; km++){
         const SAIGE::SAIGEClass & model = *W[km].model;
         URCellModel & cm = W[km].urOut[jmr];
+        // hasVarRatio is PER CALL, as at the marker loop's site above: this body
+        // runs one cell per worker on runCellTests, and selectVarianceRatio does
+        // not merely WRITE the flag -- it reads it back at three guards and throws
+        // on the last (src/SAIGE_test.cpp:1283/1290/1297/1307). A frame-shared flag
+        // written from every worker is a data race (TSAN, 2026-09-06) even when the
+        // value never changes; here a lost write is either a spurious "no
+        // categorical variance ratio covers MAC" abort on a MAC that IS covered, or
+        // a cell silently tested with a variance ratio of 0.
+        bool hasVarRatio = true;
         SAIGE::TestContext ctx;
         ctx.useSparseGRM = (MAC > model.m_cateVarRatioMinMACVecExclude.back())
                              ? false : model.m_flagSparseGRM;
@@ -3963,6 +3973,8 @@ if(t_regionTestType == "BURDEN"){
       // a rare one follows the model -- but nothing is parked on the model, so no
       // later read can pick up a marker's choice by accident (LEDGER #27/#50)
       // and two markers could be tested at once without racing.
+      // per call, not the frame's: see the note at the ultra-rare prepare above
+      bool hasVarRatio = true;
       SAIGE::TestContext ctx;
       ctx.useSparseGRM = (MAC > model.m_cateVarRatioMinMACVecExclude.back())
                            ? false : model.m_flagSparseGRM;
