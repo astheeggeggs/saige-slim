@@ -272,6 +272,15 @@ ARE captured. Baseline at C8: R 55.2%, live step-2 C++ 72.2% line / 42.9% branch
   `plant`, and under `clean` it makes the script exit non-zero. Without it a
   crashed arm hangs on R's interactive abort prompt indefinitely (once for
   4h32m).
+  **Run the `region` workload after ANY change to region threading.** It was
+  in the default list from the start but not in the levers' gate list, and the
+  first run after the 2026-09-12 cell-pool work found a real worker-vs-worker
+  race on `selectVarianceRatio`'s out-flag (5 at t=4, 3 at t=8; `e72e4186`)
+  that every byte gate had passed -- `bytes-vs-serial` was `identical` in the
+  racing build too. The clean arm reads `races=0` only since the FORK edge is
+  declared as well as the join edge; before that it reported 1-2 main-vs-worker
+  warnings in every build, so a non-zero count there was not evidence of
+  anything (`harness/bench/NOTES.md`).
 - `bash harness/guardmalloc.sh [clean|plant|both]` -- Guard Malloc
   (`/usr/lib/libgmalloc.dylib`, macOS only) over a two-chromosome step-1 LOCO
   fit: every allocation on its own page with an unmapped page after it, so a

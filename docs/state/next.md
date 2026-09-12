@@ -32,6 +32,28 @@ separate it from HEAD. `docs/state/handoff-2026-09-04.md` is where CI lives.
 `python3 harness/tools/ledger.py open`.** Never write a hand-counted "N open of
 M" here; the lint rejects it, because the count drifted every time.
 
+**2026-09-12 (later): an adversarial review of the UNPUSHED lever diff found
+two concurrency regressions, both now fixed and one DRILLED BOTH WAYS.**
+`e72e4186` gives the two cell-pool prepares their own `hasVarRatio` (lever 2
+had threaded them while they still shared the frame-scope out-flag that
+`selectVarianceRatio` reads back as control flow -- the same bug TSAN forced
+out of the marker loop on 2026-09-06); `8f4d5db7` adds `ScratchGuard`, so the
+worker scratch is restored when a cell test leaves by THROWING, which the ER
+deferral does by design and which the pool catches and continues past.
+**TSAN is the evidence for the first**: `d36e7277` reports 5 races at t=4 and 3
+at t=8 on `src/SAIGE_test.cpp:1274`/`:1279`, the flag's own two writes, and the
+fixed tree reports none -- the real bug as its own plant. `bytes-vs-serial` was
+`identical` in both, so no golden ever moved. A third commit declares the
+region worker's FORK edge, which had left the clean arm at 1-2 warnings in
+every build and is why a non-zero count there meant nothing. The review's
+three remaining survivors are NOT addressed: `CarrierStore::begin()`'s skipped
+zero-fill when the sample count changes, three unused N-length buffers per
+worker on the single-variant marker scan, and the BURDEN memo line
+under-reporting by a factor of P on a multi-model run. Also: the claim that
+`tsan.sh` does not cover the region cell pool, which the review made and which
+propagated into my own summary, is FALSE -- the `region` workload was there all
+along; it had merely never been run on this work.
+
 **2026-09-12 opened LEDGER #130** (writing the flip drill's characterization
 test, `tests/testthat/test-step2-region-flip.R`): on a `--r.corr=1` run, an
 ultra-rare pseudo-marker whose collapsed alt frequency exceeds 0.5 enters the

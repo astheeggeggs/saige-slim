@@ -3127,6 +3127,19 @@ Rcpp::List mainRegionInCPP(
                      const std::function<void(unsigned int, Marker::MarkerScratch&)> & t_fn)
       : m_pool(t_pool), m_out(t_out), m_fn(t_fn) {}
     void operator()(std::size_t t_begin, std::size_t t_end) override {
+      // The FORK edge, twin of the join edge declared on the pool below.
+      // Everything the main thread wrote before parallelFor -- this worker's
+      // own members among them -- happens-before every worker read of it, but
+      // the edge lives inside libtbb, which is NOT instrumented, so TSAN
+      // reported the constructor's writes racing this loop's reads: 1 warning
+      // at t=4 and 2 at t=8 on the region workload, in every build including
+      // d36e7277's, which left the clean arm's baseline non-zero and gave a
+      // future real race somewhere to hide. Declaring it is not a suppression:
+      // it is main-vs-worker only. The worker-vs-worker class stays fully
+      // visible -- the hasVarRatio race was DETECTED at SAIGE_test.cpp:1274
+      // and :1279 with the join edge already declared, and went to zero only
+      // when that bug was fixed (harness/work/tsan-prefix vs harness/work/tsan).
+      SAIGE_TSAN_HAPPENS_AFTER(this);
       std::unique_ptr<MarkerWorkerState> state = m_pool.checkout();
       RefuseMainThreadGuard noRAPI;
       for(std::size_t k = t_begin; k < t_end; k++){
@@ -3164,6 +3177,7 @@ Rcpp::List mainRegionInCPP(
     }
     std::vector<CellOutcome> outcomes(nCells);
     RegionCellWorker worker(*regionPool, outcomes, fn);
+    SAIGE_TSAN_HAPPENS_BEFORE(&worker);
     RcppParallel::parallelFor(0, (std::size_t)nCells, worker, 1, nThreadsRegion);
     SAIGE_TSAN_HAPPENS_AFTER(regionPool.get());
     for(unsigned int k = 0; k < nCells; k++){

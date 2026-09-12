@@ -1978,6 +1978,33 @@ byte-identical in both compare modes.
   (`scratchpad/thr/flipdrill.sh`; not in the repo). **Now in the repo as
   `tests/testthat/test-step2-region-flip.R`** (2026-09-12), which is where
   LEDGER #130 was found.
+- **TSAN was never run on this work until 2026-09-12, and it found a real
+  race.** `harness/tsan.sh` has covered a `region` workload all along (golden
+  P2's group-test command at 1/4/8 threads, on `example_binary_sparseGRM`,
+  whose variance-ratio file is CATEGORICAL -- so `selectVarianceRatio` is
+  actually called); it simply was not in the levers' gate list. Run on
+  `d36e7277` it reported **5 races at t=4 and 3 at t=8 on
+  `src/SAIGE_test.cpp:1274` and `:1279`** -- precisely the two lines that write
+  `t_hasVarRatio` -- because lever 2 had moved two prepares onto the cell pool
+  while they still passed the frame-scope flag (fixed in `e72e4186`; zero
+  races after). `bytes-vs-serial` was `identical` in BOTH trees, so the race
+  never reached the output on this fixture: the byte gates were right and
+  blind at the same time, which is the whole argument for running the race
+  detector after a threading change.
+- **The clean arm's baseline was quietly non-zero, and that is now fixed
+  too.** Every build, pre-fix included, reported 1 warning at t=4 and 2 at t=8
+  at `RegionCellWorker`'s main-thread construction vs the worker's read: the
+  region path declared only the JOIN edge (on the pool) and never the FORK
+  edge, and the edge itself is inside libtbb, which is not instrumented. So
+  `tsan.sh`'s own stated expectation ("races=0 everywhere") had not held on
+  this workload since region threading landed, and a new real race would have
+  had somewhere to hide. `SAIGE_TSAN_HAPPENS_AFTER(this)` /
+  `SAIGE_TSAN_HAPPENS_BEFORE(&worker)` declare it; the arm now reads
+  **races=0 at t=1/4/8**. It cannot mask the dangerous class -- it is
+  main-vs-worker only, and the proof is that the `hasVarRatio` race was
+  detected WITH the join edge already declared. Runs kept at
+  `harness/work/tsan` (fixed), `tsan-prefix` (d36e7277), `tsan-annot`
+  (annotated).
 - **The summation-order control** that licenses the carrier-space
   reductions: 20,000 random sparse vectors against RcppArmadillo 15.4.2,
   `accu`/`sum`/`mean` bit-equal to the two-accumulator parity split over
