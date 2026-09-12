@@ -15,11 +15,13 @@
 # - Every run sources harness/env.sh (step 1 is irreproducible without it; see LEDGER.md #7/#8).
 # - LEDGER #127: a group run also writes `<out>.pooledTests.txt` when a region's
 #   pooled (Cauchy) row was NOT a plain Cauchy combination of every cell it
-#   tested. Five runs produce one -- the quantitative SKAT-O goldens, whose
+#   tested. SIX runs produce one: the five quantitative SKAT-O goldens, whose
 #   saturated cells (Pvalue exactly 1) send CCT down its min(1, n*min(p))
-#   fallback, which is LEDGER #86. They are committed like any other output, so
-#   compare_goldens.sh gates the disclosure; every other run writes no file, and
-#   a new one appearing means a region started combining something differently.
+#   fallback (LEDGER #86), and P64, where the region's ONE cell vanished before
+#   it could be tested (LEDGER #129) so the pooled row is NA over zero inputs.
+#   They are committed like any other output, so compare_goldens.sh gates the
+#   disclosure; every other run writes no file, and a new one appearing means a
+#   region started combining something differently.
 
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -1400,6 +1402,66 @@ run step2_pgen_group_flexrv_burden.log R2 step2_SPAtests.R \
   --flexRV_score=REVEL --flexRV_maxMAF=0.01 \
   --annotation_in_groupTest=lof:missense \
   --r.corr=1 --is_fastTest=FALSE
+
+# P62-P64 (2026-09-12): the two OPEN defects of the ultra-rare pseudo-marker
+# pass. No pre-existing golden reaches either -- 0 of the 269 UR rows across
+# every group golden that writes a .singleAssoc.txt has AF > 0.5, and no group
+# golden has a custom weight small enough to be mistaken for an imputed dosage
+# -- so these three exist to make the two fixes MOVE something. All three are
+# byte-reproducible at unpatched HEAD (two runs into separate trees, cmp).
+#
+# P62/P63 (LEDGER #130): the flip drill, both region paths. maxMAF 0.5 admits
+# every marker of both genes and a collapse cutoff above 2N makes every one of
+# them ultra-rare, so each (region x annotation) cell is ONE collapsed
+# pseudo-marker and five of the six then carry alt frequency > 0.5. A cell of
+# one marker HAS that marker's burden, so the region row's Pvalue_Burden and
+# the run's own .singleAssoc.txt p are the same quantity computed twice, which
+# is what makes these two files a gate rather than a snapshot: `GENE1 lof` (AF
+# 0.374, not flipped) agrees to every printed digit and the five flipped cells
+# do not. --is_single_in_groupTest=TRUE so both halves are in the goldens.
+run step2_plink_group_urflip_burden.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_urflip_burden.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.5 --MACCutoff_to_CollapseUltraRare=2000 \
+  --is_single_in_groupTest=TRUE --r.corr=1 --is_fastTest=FALSE
+
+# P63: the same drill on the SKAT-O path, which reaches the pseudo-marker
+# through the per-marker exports instead of the BURDEN emitter -- and, on a
+# BINARY trait, reads the burden column too (`g.sum` in
+# get_newPhi_scaleFactor_traitType, R/SAIGE_SPATest_Region.R). So this file is
+# the gate on the OTHER route into the same column.
+run step2_plink_group_urflip_skato.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_urflip_skato.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.5 --MACCutoff_to_CollapseUltraRare=2000 \
+  --is_single_in_groupTest=TRUE --is_fastTest=FALSE
+
+# P64 (LEDGER #129): input/group_ur_smallWeights.txt is GENET over rs28 and
+# rs32 (two singletons, cell MAC 2) with ONE custom weight set at 0.01. Both
+# markers are ultra-rare, so the cell is one weighted pseudo-marker whose every
+# entry is 0.01 -- which the dosage-zeroing filter (<= 0.2 at MAC <= 10) takes
+# for imputation noise and zeroes. The cell then has no carrier and emits NO
+# row: the file below is a bare Cauchy NA row, and the #127 sidecar says 0 rows
+# / 0 refused / rule `none`. The SAME data at --MACCutoff_to_CollapseUltraRare=0,
+# or with weights 0.5, is tested and gives Pvalue_Burden 2.522646E-01 (a burden
+# p cannot depend on the weight SCALE), which is what
+# test-step2-region-ur-zerod.R holds against this.
+run step2_plink_group_ur_smallweights.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_ur_smallweights.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_ur_smallWeights.txt \
+  --annotation_in_groupTest=lof --maxMAF_in_groupTest=0.01 \
+  --MACCutoff_to_CollapseUltraRare=10 --r.corr=1 --is_fastTest=FALSE
 
 ############ PGEN-vs-PLINK byte identity, checked in the candidate dir #########
 # The step-0 and step-1 PGEN runs above are NOT committed as separate goldens:

@@ -1,0 +1,2 @@
+Region	Group	max_MAF	Pvalue_Burden	BETA_Burden	SE_Burden	MAC	MAC_case	MAC_control	Number_rare	Number_ultra_rare
+GENET	Cauchy	NA	NA	NA	NA	NA	NA	NA	NA	NA

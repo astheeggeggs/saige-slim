@@ -413,3 +413,42 @@ test_that("step2 quantitative conditional region test matches golden", {
   run_step2_case("plink_group_cond_quant.txt", args,
                  extra_outputs = ".singleAssoc.txt")
 })
+
+# ---- P62-P64: the ultra-rare pseudo-marker's two OPEN defects --------------
+# These three goldens exist to make the fixes for LEDGER #129/#130 MOVE
+# something: no pre-existing golden reaches either defect (0 of the 269 UR rows
+# across every group golden with a .singleAssoc.txt has AF > 0.5, and no group
+# golden carries a custom weight small enough to look like an imputed dosage).
+# The commands and the fixture arithmetic are recorded beside the runs in
+# harness/make_goldens.sh; test-step2-region-flip.R and
+# test-step2-region-ur-zerod.R are the characterization tests that say what the
+# numbers in them MEAN.
+URFLIP_COMMON <- c("--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
+                   "--groupFile=./input/group_new_snpid.txt",
+                   "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+                   "--maxMAF_in_groupTest=0.5", "--MACCutoff_to_CollapseUltraRare=2000",
+                   "--is_single_in_groupTest=TRUE", "--is_fastTest=FALSE")
+
+test_that("step2 flipped ultra-rare pseudo-marker, BURDEN path, matches golden", {
+  run_step2_case("plink_group_urflip_burden.txt",
+    c(PLINK_ARGS(), GRP_MODEL, SG_ARGS, URFLIP_COMMON, "--r.corr=1"),
+    extra_outputs = ".singleAssoc.txt")
+})
+
+test_that("step2 flipped ultra-rare pseudo-marker, SKAT-O path, matches golden", {
+  run_step2_case("plink_group_urflip_skato.txt",
+    c(PLINK_ARGS(), GRP_MODEL, SG_ARGS, URFLIP_COMMON),
+    extra_outputs = ".singleAssoc.txt")
+})
+
+test_that("step2 all-ultra-rare cell with small custom weights matches golden", {
+  # the cell vanishes to the dosage filter (LEDGER #129), so the golden is a
+  # bare Cauchy NA row plus the #127 sidecar that discloses the zero
+  run_step2_case("plink_group_ur_smallweights.txt",
+    c(PLINK_ARGS(), GRP_MODEL, SG_ARGS,
+      "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
+      "--groupFile=./input/group_ur_smallWeights.txt",
+      "--annotation_in_groupTest=lof", "--maxMAF_in_groupTest=0.01",
+      "--MACCutoff_to_CollapseUltraRare=10", "--r.corr=1", "--is_fastTest=FALSE"),
+    extra_outputs = ".pooledTests.txt")
+})
