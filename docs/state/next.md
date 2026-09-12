@@ -102,6 +102,17 @@ so the flag is accepted and silently ignored. Both are docs-or-one-clause fixes
 that move no golden; #136's fix must add a `docdrift.py` rule per sentence,
 which is that tool's stated admission criterion.
 
+**Twelve flag combinations that silently do the wrong thing are on ONE page**:
+`docs/flag-surprises.md`, from a ten-class adversarial hunt (40 candidates, 14
+verified). Three were hand-checked and have rows -- #139 (chrX male-doubling
+plus a missing call: PLINK silently DROPS the marker, PGEN writes p = 1 beside
+`nan` frequencies, from recounting alleles before imputation with two different
+missing sentinels), #140 (a region restart can LOSE regions: the byte-count
+truncation that fixed #47 is marker-path only and the region writers are never
+flushed) and #141 (a duplicated IID in a `.fam` is accepted by all three steps
+and step 2 then reads the wrong genotype row; PGEN's psam reader refuses it).
+The other nine are LEADS, workflow-verified only -- confirm before acting.
+
 **The five open region-path issues are summarised on ONE page**:
 `docs/state/open-allele-and-weight-issues-2026-09-12.md` -- #131 (decided),
 #132, #133, #134, #135, what each costs to ignore, which goldens each would
