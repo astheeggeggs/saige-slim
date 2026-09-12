@@ -439,6 +439,110 @@ struct CarrierStore {
   std::vector<arma::uword> carriers;    // slot -> sample, insertion order
   std::vector<double> ur, urNw, sum;    // q * cap; entry (slot, cell) at slot*q + cell
   std::vector<double> urFill;           // per cell: the value every NON-carrier holds in ur (0, or 2 after a flip)
+  std::vector<arma::uword> sorted;      // slots in increasing SAMPLE order (finalize(), after the marker loop)
+
+  // Lever 1b (2026-09-12): the N-length reductions the ultra-rare pass and
+  // the burden prepare made per cell, over the carriers only. Each one
+  // reproduces the dense armadillo call BIT FOR BIT, which rests on two
+  // facts: a non-carrier's value is an exact 0, and `x + 0.0 == x` for every
+  // finite x, so skipping it changes nothing; and arrayops::accumulate (what
+  // accu, sum and mean reduce with, absent -ffast-math) keeps TWO
+  // accumulators split by array-index parity, added at the end -- so the
+  // carriers are visited in increasing sample order and split the same way.
+  // Drilled 2026-09-12 (scratchpad parity.cpp against the installed
+  // RcppArmadillo 15.4.2): 20,000 sparse vectors, 0 mismatches for accu /
+  // sum / mean; a plain left-to-right sum differed on 88% of them.
+  void finalize()
+  {
+    sorted.resize(carriers.size());
+    for(std::size_t k = 0; k < sorted.size(); k++){ sorted[k] = k; }
+    std::sort(sorted.begin(), sorted.end(),
+              [this](arma::uword a, arma::uword b){ return carriers[a] < carriers[b]; });
+  }
+  // accu(v) / sum(v) over a dense N-vector that is zero off the carriers
+  double paritySumDense(const double* t_d) const
+  {
+    double a1 = 0.0, a2 = 0.0;
+    for(std::size_t k = 0; k < sorted.size(); k++){
+      const arma::uword smp = carriers[sorted[k]];
+      const double v = t_d[smp];
+      if(smp & 1){ a2 += v; }else{ a1 += v; }
+    }
+    return a1 + a2;
+  }
+  // accu(v.elem(idx)) for a SORTED index vector idx, given rank[sample] = the
+  // sample's position in idx (or -1): the gathered vector's array index is
+  // the rank, so the parity split is by rank
+  double paritySumRanked(const double* t_d, const std::vector<int32_t> & t_rank) const
+  {
+    double a1 = 0.0, a2 = 0.0;
+    for(std::size_t k = 0; k < sorted.size(); k++){
+      const arma::uword smp = carriers[sorted[k]];
+      const int32_t r = t_rank[smp];
+      if(r < 0){ continue; }
+      const double v = t_d[smp];
+      if(r & 1){ a2 += v; }else{ a1 += v; }
+    }
+    return a1 + a2;
+  }
+  // find(pred(v.elem(idx))).n_elem: a predicate false at 0 counts carriers only
+  template<class F>
+  arma::uword countRanked(const double* t_d, const std::vector<int32_t> & t_rank, F t_pred) const
+  {
+    arma::uword n = 0;
+    for(std::size_t k = 0; k < sorted.size(); k++){
+      const arma::uword smp = carriers[sorted[k]];
+      if(t_rank[smp] >= 0 && t_pred(t_d[smp])){ n++; }
+    }
+    return n;
+  }
+  // the guarded single-accumulator count pass (LEDGER #118): the nonzero
+  // terms in increasing index order into ONE accumulator
+  void sumNonzeroCol(const std::vector<double> & t_col, unsigned int t_c, double & t_acc) const
+  {
+    for(std::size_t k = 0; k < sorted.size(); k++){
+      const double v = t_col[sorted[k] * q + t_c];
+      if(v != 0){ t_acc += v; }
+    }
+  }
+  // find(v != 0), increasing
+  void nonzeroDense(const double* t_d, arma::uvec & t_out) const
+  {
+    arma::uword n = 0;
+    for(std::size_t k = 0; k < sorted.size(); k++){ if(t_d[carriers[sorted[k]]] != 0){ n++; } }
+    t_out.set_size(n);
+    arma::uword o = 0;
+    for(std::size_t k = 0; k < sorted.size(); k++){
+      const arma::uword smp = carriers[sorted[k]];
+      if(t_d[smp] != 0){ t_out[o++] = smp; }
+    }
+  }
+  void nonzeroDenseU(const double* t_d, std::vector<uint> & t_out) const
+  {
+    t_out.clear();
+    for(std::size_t k = 0; k < sorted.size(); k++){
+      const arma::uword smp = carriers[sorted[k]];
+      if(t_d[smp] != 0){ t_out.push_back((uint)smp); }
+    }
+  }
+  void nonzeroCol(const std::vector<double> & t_col, unsigned int t_c, arma::uvec & t_out) const
+  {
+    arma::uword n = 0;
+    for(std::size_t k = 0; k < sorted.size(); k++){ if(t_col[sorted[k] * q + t_c] != 0){ n++; } }
+    t_out.set_size(n);
+    arma::uword o = 0;
+    for(std::size_t k = 0; k < sorted.size(); k++){
+      if(t_col[sorted[k] * q + t_c] != 0){ t_out[o++] = carriers[sorted[k]]; }
+    }
+  }
+  // Mat::clean(limit): val = (abs(val) <= limit) ? 0 : val (arrayops::clean)
+  void cleanDense(double* t_d, double t_limit) const
+  {
+    for(std::size_t k = 0; k < sorted.size(); k++){
+      double & v = t_d[carriers[sorted[k]]];
+      v = (std::abs(v) <= t_limit) ? 0.0 : v;
+    }
+  }
 
   void begin(arma::uword t_n, unsigned int t_q)
   {
@@ -2344,6 +2448,9 @@ Rcpp::List mainRegionInCPP(
     std::vector<std::string> pval_cVec, pvalNA_cVec;
     arma::mat G1tilde_P_G2tilde_Weighted_Mat;
     arma::vec MACCase_GroupVec, MACControl_GroupVec;
+    // binary models: sample -> its position in m_case_indices / m_ctrl_indices
+    // (both sorted, from arma::find), -1 otherwise; CarrierStore::paritySumRanked
+    std::vector<int32_t> caseRank, ctrlRank;
     std::vector<double> AF_caseVec, AF_ctrlVec, N_case_homVec, N_ctrl_hetVec, N_case_hetVec, N_ctrl_homVec;
     std::vector<uint32_t> N_caseVec, N_ctrlVec, N_Vec;
     arma::mat genoSumMat;        // SKAT-O only: this model's residualised copy of the shared matrix
@@ -3115,6 +3222,7 @@ Rcpp::List mainRegionInCPP(
       }
     }
   }
+  cs.finalize();   // the carriers in sample order, for the reductions below
 //for all UR variants
 if(i2 > 0){
   ProfileScope rpUr(rp.enabled ? &rp.urPass : nullptr, &rp.nUrPass);
@@ -3131,6 +3239,14 @@ if(i2 > 0){
   std::vector<arma::mat> XVs(P), XXVX_invs(P);
   for(unsigned int km = 0; km < P; km++){
     W[km].model->extract_XV_XXVX_inv(XVs[km], XXVX_invs[km]);
+    if(W[km].traitType == "binary"){
+      const arma::uvec & ci = W[km].model->m_case_indices;
+      const arma::uvec & ki = W[km].model->m_ctrl_indices;
+      W[km].caseRank.assign(t_n, -1);
+      W[km].ctrlRank.assign(t_n, -1);
+      for(arma::uword k = 0; k < ci.n_elem; k++){ W[km].caseRank[ci[k]] = (int32_t)k; }
+      for(arma::uword k = 0; k < ki.n_elem; k++){ W[km].ctrlRank[ki[k]] = (int32_t)k; }
+    }
   }
   //the last chunk for UR
   // Step 3b (2026-09-06): the per-cell getMarkerPval calls are split out of
@@ -3224,22 +3340,19 @@ if(i2 > 0){
 	  // Measured 2026-09-11: find + gather here cost +2.4 s of `urPass` on
 	  // sim50k, because LEDGER #118 moved this inside the weight-set loop and
 	  // it went from 210 executions to 210 x 192 (harness/bench/NOTES.md).
-	  const double * colptr_nw = genoURVec_noweights.memptr();
-	  double & acc_nw = genoSumcount_noweight(jmr);
-	  for(unsigned int k = 0; k < t_n; k++){
-	    const double v_nw = colptr_nw[k];
-	    if(v_nw != 0){ acc_nw += v_nw; }
-	  }
+	  cs.sumNonzeroCol(cs.urNw, jmr, genoSumcount_noweight(jmr));
 	}
 	int n = genoURVec.size();
-	arma::uvec indexForNonZero = arma::find(genoURVec != 0);
+	arma::uvec indexForNonZero;
+	cs.nonzeroDense(genoURVec.memptr(), indexForNonZero);   // find(genoURVec != 0)
 	i = q0 + jmr;
 	markerVec.at(i) = "UR";             // marker IDs
 	if(indexForNonZero.n_elem > 0){
 	urHasSupport[jmr] = 1;
 	//URindVec.push_back(jm+1);
-	  double altFreq = arma::mean(genoURVec)/2;
-	  double altCounts = arma::accu(genoURVec);
+	  // mean(v)/2 and accu(v), over the carriers (CarrierStore::paritySumDense)
+	  double altCounts = cs.paritySumDense(genoURVec.memptr());
+	  double altFreq = (altCounts / (double)t_n)/2;
 	  double missingRate = 0;
 	  double imputeInfo = 1;
     	  std::string chr, ref, alt, marker;
@@ -3256,11 +3369,31 @@ if(i2 > 0){
 	  // row (upstream's pseudo contribution stays weighted on that path).
 	  // Computed from the same pre-imputeGenoAndFlip vector the weighted MAC
 	  // above is, and with the same (1 - missingRate) factor.
-	  const double altFreq_nw = arma::mean(genoURVec_noweights) / 2;
+	  const double altFreq_nw = (cs.paritySumDense(genoURVec_noweights.memptr()) / (double)t_n) / 2;
 	  const double MAF_nw = std::min(altFreq_nw, 1 - altFreq_nw);
 	  const double MAC_nw = MAF_nw * 2 * t_n * (1 - missingRate);
 	  std::vector<uint32_t> indexForMissing;
-    	  flip = imputeGenoAndFlip(genoURVec, altFreq, altCounts, indexForMissing, g_cfg.impute_method, g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC, indexZeroVec, indexNonZeroVec);
+	  if(altFreq > 0.5){
+	    // the flip makes the pseudo-marker dense (every non-carrier becomes
+	    // 2): the dense routine, on the scattered vector, as always
+	    flip = imputeGenoAndFlip(genoURVec, altFreq, altCounts, indexForMissing, g_cfg.impute_method, g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC, indexZeroVec, indexNonZeroVec);
+	  }else{
+	    // imputeGenoAndFlip (UTIL.cpp) for an un-flipped pseudo-marker with
+	    // no missing genotype, over the carriers: no flip, no imputation,
+	    // the dosage zeroing, the recount, the nonzero list. Each step is
+	    // the routine's own statement over the same values (see the
+	    // CarrierStore helpers for why the sums are bit-identical).
+	    flip = false;
+	    if(g_cfg.dosage_zerod_cutoff > 0){
+	      if(MAC <= g_cfg.dosage_zerod_MAC_cutoff){
+	        cs.cleanDense(genoURVec.memptr(), g_cfg.dosage_zerod_cutoff);
+	      }
+	    }
+	    altCounts = cs.paritySumDense(genoURVec.memptr());
+	    altFreq = altCounts / (2*t_n);
+	    cs.nonzeroDenseU(genoURVec.memptr(), indexNonZeroVec);
+	    indexZeroVec.clear();   // derived at test time (complementIndices); nothing reads it here
+	  }
 	  urFlipped = flip;
 	  // Count/emission split (C5 review #1): at q_weight == 1 each branch's
 	  // first arm is textually the legacy loop -- genoSumcount_noweight
@@ -3413,44 +3546,65 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
             for(unsigned int km = 0; km < P; km++){
             RegionModelWork & w = W[km];
             const SAIGE::SAIGEClass & model = *w.model;
-            arma::vec dosage_case, dosage_ctrl;
             if(w.traitType == "binary"){
-                        dosage_case = genoURVec.elem(model.m_case_indices);
-                        dosage_ctrl = genoURVec.elem(model.m_ctrl_indices);
-                        MACcasegroup = arma::accu(genoURVec_noweights.elem(model.m_case_indices));
-                        MACcontrolgroup = arma::accu(genoURVec_noweights.elem(model.m_ctrl_indices));
-                        w.MACCase_GroupVec(jmr) = w.MACCase_GroupVec(jmr) + MACcasegroup;
-                        w.MACControl_GroupVec(jmr) = w.MACControl_GroupVec(jmr) + MACcontrolgroup;
-            }
-
-          if(w.traitType == "binary"){
-            AF_case = arma::mean(dosage_case) /2;
-            AF_ctrl = arma::mean(dosage_ctrl) /2;
-            if(flip){
-              AF_case = 1-AF_case;
-              AF_ctrl = 1-AF_ctrl;
-            }
-          w.AF_caseVec.at(i) = AF_case;
-          w.AF_ctrlVec.at(i) = AF_ctrl;
-          w.N_caseVec.at(i) = dosage_case.n_elem;
-          w.N_ctrlVec.at(i) = dosage_ctrl.n_elem;
-
-         arma::uvec N_case_ctrl_het_hom0;
-        if(t_isMoreOutput){
-          N_case_ctrl_het_hom0 = arma::find(dosage_case <= 2 && dosage_case >=1.5);
-          w.N_case_homVec.at(i)  = N_case_ctrl_het_hom0.n_elem;
-          N_case_ctrl_het_hom0 = arma::find(dosage_case < 1.5 && dosage_case >= 0.5);
-          w.N_case_hetVec.at(i) = N_case_ctrl_het_hom0.n_elem;
-          N_case_ctrl_het_hom0 = arma::find(dosage_ctrl <= 2 && dosage_ctrl >=1.5);
-          w.N_ctrl_homVec.at(i) = N_case_ctrl_het_hom0.n_elem;
-          N_case_ctrl_het_hom0 = arma::find(dosage_ctrl < 1.5 && dosage_ctrl >= 0.5);
-          w.N_ctrl_hetVec.at(i) = N_case_ctrl_het_hom0.n_elem;
-          if(flip){
-                w.N_case_homVec.at(i) = N_case - w.N_case_hetVec.at(i) -  w.N_case_homVec.at(i);
-                w.N_ctrl_homVec.at(i) = N_ctrl - w.N_ctrl_hetVec.at(i) - w.N_ctrl_homVec.at(i);
-          }
-        }
-
+              // Lever 1b: the case/control reductions over the carriers. The
+              // gathered vectors' array index is the sample's RANK among the
+              // cases (controls), so the parity split is by rank
+              // (paritySumRanked); a predicate false at 0 counts carriers
+              // only (countRanked). A flipped pseudo-marker is dense (every
+              // non-carrier holds 2) and keeps the dense code verbatim.
+              arma::uword nCaseHom = 0, nCaseHet = 0, nCtrlHom = 0, nCtrlHet = 0;
+              if(flip){
+                arma::vec dosage_case = genoURVec.elem(model.m_case_indices);
+                arma::vec dosage_ctrl = genoURVec.elem(model.m_ctrl_indices);
+                MACcasegroup = arma::accu(genoURVec_noweights.elem(model.m_case_indices));
+                MACcontrolgroup = arma::accu(genoURVec_noweights.elem(model.m_ctrl_indices));
+                AF_case = arma::mean(dosage_case) /2;
+                AF_ctrl = arma::mean(dosage_ctrl) /2;
+                if(t_isMoreOutput){
+                  arma::uvec N_case_ctrl_het_hom0;
+                  N_case_ctrl_het_hom0 = arma::find(dosage_case <= 2 && dosage_case >=1.5);
+                  nCaseHom = N_case_ctrl_het_hom0.n_elem;
+                  N_case_ctrl_het_hom0 = arma::find(dosage_case < 1.5 && dosage_case >= 0.5);
+                  nCaseHet = N_case_ctrl_het_hom0.n_elem;
+                  N_case_ctrl_het_hom0 = arma::find(dosage_ctrl <= 2 && dosage_ctrl >=1.5);
+                  nCtrlHom = N_case_ctrl_het_hom0.n_elem;
+                  N_case_ctrl_het_hom0 = arma::find(dosage_ctrl < 1.5 && dosage_ctrl >= 0.5);
+                  nCtrlHet = N_case_ctrl_het_hom0.n_elem;
+                }
+              }else{
+                MACcasegroup = cs.paritySumRanked(genoURVec_noweights.memptr(), w.caseRank);
+                MACcontrolgroup = cs.paritySumRanked(genoURVec_noweights.memptr(), w.ctrlRank);
+                AF_case = (cs.paritySumRanked(genoURVec.memptr(), w.caseRank) / (double)model.m_case_indices.n_elem) /2;
+                AF_ctrl = (cs.paritySumRanked(genoURVec.memptr(), w.ctrlRank) / (double)model.m_ctrl_indices.n_elem) /2;
+                if(t_isMoreOutput){
+                  const double* d = genoURVec.memptr();
+                  nCaseHom = cs.countRanked(d, w.caseRank, [](double x){ return x <= 2 && x >= 1.5; });
+                  nCaseHet = cs.countRanked(d, w.caseRank, [](double x){ return x < 1.5 && x >= 0.5; });
+                  nCtrlHom = cs.countRanked(d, w.ctrlRank, [](double x){ return x <= 2 && x >= 1.5; });
+                  nCtrlHet = cs.countRanked(d, w.ctrlRank, [](double x){ return x < 1.5 && x >= 0.5; });
+                }
+              }
+              w.MACCase_GroupVec(jmr) = w.MACCase_GroupVec(jmr) + MACcasegroup;
+              w.MACControl_GroupVec(jmr) = w.MACControl_GroupVec(jmr) + MACcontrolgroup;
+              if(flip){
+                AF_case = 1-AF_case;
+                AF_ctrl = 1-AF_ctrl;
+              }
+              w.AF_caseVec.at(i) = AF_case;
+              w.AF_ctrlVec.at(i) = AF_ctrl;
+              w.N_caseVec.at(i) = model.m_case_indices.n_elem;
+              w.N_ctrlVec.at(i) = model.m_ctrl_indices.n_elem;
+              if(t_isMoreOutput){
+                w.N_case_homVec.at(i) = nCaseHom;
+                w.N_case_hetVec.at(i) = nCaseHet;
+                w.N_ctrl_homVec.at(i) = nCtrlHom;
+                w.N_ctrl_hetVec.at(i) = nCtrlHet;
+                if(flip){
+                  w.N_case_homVec.at(i) = N_case - w.N_case_hetVec.at(i) -  w.N_case_homVec.at(i);
+                  w.N_ctrl_homVec.at(i) = N_ctrl - w.N_ctrl_hetVec.at(i) - w.N_ctrl_homVec.at(i);
+                }
+              }
         }else if(w.traitType == "quantitative"){
           w.N_Vec.at(i) = n;
         }
@@ -3474,8 +3628,8 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
             RegionModelWork & w = W[km];
             const SAIGE::SAIGEClass & model = *w.model;
             if(w.traitType == "binary"){
-                        MACcasegroup = arma::accu(genoURVec_noweights.elem(model.m_case_indices));
-                        MACcontrolgroup = arma::accu(genoURVec_noweights.elem(model.m_ctrl_indices));
+                        MACcasegroup = cs.paritySumRanked(genoURVec_noweights.memptr(), w.caseRank);
+                        MACcontrolgroup = cs.paritySumRanked(genoURVec_noweights.memptr(), w.ctrlRank);
                         w.MACCase_GroupVec(jmr) = w.MACCase_GroupVec(jmr) + MACcasegroup;
                         w.MACControl_GroupVec(jmr) = w.MACControl_GroupVec(jmr) + MACcontrolgroup;
             }
@@ -3743,6 +3897,7 @@ if(t_regionTestType == "BURDEN"){
      const std::function<void(unsigned int, Marker::MarkerScratch&)> burdenPrepFn =
        [&](unsigned int jmrT, Marker::MarkerScratch & sc)
      {
+      (void)sc;
       const unsigned int jmr = jmrT;
       const unsigned int r = jmr % q_weight;
       const unsigned int jm = jmr / q_weight;
@@ -3751,9 +3906,8 @@ if(t_regionTestType == "BURDEN"){
       (void)jm;
       const arma::uword q_maf_m = q_maf_for_anno(j);
       if(m <= q_maf_m){
-        cs.scatterSum(jmr, sc.sumScratch);
-        const arma::vec & genoSumVec = sc.sumScratch;
-        arma::uvec indexNonZeroVec_arma = arma::find(genoSumVec != 0);
+        arma::uvec indexNonZeroVec_arma;
+        cs.nonzeroCol(cs.sum, jmr, indexNonZeroVec_arma);   // find(genoSumVec != 0), no scatter
 	// LEDGER #118: per-SET now (jmr, not jm). This is the quantity the
 	// min-group-MAC gate, the variance-ratio band and the ER predicate all
 	// read below, so a set that zeroes most of its cell is no longer tested
@@ -3797,7 +3951,6 @@ if(t_regionTestType == "BURDEN"){
           c.nz.assign(indexNonZeroVec_arma.begin(), indexNonZeroVec_arma.end());
           c.altFreq = altFreq;
         }
-        cs.clear(sc.sumScratch, false);
       }
      };
      runCellTests(q_anno_maf_weight, burdenPrepFn);

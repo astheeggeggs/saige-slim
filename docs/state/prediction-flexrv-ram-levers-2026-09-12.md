@@ -95,3 +95,18 @@ and is flipped; SKAT-O and BURDEN arms, main and single-variant files, all
 byte-identical to HEAD's scratch library -- and a planted build that drops
 the flipped fill (every non-carrier's 2) DIFFERS from HEAD on exactly those
 cells in both arms, so the drill sees the path (both ways).
+
+## Outcome, stage 3b (2026-09-12 07:30): the reductions over the carriers
+
+Held: goldens byte-identical in both compare modes (4424 / 4624 pass); the
+50k output byte-identical to HEAD's at 1 and 4 threads; the flip drill
+byte-identical in both arms (the flipped cell keeps the dense routine).
+The summation-order control that licenses it: 20,000 random sparse vectors
+against the installed RcppArmadillo 15.4.2, `accu`/`sum`/`mean` all equal
+to the parity split over the nonzeros bit for bit, and the plain
+left-to-right sum differing on 88% (scratchpad `parity.cpp`; the first
+version of that control was vacuous -- 20-bit mantissas made every partial
+sum exact -- and was replaced before it counted). 1-thread profile:
+`urPass` 14.5 -> 0.79 s, `emit - emitTest` 5.6 -> 1.3 s, total C++ 44.9 ->
+19.9 s; wall 55.9 -> 23.3 s at 1 thread and 40.0 -> 16.6 s at 4 (HEAD ->
+stage 3b, same alternation). RSS 518 / 539 MB.
