@@ -79,20 +79,24 @@ change to that path's hot scratch. Also: the claim that
 propagated into my own summary, is FALSE -- the `region` workload was there all
 along; it had merely never been run on this work.
 
-**2026-09-12 opened LEDGER #130** (writing the flip drill's characterization
-test, `tests/testthat/test-step2-region-flip.R`): on a `--r.corr=1` run, an
-ultra-rare pseudo-marker whose collapsed alt frequency exceeds 0.5 enters the
-BURDEN sum as `2 - G` over the UN-flipped carriers, every non-carrier's 2
-dropped, because `indexForNonZero` is taken before `imputeGenoAndFlip`
-overwrites the vector. Measured INSIDE one run: a one-marker cell's region
-`Pvalue_Burden` equals its own `.singleAssoc.txt` p on the un-flipped cell and
-differs on all five flipped ones. **It is a DECISION for the owner**, because
-the fix is a line (emit over the post-flip list, which the single test already
-uses) but the semantics are not: a flipped pseudo-marker's burden is a burden
-of the REFERENCE allele, so the sign convention has to be chosen, and #129
-sits at the same site and should be taken in the same pass. No golden moves
-(0 of the 269 UR rows across every group golden has AF > 0.5), so a fix needs
-a new golden that reaches the flip.
+**2026-09-12 opened AND CLOSED LEDGER #130.** Opened writing the flip drill's
+characterization test (`tests/testthat/test-step2-region-flip.R`): on a
+`--r.corr=1` run, an ultra-rare pseudo-marker whose collapsed alt frequency
+exceeds 0.5 entered the BURDEN sum as `2 - G` over the UN-folded carriers with
+every non-carrier's 2 dropped, so one collapsed marker was tested as two
+different vectors and the emitted column was neither. **The owner's decision
+was that the pseudo-marker is never folded at all**, and the reason is the one
+the row had not considered: the group file's annotation is a property of the
+ALT allele, so a folded burden is a burden of the allele the annotation does
+NOT describe (and for a collapse, a burden of ABSENCE). The three-way
+reconciliation it bought, the goldens that moved and the dead `urFill` it left
+are on the row. Two things learned that outlive it: the SKAT-O arm DOES read
+the burden column on a binary trait (`g.sum` in
+`get_newPhi_scaleFactor_traitType`), which the row had denied; and the same
+ALT-vs-minor question one level up -- the MAF filter and the beta weights still
+fold, so a site with AF(ALT) 0.778 is admitted to a max-MAF cell as MAF 0.222
+and handed a rare-variant weight -- is a statement about RARITY, is NOT fixed,
+and is written up as its own row.
 
 **2026-09-11 (evening) also closed #117 and #115**, and removed ~40% of the CPU
 #118 added (`harness/bench/NOTES.md`). #117's fix -- a weight of exactly 0 drops

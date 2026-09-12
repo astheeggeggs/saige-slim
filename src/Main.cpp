@@ -450,9 +450,11 @@ static RegionProfile g_regionProfile;
 // store keeps one column per CARRIER (slot), q doubles each, so a marker's
 // scatter over the sets is contiguous, and the per-cell N-length vector a
 // test needs is scattered into the worker's scratch for the call and cleared
-// afterwards (`scatter*` / `clear`: O(carriers), or O(N) only for a cell whose
-// pseudo-marker was FLIPPED by imputeGenoAndFlip, where every non-carrier
-// holds 2 -- `urFill`). Every arithmetic expression over the values is the
+// afterwards (`scatter*` / `clear`: O(carriers); the O(N) `urFill` path was for
+// a cell whose pseudo-marker imputeGenoAndFlip had FOLDED, where every
+// non-carrier held 2 -- LEDGER #130 stopped folding it, so nothing writes a
+// non-zero fill any more and the path is dead, kept as a removal candidate the
+// way LEDGER #114's arms are). Every arithmetic expression over the values is the
 // pre-change one over the same operands in the same order (the per-(sample,
 // set) accumulation is in marker order; the N-length reductions still run on
 // the scattered dense vector), so the output is byte-identical.
@@ -466,7 +468,7 @@ struct CarrierStore {
   std::vector<int32_t> slotOf;          // sample -> slot, -1 if not (yet) a carrier
   std::vector<arma::uword> carriers;    // slot -> sample, insertion order
   std::vector<double> ur, urNw, sum;    // q * cap; entry (slot, cell) at slot*q + cell
-  std::vector<double> urFill;           // per cell: the value every NON-carrier holds in ur (0, or 2 after a flip)
+  std::vector<double> urFill;           // per cell: the value every NON-carrier holds in ur. Always 0 since LEDGER #130 (a folded pseudo-marker was the only writer of 2); removal candidate
   std::vector<arma::uword> sorted;      // slots in increasing SAMPLE order (finalize(), after the marker loop)
 
   // Lever 1b (2026-09-12): the N-length reductions the ultra-rare pass and
@@ -3342,7 +3344,8 @@ if(i2 > 0){
     bool tested = false;
     unsigned int i = 0;            // output slot q0 + jmr
     unsigned int rowInChunk = 0;   // P1Mat row / P2Mat column
-    // the collapsed pseudo-marker after imputeGenoAndFlip is cs.ur's column jmr (+ cs.urFill), scattered at test time
+    // the collapsed pseudo-marker is cs.ur's column jmr (+ cs.urFill, which is
+    // always 0 since LEDGER #130), scattered at test time
     std::vector<arma::uword> nz;         // its nonzero sample indices (the zero list is derived at test time)
     double altFreq = 0.0;
     bool flip = false;
@@ -3387,7 +3390,6 @@ if(i2 > 0){
     double MACcasegroup = 0.0, MACcontrolgroup = 0.0, AF_case = 0.0, AF_ctrl = 0.0;
     std::vector<uint> & indexZeroVec = sc.indexZeroVec;       // per-worker scratch, not the
     std::vector<uint> & indexNonZeroVec = sc.indexNonZeroVec; // function-level vectors
-    bool urFlipped = false;
 	// The cell's collapse, scattered from carrier space into the worker's
 	// (all-zero) scratch: imputeGenoAndFlip below flips, imputes and zeroes
 	// it in place there, and the end of this body gathers it back into
@@ -3455,28 +3457,56 @@ if(i2 > 0){
 	  const double MAF_nw = std::min(altFreq_nw, 1 - altFreq_nw);
 	  const double MAC_nw = MAF_nw * 2 * t_n * (1 - missingRate);
 	  std::vector<uint32_t> indexForMissing;
-	  if(altFreq > 0.5){
-	    // the flip makes the pseudo-marker dense (every non-carrier becomes
-	    // 2): the dense routine, on the scattered vector, as always
-	    flip = imputeGenoAndFlip(genoURVec, altFreq, altCounts, indexForMissing, g_cfg.impute_method, g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC, indexZeroVec, indexNonZeroVec);
-	  }else{
-	    // imputeGenoAndFlip (UTIL.cpp) for an un-flipped pseudo-marker with
-	    // no missing genotype, over the carriers: no flip, no imputation,
-	    // the dosage zeroing, the recount, the nonzero list. Each step is
-	    // the routine's own statement over the same values (see the
-	    // CarrierStore helpers for why the sums are bit-identical).
-	    flip = false;
-	    if(g_cfg.dosage_zerod_cutoff > 0){
-	      if(MAC <= g_cfg.dosage_zerod_MAC_cutoff){
-	        cs.cleanDense(genoURVec.memptr(), g_cfg.dosage_zerod_cutoff);
-	      }
+	  // LEDGER #130 FIXED: the collapsed pseudo-marker is NEVER folded to its
+	  // minor allele. Above alt frequency 0.5 this used to call
+	  // imputeGenoAndFlip, which replaces the vector with `2 - G` in place --
+	  // and the BURDEN emitter's six emission loops below then read the
+	  // POST-flip values at the PRE-flip carrier positions (indexForNonZero is
+	  // taken before the call), so a G = 2 carrier contributed 0, a G = 1
+	  // carrier contributed 1, and the non-carriers the flip had just made 2
+	  // contributed nothing. The single test of the same pseudo-marker used the
+	  // POST-flip list instead, so one collapsed marker was tested as two
+	  // different vectors, and the emitted column was neither of them: a cell
+	  // of ONE marker reported a burden p that was not that marker's own p
+	  // (measured, golden P62).
+	  //
+	  // The fix is NOT to emit over the post-flip list, because the choice of
+	  // allele is not free here. The group file's annotation -- `lof`,
+	  // `missense` -- is a property of the ALT allele, and this pseudo-marker
+	  // IS the collapse of ALT-annotated ultra-rare variants: `max_m(w_m g_m)`
+	  // reads "carries at least one of them", and its fold reads "carries NONE
+	  // of them", which is a burden of absence and not of anything annotated.
+	  // So the vector stays ALT-coded, which also makes the two region paths
+	  // agree: the SKAT-O path's burden reads TstatVec_flip
+	  // (R/SAIGE_SPATest_Region.R), the un-corrected score, so with flip false
+	  // the emitter and region_postprocess describe the same allele and their
+	  // BETA_Burden reconcile (they already did on an un-flipped cell).
+	  //
+	  // Folding remains for the STATISTICS: MAF and MAC above are
+	  // min(altFreq, 1 - altFreq) as they always were, so the reported MAC, the
+	  // categorical variance-ratio band and the ER predicate are unchanged, and
+	  // altFreq/altCounts are printed un-folded exactly as imputeGenoAndFlip
+	  // used to return them (it ends with `if(flip){ t_altFreq = 1 - t_altFreq;
+	  // t_altCount = 2N - t_altCount; }`, which is the same number this branch
+	  // recomputes from the raw sum).
+	  //
+	  // What follows is the pre-existing un-flipped branch, now unconditional:
+	  // imputeGenoAndFlip (UTIL.cpp) for a pseudo-marker with no missing
+	  // genotype, over the carriers -- no flip, no imputation, the dosage
+	  // zeroing, the recount, the nonzero list. Each step is the routine's own
+	  // statement over the same values (see the CarrierStore helpers for why
+	  // the sums are bit-identical).
+	  flip = false;
+	  if(g_cfg.dosage_zerod_cutoff > 0){
+	    if(MAC <= g_cfg.dosage_zerod_MAC_cutoff){
+	      cs.cleanDense(genoURVec.memptr(), g_cfg.dosage_zerod_cutoff);
 	    }
-	    altCounts = cs.paritySumDense(genoURVec.memptr());
-	    altFreq = altCounts / (2*t_n);
-	    cs.nonzeroDenseU(genoURVec.memptr(), indexNonZeroVec);
-	    indexZeroVec.clear();   // derived at test time (complementIndices); nothing reads it here
 	  }
-	  urFlipped = flip;
+	  altCounts = cs.paritySumDense(genoURVec.memptr());
+	  altFreq = altCounts / (2*t_n);
+	  cs.nonzeroDenseU(genoURVec.memptr(), indexNonZeroVec);
+	  indexZeroVec.clear();   // derived at test time (complementIndices); nothing reads it here
+	  (void)indexForMissing;  // the pseudo-marker has no missing genotype to impute
 	  // Count/emission split (C5 review #1): at q_weight == 1 each branch's
 	  // first arm is textually the legacy loop -- genoSumcount_noweight
 	  // gated on THIS set's collapse support (for a weighted file that is
@@ -3642,46 +3672,34 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
               // gathered vectors' array index is the sample's RANK among the
               // cases (controls), so the parity split is by rank
               // (paritySumRanked); a predicate false at 0 counts carriers
-              // only (countRanked). A flipped pseudo-marker is dense (every
-              // non-carrier holds 2) and keeps the dense code verbatim.
+              // only (countRanked).
+              //
+              // LEDGER #130: there used to be a second, dense arm here for a
+              // FLIPPED pseudo-marker (every non-carrier holding 2, so the
+              // carrier-space reductions did not apply), followed by
+              // `AF_case = 1 - AF_case` and a complement for the hom counts.
+              // The pseudo-marker is no longer folded, so that arm was
+              // unreachable and is gone. It was value-identical to this one
+              // wherever it ran: mean(2 - G_case)/2 then 1 - that IS
+              // sum(G_case)/(2 n_case), and on hard calls the complemented hom
+              // count #{G > 1.5} and this one's #{G in [1.5, 2]} are both
+              // #{G = 2}. They could differ only for a CUSTOM-weighted collapse
+              // landing exactly on 0.5 or 1.5, and only under
+              // --is_output_moreDetails.
               arma::uword nCaseHom = 0, nCaseHet = 0, nCtrlHom = 0, nCtrlHet = 0;
-              if(flip){
-                arma::vec dosage_case = genoURVec.elem(model.m_case_indices);
-                arma::vec dosage_ctrl = genoURVec.elem(model.m_ctrl_indices);
-                MACcasegroup = arma::accu(genoURVec_noweights.elem(model.m_case_indices));
-                MACcontrolgroup = arma::accu(genoURVec_noweights.elem(model.m_ctrl_indices));
-                AF_case = arma::mean(dosage_case) /2;
-                AF_ctrl = arma::mean(dosage_ctrl) /2;
-                if(t_isMoreOutput){
-                  arma::uvec N_case_ctrl_het_hom0;
-                  N_case_ctrl_het_hom0 = arma::find(dosage_case <= 2 && dosage_case >=1.5);
-                  nCaseHom = N_case_ctrl_het_hom0.n_elem;
-                  N_case_ctrl_het_hom0 = arma::find(dosage_case < 1.5 && dosage_case >= 0.5);
-                  nCaseHet = N_case_ctrl_het_hom0.n_elem;
-                  N_case_ctrl_het_hom0 = arma::find(dosage_ctrl <= 2 && dosage_ctrl >=1.5);
-                  nCtrlHom = N_case_ctrl_het_hom0.n_elem;
-                  N_case_ctrl_het_hom0 = arma::find(dosage_ctrl < 1.5 && dosage_ctrl >= 0.5);
-                  nCtrlHet = N_case_ctrl_het_hom0.n_elem;
-                }
-              }else{
-                MACcasegroup = cs.paritySumRanked(genoURVec_noweights.memptr(), w.caseRank);
-                MACcontrolgroup = cs.paritySumRanked(genoURVec_noweights.memptr(), w.ctrlRank);
-                AF_case = (cs.paritySumRanked(genoURVec.memptr(), w.caseRank) / (double)model.m_case_indices.n_elem) /2;
-                AF_ctrl = (cs.paritySumRanked(genoURVec.memptr(), w.ctrlRank) / (double)model.m_ctrl_indices.n_elem) /2;
-                if(t_isMoreOutput){
-                  const double* d = genoURVec.memptr();
-                  nCaseHom = cs.countRanked(d, w.caseRank, [](double x){ return x <= 2 && x >= 1.5; });
-                  nCaseHet = cs.countRanked(d, w.caseRank, [](double x){ return x < 1.5 && x >= 0.5; });
-                  nCtrlHom = cs.countRanked(d, w.ctrlRank, [](double x){ return x <= 2 && x >= 1.5; });
-                  nCtrlHet = cs.countRanked(d, w.ctrlRank, [](double x){ return x < 1.5 && x >= 0.5; });
-                }
+              MACcasegroup = cs.paritySumRanked(genoURVec_noweights.memptr(), w.caseRank);
+              MACcontrolgroup = cs.paritySumRanked(genoURVec_noweights.memptr(), w.ctrlRank);
+              AF_case = (cs.paritySumRanked(genoURVec.memptr(), w.caseRank) / (double)model.m_case_indices.n_elem) /2;
+              AF_ctrl = (cs.paritySumRanked(genoURVec.memptr(), w.ctrlRank) / (double)model.m_ctrl_indices.n_elem) /2;
+              if(t_isMoreOutput){
+                const double* d = genoURVec.memptr();
+                nCaseHom = cs.countRanked(d, w.caseRank, [](double x){ return x <= 2 && x >= 1.5; });
+                nCaseHet = cs.countRanked(d, w.caseRank, [](double x){ return x < 1.5 && x >= 0.5; });
+                nCtrlHom = cs.countRanked(d, w.ctrlRank, [](double x){ return x <= 2 && x >= 1.5; });
+                nCtrlHet = cs.countRanked(d, w.ctrlRank, [](double x){ return x < 1.5 && x >= 0.5; });
               }
               w.MACCase_GroupVec(jmr) = w.MACCase_GroupVec(jmr) + MACcasegroup;
               w.MACControl_GroupVec(jmr) = w.MACControl_GroupVec(jmr) + MACcontrolgroup;
-              if(flip){
-                AF_case = 1-AF_case;
-                AF_ctrl = 1-AF_ctrl;
-              }
               w.AF_caseVec.at(i) = AF_case;
               w.AF_ctrlVec.at(i) = AF_ctrl;
               w.N_caseVec.at(i) = model.m_case_indices.n_elem;
@@ -3691,10 +3709,6 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
                 w.N_case_hetVec.at(i) = nCaseHet;
                 w.N_ctrl_homVec.at(i) = nCtrlHom;
                 w.N_ctrl_hetVec.at(i) = nCtrlHet;
-                if(flip){
-                  w.N_case_homVec.at(i) = N_case - w.N_case_hetVec.at(i) -  w.N_case_homVec.at(i);
-                  w.N_ctrl_homVec.at(i) = N_ctrl - w.N_ctrl_hetVec.at(i) - w.N_ctrl_homVec.at(i);
-                }
               }
         }else if(w.traitType == "quantitative"){
           w.N_Vec.at(i) = n;
@@ -3731,8 +3745,12 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
     // the post-impute pseudo-marker back into carrier space for B2 (a
     // flipped one is dense: every non-carrier holds 2), and the worker's
     // scratches back to zero
-    if(indexForNonZero.n_elem > 0){ cs.gatherUr(jmr, genoURVec, urFlipped ? 2.0 : 0.0); }
-    cs.clear(sc.urScratch, urFlipped);
+    // LEDGER #130: the fill is now always 0 and the scratch always sparse,
+    // because the pseudo-marker is never folded (a folded one held 2 at every
+    // NON-carrier, which is what CarrierStore::urFill and the dense clear were
+    // for; they have no non-zero writer left -- see docs/state/next.md).
+    if(indexForNonZero.n_elem > 0){ cs.gatherUr(jmr, genoURVec, 0.0); }
+    cs.clear(sc.urScratch, false);
     cs.clear(sc.urNwScratch, false);
   };
   runCellTests(q_anno_maf_weight, urPrepFn);
@@ -3770,6 +3788,9 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
       complementIndices(c.nz.data(), c.nz.size(), (arma::uword)t_n, sc.indexZeroVec_arma);
       arma::uvec & zeroView = sc.indexZeroVec_arma;
       cs.scatterUr(urTested[t / P], sc.urScratch);
+      // the fill is always 0 since LEDGER #130, so the dense clear never fires;
+      // the predicate is kept rather than hardcoded because it is the store's
+      // own invariant, not this call site's
       ScratchGuard urGuard(cs, sc.urScratch, cs.urFill[urTested[t / P]] != 0.0);
       arma::vec & genoURVecRef = sc.urScratch;   // getMarkerPval takes a non-const ref and never writes it (S3/S12)
       ProfileScope rpUrTest(rp.enabled ? &rp.urTest : nullptr, &rp.nUrTest);

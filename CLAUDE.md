@@ -427,8 +427,9 @@ per-(sample x cell) matrices live in carrier space since 2026-09-12**
 (`CarrierStore`, `src/Main.cpp`: one column per carrier of the region; the
 per-cell N-vector a test needs is scattered into the worker's scratch and
 cleared after; the reductions over the carriers reproduce armadillo's
-two-accumulator sums bit for bit, a flipped pseudo-marker keeps the dense
-routines), the per-set prepares run on the cell pool, and identical BURDEN
+two-accumulator sums bit for bit; the dense `urFill` path it shipped with is
+now DEAD, because LEDGER #130 stopped folding the pseudo-marker and a folded
+one was its only writer), the per-set prepares run on the cell pool, and identical BURDEN
 cells are evaluated once (`BURDEN cells: ... served`, a measurement like the
 SKAT-O line). The memory line a FlexRV run prints once is an estimate of the
 SKAT-O terms only (0 N-dependent bytes per cell on BURDEN), not a measurement.
