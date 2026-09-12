@@ -35,7 +35,33 @@ skip_if_no_goldens <- function() {
   testthat::skip_if_not(dir.exists(saige_goldens), "harness/goldens not present")
 }
 
-saige_compare_mode <- function() Sys.getenv("SAIGE_COMPARE_MODE", unset = "byte")
+# byte | numeric | both.
+#
+# `both` exists because the two modes were never testing two different
+# GENERATIONS -- they ran the identical step-2 CLI invocations twice and
+# differed only in how the outputs were COMPARED. Generation is what costs
+# (7 minutes a mode); comparison is reading small tables. So `both` generates
+# once and applies both comparators, which is what the gate wanted all along.
+#
+# It is not a substitute for CI. Byte-exactness is only a valid claim on the
+# platform that generated the goldens, so CI stays on `numeric` with its OWN
+# generation -- the cross-platform check is a different question from this one.
+#
+# VALIDATED, because the old reader silently treated every value except "byte"
+# as numeric: SAIGE_COMPARE_MODE=bytes ran the weaker comparator and said
+# nothing. A typo must not quietly reduce coverage.
+saige_compare_mode <- function() {
+  m <- Sys.getenv("SAIGE_COMPARE_MODE", unset = "byte")
+  if (!m %in% c("byte", "numeric", "both")) {
+    stop("bad SAIGE_COMPARE_MODE: '", m, "' (byte, numeric or both)")
+  }
+  m
+}
+# Which assertions the current mode licenses. A comparison site asks these
+# rather than testing the mode string, so `both` cannot be forgotten at one
+# site and silently degrade to numeric there.
+compare_wants_byte <- function() saige_compare_mode() %in% c("byte", "both")
+compare_wants_numeric <- function() saige_compare_mode() %in% c("numeric", "both")
 
 # Symmetric relative error, same formula as harness/compare_step1.R.
 #
@@ -220,9 +246,10 @@ expect_tables_equivalent <- function(golden, candidate, tol = 1e-5,
 # excluded there.
 expect_output_matches_golden <- function(golden, candidate, tol = 1e-5,
                                          drop_markers = character()) {
-  if (saige_compare_mode() == "byte") {
+  if (compare_wants_byte()) {
     expect_files_byte_identical(golden, candidate)
-  } else {
+  }
+  if (compare_wants_numeric()) {
     expect_tables_equivalent(golden, candidate, tol = tol,
                              drop_markers = drop_markers)
   }

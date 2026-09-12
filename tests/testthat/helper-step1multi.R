@@ -40,9 +40,11 @@ load_modglmm <- function(path) {
 }
 
 expect_step1_rda_equivalent <- function(golden, candidate, tol = TOL_OTHER) {
-  if (saige_compare_mode() == "byte") {
+  if (compare_wants_byte()) {
     expect_files_byte_identical(golden, candidate)
-    return(invisible(NULL))
+    # no early return under `both`: the field-wise checks below are the other
+    # comparator, and the point of `both` is to apply them to the same files
+    if (!compare_wants_numeric()) return(invisible(NULL))
   }
   g <- load_modglmm(golden)
   c_ <- load_modglmm(candidate)
@@ -63,9 +65,11 @@ expect_step1_rda_equivalent <- function(golden, candidate, tol = TOL_OTHER) {
 }
 
 expect_step1_vr_equivalent <- function(golden, candidate, tol = TOL_THETA) {
-  if (saige_compare_mode() == "byte") {
+  if (compare_wants_byte()) {
     expect_files_byte_identical(golden, candidate)
-    return(invisible(NULL))
+    # no early return under `both`: the field-wise checks below are the other
+    # comparator, and the point of `both` is to apply them to the same files
+    if (!compare_wants_numeric()) return(invisible(NULL))
   }
   rd <- function(p) {
     utils::read.table(p, header = FALSE, stringsAsFactors = FALSE,

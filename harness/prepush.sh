@@ -125,19 +125,55 @@ tier_report() {
   fi
 }
 
+# ONE tier, both comparators (2026-09-12). The two modes ran the same step-2
+# CLI invocations twice and differed only in how the outputs were COMPARED, so
+# the gate was generating every output twice to apply two cheap checks. `both`
+# generates once and applies both. The both-modes REQUIREMENT is unchanged and
+# in fact tightened: every comparison site now asserts byte-exactness AND
+# table-equivalence on the SAME bytes, where before each run asserted one.
+#
+# SAIGE_PREPUSH_MODES="byte numeric" restores two separate tier runs, which is
+# what to use if a generation is ever suspected of being non-deterministic --
+# that is the one thing two runs can see and one cannot.
+MODES="${SAIGE_PREPUSH_MODES:-both}"
+
+# the modes as positional parameters, so the two-tier path cannot run something
+# other than what MODES names (it used to hardcode byte/numeric)
+# shellcheck disable=SC2086
+set -- $MODES
 GATE_T0=$(date +%s)
+if [ "$#" = 1 ]; then
+  run_tier "$1"; rc_one=$?
+  GATE_SECS=$(elapsed "$GATE_T0")
+  tier_report "$1" "$rc_one"
+  if [ "$rc_one" != 0 ]; then
+    echo "prepush: FAILED in $1 mode after $(hms "$GATE_SECS")" >&2
+    exit 1
+  fi
+  DIRTY=$(git status --porcelain -- src R tests extdata harness | head -5)
+  if [ -n "$DIRTY" ]; then
+    echo "prepush gate OK on a DIRTY TREE at $(git rev-parse --short HEAD) + uncommitted changes:"
+    echo "$DIRTY" | sed 's/^/           /'
+    echo "           (the commit named above does NOT contain what was just tested)"
+  else
+    echo "prepush gate OK at $(git rev-parse --short HEAD) (clean tree)"
+  fi
+  echo "prepush timing: $1 $(hms "$(tier_secs "$1")") = $(hms "$GATE_SECS") total (one tier)"
+  exit 0
+fi
+
 if [ "$CONCURRENT" = 1 ]; then
   HALF=$(( (NPROC + 1) / 2 ))
   echo "== standard tier, BOTH compare modes at once, $HALF testthat workers each"
   echo "   start $(date '+%H:%M:%S')  load [$(uptime | sed 's/.*load averages*: //')]  idle $(cpu_idle)%"
-  ( export TESTTHAT_CPUS=$HALF; run_tier byte )    & pid_byte=$!
-  ( export TESTTHAT_CPUS=$HALF; run_tier numeric ) & pid_numeric=$!
+  ( export TESTTHAT_CPUS=$HALF; run_tier "$1" ) & pid_byte=$!
+  ( export TESTTHAT_CPUS=$HALF; run_tier "$2" ) & pid_numeric=$!
   wait "$pid_byte";    rc_byte=$?
   wait "$pid_numeric"; rc_numeric=$?
 else
   echo "== standard tier, one mode then the other (SAIGE_PREPUSH_CONCURRENT=0)"
-  run_tier byte;    rc_byte=$?
-  run_tier numeric; rc_numeric=$?
+  run_tier "$1"; rc_byte=$?
+  run_tier "$2"; rc_numeric=$?
 fi
 GATE_SECS=$(elapsed "$GATE_T0")
 
@@ -145,10 +181,10 @@ GATE_SECS=$(elapsed "$GATE_T0")
 # split exists because a cross-run comparison passed in one mode and went red
 # in the other -- so WHICH of the two failed is the answer the gate is for, and
 # the old version exited on the first failure and never ran the second.
-tier_report byte    "$rc_byte"
-tier_report numeric "$rc_numeric"
+tier_report "$1" "$rc_byte"
+tier_report "$2" "$rc_numeric"
 if [ "$rc_byte" != 0 ] || [ "$rc_numeric" != 0 ]; then
-  echo "prepush: FAILED (byte=$rc_byte numeric=$rc_numeric) after $(hms "$GATE_SECS")" >&2
+  echo "prepush: FAILED ($1=$rc_byte $2=$rc_numeric) after $(hms "$GATE_SECS")" >&2
   exit 1
 fi
 
@@ -162,7 +198,7 @@ else
   echo "prepush gate OK at $(git rev-parse --short HEAD) (clean tree)"
 fi
 if [ "$CONCURRENT" = 1 ]; then
-  echo "prepush timing: byte $(hms "$(tier_secs byte)") | numeric $(hms "$(tier_secs numeric)") | gate $(hms "$GATE_SECS") wall (concurrent)"
+  echo "prepush timing: $1 $(hms "$(tier_secs "$1")") | $2 $(hms "$(tier_secs "$2")") | gate $(hms "$GATE_SECS") wall (concurrent)"
 else
-  echo "prepush timing: byte $(hms "$(tier_secs byte)") + numeric $(hms "$(tier_secs numeric)") = $(hms "$GATE_SECS") total (serial)"
+  echo "prepush timing: $1 $(hms "$(tier_secs "$1")") + $2 $(hms "$(tier_secs "$2")") = $(hms "$GATE_SECS") total (serial)"
 fi

@@ -181,3 +181,88 @@ test_that("rel_err's floor does not rescue a finite-vs-nonfinite mismatch", {
   expect_false(is.finite(rel_err(c(1, 1e-20), c(1, Inf))))
   expect_false(is.finite(rel_err(c(1, 1e-20), c(1, NA))))
 })
+
+# ---- the compare MODE's dispatch (2026-09-12) -------------------------------
+# `both` generates once and applies both comparators, which is what makes the
+# gate one tier instead of two. The risk it introduces is specific: if `both`
+# silently took only the numeric branch, the gate would still be green, still
+# be fast, and would have quietly lost byte-exactness -- the strongest
+# assertion the suite makes. So the discriminator has to be a pair of files
+# that are NUMERICALLY EQUAL and BYTE-DIFFERENT, and each mode's verdict on it
+# is asserted rather than assumed.
+#
+# "1.0" against "1.00" is that pair: identical to every tolerance, different in
+# bytes. (Perturbing a real golden is NOT the instrument -- several end-to-end
+# tests compare printed strings between two runs, so a perturbed golden fails
+# them for reasons that have nothing to do with the mode.)
+with_compare_mode <- function(mode, code) {
+  old <- Sys.getenv("SAIGE_COMPARE_MODE", unset = NA)
+  Sys.setenv(SAIGE_COMPARE_MODE = mode)
+  on.exit({
+    if (is.na(old)) Sys.unsetenv("SAIGE_COMPARE_MODE") else Sys.setenv(SAIGE_COMPARE_MODE = old)
+  }, add = TRUE)
+  force(code)
+}
+
+test_that("the compare mode is validated, so a typo cannot quietly weaken the gate", {
+  # the old reader treated every value but "byte" as numeric: SAIGE_COMPARE_MODE=bytes
+  # ran the weaker comparator and said nothing
+  for (m in c("byte", "numeric", "both")) {
+    with_compare_mode(m, expect_identical(saige_compare_mode(), m))
+  }
+  with_compare_mode("bytes", expect_error(saige_compare_mode(), "bad SAIGE_COMPARE_MODE"))
+  with_compare_mode("", expect_error(saige_compare_mode(), "bad SAIGE_COMPARE_MODE"))
+})
+
+test_that("compare_wants_* licenses the right assertions per mode", {
+  with_compare_mode("byte", {
+    expect_true(compare_wants_byte())
+    expect_false(compare_wants_numeric())
+  })
+  with_compare_mode("numeric", {
+    expect_false(compare_wants_byte())
+    expect_true(compare_wants_numeric())
+  })
+  with_compare_mode("both", {
+    expect_true(compare_wants_byte())
+    expect_true(compare_wants_numeric())
+  })
+})
+
+# Did the dispatch raise a failure at all? An expectation failure is a thrown
+# condition, so tryCatch is the instrument: expect_failure() cannot be used
+# here because `both` emits TWO expectations and expect_failure() requires
+# exactly one.
+dispatch_fails <- function(mode, golden, candidate) {
+  with_compare_mode(mode, {
+    e <- tryCatch({
+      expect_output_matches_golden(golden, candidate)
+      NULL
+    }, expectation_failure = function(e) e)
+    !is.null(e)
+  })
+}
+
+test_that("`both` really runs the byte assertion, not just the numeric one", {
+  # numerically equal, byte-different -- the only thing that tells the modes
+  # apart. This pair is what makes the argument below airtight: since numeric
+  # provably CANNOT fail on it, a failure under `both` can only have come from
+  # the byte branch.
+  g <- tempfile(fileext = ".txt")
+  c1 <- tempfile(fileext = ".txt")
+  writeLines(c("CHR\tp.value", "1\t1.0"), g)
+  writeLines(c("CHR\tp.value", "1\t1.00"), c1)
+  expect_false(files_byte_identical(g, c1))            # byte: different
+  expect_true(tables_equivalence(g, c1)$ok)            # numeric: equal
+
+  expect_false(dispatch_fails("numeric", g, c1))
+  expect_true(dispatch_fails("byte", g, c1))
+  # the one that matters: `both` must inherit byte's verdict, not numeric's
+  expect_true(dispatch_fails("both", g, c1))
+
+  # the null control, so the failures above are not simply "always fails"
+  file.copy(g, c1, overwrite = TRUE)
+  for (m in c("byte", "numeric", "both")) {
+    expect_false(dispatch_fails(m, g, c1), label = paste("identical files under", m))
+  }
+})

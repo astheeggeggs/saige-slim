@@ -8,15 +8,22 @@
 #            step-1 determinism double-run, and the permuted-phenotype
 #            negative control (~20+ min)
 #
-# SAIGE_COMPARE_MODE=byte|numeric (default byte): byte is valid only on the
-# platform that generated harness/goldens (see CLAUDE.md); numeric parses the
-# tables and compares numerics at a relative tolerance for cross-platform CI.
+# SAIGE_COMPARE_MODE=byte|numeric|both (default byte): byte is valid only on
+# the platform that generated harness/goldens (see CLAUDE.md); numeric parses
+# the tables and compares numerics at a relative tolerance for cross-platform
+# CI; `both` generates ONCE and applies both comparators, which is what the
+# local gate wants -- the two modes never differed in what they GENERATED.
+# A bad value is rejected rather than silently treated as numeric.
 
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 source "$REPO/harness/env.sh"
 export SAIGE_TEST_LEVEL="${1:-standard}"
 export SAIGE_COMPARE_MODE="${SAIGE_COMPARE_MODE:-byte}"
+case "$SAIGE_COMPARE_MODE" in
+  byte|numeric|both) ;;
+  *) echo "bad SAIGE_COMPARE_MODE: '$SAIGE_COMPARE_MODE' (byte, numeric or both)" >&2; exit 1 ;;
+esac
 echo "== SAIGE tests: level=$SAIGE_TEST_LEVEL compare=$SAIGE_COMPARE_MODE"
 cd "$REPO"
 

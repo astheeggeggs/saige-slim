@@ -1964,14 +1964,38 @@ file, a race across two suites; `396e66b4`).
   spent today on a TSAN-annotation-only diff, whose macros compile to
   `((void)0)` in every normal build.
 
-**The lever still on the table, and it is the big one.** The two modes run the
-SAME step-2 CLI invocations and differ only in how the outputs are COMPARED
-(byte-exact against parsed-table tolerance). Serial byte 7m04s + numeric 6m58s
-is two nearly identical halves generating the same files twice. Generating once
-and applying both comparators would be ~2x on the gate -- far more than
-anything tried here -- and it preserves the byte-vs-numeric requirement, which
-is about comparison and not about generation. It is a test-harness refactor,
-not a flag, so it is a decision rather than a patch.
+**The big lever, DONE (2026-09-12): one generation, both comparators --
+measured 1.97x.** The two modes ran the SAME step-2 CLI invocations and differed
+only in how outputs were COMPARED, so the gate was generating everything twice
+to apply two cheap checks. `SAIGE_COMPARE_MODE=both` generates once and applies
+both.
+
+| arm | wall | expectations |
+|---|---|---|
+| `both` (one tier) | 6m58s, 7m02s | 4909 |
+| `byte` + `numeric` (two tiers) | 7m07s + 6m39s = 13m46s | 4531 / 4731 |
+
+**420s against 826s, 1.97x**, and the two `both` reps are 4 seconds apart -- an
+effect this size needs no paired design, unlike the concurrency null above where
+the effect was smaller than the noise. Measurement effort should scale with the
+effect, and the concurrency discipline was over-applied here at first.
+
+The expectation count is the check that `both` really runs both sets rather than
+silently taking one branch: with shared non-comparison expectations N, byte
+comparisons B and numeric expectations M, the three totals give N = 4531 + 4731
+- 4909 = 4353, hence B = 178 and M = 378, and N + B + M = 4909 exactly. The
+union, not either half. (Quoting 4507/4707 from the pre-refactor baseline
+against 4909 does NOT reconcile -- those predate 24 added meta-test
+expectations. Counts must come from one build.)
+
+Also guarded directly, in `test-meta-comparators.R`: a file pair that is
+NUMERICALLY EQUAL and BYTE-DIFFERENT ("1.0" against "1.00") is the only thing
+that tells the modes apart, and since numeric provably cannot fail on it, a
+failure under `both` can only have come from the byte branch. Asserted for all
+three modes, with identical files as the null control. Perturbing a real golden
+is NOT the instrument -- several end-to-end tests compare printed strings
+between two runs, so a perturbed golden fails them for reasons unrelated to the
+mode (tried, and it misled before it was understood).
 
 ## FlexRV RAM/CPU levers on the step-2 region path (2026-09-12)
 

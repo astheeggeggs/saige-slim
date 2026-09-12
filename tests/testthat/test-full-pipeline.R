@@ -15,7 +15,7 @@ run_bash <- function(script, args) {
 test_that("full regeneration matches goldens (make_goldens + compare_goldens)", {
   skip_unless_level("full")
   skip_if_no_goldens()
-  skip_if_not(saige_compare_mode() == "byte",
+  skip_if_not(compare_wants_byte(),
               "full tier is byte-exact and therefore same-platform only")
   cand <- tempfile("candidate_")
   expect_cli_ok(run_bash("make_goldens.sh", cand))
@@ -54,7 +54,7 @@ test_that("permuted-phenotype negative control passes and matches golden bytes",
   # make_controls.sh runs check_null.R itself and exits nonzero on a
   # non-uniform null, so expect_cli_ok covers the uniformity check.
   expect_cli_ok(run_bash("make_controls.sh", cand))
-  if (saige_compare_mode() == "byte") {
+  if (compare_wants_byte()) {
     for (f in c("pheno_permuted.txt", "null_binary.rda",
                 "null_binary.varianceRatio.txt", "null_marker.txt")) {
       expect_files_byte_identical(file.path(saige_goldens, "control", f),

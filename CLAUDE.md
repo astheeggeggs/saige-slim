@@ -128,7 +128,19 @@ Standing facts that have each cost at least one session. One line of why each.
   timing taken right after a clean build is not comparable to one taken after a
   previous run -- and a timing without its conditions is not a measurement.
 - **Push through the pre-push gate.** `bash harness/prepush.sh` runs the ledger
-  lint and the standard tier in BOTH compare modes; `.githooks/pre-push` runs it
+  lint and ONE standard tier at `SAIGE_COMPARE_MODE=both`, which generates every
+  output once and applies BOTH comparators to it -- byte-exact and parsed-table
+  tolerance -- so the both-modes requirement is tightened rather than relaxed
+  (each comparison site now asserts both on the SAME bytes; before, each of two
+  runs asserted one). **7m00s instead of 13m46s, measured 1.97x**, because the
+  two modes never differed in what they GENERATED, only in how they compared.
+  `SAIGE_PREPUSH_MODES="byte numeric"` restores two separate tier runs, which is
+  the thing to use if a generation is ever suspected of being non-deterministic
+  -- that is the one question two runs can answer and one cannot. CI stays on
+  `numeric` with its own generation, because byte-exactness is only a valid
+  claim on the platform that made the goldens. A bad mode value is now rejected;
+  it used to be silently treated as numeric, so `SAIGE_COMPARE_MODE=bytes` ran
+  the weaker comparator and said nothing; `.githooks/pre-push` runs it
   on every push to `slim` once `git config core.hooksPath .githooks` is set (see
   Build). The byte-vs-numeric trap fired twice, once leaving CI red for five
   hours while the session recorded the tier as green.
@@ -188,6 +200,9 @@ PGEN fixtures (`linux-64`/`osx-64` only, hence the per-platform split in
 
 `SAIGE_COMPARE_MODE=numeric` switches step-2 comparison from byte-exact to
 parsed-table tolerance (1e-5 rel), required off the golden-generating platform;
+`both` applies the two comparators to one generation and is what the local gate
+uses (validated: a value that is none of the three is an error, not a silent
+downgrade to numeric);
 CI (`.github/workflows/tests.yml`, on the `slim` remote
 `astheeggeggs/saige-slim`, `gh run list --repo astheeggeggs/saige-slim`) uses it.
 Detection power is drill-verified: a planted 0.1% variance-ratio perturbation
