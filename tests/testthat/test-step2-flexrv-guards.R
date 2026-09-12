@@ -103,11 +103,20 @@ test_that("a constant score, and a 0/1 score, are warned about per region", {
     p <- strsplit(l, " ")[[1]]
     paste(c(p[1:2], rep("1", length(p) - 2)), collapse = " ")
   }, "")
-  cf <- file.path(saige_extdata, "input", "tmp_flexrv_const_score.txt")
+  # A TEMPFILE, not a fixed name inside extdata/input. This used to write
+  # ./input/tmp_flexrv_const_score.txt and unlink it on exit, which is safe
+  # while the suite runs one process at a time -- testthat parallelises by FILE,
+  # so both tests in this file share one worker and serialise -- and is a RACE
+  # the moment two suites run at once. prepush.sh now runs the byte and numeric
+  # compare modes concurrently, and this is exactly what broke: one mode
+  # unlinked the group file while the other mode's CLI child was opening it,
+  # giving "Check_File_Exist(groupFile): groupFile does not exsit". Nothing in
+  # the repo tree may be written by a test.
+  cf <- tempfile("flexrv_const_score_", fileext = ".txt")
   writeLines(const, cf)
   on.exit(unlink(cf), add = TRUE)
   r <- fx_run(c(FX_G, FX_BIN, FX_SG, "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
-                "--groupFile=./input/tmp_flexrv_const_score.txt", FX_FLEX, FX_BURDEN,
+                paste0("--groupFile=", cf), FX_FLEX, FX_BURDEN,
                 "--flexRV_scoreTransforms=unw;sbeta:2", "--flexRV_MAFTransforms=unw"), "const")
   fx_ok(r)
   expect_true(fx_log_has(r, "Region GENE1: the score 'REVEL' is constant (1)"))
@@ -122,11 +131,11 @@ test_that("a constant score, and a 0/1 score, are warned about per region", {
     v <- as.numeric(p[-(1:2)])
     paste(c(p[1:2], ifelse(v >= 0.5, "1", "0")), collapse = " ")
   }, "")
-  bf <- file.path(saige_extdata, "input", "tmp_flexrv_binary_score.txt")
+  bf <- tempfile("flexrv_binary_score_", fileext = ".txt")   # see the note above
   writeLines(bin01, bf)
   on.exit(unlink(bf), add = TRUE)
   r <- fx_run(c(FX_G, FX_BIN, FX_SG, "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
-                "--groupFile=./input/tmp_flexrv_binary_score.txt", FX_FLEX, FX_BURDEN,
+                paste0("--groupFile=", bf), FX_FLEX, FX_BURDEN,
                 "--flexRV_scoreTransforms=unw;sbeta:2;cbrt:0.5", "--flexRV_MAFTransforms=unw"),
               "bin01")
   fx_ok(r)
