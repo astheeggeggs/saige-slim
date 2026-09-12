@@ -1,9 +1,13 @@
 # What is worth doing next (2026-09-03, updated 2026-09-12; read docs/state/handoff-2026-09-12-review-fixes-and-gate.md first)
 
-**Current handoff: `docs/state/handoff-2026-09-12-review-fixes-and-gate.md`**
-(the adversarial review's three fixes -- one of them live and producing wrong
-numbers -- the CCT answer, and the gate at 1.97x; everything pushed at
-`b16fa83c`)
+**Current handoff: `docs/state/handoff-2026-09-12-ur-pseudomarker-129-130.md`**
+(LEDGER #129 and #130 FIXED, one commit each -- the two decisions and the
+reasoning that settled them, the exact three-way reconciliation #130 bought, the
+18-file blast radius predicted before the gate, and LEDGER #131 opened by the
+same question)
+(previous: `docs/state/handoff-2026-09-12-review-fixes-and-gate.md`,
+the adversarial review's three fixes -- one of them live and producing wrong
+numbers -- the CCT answer, and the gate at 1.97x)
 (previous: `docs/state/handoff-2026-09-12-flexrv-ram-levers.md`, the
 five RAM/CPU levers on the FlexRV region path, one gated commit each; before
 it `docs/state/handoff-2026-09-12-flexrv-rerun-129.md`)
@@ -28,7 +32,7 @@ its "NEXT UP: eight open ledger rows" is out of date (five are now closed), and
 `step2_group_y_null.txt` is "a genuine BEFORE baseline" is WRONG -- ~80 commits
 separate it from HEAD. `docs/state/handoff-2026-09-04.md` is where CI lives.
 
-**2026-09-12 (morning): the FlexRV sweep was RE-RUN at HEAD** (prediction `docs/state/prediction-flexrv-rerun-2026-09-12.md`, outcome appended; NOTES.md "the sweep re-run at HEAD"). The beta-weight SKAT-O lines reproduce 2026-09-10 to the digit (the pipeline control); every FlexRV detection count fell by 1-2 through #118 (flex192 now 11 = grid 11 > unw 8 on `y_binary`). It found **LEDGER #129 (OPEN)**: the dosage-zeroing filter is applied to the WEIGHTED ultra-rare pseudo-marker in weight units, so transform sets with weights <= 0.2 vanish at collapse 10 and partially-zeroed sets are tested on the surviving carriers (`GENE0181 sbeta10`: 1.7e-3 at collapse 0, 2.9e-9 at collapse 10, 1.7e-3 again with `--dosage_zerod_cutoff=0`); characterization test in place, two local fixes on the row, goldens P58-P61 to be predicted before either lands. Read the collapse-0 column of the study until it is fixed. The three study [DECISION]s stand; the memo is `docs/state/flexrv-study-decisions-2026-09-12.md`.
+**2026-09-12 (morning): the FlexRV sweep was RE-RUN at HEAD** (prediction `docs/state/prediction-flexrv-rerun-2026-09-12.md`, outcome appended; NOTES.md "the sweep re-run at HEAD"). The beta-weight SKAT-O lines reproduce 2026-09-10 to the digit (the pipeline control); every FlexRV detection count fell by 1-2 through #118 (flex192 now 11 = grid 11 > unw 8 on `y_binary`). It found **LEDGER #129 (FIXED 2026-09-12)**: the dosage-zeroing filter was applied to the WEIGHTED ultra-rare pseudo-marker in weight units, so transform sets with weights <= 0.2 vanished at collapse 10 and partially-zeroed sets were tested on the surviving carriers (`GENE0181 sbeta10`: 1.7e-3 at collapse 0, 2.9e-9 at collapse 10, 1.7e-3 again with `--dosage_zerod_cutoff=0`). The filter no longer touches the pseudo-marker (fix (b) of the two on the row). **The sweep's collapse-10 columns are therefore stale and the collapse-0 caveat is now MOOT** -- the numbers in `prediction-flexrv-rerun-2026-09-12.md` and the study memo were measured with the bug in, and a re-run is the only way to know what they are; the per-trait presence counts (20/45/44/21 sets present at collapse 0 and absent at 10) should now be ZERO, which is the cheapest check that the fix reached the sweep and not only the bundled fixture. The bundled blast radius was predicted exactly (18 goldens moved, 1 deleted) and is on the row. The three study [DECISION]s stand; the memo is `docs/state/flexrv-study-decisions-2026-09-12.md`.
 
 **2026-09-12: the #126 null-calibration check is DONE and it passed** (`docs/state/prediction-126-null-calibration.md`, prediction before the runs, outcome appended; summary on the #126 row). The MAC 1-4 cells the default now admits are uniform on the quantitative null in every stratum and conservative on the binary null by discreteness; gate 5 removes exactly those rows; the 63 causal genes (not 21 -- the 2026-09-10 rebuild) are detected equally at both gates on burden and FlexRV and 16 -> 15 on the SKAT-O grid by CCT dilution within the bound. It found **LEDGER #128 (OPEN)**: a SKAT-O run dies when a region with two or more cells has every cell refused by a RAISED `--minGroupMAC_in_BurdenTest` (unreachable at the default 1); characterization test in place, fix candidates on the row, best decided together with #116, which it re-observed (an empty region is an `NA` Cauchy row on the burden path and nothing on the SKAT-O path). **RESOLVED 2026-09-12**, the assumption CONFIRMED and quantified (`docs/state/prediction-cct-dependence-2026-09-12.md`): the pooled Cauchy row read 0.06-0.08 at alpha 0.05 on the quantitative null in every arm while alpha 0.01 was on target, and it is the COMBINATION, not the inputs. CCT is EXACTLY uniform at rho 0 and at rho 1 (Cauchy stability, index 1), so the distortion is non-monotone with an interior peak; measured on SAIGE's own `get_CCT_pvalue` it peaks at rho ~0.5-0.7 and grows with k -- 0.0613 at k=18, 0.0698 at k=192 -- while alpha 0.01 stays within +0.002-0.005. The real null flex192 run at N=50,000 has measured inter-set correlation 0.705, that same peak band, and goes 0.0522 (sets) -> 0.0714 (pooled), which the simulation reproduces; the pooled row reconciles with the CCT of its own set rows to the file's printed precision. With n=210 genes the real arm's 95% CI is [0.0405, 0.1151] and cannot reject nominal by itself -- the precision is the simulation's. **So `p_FlexRV` has size ~0.07 at alpha 0.05 on this design and is accurate at discovery thresholds; never quote its nominal size at a large alpha.** An earlier reading of this session, that the cell-level 0.055-0.059 above showed the inputs already liberal and CCT possibly exonerated, is REFUTED on that arm (inputs at nominal, pooled not); where both are present (`wgridr`/`wplain`, k=9) they add, CCT's share about +0.009.
 
@@ -78,6 +82,37 @@ change to that path's hot scratch. Also: the claim that
 `tsan.sh` does not cover the region cell pool, which the review made and which
 propagated into my own summary, is FALSE -- the `region` workload was there all
 along; it had merely never been run on this work.
+
+**2026-09-12 also opened LEDGER #132 and #133 (both OPEN, both pre-existing),
+from the adversarial review of the #129/#130 diff.** #132: ACAT-V's combination
+weights are `c(w, rep(1, numofUR))`, so a uniform rescaling of a group file's
+weights -- a no-op for every other p-value, measured byte-identical -- shifts
+`Pvalue_ACATV` by up to 10.5 %, because the pseudo-marker's fixed 1 does not
+scale and CCT normalises by `sum(w)`; the control is that with the collapse OFF
+every column is identical. #133: a cell's `MAC` is folded while
+`MAC_case`/`MAC_control` are not, so they do not sum to it above AF 0.5 (444
+against 151 + 1405 in P62/P63), and the suite's existing identity assertion runs
+only on a golden where no cell exceeds 0.5. The review also corrected four false
+statements in that diff -- read section 8 of the handoff before writing anything
+that cites it.
+
+**2026-09-12 opened LEDGER #131 (OPEN, a DECISION)**, out of the same question
+that settled #130: the MAF filter and the beta weight still FOLD to the minor
+allele while the annotation they select on describes the ALT allele, so a site
+whose ALT allele is common (AF 0.778) is admitted to a max-MAF cell as MAF 0.222
+and handed `dbeta(0.222, 1, 25)` = 0.0606, the weight of a 22 %-frequency
+variant, with `MAC` 444 printed rather than 1556. After #130 the collapse and the burden
+describe one vector, still minor-coded per constituent, while the weight and
+the admission use the folded frequency. It
+is upstream's behaviour and the published SKAT convention, so it is a modelling
+question and the row carries three candidate answers; it deliberately has NO
+characterization test, because what one would pin is the choice. **WIDENED the
+same day:** the GENOTYPE fold belongs to this row too and is its larger half --
+a group test folds every marker above AF 0.5 to its minor allele before the
+burden or the collapse is built, so #130 could not and did not make the burden
+ALT-coded. Reachable on
+bundled data only through P62/P63's raised collapse cutoff or
+`--AlleleOrder=ref-first`.
 
 **2026-09-12 opened AND CLOSED LEDGER #130.** Opened writing the flip drill's
 characterization test (`tests/testthat/test-step2-region-flip.R`): on a
@@ -783,7 +818,8 @@ What is NOT done, in order of value:
   2026-09-12 (`harness/sim/flexrv_study/results-2026-09-12.txt`;
   `docs/state/prediction-flexrv-rerun-2026-09-12.md`): `skato`/`grid`
   reproduce exactly, every FlexRV count fell by 1-2 (flex192 11 = grid 11 >
-  `unw` 8 on `y_binary`; read the collapse-0 column, #129-free). Blocked on
+  `unw` 8 on `y_binary`; the collapse-0 column was the #129-free one, and
+  since #129 is FIXED the collapse-10 numbers need re-running). Blocked on
   the owner's decisions -- memo `docs/state/flexrv-study-decisions-2026-09-12.md`.
 - **LEDGER #118 is DECIDED (2026-09-11): the per-set MAC, everywhere** --
   variance-ratio band, ER eligibility, the min-group-MAC gate and the printed
