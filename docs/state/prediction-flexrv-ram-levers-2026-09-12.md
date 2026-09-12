@@ -68,3 +68,14 @@ the same gap the memory line's formula already had against the 2026-09-10
 measurement (7 predicted, ~4.9 measured N-doubles per set). Stage 3 removes
 the dense matrices themselves; what is left after it is the measurement
 that will locate this.
+
+## Outcome, stage 2 (2026-09-12 05:50)
+
+Held: goldens byte-identical in both compare modes (4424 / 4624 pass); the
+50k output byte-identical to HEAD's at 1 and 4 threads. RSS unchanged
+(731 / 743 MB), as predicted. **Timing short of the prediction and not
+clean:** at 4 threads 34.1 s real against 53.4 s for its own 1-thread run
+(1.56x; HEAD's pair on the same alternation 47.9 / 60.1 s, 1.26x), with the
+box at load 6-10 from other sessions' R processes throughout. The ">= 2x"
+is not falsified by a loaded box and not confirmed either; re-time on a
+quiet box before quoting a number.

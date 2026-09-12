@@ -3074,12 +3074,29 @@ if(i2 > 0){
     urCells[k].tested = false;   // persistent records: a cell tested in an earlier region is not tested in this one
   }
   std::vector<unsigned int> urTested;   // jmr of the tested cells, in cell order
-  unsigned int i;
-  for(unsigned int j = 0; j < q_anno; j++){
-     for(unsigned int m = 0; m < q_maf; m++){
-	jm = j*q_maf+m;
-	for(unsigned int r = 0; r < q_weight; r++){
-	jmr = jm*q_weight + r;
+  // Lever 2 (2026-09-12): B1 runs one cell per task on the pass-A pool
+  // (runCellTests: literally serial at one thread). Every write inside the
+  // body lands in the cell's own slot -- its columns of genoURMat /
+  // genoSumMat / the residualised copies, its jmr entry of the group
+  // vectors, its output slot i = q0 + jmr, its URCell and URCellModel
+  // records -- and every per-set accumulation keeps its serial order, so the
+  // output is byte-identical at any thread count. The only order-dependent
+  // state (rowInChunk, urTested, i1InChunk, i1) is assigned in the serial
+  // post-pass below, in cell order, from the flags the body leaves.
+  std::vector<char> urHasSupport(q_anno_maf_weight, 0);   // the cell's collapse has a carrier
+  const std::function<void(unsigned int, Marker::MarkerScratch&)> urPrepFn =
+    [&](unsigned int jmrT, Marker::MarkerScratch & sc)
+  {
+    const unsigned int jmr = jmrT;                 // shadows the function-level loop variables
+    const unsigned int r = jmr % q_weight;
+    const unsigned int jm = jmr / q_weight;
+    const unsigned int j = jm / q_maf;
+    const unsigned int m = jm % q_maf;
+    (void)jm;
+    unsigned int i;
+    double MACcasegroup = 0.0, MACcontrolgroup = 0.0, AF_case = 0.0, AF_ctrl = 0.0;
+    std::vector<uint> & indexZeroVec = sc.indexZeroVec;       // per-worker scratch, not the
+    std::vector<uint> & indexNonZeroVec = sc.indexNonZeroVec; // function-level vectors
 	// Non-owning view over the column: imputeGenoAndFlip below flips,
 	// imputes and zeroes it IN PLACE, and the column is not read as the raw
 	// collapse anywhere after this (the twin holds that), so the test's
@@ -3124,6 +3141,7 @@ if(i2 > 0){
 	i = q0 + jmr;
 	markerVec.at(i) = "UR";             // marker IDs
 	if(indexForNonZero.n_elem > 0){
+	urHasSupport[jmr] = 1;
 	//URindVec.push_back(jm+1);
 	  double altFreq = arma::mean(genoURVec)/2;
 	  double altCounts = arma::accu(genoURVec);
@@ -3256,9 +3274,10 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
 
 
 
-	    annoMAFIndicatorVec.zeros();
-	    annoMAFIndicatorVec(jmr) = 1;
-	    annoMAFIndicatorMat.row(i) = annoMAFIndicatorVec.t();
+	    // the row directly (the shared indicator vector is not a per-worker
+	    // scratch); the same values
+	    annoMAFIndicatorMat.row(i).zeros();
+	    annoMAFIndicatorMat(i, jmr) = 1;
     	    infoVec.at(i) = info;                 // marker information: CHR:POS:REF:ALT
     	    altFreqVec.at(i) = altFreq;	// allele frequencies of ALT allele, this is not always < 0.5.
 	    altCountsVec.at(i) = altCounts;
@@ -3266,8 +3285,6 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
     	    MACVec.at(i) = MAC;
     	    MAFVec.at(i) = MAF;
 
-            indexZeroVec_arma = arma::conv_to<arma::uvec>::from(indexZeroVec);
-            indexNonZeroVec_arma = arma::conv_to<arma::uvec>::from(indexNonZeroVec);
 
 
 	    // Step 3b: the getMarkerPval call and the writes that read its
@@ -3347,13 +3364,11 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
         URCell & c = urCells[jmr];
         c.tested = true;
         c.i = i;
-        c.rowInChunk = i1InChunk;
         c.genoURPtr = genoURMat.colptr(jmr);
         c.nz.assign(indexNonZeroVec.begin(), indexNonZeroVec.end());
         c.altFreq = altFreq;
         c.flip = flip;
         c.w0 = w0;
-        urTested.push_back(jmr);
       }
     }else{//if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
             // LEDGER #118 (b): the twin of the block above.
@@ -3370,11 +3385,21 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
             }
     }
 
-    i1InChunk = i1InChunk + 1;
-    i1 = i1 + 1;
     }
-    }// for r (weight sets)
-   }
+  };
+  runCellTests(q_anno_maf_weight, urPrepFn);
+  // Serial post-pass, cell order: exactly the increments the loop body used
+  // to make as it went (a cell with a carrier consumed a P1/P2 row whether
+  // or not it was tested singly).
+  for(unsigned int jmr2 = 0; jmr2 < q_anno_maf_weight; jmr2++){
+    if(urHasSupport[jmr2]){
+      if(urCells[jmr2].tested){
+        urCells[jmr2].rowInChunk = i1InChunk;
+        urTested.push_back(jmr2);
+      }
+      i1InChunk = i1InChunk + 1;
+      i1 = i1 + 1;
+    }
   }
   // B2: the per-cell tests, over the cells B1 prepared x the models -- in
   // order at one thread, one (cell, model) per range on the pass-A pool
@@ -3605,13 +3630,22 @@ if(t_regionTestType == "BURDEN"){
      // LEDGER #127: the pooled row's provenance, counted where the decision is
      // made rather than inferred from the rows afterwards.
      unsigned int nRefusedMAC = 0;
-     // D1
-     for(unsigned int j = 0; j < q_anno; j++){
-       q_maf_m = q_maf_for_anno(j);
-       for(unsigned int m = 0; m < q_maf; m++){
-	jm = j*q_maf+m;
-	for(unsigned int r = 0; r < q_weight; r++){
-	jmr = jm*q_weight + r;
+     std::vector<char> burdenRefused(q_anno_maf_weight, 0);
+     // D1, one cell per task on the pass-A pool (lever 2, 2026-09-12): every
+     // write is to the cell's own slot (its BurdenCell, its BurdenCellModel
+     // per model, its refused flag); burdenTested and the refused COUNT are
+     // assembled in cell order by the serial post-pass below.
+     const std::function<void(unsigned int, Marker::MarkerScratch&)> burdenPrepFn =
+       [&](unsigned int jmrT, Marker::MarkerScratch & sc)
+     {
+      (void)sc;
+      const unsigned int jmr = jmrT;
+      const unsigned int r = jmr % q_weight;
+      const unsigned int jm = jmr / q_weight;
+      const unsigned int j = jm / q_maf;
+      const unsigned int m = jm % q_maf;
+      (void)jm;
+      const arma::uword q_maf_m = q_maf_for_anno(j);
       if(m <= q_maf_m){
         const arma::vec genoSumVec(genoSumMat.colptr(jmr), t_n, false, true);   // view, not a copy
         arma::uvec indexNonZeroVec_arma = arma::find(genoSumVec != 0);
@@ -3630,7 +3664,7 @@ if(t_regionTestType == "BURDEN"){
 		MAC = MAF*2*t_n;
 	}
         if(indexNonZeroVec_arma.n_elem > 0 && MAC < g_cfg.min_gourpmac_for_burdenonly){
-          nRefusedMAC += 1;
+          burdenRefused[jmr] = 1;
         }
         if(indexNonZeroVec_arma.n_elem > 0 && MAC >= g_cfg.min_gourpmac_for_burdenonly){
           for(unsigned int km = 0; km < P; km++){
@@ -3658,11 +3692,13 @@ if(t_regionTestType == "BURDEN"){
           c.genoSumPtr = genoSumMat.colptr(jmr);
           c.nz.assign(indexNonZeroVec_arma.begin(), indexNonZeroVec_arma.end());
           c.altFreq = altFreq;
-          burdenTested.push_back(jmr);
         }
       }
-	} // for r (weight sets)
-       }
+     };
+     runCellTests(q_anno_maf_weight, burdenPrepFn);
+     for(unsigned int jmr2 = 0; jmr2 < q_anno_maf_weight; jmr2++){
+       if(burdenRefused[jmr2]){ nRefusedMAC += 1; }
+       if(burdenCells[jmr2].tested){ burdenTested.push_back(jmr2); }
      }
 
      // D2: the tests, (cell, model) per task. flip is false on this path, as it always was.
