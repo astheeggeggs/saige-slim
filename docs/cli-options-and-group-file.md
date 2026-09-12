@@ -344,3 +344,44 @@ which is what `--flexRV_lofAnno` keys the `lof` transform on.
 A `score` line and `weight` lines can coexist in principle (the layout
 arithmetic allows `2 + 1 + K`), but a FlexRV run is driven by the score line
 alone.
+
+## 4. What the annotation mask does to markers it excludes
+
+`--annotation_in_groupTest` is a MEMBERSHIP filter applied before any
+weighting, not a re-weighting. The indicator is built as
+`ANNO %in% <the group's labels>` (`R/SAIGE_SPATest_Region.R:2180`) and every
+accumulation is gated on it (`src/Main.cpp:2948` and `:3018`). So with
+`lof:missense` requested, a `synonymous`-labelled marker contributes to the
+burden column, the ultra-rare collapse, `MAC`/`MAC_case`/`MAC_control`,
+`Number_rare`/`Number_ultra_rare` and `maxMAFperAnno` -- none of them. Its
+weight and its FlexRV score are parsed and validated, then unused. Label
+everything once in the file and let each run choose its mask; that is the
+intended use.
+
+Three consequences that are not obvious:
+
+- **An excluded marker is still read, QC'd and SINGLE-tested.** `doSingleTests`
+  is gated on the run type only, never on the annotation
+  (`src/Main.cpp:2699`), so on a SKAT-O run -- or `--r.corr=1` with
+  `--is_single_in_groupTest=TRUE` -- it appears in `.singleAssoc.txt` with its
+  own p-value while contributing to no group row. The single-variant file and
+  the region table therefore cover DIFFERENT marker sets, and a row in the
+  former is not evidence the marker was in any cell.
+- **A requested group that matches nothing is dropped with a `warning()`, not
+  an error** ("No markers are found for at least one annotation, so region N is
+  skipped"). If only some requested groups match, the indicator matrix is
+  rebuilt with just those, so the surviving cells RENUMBER -- a region's cell
+  list is data-dependent on an ordinary multi-group run. A FlexRV run cannot
+  hit this, having one group by construction.
+- **Setting LoF markers' scores to 1 is a CONVENTION, not a requirement**, and
+  nothing checks it (only `[0, 1]` is enforced). The `lof` score transform
+  ignores the score entirely -- `src/FlexRV.cpp:13` is
+  `return t_isLof ? 1.0 : 0.0`, keyed on the annotation label -- but the other
+  15 score transforms read the score for every marker, LoF included. Scoring a
+  LoF marker 0.3 therefore DOWN-weights it against a missense marker scoring
+  0.9 under `cbrt` and `sbeta`, silently, which is backwards from the method's
+  intent. Similarly `--flexRV_lofAnno` is checked against the labels present
+  anywhere in the FILE, not per region: a region with no marker carrying a
+  named LoF label gets an all-zero LoF mask, and on a binary trait a weight of
+  exactly 0 in a SKAT-O cell returns NA (LEDGER #117), which is part of why
+  FlexRV on a binary trait is an `--r.corr=1` method.
