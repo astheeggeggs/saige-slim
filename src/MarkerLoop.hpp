@@ -108,8 +108,17 @@ struct MarkerScratch {
   // rest of this struct; sized on first use, so unused on a quantitative scan.
   SAIGE::KernelWorkspace ws;
 
+  // The region path's carrier-space store (Main.cpp, CarrierStore) scatters
+  // a cell's column into these for the duration of one call and clears it
+  // afterwards; they are all-zero between uses, which is the invariant every
+  // scatter relies on.
+  arma::vec urScratch;
+  arma::vec urNwScratch;
+  arma::vec sumScratch;
+
   MarkerScratch(int t_n, int t_numMarkerCond)
-    : GVec(t_n), gtildeVec(t_n), G1tilde_P_G2tilde_Vec(t_numMarkerCond)
+    : GVec(t_n), gtildeVec(t_n), G1tilde_P_G2tilde_Vec(t_numMarkerCond),
+      urScratch(t_n, arma::fill::zeros), urNwScratch(t_n, arma::fill::zeros), sumScratch(t_n, arma::fill::zeros)
   {}
 };
 

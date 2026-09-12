@@ -414,6 +414,95 @@ struct RegionProfile {
 
 static RegionProfile g_regionProfile;
 
+// Carrier-space storage for the region path's three per-(sample x cell)
+// matrices (lever 1 of the FlexRV RAM/CPU work, 2026-09-12). genoURMat, its
+// unweighted twin and genoSumMat were dense N x (anno x maf x set) doubles --
+// at N = 500,000 and 192 sets, 768 MB each -- while a region's carriers are
+// the union of its markers' nonzero samples, hundreds to a few thousand. The
+// store keeps one column per CARRIER (slot), q doubles each, so a marker's
+// scatter over the sets is contiguous, and the per-cell N-length vector a
+// test needs is scattered into the worker's scratch for the call and cleared
+// afterwards (`scatter*` / `clear`: O(carriers), or O(N) only for a cell whose
+// pseudo-marker was FLIPPED by imputeGenoAndFlip, where every non-carrier
+// holds 2 -- `urFill`). Every arithmetic expression over the values is the
+// pre-change one over the same operands in the same order (the per-(sample,
+// set) accumulation is in marker order; the N-length reductions still run on
+// the scattered dense vector), so the output is byte-identical.
+//
+// One instance per process: the marker loop inserts slots serially (phase 2);
+// the cell passes only read the store and write their own cell's column.
+struct CarrierStore {
+  arma::uword n = 0;
+  unsigned int q = 0;
+  std::size_t cap = 0;
+  std::vector<int32_t> slotOf;          // sample -> slot, -1 if not (yet) a carrier
+  std::vector<arma::uword> carriers;    // slot -> sample, insertion order
+  std::vector<double> ur, urNw, sum;    // q * cap; entry (slot, cell) at slot*q + cell
+  std::vector<double> urFill;           // per cell: the value every NON-carrier holds in ur (0, or 2 after a flip)
+
+  void begin(arma::uword t_n, unsigned int t_q)
+  {
+    if(slotOf.size() != t_n){ slotOf.assign(t_n, -1); carriers.clear(); }
+    for(std::size_t k = 0; k < carriers.size(); k++){ slotOf[carriers[k]] = -1; }
+    if(q != t_q){
+      ur.clear(); urNw.clear(); sum.clear(); cap = 0;
+    }else{
+      const std::size_t used = carriers.size() * (std::size_t)q;
+      std::fill(ur.begin(), ur.begin() + used, 0.0);
+      std::fill(urNw.begin(), urNw.begin() + used, 0.0);
+      std::fill(sum.begin(), sum.begin() + used, 0.0);
+    }
+    carriers.clear();
+    n = t_n; q = t_q;
+    urFill.assign(q, 0.0);
+  }
+  // the slot of a sample, inserting it (serial phase only)
+  inline int32_t slot(arma::uword t_sample)
+  {
+    int32_t s = slotOf[t_sample];
+    if(s < 0){
+      s = (int32_t)carriers.size();
+      if((std::size_t)s == cap){
+        const std::size_t ncap = (cap == 0) ? 1024 : cap * 2;
+        ur.resize(ncap * q, 0.0); urNw.resize(ncap * q, 0.0); sum.resize(ncap * q, 0.0);
+        cap = ncap;
+      }
+      carriers.push_back(t_sample);
+      slotOf[t_sample] = s;
+    }
+    return s;
+  }
+  inline double & urAt(int32_t t_s, unsigned int t_c){ return ur[(std::size_t)t_s * q + t_c]; }
+  inline double & urNwAt(int32_t t_s, unsigned int t_c){ return urNw[(std::size_t)t_s * q + t_c]; }
+  inline double & sumAt(int32_t t_s, unsigned int t_c){ return sum[(std::size_t)t_s * q + t_c]; }
+  // dense expansion of one cell's column into a caller-owned N-vector that is
+  // zero on entry (the worker's scratch, kept zero between uses by clear())
+  void scatter(const std::vector<double> & t_col, unsigned int t_c, double t_fill, arma::vec & t_out) const
+  {
+    double* o = t_out.memptr();
+    if(t_fill != 0.0){ t_out.fill(t_fill); }
+    for(std::size_t k = 0; k < carriers.size(); k++){ o[carriers[k]] = t_col[k * q + t_c]; }
+  }
+  void scatterUr(unsigned int t_c, arma::vec & t_out) const { scatter(ur, t_c, urFill[t_c], t_out); }
+  void scatterUrNw(unsigned int t_c, arma::vec & t_out) const { scatter(urNw, t_c, 0.0, t_out); }
+  void scatterSum(unsigned int t_c, arma::vec & t_out) const { scatter(sum, t_c, 0.0, t_out); }
+  // the post-impute pseudo-marker back into its column (its own cell only)
+  void gatherUr(unsigned int t_c, const arma::vec & t_in, double t_fill)
+  {
+    const double* i = t_in.memptr();
+    for(std::size_t k = 0; k < carriers.size(); k++){ ur[k * q + t_c] = i[carriers[k]]; }
+    urFill[t_c] = t_fill;
+  }
+  // restore the scratch to all-zero: the carriers only, unless a fill made it dense
+  void clear(arma::vec & t_out, bool t_dense) const
+  {
+    if(t_dense){ t_out.zeros(); return; }
+    double* o = t_out.memptr();
+    for(std::size_t k = 0; k < carriers.size(); k++){ o[carriers[k]] = 0.0; }
+  }
+};
+static CarrierStore g_carrierStore;
+
 // The zero-index vector a cell test consumes (the SPA and ER kernels read it;
 // the score tests do not) is the complement of its nonzero list, and
 // `arma::find(v == 0)` returns exactly that in increasing order. Deriving it
@@ -2110,13 +2199,11 @@ Rcpp::List mainRegionInCPP(
   arma::mat transformWeightMat(q0, q_weight_transform);
   transformWeightMat.fill(arma::datum::nan);
   if(q_weight_transform > 0){
-    // Printed once per process: the dense N-length structures below are
-    // per (anno x max_MAF x set) cell, so at Kt = 192 they are the memory
-    // of the run. Counted: genoURMat + its unweighted twin + genoSumMat
-    // (3 columns per cell), the
-    // persistent ultra-rare cell records (a collapsed vector plus its
-    // zero-index vector, ~2N each), and for BURDEN the burden cell records
-    // (the same shape); a SKAT-O run adds each model's residualised copy of
+    // Printed once per process. Since 2026-09-12 the per-cell genotype
+    // storage is carrier-space (CarrierStore: 3 doubles per carrier per
+    // cell, no N-length array per cell) and the cell records hold no
+    // N-length data, so on BURDEN the N-dependent per-cell floor is zero;
+    // a SKAT-O run still holds each model's dense residualised copy of
     // genoSumMat and its P1/P2 scratch (2 x max(m1, cells) x N), and keeps
     // every chunk's P1/P2 rows in memory on top of that. An estimate of the
     // floor, not a measurement (docs/design/flexrv-design.md, "Memory").
@@ -2125,12 +2212,7 @@ Rcpp::List mainRegionInCPP(
       s_flexMemPrinted = true;
       const double cells = (double)q_anno_maf_weight;
       const double perN = 8.0 * (double)t_n;
-      // LEDGER #118 widened genoURMat_noweights from per-cell to per-set, so
-      // the unweighted twin is one more dense N x cells matrix. Since
-      // 2026-09-12 the persistent cell records hold no N-length data (they
-      // point at these columns and derive the zero list at test time), so
-      // the three matrices are the whole K-dependent floor on BURDEN.
-      double bytes = perN * cells * 3.0;   // genoURMat(+twin), genoSumMat
+      double bytes = 0.0;   // BURDEN: carrier-space storage, nothing N-length per cell
       if(t_regionTestType != "BURDEN"){
         const double m1c = std::max((double)g_cfg.region_maxMarkers_cutoff, cells);
         bytes += (double)P * (perN * cells + 2.0 * perN * m1c);
@@ -2145,18 +2227,20 @@ Rcpp::List mainRegionInCPP(
                 << q_anno_maf << " (annotation x max_MAF) cell(s) = " << q_anno_maf_weight
                 << " weighted cells per region; the dense per-cell working memory is at least "
                 << std::fixed << std::setprecision(1) << (bytes / 1048576.0) << " MB at N = " << t_n
-                << (t_regionTestType == "BURDEN" ? " (BURDEN)" : " (SKAT-O, plus the per-chunk P1/P2 rows)")
+                << (t_regionTestType == "BURDEN" ? " (BURDEN: carrier-space storage, 3 doubles per carrier per cell)" : " (SKAT-O, plus the per-chunk P1/P2 rows)")
                 << std::endl;
       std::cout.flags(coutFlags);
       std::cout.precision(coutPrec);
     }
   }
-  arma::mat genoURMat(t_n, q_anno_maf_weight, arma::fill::zeros);
-  // LEDGER #118: jmr-indexed (per weight set). The unweighted twin of
-  // genoURMat: the collapse over the ultra-rare markers set r actually keeps
-  // (w_r != 0), with the RAW genotypes. It is what the reported MAC and the
-  // weight-independent count are built from under option (b).
-  arma::mat genoURMat_noweights(t_n, q_anno_maf_weight, arma::fill::zeros);
+  // genoURMat, genoURMat_noweights and genoSumMat live in carrier space
+  // (CarrierStore above): cs.ur, cs.urNw, cs.sum. LEDGER #118: jmr-indexed
+  // (per weight set). The unweighted twin of genoURMat is the collapse over
+  // the ultra-rare markers set r actually keeps (w_r != 0), with the RAW
+  // genotypes; it is what the reported MAC and the weight-independent count
+  // are built from under option (b).
+  CarrierStore & cs = g_carrierStore;
+  cs.begin(t_n, q_anno_maf_weight);
   unsigned int q = q0 + q_anno_maf_weight;
   arma::imat annoMAFIndicatorMat(q, q_anno_maf_weight, arma::fill::zeros);
   arma::ivec annoMAFIndicatorVec(q_anno_maf_weight);
@@ -2186,7 +2270,7 @@ Rcpp::List mainRegionInCPP(
   }
   arma::mat w0G2Mat_cond(q_cond, q_cond);
   w0G2Mat_cond = w0G2Vec_cond * (w0G2Vec_cond.t());
-  arma::mat genoSumMat(t_n, q_anno_maf_weight, arma::fill::zeros); //for Phi_cc for binary traits and BURDEN test
+  // (genoSumMat: cs.sum -- for Phi_cc for binary traits and the BURDEN test)
   // LEDGER #118: jmr-indexed (per weight set). Unweighted allele count of the
   // markers set r keeps; the burden gate, the variance-ratio band and the ER
   // predicate all read it, so a set that zeroes most of its cell is no longer
@@ -2715,7 +2799,7 @@ Rcpp::List mainRegionInCPP(
                   }
                 }
                 for(unsigned int k2 = 0; k2 < nNonZero; k2++){
-                  genoSumMat(pr.nz(k2), jmr) = genoSumMat(pr.nz(k2), jmr) + pr.w0(r)*pr.gnz(k2);
+                  { double & x = cs.sumAt(cs.slot(pr.nz(k2)), jmr); x = x + pr.w0(r)*pr.gnz(k2); }
                   if(inSet){
                     genoSumcount_noweight(jmr) = genoSumcount_noweight(jmr) + pr.gnz(k2);
                   }
@@ -2773,8 +2857,9 @@ Rcpp::List mainRegionInCPP(
                   // genoURMat holds, so the numbers read off it below are the
                   // legacy ones (max is idempotent; repeats are exact).
                   for(unsigned int k2 = 0; k2 < nNonZero; k2++){
-                    genoURMat(pr.nz(k2), jmr) = std::max(genoURMat(pr.nz(k2), jmr), pr.gnz(k2));
-                    genoURMat_noweights(pr.nz(k2), jmr) = std::max(genoURMat_noweights(pr.nz(k2), jmr) , (pr.gnz(k2)));
+                    { const int32_t sl = cs.slot(pr.nz(k2));
+                      double & u = cs.urAt(sl, jmr);   u = std::max(u, pr.gnz(k2));
+                      double & t = cs.urNwAt(sl, jmr); t = std::max(t, (pr.gnz(k2))); }
                   }
                   NumUltraRare_GroupVec(jmr) = NumUltraRare_GroupVec(jmr) + 1;
                 }else{
@@ -2792,8 +2877,9 @@ Rcpp::List mainRegionInCPP(
                   const double wUR = (setKindVec[r] == SET_CUSTOM) ? t_weight(i, setColVec[r]) : pr.w0(r);
                   if(wUR != 0){
                     for(unsigned int k2 = 0; k2 < nNonZero; k2++){
-                      genoURMat(pr.nz(k2), jmr) = std::max(genoURMat(pr.nz(k2), jmr) , wUR * (pr.gnz(k2)));
-                      genoURMat_noweights(pr.nz(k2), jmr) = std::max(genoURMat_noweights(pr.nz(k2), jmr) , (pr.gnz(k2)));
+                      { const int32_t sl = cs.slot(pr.nz(k2));
+                        double & u = cs.urAt(sl, jmr);   u = std::max(u, wUR * (pr.gnz(k2)));
+                        double & t = cs.urNwAt(sl, jmr); t = std::max(t, (pr.gnz(k2))); }
                     }
                     NumUltraRare_GroupVec(jmr) = NumUltraRare_GroupVec(jmr) + 1;
                   }
@@ -3020,7 +3106,13 @@ Rcpp::List mainRegionInCPP(
   // as before.
   if(t_regionTestType != "BURDEN"){
     for(unsigned int km = 0; km < P; km++){
-      W[km].genoSumMat = genoSumMat;
+      arma::mat & G = W[km].genoSumMat;
+      G.zeros(t_n, q_anno_maf_weight);
+      for(std::size_t k = 0; k < cs.carriers.size(); k++){
+        const double* src = &cs.sum[k * (std::size_t)q_anno_maf_weight];
+        const arma::uword smp = cs.carriers[k];
+        for(unsigned int c = 0; c < q_anno_maf_weight; c++){ G(smp, c) = src[c]; }
+      }
     }
   }
 //for all UR variants
@@ -3052,7 +3144,7 @@ if(i2 > 0){
     bool tested = false;
     unsigned int i = 0;            // output slot q0 + jmr
     unsigned int rowInChunk = 0;   // P1Mat row / P2Mat column
-    const double* genoURPtr = nullptr;   // the collapsed pseudo-marker after imputeGenoAndFlip: genoURMat's column, imputed IN PLACE
+    // the collapsed pseudo-marker after imputeGenoAndFlip is cs.ur's column jmr (+ cs.urFill), scattered at test time
     std::vector<arma::uword> nz;         // its nonzero sample indices (the zero list is derived at test time)
     double altFreq = 0.0;
     bool flip = false;
@@ -3097,16 +3189,19 @@ if(i2 > 0){
     double MACcasegroup = 0.0, MACcontrolgroup = 0.0, AF_case = 0.0, AF_ctrl = 0.0;
     std::vector<uint> & indexZeroVec = sc.indexZeroVec;       // per-worker scratch, not the
     std::vector<uint> & indexNonZeroVec = sc.indexNonZeroVec; // function-level vectors
-	// Non-owning view over the column: imputeGenoAndFlip below flips,
-	// imputes and zeroes it IN PLACE, and the column is not read as the raw
-	// collapse anywhere after this (the twin holds that), so the test's
-	// record can point at it instead of copying it.
-	arma::vec genoURVec(genoURMat.colptr(jmr), t_n, false, true);
+    bool urFlipped = false;
+	// The cell's collapse, scattered from carrier space into the worker's
+	// (all-zero) scratch: imputeGenoAndFlip below flips, imputes and zeroes
+	// it in place there, and the end of this body gathers it back into
+	// cs.ur for the test (B2). The twin likewise, read-only.
+	cs.scatterUr(jmr, sc.urScratch);
+	arma::vec & genoURVec = sc.urScratch;
 	// LEDGER #118: set r's OWN unweighted collapse (its ultra-rare markers
 	// with w_r != 0, raw genotypes). A non-owning view: the copy this used to
 	// make was 400 KB at N = 50,000 and happened once per SET rather than once
 	// per cell (see the accumulation below).
-	const arma::vec genoURVec_noweights(genoURMat_noweights.colptr(jmr), t_n, false, true);
+	cs.scatterUrNw(jmr, sc.urNwScratch);
+	const arma::vec & genoURVec_noweights = sc.urNwScratch;
 	if(q_weight > 1){
 	  // Fix (C5 review #1), now per set (LEDGER #118): the weight-independent
 	  // count must not depend on any OTHER set's support, and must not count
@@ -3129,7 +3224,7 @@ if(i2 > 0){
 	  // Measured 2026-09-11: find + gather here cost +2.4 s of `urPass` on
 	  // sim50k, because LEDGER #118 moved this inside the weight-set loop and
 	  // it went from 210 executions to 210 x 192 (harness/bench/NOTES.md).
-	  const double * colptr_nw = genoURMat_noweights.colptr(jmr);
+	  const double * colptr_nw = genoURVec_noweights.memptr();
 	  double & acc_nw = genoSumcount_noweight(jmr);
 	  for(unsigned int k = 0; k < t_n; k++){
 	    const double v_nw = colptr_nw[k];
@@ -3166,6 +3261,7 @@ if(i2 > 0){
 	  const double MAC_nw = MAF_nw * 2 * t_n * (1 - missingRate);
 	  std::vector<uint32_t> indexForMissing;
     	  flip = imputeGenoAndFlip(genoURVec, altFreq, altCounts, indexForMissing, g_cfg.impute_method, g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC, indexZeroVec, indexNonZeroVec);
+	  urFlipped = flip;
 	  // Count/emission split (C5 review #1): at q_weight == 1 each branch's
 	  // first arm is textually the legacy loop -- genoSumcount_noweight
 	  // gated on THIS set's collapse support (for a weighted file that is
@@ -3195,24 +3291,24 @@ if(i2 > 0){
 	    //genoSumMat.col(jm) = genoSumMat.col(jm) + genoURVec;
 	    if(q_weight == 1){
 	      for(unsigned int k = 0; k < indexForNonZero.n_elem; k++){
-                genoSumMat(indexForNonZero(k), jmr) = genoSumMat(indexForNonZero(k), jmr) + genoURVec(indexForNonZero(k));
+                cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) = cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) + genoURVec(indexForNonZero(k));
 	 	genoSumcount_noweight(jmr) = genoSumcount_noweight(jmr) + genoURVec_noweights(indexForNonZero(k));
 	      }
 	    }else{
 	      for(unsigned int k = 0; k < indexForNonZero.n_elem; k++){
-                genoSumMat(indexForNonZero(k), jmr) = genoSumMat(indexForNonZero(k), jmr) + genoURVec(indexForNonZero(k));
+                cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) = cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) + genoURVec(indexForNonZero(k));
 	      }
 	    }
     	  }else if(setKindVec[r] == SET_BETA){
                 w0 = boost::math::pdf(betaDistVec[setColVec[r]], MAF);
 	        if(q_weight == 1){
 	        for(unsigned int k = 0; k < indexForNonZero.n_elem; k++){
-                genoSumMat(indexForNonZero(k), jmr) = genoSumMat(indexForNonZero(k), jmr) + genoURVec(indexForNonZero(k)) * w0;
+                cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) = cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) + genoURVec(indexForNonZero(k)) * w0;
 	 	genoSumcount_noweight(jmr) = genoSumcount_noweight(jmr) + genoURVec(indexForNonZero(k));
 	        }
 	        }else{
 	        for(unsigned int k = 0; k < indexForNonZero.n_elem; k++){
-                genoSumMat(indexForNonZero(k), jmr) = genoSumMat(indexForNonZero(k), jmr) + genoURVec(indexForNonZero(k)) * w0;
+                cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) = cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) + genoURVec(indexForNonZero(k)) * w0;
 	        }
 	        }
     	  }else{
@@ -3224,12 +3320,12 @@ if(i2 > 0){
 	        w0 = 1.0;
 	        if(q_weight == 1){
 	        for(unsigned int k = 0; k < indexForNonZero.n_elem; k++){
-                genoSumMat(indexForNonZero(k), jmr) = genoSumMat(indexForNonZero(k), jmr) + genoURVec(indexForNonZero(k));
+                cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) = cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) + genoURVec(indexForNonZero(k));
 	 	genoSumcount_noweight(jmr) = genoSumcount_noweight(jmr) + genoURVec(indexForNonZero(k));
 	        }
 	        }else{
 	        for(unsigned int k = 0; k < indexForNonZero.n_elem; k++){
-                genoSumMat(indexForNonZero(k), jmr) = genoSumMat(indexForNonZero(k), jmr) + genoURVec(indexForNonZero(k));
+                cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) = cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) + genoURVec(indexForNonZero(k));
 	        }
 	        }
     	  }
@@ -3239,7 +3335,9 @@ if(i2 > 0){
 
   	 if(t_regionTestType != "BURDEN"){
 	    for(unsigned int km = 0; km < P; km++){
-	    arma::vec genoSumMatvec1 = genoSumMat.col(jmr);
+	    cs.scatterSum(jmr, sc.sumScratch);
+	    arma::vec genoSumMatvec1 = sc.sumScratch;
+	    cs.clear(sc.sumScratch, false);
 	    arma::vec genoSumMatvec2 = XVs[km] * genoSumMatvec1;
 	    arma::vec genoSumMatvec3 = genoSumMatvec1 - XXVX_invs[km] * genoSumMatvec2;
 	    W[km].genoSumMat.col(jmr) = genoSumMatvec3;
@@ -3364,7 +3462,6 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
         URCell & c = urCells[jmr];
         c.tested = true;
         c.i = i;
-        c.genoURPtr = genoURMat.colptr(jmr);
         c.nz.assign(indexNonZeroVec.begin(), indexNonZeroVec.end());
         c.altFreq = altFreq;
         c.flip = flip;
@@ -3386,6 +3483,12 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
     }
 
     }
+    // the post-impute pseudo-marker back into carrier space for B2 (a
+    // flipped one is dense: every non-carrier holds 2), and the worker's
+    // scratches back to zero
+    if(indexForNonZero.n_elem > 0){ cs.gatherUr(jmr, genoURVec, urFlipped ? 2.0 : 0.0); }
+    cs.clear(sc.urScratch, urFlipped);
+    cs.clear(sc.urNwScratch, false);
   };
   runCellTests(q_anno_maf_weight, urPrepFn);
   // Serial post-pass, cell order: exactly the increments the loop body used
@@ -3421,7 +3524,8 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
       arma::uvec nzView(const_cast<arma::uword*>(c.nz.data()), c.nz.size(), false, true);
       complementIndices(c.nz.data(), c.nz.size(), (arma::uword)t_n, sc.indexZeroVec_arma);
       arma::uvec & zeroView = sc.indexZeroVec_arma;
-      arma::vec genoURVecRef(const_cast<double*>(c.genoURPtr), t_n, false, true);   // getMarkerPval takes a non-const ref and never writes it (S3/S12)
+      cs.scatterUr(urTested[t / P], sc.urScratch);
+      arma::vec & genoURVecRef = sc.urScratch;   // getMarkerPval takes a non-const ref and never writes it (S3/S12)
       ProfileScope rpUrTest(rp.enabled ? &rp.urTest : nullptr, &rp.nUrTest);
       if(cm.isER){
         model.getMarkerPval(genoURVecRef, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, c.flip, cm.ctx, &sc.ws);
@@ -3429,6 +3533,7 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
         model.getMarkerPval(genoURVecRef, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, c.flip, cm.ctx, &sc.ws);
       }
       rpUrTest.stop();
+      cs.clear(sc.urScratch, cs.urFill[urTested[t / P]] != 0.0);
       if(isCondition){
         cm.G1 = sc.G1tilde_P_G2tilde_Vec;
       }
@@ -3609,7 +3714,7 @@ if(t_regionTestType == "BURDEN"){
      // carry-forward cache sees exactly the sequence it always did.
      struct BurdenCell {
        bool tested = false;
-       const double* genoSumPtr = nullptr;   // genoSumMat's column (alive through D2); no copy
+       // the burden vector is cs.sum's column jmr, scattered at test time
        std::vector<arma::uword> nz;          // zero list derived at test time (complementIndices)
        double altFreq = 0.0;
      };
@@ -3638,7 +3743,6 @@ if(t_regionTestType == "BURDEN"){
      const std::function<void(unsigned int, Marker::MarkerScratch&)> burdenPrepFn =
        [&](unsigned int jmrT, Marker::MarkerScratch & sc)
      {
-      (void)sc;
       const unsigned int jmr = jmrT;
       const unsigned int r = jmr % q_weight;
       const unsigned int jm = jmr / q_weight;
@@ -3647,7 +3751,8 @@ if(t_regionTestType == "BURDEN"){
       (void)jm;
       const arma::uword q_maf_m = q_maf_for_anno(j);
       if(m <= q_maf_m){
-        const arma::vec genoSumVec(genoSumMat.colptr(jmr), t_n, false, true);   // view, not a copy
+        cs.scatterSum(jmr, sc.sumScratch);
+        const arma::vec & genoSumVec = sc.sumScratch;
         arma::uvec indexNonZeroVec_arma = arma::find(genoSumVec != 0);
 	// LEDGER #118: per-SET now (jmr, not jm). This is the quantity the
 	// min-group-MAC gate, the variance-ratio band and the ER predicate all
@@ -3689,10 +3794,10 @@ if(t_regionTestType == "BURDEN"){
           }
           BurdenCell & c = burdenCells[jmr];
           c.tested = true;
-          c.genoSumPtr = genoSumMat.colptr(jmr);
           c.nz.assign(indexNonZeroVec_arma.begin(), indexNonZeroVec_arma.end());
           c.altFreq = altFreq;
         }
+        cs.clear(sc.sumScratch, false);
       }
      };
      runCellTests(q_anno_maf_weight, burdenPrepFn);
@@ -3717,13 +3822,15 @@ if(t_regionTestType == "BURDEN"){
          arma::uvec nzView(c.nz.data(), c.nz.size(), false, true);
          complementIndices(c.nz.data(), c.nz.size(), (arma::uword)t_n, sc.indexZeroVec_arma);
          arma::uvec & zeroView = sc.indexZeroVec_arma;
-         arma::vec genoSumVecRef(const_cast<double*>(c.genoSumPtr), t_n, false, true);
+         cs.scatterSum(jmrT, sc.sumScratch);
+         arma::vec & genoSumVecRef = sc.sumScratch;
          ProfileScope rpEmitTest(rp.enabled ? &rp.emitTest : nullptr, &rp.nEmitTest);
          if(cm.isER){
            model.getMarkerPval(genoSumVecRef, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, isregion, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, cm.ctx, &sc.ws);
          }else{
            model.getMarkerPval(genoSumVecRef, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, isregion, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, cm.ctx, &sc.ws);
          }
+         cs.clear(sc.sumScratch, false);
        };
        runCellTests((unsigned int)(burdenTested.size() * P), burdenTestFn);
      }

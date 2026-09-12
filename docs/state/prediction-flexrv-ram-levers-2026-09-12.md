@@ -79,3 +79,19 @@ clean:** at 4 threads 34.1 s real against 53.4 s for its own 1-thread run
 box at load 6-10 from other sessions' R processes throughout. The ">= 2x"
 is not falsified by a loaded box and not confirmed either; re-time on a
 quiet box before quoting a number.
+
+## Outcome, stage 3a (2026-09-12 06:50): carrier-space storage
+
+Held: goldens byte-identical in both compare modes (4424 / 4624 pass); the
+50k output byte-identical to HEAD's at 1 and 4 threads. **Peak RSS at
+K = 192: 874 -> 522 MB at 1 thread (891 -> 541 at 4)**, i.e. within ~20 MB
+of the K = 1 run (~505 MB) -- what stage 1 could not locate is gone with the
+dense matrices. CPU at 1 thread 45.5 -> 36.3 s user; at 4 threads 42.4 ->
+24.1 s real (HEAD -> stage 3a, same alternation, load 3-6).
+**The flipped pseudo-marker path** (unreachable on sim50k) is gated by a
+drill: max MAF 0.5 with the collapse cutoff above 2N on the bundled binary
+model, where `GENE1 missense;lof`'s pseudo-marker has alt frequency 0.778
+and is flipped; SKAT-O and BURDEN arms, main and single-variant files, all
+byte-identical to HEAD's scratch library -- and a planted build that drops
+the flipped fill (every non-carrier's 2) DIFFERS from HEAD on exactly those
+cells in both arms, so the drill sees the path (both ways).
