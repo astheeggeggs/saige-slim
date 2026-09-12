@@ -18,6 +18,8 @@
 // // [[Rcpp::plugins(openmp)]]]
 
 #include <RcppParallel.h>   // S6: parallelFor for the marker scan
+#include <unordered_map>    // lever 5: the BURDEN twin memo
+#include <cstring>          // memcmp
 #include <mutex>
 #include "Main.hpp"
 #include "FlexRV.hpp"
@@ -196,6 +198,32 @@ static std::string pooledCCTRule(const arma::vec & t_pvals){
   const arma::uvec notOne = arma::find(t_pvals != 1.0);
   if(notOne.n_elem < t_pvals.n_elem){ return "min-p Bonferroni"; }
   return "Cauchy";
+}
+
+// Lever 5 (2026-09-12): identical BURDEN cells are evaluated once. On a
+// FlexRV run 42% of a gene's 192 rows at N = 50,000 are twins (the MAC
+// ladder above the gene's largest MAC), and BURDEN had no memo where SKAT-O
+// (R/SkatoParallel.R) has one. D1's post-pass keys every tested cell on
+// EVERY input its test reads -- the bytes of its burden vector over the
+// region's carriers, the bytes of its weight-independent allele count (which
+// fixes altFreq, the MAC, the variance-ratio band, the sparse-GRM choice and
+// the ER predicate) and its set's ER eligibility -- and a later cell with
+// the same key is served the earlier cell's BurdenCellModel verbatim, per
+// model. Byte-identical by construction: the test is a pure function of
+// those inputs (the ER kernel re-seeds at entry). The per-run counts are
+// printed once by R (burdenMemoSummary); served is a measurement.
+static unsigned long long g_burdenAsked = 0, g_burdenEvaluated = 0;
+
+// [[Rcpp::export]]
+void resetBurdenMemoInCPP(){
+  g_burdenAsked = 0;
+  g_burdenEvaluated = 0;
+}
+
+// [[Rcpp::export]]
+Rcpp::IntegerVector getBurdenMemoInCPP(){
+  return Rcpp::IntegerVector::create(Rcpp::Named("asked") = (int)g_burdenAsked,
+                                     Rcpp::Named("evaluated") = (int)g_burdenEvaluated);
 }
 
 // [[Rcpp::export]]
@@ -606,6 +634,7 @@ struct CarrierStore {
   }
 };
 static CarrierStore g_carrierStore;
+
 
 // The zero-index vector a cell test consumes (the SPA and ER kernels read it;
 // the score tests do not) is the complement of its nonzero list, and
@@ -3958,6 +3987,52 @@ if(t_regionTestType == "BURDEN"){
        if(burdenRefused[jmr2]){ nRefusedMAC += 1; }
        if(burdenCells[jmr2].tested){ burdenTested.push_back(jmr2); }
      }
+     // Lever 5: the twin memo (see g_burdenAsked). burdenEval is the cells
+     // whose test runs, in cell order; burdenTwinOf names the earlier cell a
+     // twin is served from.
+     std::vector<unsigned int> burdenEval;
+     std::vector<int> burdenTwinOf(q_anno_maf_weight, -1);
+     {
+       std::unordered_map<unsigned long long, std::vector<unsigned int>> seen;
+       const std::size_t nc = cs.carriers.size();
+       const std::size_t qq = q_anno_maf_weight;
+       auto sameKey = [&](unsigned int a, unsigned int b) -> bool {
+         const double ca = genoSumcount_noweight(a), cb = genoSumcount_noweight(b);
+         if(std::memcmp(&ca, &cb, sizeof(double)) != 0){ return false; }
+         if((erAllowedVec[a % q_weight] ? 1 : 0) != (erAllowedVec[b % q_weight] ? 1 : 0)){ return false; }
+         for(std::size_t sl = 0; sl < nc; sl++){
+           if(std::memcmp(&cs.sum[sl * qq + a], &cs.sum[sl * qq + b], sizeof(double)) != 0){ return false; }
+         }
+         return true;
+       };
+       for(unsigned int k = 0; k < burdenTested.size(); k++){
+         const unsigned int c = burdenTested[k];
+         // FNV-1a over the column's bytes in slot order, then the count's, then the ER flag
+         unsigned long long h = 1469598103934665603ULL;
+         auto mix = [&h](const void* t_p, std::size_t t_n){
+           const unsigned char* b = (const unsigned char*)t_p;
+           for(std::size_t i = 0; i < t_n; i++){ h ^= b[i]; h *= 1099511628211ULL; }
+         };
+         for(std::size_t sl = 0; sl < nc; sl++){ mix(&cs.sum[sl * qq + c], sizeof(double)); }
+         const double cnt = genoSumcount_noweight(c);
+         mix(&cnt, sizeof(double));
+         const unsigned char er = erAllowedVec[c % q_weight] ? 1 : 0;
+         mix(&er, 1);
+         std::vector<unsigned int> & bucket = seen[h];
+         int primary = -1;
+         for(std::size_t b = 0; b < bucket.size(); b++){
+           if(sameKey(bucket[b], c)){ primary = (int)bucket[b]; break; }
+         }
+         if(primary < 0){
+           bucket.push_back(c);
+           burdenEval.push_back(c);
+         }else{
+           burdenTwinOf[c] = primary;
+         }
+       }
+       g_burdenAsked += burdenTested.size();
+       g_burdenEvaluated += burdenEval.size();
+     }
 
      // D2: the tests, (cell, model) per task. flip is false on this path, as it always was.
      {
@@ -3965,7 +4040,7 @@ if(t_regionTestType == "BURDEN"){
          [&](unsigned int t, Marker::MarkerScratch & sc)
        {
          const unsigned int km = t % P;
-         const unsigned int jmrT = burdenTested[t / P];
+         const unsigned int jmrT = burdenEval[t / P];
          const SAIGE::SAIGEClass & model = *W[km].model;
          BurdenCell & c = burdenCells[jmrT];
          BurdenCellModel & cm = W[km].burdenOut[jmrT];
@@ -3985,7 +4060,15 @@ if(t_regionTestType == "BURDEN"){
          }
          cs.clear(sc.sumScratch, false);
        };
-       runCellTests((unsigned int)(burdenTested.size() * P), burdenTestFn);
+       runCellTests((unsigned int)(burdenEval.size() * P), burdenTestFn);
+       // the twins, served their primary's record per model (cell order)
+       for(unsigned int k = 0; k < burdenTested.size(); k++){
+         const unsigned int c = burdenTested[k];
+         if(burdenTwinOf[c] < 0){ continue; }
+         for(unsigned int km = 0; km < P; km++){
+           W[km].burdenOut[c] = W[km].burdenOut[(unsigned int)burdenTwinOf[c]];
+         }
+       }
      }
 
      // D3: the emitter loop per model, reading the cells.

@@ -34,6 +34,16 @@ test_that("the default run writes 192 sets per gene, in the normative order, plu
                    1L)
   expect_true(fx_log_has(r, paste0("192 transform sets over 1 (annotation x max_MAF) cell(s) = ",
                                    "192 weighted cells")))
+  # lever 5 (2026-09-12): identical BURDEN cells are evaluated once. The
+  # tally is printed once, adds up, and serves at least one cell on this
+  # fixture (MAC25..MAC500 duplicate unw; helper-step2-flexrv.R). served is
+  # a measurement: the bound is asserted, not the number.
+  tally <- grep("^BURDEN cells: ", r$log, value = TRUE)
+  expect_identical(length(tally), 1L)
+  nums <- as.integer(regmatches(tally, gregexpr("[0-9]+", tally))[[1]])
+  expect_identical(nums[1], 384L)
+  expect_identical(nums[2] + nums[3], nums[1])
+  expect_gte(nums[3], 1L)
 })
 
 test_that("the pooled Cauchy row is the CCT over the gene's set rows (p_FlexRV)", {

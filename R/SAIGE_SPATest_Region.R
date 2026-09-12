@@ -861,6 +861,7 @@ SAIGE.Region <- function(mu,
   cat("Region marker loop will use ", nThreads, " in-process threads.\n", sep = "")
   skatFailureReset() # LEDGER #57: per-run accounting, R/SkatFailures.R
   skatoDedupeReset() # identical cells evaluated once: per-run counts, R/SkatoParallel.R
+  burdenMemoReset() # identical BURDEN cells evaluated once: per-run counts, R/BurdenMemo.R
   pooledReset() # LEDGER #127: pooled-row provenance, R/PooledRow.R
 
   # LEDGER #25 FIXED: the index is written and validated with the SAME nEachChunk.
@@ -1883,6 +1884,7 @@ SAIGE.Region <- function(mu,
   # beside the FIRST model's file (the per-cell record has no model column).
   skatFailureSummary(OutputFile)
   skatoDedupeSummary()
+  burdenMemoSummary()
   # LEDGER #127: how each region's pooled (Cauchy) row was formed -- cells
   # tested, cells the min-group-MAC gate refused, p-values that entered, and
   # which CCT rule produced the number -- with a sidecar beside the FIRST

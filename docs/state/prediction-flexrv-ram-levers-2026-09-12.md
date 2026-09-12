@@ -110,3 +110,17 @@ sum exact -- and was replaced before it counted). 1-thread profile:
 `urPass` 14.5 -> 0.79 s, `emit - emitTest` 5.6 -> 1.3 s, total C++ 44.9 ->
 19.9 s; wall 55.9 -> 23.3 s at 1 thread and 40.0 -> 16.6 s at 4 (HEAD ->
 stage 3b, same alternation). RSS 518 / 539 MB.
+
+## Outcome, stage 4 (2026-09-12 08:20): the BURDEN twin memo
+
+Held: goldens byte-identical in both compare modes (4428 / 4628 pass, the
+four new expectations included); the 50k output byte-identical to HEAD's at
+1 and 4 threads; the flip drill byte-identical in both arms. The run prints
+`BURDEN cells: 40196 asked for, 23680 evaluated, 16516 served from an
+identical cell` on sim50k (41%; the 2026-09-10 twin estimate was 42%) and
+`6 asked for, 4 evaluated, 2 served` on the flip drill's burden arm.
+`emitTest` 13.4 -> 9.2 s at 1 thread; wall 57.4 -> 19.4 s at 1 thread and
+41.0 -> 12.6 s at 4 (HEAD -> stage 4, same alternation). RSS 522 / 538 MB.
+One build failed on the way: the exports were first placed inside the
+profile struct's anonymous namespace and did not link (`symbol not found
+in flat namespace`); moved to file scope beside the pooled-record exports.
