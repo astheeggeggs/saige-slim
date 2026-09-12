@@ -634,6 +634,28 @@ struct CarrierStore {
   }
 };
 
+// Scatter/clear is an INVARIANT of the worker scratch, not a sequence of two
+// statements. A cell test can leave its body by THROWING: the ER arm's
+// SKATMainThread::NeedsMainThread is a routine, expected deferral, and
+// RegionCellWorker catches it (and any std::exception) and CONTINUES the loop
+// with the SAME MarkerScratch. A trailing `cs.clear(...)` is skipped on that
+// path, so the next cell on that worker is scattered onto the previous cell's
+// residue -- scatter writes only its own carriers (plus a fill) and trusts the
+// rest to be zero -- and is tested on a genotype vector that is the union of
+// two cells. Clearing from a destructor covers the normal return and both
+// catches; on the normal path it is the same call at the same point, so no
+// output moves.
+struct ScratchGuard {
+  ScratchGuard(const CarrierStore & t_cs, arma::vec & t_vec, bool t_dense)
+    : m_cs(t_cs), m_vec(t_vec), m_dense(t_dense) {}
+  ~ScratchGuard() { m_cs.clear(m_vec, m_dense); }
+  ScratchGuard(const ScratchGuard&) = delete;
+  ScratchGuard& operator=(const ScratchGuard&) = delete;
+  const CarrierStore & m_cs;
+  arma::vec & m_vec;
+  const bool m_dense;
+};
+
 static CarrierStore g_carrierStore;
 
 
@@ -3718,6 +3740,7 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
       complementIndices(c.nz.data(), c.nz.size(), (arma::uword)t_n, sc.indexZeroVec_arma);
       arma::uvec & zeroView = sc.indexZeroVec_arma;
       cs.scatterUr(urTested[t / P], sc.urScratch);
+      ScratchGuard urGuard(cs, sc.urScratch, cs.urFill[urTested[t / P]] != 0.0);
       arma::vec & genoURVecRef = sc.urScratch;   // getMarkerPval takes a non-const ref and never writes it (S3/S12)
       ProfileScope rpUrTest(rp.enabled ? &rp.urTest : nullptr, &rp.nUrTest);
       if(cm.isER){
@@ -3726,7 +3749,8 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
         model.getMarkerPval(genoURVecRef, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, c.flip, cm.ctx, &sc.ws);
       }
       rpUrTest.stop();
-      cs.clear(sc.urScratch, cs.urFill[urTested[t / P]] != 0.0);
+      // (urGuard clears sc.urScratch at scope exit, throw or not; nothing below
+      // reads it -- G1, P1 and P2 are taken from other scratch members)
       if(isCondition){
         cm.G1 = sc.G1tilde_P_G2tilde_Vec;
       }
@@ -4063,6 +4087,7 @@ if(t_regionTestType == "BURDEN"){
          complementIndices(c.nz.data(), c.nz.size(), (arma::uword)t_n, sc.indexZeroVec_arma);
          arma::uvec & zeroView = sc.indexZeroVec_arma;
          cs.scatterSum(jmrT, sc.sumScratch);
+         ScratchGuard sumGuard(cs, sc.sumScratch, false);
          arma::vec & genoSumVecRef = sc.sumScratch;
          ProfileScope rpEmitTest(rp.enabled ? &rp.emitTest : nullptr, &rp.nEmitTest);
          if(cm.isER){
@@ -4070,7 +4095,7 @@ if(t_regionTestType == "BURDEN"){
          }else{
            model.getMarkerPval(genoSumVecRef, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, isregion, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, cm.ctx, &sc.ws);
          }
-         cs.clear(sc.sumScratch, false);
+         // (sumGuard clears sc.sumScratch at scope exit, throw or not)
        };
        runCellTests((unsigned int)(burdenEval.size() * P), burdenTestFn);
        // the twins, served their primary's record per model (cell order)
