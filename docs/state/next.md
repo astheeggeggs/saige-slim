@@ -1,6 +1,10 @@
-# What is worth doing next (2026-09-03, updated 2026-09-12; read docs/state/handoff-2026-09-12-flexrv-ram-levers.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-12; read docs/state/handoff-2026-09-12-review-fixes-and-gate.md first)
 
-**Current handoff: `docs/state/handoff-2026-09-12-flexrv-ram-levers.md`** (the
+**Current handoff: `docs/state/handoff-2026-09-12-review-fixes-and-gate.md`**
+(the adversarial review's three fixes -- one of them live and producing wrong
+numbers -- the CCT answer, and the gate at 1.97x; everything pushed at
+`b16fa83c`)
+(previous: `docs/state/handoff-2026-09-12-flexrv-ram-levers.md`, the
 five RAM/CPU levers on the FlexRV region path, one gated commit each; before
 it `docs/state/handoff-2026-09-12-flexrv-rerun-129.md`)
 (previous: `handoff-2026-09-12-126-null-calibration.md` -- the #126 null
