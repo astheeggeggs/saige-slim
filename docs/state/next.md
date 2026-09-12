@@ -1,4 +1,4 @@
-# What is worth doing next (2026-09-03, updated 2026-09-12; read docs/state/handoff-2026-09-12-review-fixes-and-gate.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-12; read docs/state/handoff-2026-09-12-ur-pseudomarker-129-130.md first)
 
 **Current handoff: `docs/state/handoff-2026-09-12-ur-pseudomarker-129-130.md`**
 (LEDGER #129 and #130 FIXED, one commit each -- the two decisions and the

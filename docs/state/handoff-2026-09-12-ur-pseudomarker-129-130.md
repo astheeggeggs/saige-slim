@@ -285,3 +285,48 @@ an EXTRA file).
   rather than argued (`prediction-cct-dependence-2026-09-12.md`).
 - **`urFill`'s removal**, at the next dead-surface audit.
 - **#132 and #133**, both opened by this work (section 8).
+
+## 9. The second half of the session: what was AUDITED, not changed
+
+After the two fixes, the same session audited surfaces rather than changing
+them. No source was touched; everything below is a ledger row plus a document,
+and all of it is pushed. A later session should read the documents rather than
+these summaries.
+
+- **`docs/cli-options-and-group-file.md`** -- all 139 CLI options (step 0: 16,
+  step 1: 58, step 2: 65) traced from `make_option()` to the code that consumes
+  them, with a live / refused / inert / partly-live status and this branch's own
+  additions marked. The sections the help strings cannot give you: 2 refused
+  outright, 3 genuinely inert, the trait-gated set (on a quantitative trait
+  `--is_output_moreDetails` emits NO columns), the path-gated set, and the ones
+  that are live but cannot move a result byte. Appendix: the group-file format
+  without weights, with K weight sets, and with FlexRV's score line, read off
+  `checkGroupFile`, plus what the annotation mask excludes and why LoF scores of
+  1 are a convention rather than an enforcement.
+- **`docs/state/open-allele-and-weight-issues-2026-09-12.md`** -- #131 to #135
+  on one page with "cost of ignoring it" and "moves goldens if fixed" per row,
+  a suggested order, and the ONE root cause they share: SAIGE's single-variant
+  idioms (the fold, MAF, `2 - G`, the dosage filter) reused on quantities that
+  are not one variant's dosage vector -- which is also what #129 and #130 were.
+- **`docs/flag-surprises.md`** -- twelve flag combinations that silently do not
+  do what a user expects, from a ten-class adversarial hunt (40 candidates, 14
+  verified). Three were hand-checked and have rows: **#139** (chrX doubling
+  plus any missing call gives two different wrong answers by reader -- PLINK
+  drops the marker, PGEN writes p = 1 beside `nan`), **#140** (a region restart
+  can LOSE regions, because #47's byte-count truncation is marker-path only and
+  the region writers are never flushed) and **#141** (a duplicated `.fam` IID
+  is accepted by all three steps and step 2 then reads the wrong genotype row;
+  PGEN's psam reader refuses it). **The other nine are LEADS, workflow-verified
+  only** -- confirm before acting.
+- Rows **#136** (six false help strings, each re-verified by hand) and **#137**
+  (the manifest's promised refusal of `--varianceRatioFile` is missing) and
+  **#138** (a group-file `weight` line contaminates `p_FlexRV`, the one
+  contamination route of four that is not refused).
+
+**Where to start next, and the reason is sequencing rather than severity:**
+**#134**. It is the only one of the five that is wrong in a DEFAULT
+configuration, and it moves the same FlexRV numbers that #129's fix already
+made stale -- so fixing it before the sweep is re-run means running the sweep
+once instead of twice. #139/#140/#141 are the ones that produce wrong results
+rather than merely ignoring the user, and all three are cheap.
+
