@@ -83,6 +83,15 @@ change to that path's hot scratch. Also: the claim that
 propagated into my own summary, is FALSE -- the `region` workload was there all
 along; it had merely never been run on this work.
 
+**The five open region-path issues are summarised on ONE page**:
+`docs/state/open-allele-and-weight-issues-2026-09-12.md` -- #131 (decided),
+#132, #133, #134, #135, what each costs to ignore, which goldens each would
+move, a suggested order, and the four unverified leads from the audit that was
+stopped at four of six surfaces. Read that instead of reconstructing the list
+from the rows. They share ONE root cause: SAIGE's single-variant idioms (the
+fold, MAF, `2 - G`, the dosage filter) reused on quantities that are not one
+variant's dosage vector -- which is also what #129 and #130 were.
+
 **2026-09-12 also opened LEDGER #132 and #133 (both OPEN, both pre-existing),
 from the adversarial review of the #129/#130 diff.** #132: ACAT-V's combination
 weights are `c(w, rep(1, numofUR))`, so a uniform rescaling of a group file's

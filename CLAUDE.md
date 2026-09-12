@@ -436,6 +436,54 @@ SKAT-O terms only (0 N-dependent bytes per cell on BURDEN), not a measurement.
 Measured on sim50k, 192 sets, BURDEN: peak RSS 874 -> ~520 MB, wall 57 -> 19 s
 at 1 thread (`docs/state/handoff-2026-09-12-flexrv-ram-levers.md`).
 
+## Allele convention (DECIDED 2026-09-12, LEDGER #131)
+
+Which allele a number describes was answered ad hoc in five places before this
+was written down. The rule, and the one deliberate exception:
+
+1. **Every REAL variant is folded to its minor allele before it is tested.**
+   `imputeGenoAndFlip` (`src/UTIL.cpp`) does `t_GVec = 2 - t_GVec` when
+   `t_altFreq > 0.5`, on every marker of both the marker path
+   (`src/Main.cpp:836`) and the region path (`:2746`). This is upstream's
+   behaviour (`git show main:src/Main.cpp`, `:1269`) and is KEPT.
+2. **Selection and weighting read the FOLDED MAF.** `--maxMAF_in_groupTest`,
+   `--minMAF`/`--maxMAF`, `dbeta(MAF, a, b)` and the FlexRV MAF transforms all
+   take `MAF = std::min(altFreq, 1 - altFreq)`. Upstream's too.
+3. **A MAC is an allele count of the rarer allele** (#118), and the collapse
+   criterion is that count: `MAC = min(altCounts, 2N - altCounts)` at `:2747`,
+   then `MAC > --MACCutoff_to_CollapseUltraRare` decides whether a marker is
+   collapsed. **Three places still break this and are OPEN**: the pseudo-marker's
+   band/ER decision reads the WEIGHTED collapse sum (#134), the BURDEN
+   emitter folds a cell's AGGREGATE count as if it were a frequency so its
+   gating MAC falls as the cell grows (#135), and `MAC_case`/`MAC_control`
+   are un-folded halves that do not sum to the folded `MAC` (#133).
+4. **Reported frequencies and effects are per ALT allele.** `imputeGenoAndFlip`
+   undoes its own fold for `altFreq`/`altCounts`, and the single-variant path
+   negates the effect with `Beta * (1 - 2*flip)`. So an `AF_Allele2` above 0.5
+   in output means "this marker was folded for testing", not an error.
+5. **THE EXCEPTION: a collapsed ultra-rare pseudo-marker is NOT a variant and is
+   never folded** (#130, fixed 2026-09-12). Do not "restore consistency" here --
+   three measured reasons: `max_m(w_m g_m)` means "carries at least one of the
+   set's ultra-rare variants" and folding inverts it to "carries NONE"; for a
+   weighted set its entries are `w*g` (7.7 to 20 on the bundled multiweight
+   fixture), so `2 - G` is not an allele complement and the old `altFreq > 0.5`
+   predicate compared a weighted sum against a frequency; and in a cell holding
+   both rare and ultra-rare markers the pseudo-marker carries 28-53 % of the
+   MAC (golden P65), so folding it would set that share against the rest and
+   make the burden a contrast rather than a sum.
+6. **An ALT-major annotated site stays in its annotated bin**, weighted as rare
+   on its folded MAF, with no warning -- upstream's behaviour, which has no
+   guard for it anywhere (grepped). This is the DEFERRED half of #131 and the
+   one part of this convention expected to change: at such a site the burden
+   counts the REFERENCE allele while the annotation describes the ALT one, so a
+   cell labelled "rare LoF" can be driven by a rare allele carrying no
+   annotation. **The revisit trigger is one number** -- the fraction of
+   annotated sites in a real callset whose ALT allele is major -- and it cannot
+   be measured on the bundled fixture, which has 0 of 70 markers above AF 0.5
+   (`--AlleleOrder=ref-first` inverts all 70 rather than giving a mixture). The
+   three candidate answers, and why the chosen one is (a) for now, are on the
+   row.
+
 ## Architecture
 
 ### Entry points -> R functions
