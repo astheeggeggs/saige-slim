@@ -414,6 +414,24 @@ struct RegionProfile {
 
 static RegionProfile g_regionProfile;
 
+// The zero-index vector a cell test consumes (the SPA and ER kernels read it;
+// the score tests do not) is the complement of its nonzero list, and
+// `arma::find(v == 0)` returns exactly that in increasing order. Deriving it
+// into the worker's scratch at test time is value-identical and frees the
+// N-length copy every persistent cell record used to hold (levers 3/4 of the
+// FlexRV RAM work, 2026-09-12): at N = 500,000 and 192 sets that was 768 MB
+// per record kind.
+static void complementIndices(const arma::uword* t_nz, std::size_t t_nnz,
+                              arma::uword t_n, arma::uvec & t_out)
+{
+  t_out.set_size(t_n - t_nnz);
+  arma::uword* out = t_out.memptr();
+  std::size_t k = 0, o = 0;
+  for(arma::uword i = 0; i < t_n; i++){
+    if(k < t_nnz && t_nz[k] == i){ k++; }else{ out[o++] = i; }
+  }
+}
+
 static bool regionProfileRequested()
 {
   const char* e = std::getenv("SAIGE_PROFILE_REGION");
@@ -2108,11 +2126,12 @@ Rcpp::List mainRegionInCPP(
       const double cells = (double)q_anno_maf_weight;
       const double perN = 8.0 * (double)t_n;
       // LEDGER #118 widened genoURMat_noweights from per-cell to per-set, so
-      // the unweighted twin is now one more dense N x cells matrix.
-      double bytes = perN * cells * 5.0;   // genoURMat(+twin), genoSumMat, UR records (vec + zero idx)
-      if(t_regionTestType == "BURDEN"){
-        bytes += perN * cells * 2.0;       // burden cell records
-      }else{
+      // the unweighted twin is one more dense N x cells matrix. Since
+      // 2026-09-12 the persistent cell records hold no N-length data (they
+      // point at these columns and derive the zero list at test time), so
+      // the three matrices are the whole K-dependent floor on BURDEN.
+      double bytes = perN * cells * 3.0;   // genoURMat(+twin), genoSumMat
+      if(t_regionTestType != "BURDEN"){
         const double m1c = std::max((double)g_cfg.region_maxMarkers_cutoff, cells);
         bytes += (double)P * (perN * cells + 2.0 * perN * m1c);
       }
@@ -3033,19 +3052,19 @@ if(i2 > 0){
     bool tested = false;
     unsigned int i = 0;            // output slot q0 + jmr
     unsigned int rowInChunk = 0;   // P1Mat row / P2Mat column
-    arma::vec genoURVec;           // the collapsed pseudo-marker after imputeGenoAndFlip
-    std::vector<arma::uword> nz, zero;   // its nonzero / zero sample indices
+    const double* genoURPtr = nullptr;   // the collapsed pseudo-marker after imputeGenoAndFlip: genoURMat's column, imputed IN PLACE
+    std::vector<arma::uword> nz;         // its nonzero sample indices (the zero list is derived at test time)
     double altFreq = 0.0;
     bool flip = false;
     double w0 = 0.0;
   };
   // The records persist across regions (a function static, like the P1/P2
-  // scratch): the collapsed vector is copied into an existing N-length
-  // buffer and the index vectors into std::vectors that keep their capacity,
-  // so a region allocates nothing N-sized here. Fifteen fresh 400 KB blocks
-  // per pass per region measured as doubled sys time (macOS hands every
-  // allocation above 127 KB to mach VM, and that many live at once defeat
-  // malloc's large-block cache that two cycling locals had been hitting).
+  // scratch) and hold NO N-length data (2026-09-12): the collapsed vector is
+  // genoURMat's own column, imputed in place through a non-owning view, and
+  // the nonzero index vector keeps its capacity. The zero-index vector is
+  // derived per worker at test time (complementIndices). Before this the
+  // record copied the vector and both index lists, 3 N-length buffers per
+  // set, which at N = 50,000 and 192 sets was most of the run's memory.
   static std::vector<URCell> s_urCells;
   if(s_urCells.size() != q_anno_maf_weight){
     s_urCells.assign(q_anno_maf_weight, URCell());
@@ -3061,7 +3080,11 @@ if(i2 > 0){
 	jm = j*q_maf+m;
 	for(unsigned int r = 0; r < q_weight; r++){
 	jmr = jm*q_weight + r;
-	arma::vec genoURVec = genoURMat.col(jmr);
+	// Non-owning view over the column: imputeGenoAndFlip below flips,
+	// imputes and zeroes it IN PLACE, and the column is not read as the raw
+	// collapse anywhere after this (the twin holds that), so the test's
+	// record can point at it instead of copying it.
+	arma::vec genoURVec(genoURMat.colptr(jmr), t_n, false, true);
 	// LEDGER #118: set r's OWN unweighted collapse (its ultra-rare markers
 	// with w_r != 0, raw genotypes). A non-owning view: the copy this used to
 	// make was 400 KB at N = 50,000 and happened once per SET rather than once
@@ -3318,18 +3341,15 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
         }
             } // for km (models)
       // Hand this cell's operands to its record (persistent storage, see
-      // its declaration): the copy into c.genoURVec is a memcpy into an
-      // existing N-length buffer, and the index copies reuse capacity. The
-      // values are exactly what conv_to produced above from the same
-      // std::vector<uint>s.
+      // its declaration): the column pointer, and the nonzero indices --
+      // exactly what conv_to produced above from the same std::vector<uint>.
       {
         URCell & c = urCells[jmr];
         c.tested = true;
         c.i = i;
         c.rowInChunk = i1InChunk;
-        c.genoURVec = genoURVec;
+        c.genoURPtr = genoURMat.colptr(jmr);
         c.nz.assign(indexNonZeroVec.begin(), indexNonZeroVec.end());
-        c.zero.assign(indexZeroVec.begin(), indexZeroVec.end());
         c.altFreq = altFreq;
         c.flip = flip;
         c.w0 = w0;
@@ -3374,8 +3394,9 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
       // strict, non-owning views: getMarkerPval never resizes its index
       // arguments (a strict view would throw if it tried)
       arma::uvec nzView(const_cast<arma::uword*>(c.nz.data()), c.nz.size(), false, true);
-      arma::uvec zeroView(const_cast<arma::uword*>(c.zero.data()), c.zero.size(), false, true);
-      arma::vec & genoURVecRef = const_cast<arma::vec&>(c.genoURVec);   // getMarkerPval takes a non-const ref and never writes it (S3/S12)
+      complementIndices(c.nz.data(), c.nz.size(), (arma::uword)t_n, sc.indexZeroVec_arma);
+      arma::uvec & zeroView = sc.indexZeroVec_arma;
+      arma::vec genoURVecRef(const_cast<double*>(c.genoURPtr), t_n, false, true);   // getMarkerPval takes a non-const ref and never writes it (S3/S12)
       ProfileScope rpUrTest(rp.enabled ? &rp.urTest : nullptr, &rp.nUrTest);
       if(cm.isER){
         model.getMarkerPval(genoURVecRef, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, c.flip, cm.ctx, &sc.ws);
@@ -3563,8 +3584,8 @@ if(t_regionTestType == "BURDEN"){
      // carry-forward cache sees exactly the sequence it always did.
      struct BurdenCell {
        bool tested = false;
-       arma::vec genoSumVec;
-       std::vector<arma::uword> nz, zero;
+       const double* genoSumPtr = nullptr;   // genoSumMat's column (alive through D2); no copy
+       std::vector<arma::uword> nz;          // zero list derived at test time (complementIndices)
        double altFreq = 0.0;
      };
      // persistent across regions, for the same reason as the URCells
@@ -3592,9 +3613,8 @@ if(t_regionTestType == "BURDEN"){
 	for(unsigned int r = 0; r < q_weight; r++){
 	jmr = jm*q_weight + r;
       if(m <= q_maf_m){
-        arma::vec genoSumVec = genoSumMat.col(jmr);
+        const arma::vec genoSumVec(genoSumMat.colptr(jmr), t_n, false, true);   // view, not a copy
         arma::uvec indexNonZeroVec_arma = arma::find(genoSumVec != 0);
-	arma::uvec indexZeroVec_arma = arma::find(genoSumVec == 0);
 	// LEDGER #118: per-SET now (jmr, not jm). This is the quantity the
 	// min-group-MAC gate, the variance-ratio band and the ER predicate all
 	// read below, so a set that zeroes most of its cell is no longer tested
@@ -3635,9 +3655,8 @@ if(t_regionTestType == "BURDEN"){
           }
           BurdenCell & c = burdenCells[jmr];
           c.tested = true;
-          c.genoSumVec = genoSumVec;   // memcpy into the persistent N-length buffer
+          c.genoSumPtr = genoSumMat.colptr(jmr);
           c.nz.assign(indexNonZeroVec_arma.begin(), indexNonZeroVec_arma.end());
-          c.zero.assign(indexZeroVec_arma.begin(), indexZeroVec_arma.end());
           c.altFreq = altFreq;
           burdenTested.push_back(jmr);
         }
@@ -3660,12 +3679,14 @@ if(t_regionTestType == "BURDEN"){
          bool flip = false;
          bool isregion = model.m_flagSparseGRM;
          arma::uvec nzView(c.nz.data(), c.nz.size(), false, true);
-         arma::uvec zeroView(c.zero.data(), c.zero.size(), false, true);
+         complementIndices(c.nz.data(), c.nz.size(), (arma::uword)t_n, sc.indexZeroVec_arma);
+         arma::uvec & zeroView = sc.indexZeroVec_arma;
+         arma::vec genoSumVecRef(const_cast<double*>(c.genoSumPtr), t_n, false, true);
          ProfileScope rpEmitTest(rp.enabled ? &rp.emitTest : nullptr, &rp.nEmitTest);
          if(cm.isER){
-           model.getMarkerPval(c.genoSumVec, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, isregion, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, cm.ctx, &sc.ws);
+           model.getMarkerPval(genoSumVecRef, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, isregion, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, cm.ctx, &sc.ws);
          }else{
-           model.getMarkerPval(c.genoSumVec, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, isregion, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, cm.ctx, &sc.ws);
+           model.getMarkerPval(genoSumVecRef, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, isregion, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, cm.ctx, &sc.ws);
          }
        };
        runCellTests((unsigned int)(burdenTested.size() * P), burdenTestFn);
