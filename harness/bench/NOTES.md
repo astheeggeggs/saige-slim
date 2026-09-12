@@ -1944,15 +1944,40 @@ byte-identical in both compare modes.
   so whatever was resident was inside the dense matrices' pages.
 - **Threads:** 4 threads now 1.4x over 1 thread at the end (23.3 -> 16.6 s)
   on a box at load 3-6; the lever-2 prediction of ">= 2x" was measured at
-  1.56x under load 6-10 and never confirmed on a quiet box. What stays
-  serial: the marker loop's phase-2 accumulate and the region setup.
+  1.56x under load 6-10. What stays serial: the marker loop's phase-2
+  accumulate and the region setup.
+- **RE-TIMED on an idle box (2026-09-12, later the same day), and the
+  loaded-box row above is CONFIRMED rather than corrected.** The load
+  average on this machine never falls below ~2.7 whatever is quit, because
+  it counts blocked threads: with `top` reporting 91.4% idle, 0.31 of 8
+  logical cores busy and an idle disk, the load still read 3.00. So the
+  criterion used here is CPU idle, not load. Installed package at
+  `271af1b2`, three alternating reps, `/usr/bin/time -l`:
+
+  | nThreads | real (3 reps) | user | peak RSS |
+  |---|---|---|---|
+  | 1 | 26.5 / 21.3 / 20.3 s | 18.7 / 19.7 / 18.4 s | 522 / 520 / 519 MB |
+  | 4 | 13.4 / 14.7 / 13.2 s | 32.2 / 36.3 / 32.3 s | 541 / 538 / 542 MB |
+
+  The first 1-thread rep (26.5 s) is a cold page cache on the 50k inputs;
+  every later rep is within 5% of the loaded-box row's 19.4 / 12.6 s, which
+  is inside the +-10% this fixture was already known to swing. **Speedup
+  1.55-1.59x at 4 threads** (loaded-box pair: 1.54x). All six outputs
+  byte-identical to each other, the 4-thread runs report their thread count,
+  and the BURDEN memo reads `40196 asked for, 23680 evaluated, 16516
+  served` in every rep. **The scaling loss is CPU inflation, not the box:**
+  1.75x the user time (18.4 -> 32.3 s) buys 1.55x the wall. That is the
+  number to quote, and re-timing will not improve it -- the next lever has
+  to remove work, not contention.
 - **The flip path** (a pseudo-marker with alt frequency > 0.5; unreachable
   on sim50k) is gated by a drill: max MAF 0.5 and a collapse cutoff above
   2N on the bundled binary model make `GENE1 missense;lof`'s pseudo-marker
   0.778 and flipped; SKAT-O and BURDEN arms, main and single-variant
   files, byte-identical to the reference at every stage, and a planted
   build that drops the flipped fill differs on exactly those cells
-  (`scratchpad/thr/flipdrill.sh`; not in the repo).
+  (`scratchpad/thr/flipdrill.sh`; not in the repo). **Now in the repo as
+  `tests/testthat/test-step2-region-flip.R`** (2026-09-12), which is where
+  LEDGER #130 was found.
 - **The summation-order control** that licenses the carrier-space
   reductions: 20,000 random sparse vectors against RcppArmadillo 15.4.2,
   `accu`/`sum`/`mean` bit-equal to the two-accumulator parity split over

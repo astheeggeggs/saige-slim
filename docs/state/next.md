@@ -695,14 +695,18 @@ What is NOT done, in order of value:
   BOTH compare modes (4428 / 4628) and again at `17676759` with the new test
   (4497 / 4697); and the flip drill is now
   `tests/testthat/test-step2-region-flip.R`, which found LEDGER #130 (above).
-  **The quiet-box 4-thread timing was ATTEMPTED and REFUSED**: sampled eight
-  times over 25 minutes after the gate, the 1-minute load plateaued at
-  2.7-3.7 (never below 2.72) with no SAIGE process running -- that is this
-  box's ambient level with several editor and agent sessions live, so the
-  57 -> 19 / 41 -> 13 s numbers above are still loaded-box numbers and must
-  not be quoted as scaling. Re-time when the box is actually idle, and check
-  `uptime` first. Still open: the binary arm at 50k. The F5 bullet below is
-  history.
+  **The 4-thread timing is DONE and the loaded-box numbers are CONFIRMED**
+  (NOTES.md, "RE-TIMED on an idle box"): 20.3-21.3 s at 1 thread and
+  13.2-14.7 s at 4 over three alternating reps, all six outputs
+  byte-identical, RSS 519-522 / 538-542 MB -- within 5% of the 19.4 / 12.6 s
+  already recorded, so **1.55x at 4 threads is the number to quote** and
+  re-timing will not improve it. Two things to carry forward: **on this box
+  load average is NOT a quiet-box criterion** (it sits at ~3 with `top`
+  reporting 91% idle and 0.31 of 8 cores busy, because it counts blocked
+  threads -- use CPU idle instead); and the scaling loss is CPU INFLATION,
+  1.75x the user time for 1.55x the wall, so the next lever has to remove
+  work rather than contention. Still open from the handoff: the binary arm
+  at 50k. The F5 bullet below is history.
 - **F5 timing DONE 2026-09-10** (`harness/bench/NOTES.md`, "FlexRV F5 at
   N = 50,000"): 192 sets cost 35 s user / 805 MB against 8 s / 506 MB for one
   set on sim50k `y_null` BURDEN at one cell; the K-dependent C++ is 39%
