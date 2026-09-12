@@ -574,9 +574,25 @@ struct CarrierStore {
 
   void begin(arma::uword t_n, unsigned int t_q)
   {
-    if(slotOf.size() != t_n){ slotOf.assign(t_n, -1); carriers.clear(); }
+    // A changed SAMPLE COUNT has to invalidate the VALUE buffers, not just the
+    // slot map. The branch below clears `carriers`, so the `used` the else arm
+    // computes would be 0 and nothing would be zeroed -- while ur / urNw / sum
+    // still hold the previous call's values in exactly the slots the next
+    // carriers are about to be handed (slot() hands out 0, 1, 2, ... again, and
+    // resize only zeroes what it ADDS). Both accumulations assume a zero start:
+    // the collapse is `u = std::max(u, ...)`, so a stale slot survives as the
+    // max, and the burden is `+=`, so it is added in.
+    //
+    // Out of contract today -- one dataset per R process (CLAUDE.md), and n is
+    // fixed for a run because begin() is called once per mainRegionInCPP -- so
+    // this needs two SPAGMMATtest calls in one process with different sample
+    // counts and the same cell count. Fixed anyway because the reset logic
+    // already half-handles a changed n by reassigning slotOf, and half-handling
+    // it is worse than not handling it: it reads as handled.
+    const bool nChanged = (slotOf.size() != t_n);
+    if(nChanged){ slotOf.assign(t_n, -1); carriers.clear(); }
     for(std::size_t k = 0; k < carriers.size(); k++){ slotOf[carriers[k]] = -1; }
-    if(q != t_q){
+    if(q != t_q || nChanged){
       ur.clear(); urNw.clear(); sum.clear(); cap = 0;
     }else{
       const std::size_t used = carriers.size() * (std::size_t)q;

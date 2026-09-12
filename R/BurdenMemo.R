@@ -8,6 +8,17 @@
 # (R/SkatoParallel.R): always, so a run where the memo never fired says "0"
 # rather than nothing. served is a measurement, not a number a test may
 # assert (CLAUDE.md, the SKAT-O line).
+#
+# THE UNIT IS CELLS, and deliberately. The dedupe key is model-independent (a
+# cell's burden column, its weight-independent count, its set's ER
+# eligibility), so ONE decision serves all P models and the natural unit for
+# the decision is the cell; what it saves is P tests, so on a multi-model run
+# the tests avoided are P times the number this line prints. The SKAT-O line
+# accumulates per region_postprocess drive, which IS per model, so above one
+# model the two lines do not share a unit. Reviewed 2026-09-12 and left as is:
+# each line is self-consistent, this one is the more conservative of the two,
+# and re-basing it on tests would move a printed count that a test asserts
+# (test-step2-flexrv.R pins asked == 384 = 2 genes x 192 sets at P = 1).
 
 #' @noRd
 burdenMemoReset <- function() {

@@ -45,11 +45,32 @@ at t=8 on `src/SAIGE_test.cpp:1274`/`:1279`, the flag's own two writes, and the
 fixed tree reports none -- the real bug as its own plant. `bytes-vs-serial` was
 `identical` in both, so no golden ever moved. A third commit declares the
 region worker's FORK edge, which had left the clean arm at 1-2 warnings in
-every build and is why a non-zero count there meant nothing. The review's
-three remaining survivors are NOT addressed: `CarrierStore::begin()`'s skipped
-zero-fill when the sample count changes, three unused N-length buffers per
-worker on the single-variant marker scan, and the BURDEN memo line
-under-reporting by a factor of P on a multi-model run. Also: the claim that
+every build and is why a non-zero count there meant nothing. Of the review's three
+remaining survivors, ONE was real and turned out to be **much worse than the
+review rated it (medium/low): it produced WRONG NUMBERS on a reachable path**.
+`CarrierStore::begin()` reset the slot map on a changed sample count but not
+the VALUE buffers -- the changed-n branch clears `carriers`, so the
+`used = carriers.size() * q` the else arm computes came back 0 and nothing was
+zeroed, while `ur`/`urNw`/`sum` still held the previous call's values in
+exactly the slots the next carriers were about to be handed, and both
+accumulations assume a zero start (`u = max(u, ...)` for the collapse, `+=`
+for the burden). MEASURED, not inferred: two `SPAGMMATtest` calls in ONE R
+process, the full 1,000 samples then a 950 subset, on the pre-fix build --
+both return normally and the SECOND run's output is wrong, `GENE1 lof` at
+max_MAF 0.001 reporting MAC 7 and p 7.860290E-02 where the truth is MAC 2 and
+p 3.182528E-01, and at 0.01 MAC 69 against 65. Inflated MACs are the
+mechanism's own signature. CLAUDE.md's "one dataset per R process" put this at
+the edge of the contract, but NOTHING REFUSES IT -- which is the worst of the
+three possibilities, because a user looping over sample subsets gets silently
+wrong answers. Fixed, and pinned by `tests/testthat/test-step2-region-tworun.R`
+(drilled both ways: red on the pre-fix build at exactly the second-run
+assertion, with the first-run control green). The other two are
+DECIDED-NOT-TO-CHANGE, with the reasons recorded where a reader will hit them:
+the BURDEN memo line's unit is cells and deliberately so (`R/BurdenMemo.R`;
+re-basing it on tests would move a count `test-step2-flexrv.R` asserts), and
+the three N-length `MarkerScratch` buffers the single-variant marker scan
+never reads cost ~10 MB at N = 50,000 across 8 workers, which does not buy a
+change to that path's hot scratch. Also: the claim that
 `tsan.sh` does not cover the region cell pool, which the review made and which
 propagated into my own summary, is FALSE -- the `region` workload was there all
 along; it had merely never been run on this work.
