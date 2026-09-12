@@ -1,10 +1,20 @@
 #!/usr/bin/env bash
 # Canonical build for gates: ALWAYS from clean objects.
-#   bash harness/build.sh
+#   bash harness/build.sh                 clean (the default, and what a gate wants)
+#   bash harness/build.sh --incremental   keep src/*.o; REFUSES if a header moved
+#
 # R's make has no header dependency tracking; a stale dependent .o after a
 # class-layout change in a header produces intermittent memory corruption
 # (Phase 4: two members added to PlinkClass, GenoReaderRegistry.o stale ->
 # segfaults inside readFamFile). Cleaning costs ~4 min; debugging cost hours.
+#
+# --incremental exists because most edits are to ONE .cpp and a clean rebuild of
+# all 20 objects is then ~4 minutes of waiting for nothing. It does not ASK you
+# to remember the clean-objects rule, it ENFORCES it: no .hpp or .h may be newer
+# than the OLDEST object, and the oldest is the right comparison because a
+# single object compiled before the header changed is enough to corrupt the
+# build. If any is newer it refuses and names both files. With no objects
+# present at all, incremental IS clean, so it proceeds.
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO"
@@ -44,8 +54,41 @@ if [ ! -f .pixi/envs/default/lib/libplink2_includes.a ]; then
   mv libplink2_includes.a .pixi/envs/default/lib
 fi
 
-rm -f src/*.o src/*.so
+INCREMENTAL=0
+for arg in "$@"; do
+  case "$arg" in
+    --incremental) INCREMENTAL=1 ;;
+    *) echo "build.sh: unknown argument '$arg' (only --incremental)" >&2; exit 2 ;;
+  esac
+done
+
+if [ "$INCREMENTAL" = 1 ]; then
+  # The clean-objects rule, enforced. `ls -tr | head -1` is the OLDEST object:
+  # comparing against the newest would pass a tree where one straggler was
+  # compiled before the header change, which is exactly the failure mode.
+  oldest_o=$(ls -tr src/*.o 2>/dev/null | head -1 || true)
+  if [ -n "$oldest_o" ]; then
+    newer_hdr=$(find src \( -name '*.hpp' -o -name '*.h' \) -newer "$oldest_o" | head -5)
+    if [ -n "$newer_hdr" ]; then
+      echo "build.sh: --incremental REFUSED -- a header is newer than the oldest object." >&2
+      echo "  oldest object:  $oldest_o" >&2
+      echo "$newer_hdr" | sed 's/^/  newer header:  /' >&2
+      echo "  R's make has no header dependency tracking, so every object compiled" >&2
+      echo "  before that header is silently stale, and a stale dependent after a" >&2
+      echo "  class-layout change gives intermittent memory corruption." >&2
+      echo "  Run: bash harness/build.sh   (clean)" >&2
+      exit 1
+    fi
+  fi
+else
+  rm -f src/*.o src/*.so
+fi
+
 pixi run Rscript -e 'Rcpp::compileAttributes(".")' > /dev/null
 mkdir -p harness/work
 pixi run R CMD INSTALL . > harness/work/build.log 2>&1 || { echo "INSTALL FAILED"; grep -iE "error" harness/work/build.log | head -20; exit 1; }
-echo "clean install OK ($(git rev-parse --short HEAD))"
+if [ "$INCREMENTAL" = 1 ]; then
+  echo "incremental install OK ($(git rev-parse --short HEAD)) -- objects kept, no header moved"
+else
+  echo "clean install OK ($(git rev-parse --short HEAD))"
+fi
