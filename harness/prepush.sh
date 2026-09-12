@@ -72,9 +72,23 @@ cpu_idle() {
 # instead of queueing behind it. That is a hypothesis, and the measurement is
 # in harness/bench/NOTES.md -- not an argument for taking it on faith.
 #
-# SAIGE_PREPUSH_CONCURRENT=0 runs them one after the other: the escape hatch if
-# the two are ever found to interfere.
-CONCURRENT="${SAIGE_PREPUSH_CONCURRENT:-1}"
+# MEASURED AND OFF BY DEFAULT (2026-09-12). The reasoning above is sound and the
+# implementation works; the speedup is ZERO. Paired alternating reps, warm box:
+# concurrent 14m15s / 14m08s against serial 14m03s / 14m20s -- means identical
+# to the second (851.5s each), and the two reps disagree on the sign. The
+# predictor that was right is the saturation trace: a single mode already runs
+# at 93.8% CPU (mean idle 6.2%, 92% of samples under 10% idle), so there was
+# almost no headroom to recover and total CPU work is what binds.
+#
+# With wall time a tie, the tie-breakers all favour serial: TIME TO FIRST
+# FAILURE is 7 minutes serial against 14 concurrent, there are half as many
+# processes, and concurrency is exposed to any future test that writes to a
+# shared path (it found one on its first run -- see 396e66b4).
+#
+# SAIGE_PREPUSH_CONCURRENT=1 opts in. It is kept rather than deleted because
+# the null is a fact about THIS box (4 physical cores, a saturated tier) and a
+# machine with more cores than the tier can use would see a real gain.
+CONCURRENT="${SAIGE_PREPUSH_CONCURRENT:-0}"
 NPROC=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 
 run_tier() {   # everything into the mode's own log; nonzero return on failure
