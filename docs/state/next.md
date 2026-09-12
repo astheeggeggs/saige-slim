@@ -32,6 +32,21 @@ separate it from HEAD. `docs/state/handoff-2026-09-04.md` is where CI lives.
 `python3 harness/tools/ledger.py open`.** Never write a hand-counted "N open of
 M" here; the lint rejects it, because the count drifted every time.
 
+**2026-09-12 opened LEDGER #130** (writing the flip drill's characterization
+test, `tests/testthat/test-step2-region-flip.R`): on a `--r.corr=1` run, an
+ultra-rare pseudo-marker whose collapsed alt frequency exceeds 0.5 enters the
+BURDEN sum as `2 - G` over the UN-flipped carriers, every non-carrier's 2
+dropped, because `indexForNonZero` is taken before `imputeGenoAndFlip`
+overwrites the vector. Measured INSIDE one run: a one-marker cell's region
+`Pvalue_Burden` equals its own `.singleAssoc.txt` p on the un-flipped cell and
+differs on all five flipped ones. **It is a DECISION for the owner**, because
+the fix is a line (emit over the post-flip list, which the single test already
+uses) but the semantics are not: a flipped pseudo-marker's burden is a burden
+of the REFERENCE allele, so the sign convention has to be chosen, and #129
+sits at the same site and should be taken in the same pass. No golden moves
+(0 of the 269 UR rows across every group golden has AF > 0.5), so a fix needs
+a new golden that reaches the flip.
+
 **2026-09-11 (evening) also closed #117 and #115**, and removed ~40% of the CPU
 #118 added (`harness/bench/NOTES.md`). #117's fix -- a weight of exactly 0 drops
 the marker -- means **binary FlexRV is no longer restricted to `--r.corr=1`**.
