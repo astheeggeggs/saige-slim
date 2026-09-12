@@ -15,13 +15,14 @@
 # - Every run sources harness/env.sh (step 1 is irreproducible without it; see LEDGER.md #7/#8).
 # - LEDGER #127: a group run also writes `<out>.pooledTests.txt` when a region's
 #   pooled (Cauchy) row was NOT a plain Cauchy combination of every cell it
-#   tested. SIX runs produce one: the five quantitative SKAT-O goldens, whose
+#   tested. Five runs produce one -- the quantitative SKAT-O goldens, whose
 #   saturated cells (Pvalue exactly 1) send CCT down its min(1, n*min(p))
-#   fallback (LEDGER #86), and P64, where the region's ONE cell vanished before
-#   it could be tested (LEDGER #129) so the pooled row is NA over zero inputs.
-#   They are committed like any other output, so compare_goldens.sh gates the
-#   disclosure; every other run writes no file, and a new one appearing means a
-#   region started combining something differently.
+#   fallback, which is LEDGER #86. They are committed like any other output, so
+#   compare_goldens.sh gates the disclosure; every other run writes no file, and
+#   a new one appearing means a region started combining something differently.
+#   (P64 wrote a sixth for one commit, when its only cell vanished to the bug
+#   LEDGER #129 records; fixing that took the file away again, which is the
+#   disclosure doing its job in both directions.)
 
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -1403,22 +1404,40 @@ run step2_pgen_group_flexrv_burden.log R2 step2_SPAtests.R \
   --annotation_in_groupTest=lof:missense \
   --r.corr=1 --is_fastTest=FALSE
 
-# P62-P64 (2026-09-12): the two OPEN defects of the ultra-rare pseudo-marker
-# pass. No pre-existing golden reaches either -- 0 of the 269 UR rows across
-# every group golden that writes a .singleAssoc.txt has AF > 0.5, and no group
-# golden has a custom weight small enough to be mistaken for an imputed dosage
-# -- so these three exist to make the two fixes MOVE something. All three are
-# byte-reproducible at unpatched HEAD (two runs into separate trees, cmp).
+# P62-P64 (2026-09-12): the two defects of the ultra-rare pseudo-marker pass,
+# LEDGER #129 and #130, both now FIXED. These three were added at unpatched
+# HEAD so the fixes would MOVE something, and all three were byte-reproducible
+# there (two runs into separate trees, cmp) before being accepted.
+#
+# TWO CLAIMS THIS BLOCK ORIGINALLY MADE WERE WRONG, and the corrections matter
+# more than the claims did:
+#  - "0 of the 269 UR rows across every group golden that writes a
+#    .singleAssoc.txt has AF > 0.5". The count is 359, not 269 (measured over
+#    the pre-P62 goldens). None of them has AF > 0.5, so the coverage claim
+#    holds; the denominator was simply wrong, and it had been copied from the
+#    ledger row.
+#  - "no group golden has a custom weight small enough to be mistaken for an
+#    imputed dosage". FALSE, and falsified by the #129 fix itself, which moved
+#    17 pre-existing golden files: group_new_snpid_multiWeights.txt carries a
+#    REVEL set with weights of 0.01-0.07, every one of them at or below the
+#    --dosage_zerod_cutoff of 0.2. P64 is still worth having -- it is the
+#    minimal two-marker reproduction, where the whole cell vanishes rather than
+#    shifting -- but it is not the only golden that reaches #129.
 #
 # P62/P63 (LEDGER #130): the flip drill, both region paths. maxMAF 0.5 admits
 # every marker of both genes and a collapse cutoff above 2N makes every one of
 # them ultra-rare, so each (region x annotation) cell is ONE collapsed
-# pseudo-marker and five of the six then carry alt frequency > 0.5. A cell of
-# one marker HAS that marker's burden, so the region row's Pvalue_Burden and
-# the run's own .singleAssoc.txt p are the same quantity computed twice, which
-# is what makes these two files a gate rather than a snapshot: `GENE1 lof` (AF
-# 0.374, not flipped) agrees to every printed digit and the five flipped cells
-# do not. --is_single_in_groupTest=TRUE so both halves are in the goldens.
+# pseudo-marker and five of the six carry alt frequency > 0.5, which is the
+# regime #130 used to fold. A cell of one marker HAS that marker's burden, so
+# the region row's Pvalue_Burden and the run's own .singleAssoc.txt p are the
+# same quantity computed twice -- and since the fix they AGREE, on all six
+# cells and on both arms. `GENE1 lof` (AF 0.374, never folded) is the control:
+# it agreed before the fix too and is byte-identical across it.
+# --is_single_in_groupTest=TRUE so both halves are in the goldens.
+# These two files also record MAC != MAC_case + MAC_control (444 against
+# 151 + 1405): the group MAC is folded and its case/control split is not. That
+# is LEDGER #133, pre-existing and unrelated to #130 -- these are simply the
+# first goldens to exhibit it.
 run step2_plink_group_urflip_burden.log R2 step2_SPAtests.R \
   $PLINK_G \
   --SAIGEOutputFile="$GOLD/step2/plink_group_urflip_burden.txt" \
@@ -1444,16 +1463,19 @@ run step2_plink_group_urflip_skato.log R2 step2_SPAtests.R \
   --maxMAF_in_groupTest=0.5 --MACCutoff_to_CollapseUltraRare=2000 \
   --is_single_in_groupTest=TRUE --is_fastTest=FALSE
 
-# P64 (LEDGER #129): input/group_ur_smallWeights.txt is GENET over rs28 and
-# rs32 (two singletons, cell MAC 2) with ONE custom weight set at 0.01. Both
-# markers are ultra-rare, so the cell is one weighted pseudo-marker whose every
-# entry is 0.01 -- which the dosage-zeroing filter (<= 0.2 at MAC <= 10) takes
-# for imputation noise and zeroes. The cell then has no carrier and emits NO
-# row: the file below is a bare Cauchy NA row, and the #127 sidecar says 0 rows
-# / 0 refused / rule `none`. The SAME data at --MACCutoff_to_CollapseUltraRare=0,
-# or with weights 0.5, is tested and gives Pvalue_Burden 2.522646E-01 (a burden
-# p cannot depend on the weight SCALE), which is what
-# test-step2-region-ur-zerod.R holds against this.
+# P64 (LEDGER #129, FIXED): input/group_ur_smallWeights.txt is GENET over rs28
+# and rs32 (two singletons, cell MAC 2) with ONE custom weight set at 0.01.
+# Both markers are ultra-rare, so the cell is one weighted pseudo-marker whose
+# every entry is 0.01. That used to be below --dosage_zerod_cutoff (0.2) at a
+# weighted MAC below --dosage_zerod_MAC_cutoff (10), so the filter took it for
+# imputation noise, zeroed it, and the cell emitted NO row -- a bare Cauchy NA
+# row plus a #127 sidecar reading 0 / 0 / `none`. It is now tested, at
+# Pvalue_Burden 2.522646E-01, which is the value the SAME data gives at
+# --MACCutoff_to_CollapseUltraRare=0 and at weights 0.5: a burden p cannot
+# depend on the weight SCALE, and this golden is where that is pinned. BETA
+# 232.633 is the weights-0.01 coefficient, 50x the weights-0.5 one, which is
+# the other half of the same statement. test-step2-region-ur-zerod.R holds the
+# three configurations against each other.
 run step2_plink_group_ur_smallweights.log R2 step2_SPAtests.R \
   $PLINK_G \
   --SAIGEOutputFile="$GOLD/step2/plink_group_ur_smallweights.txt" \
@@ -1462,6 +1484,36 @@ run step2_plink_group_ur_smallweights.log R2 step2_SPAtests.R \
   --groupFile=./input/group_ur_smallWeights.txt \
   --annotation_in_groupTest=lof --maxMAF_in_groupTest=0.01 \
   --MACCutoff_to_CollapseUltraRare=10 --r.corr=1 --is_fastTest=FALSE
+
+# P65 (2026-09-12): the MIXED cell -- the only bundled configuration in which a
+# cell holds BOTH surviving rare markers AND a collapsed pseudo-marker above alt
+# frequency 0.5. It exists because that is the regime where the coding of the
+# pseudo-marker changes the STATISTIC rather than only its sign, and nothing
+# gated it: P62/P63 collapse everything (`Number_rare` 0, so the pseudo-marker
+# IS the cell) and every other group golden sits below 0.5.
+#
+# --MACCutoff_to_CollapseUltraRare=700 is the whole fixture arithmetic, found by
+# sweeping the cutoff between the default 10 and P62's 2000: at 50/100/200 no
+# pseudo-marker reaches 0.5, at 1000 nothing survives as rare, at 400 two cells
+# are mixed and at 700 FIVE are (measured -- two pairs of them duplicates, since
+# no marker of the fixture is annotated synonymous, so `missense;lof;synonymous`
+# selects what `missense;lof` does). Those five carry 28.3 %, 28.3 %, 28.7 %,
+# 28.7 % and 52.5 % of their cell's MAC in the pseudo-marker, which is what
+# makes the file discriminating: folding it (LEDGER #130's rejected option)
+# would enter `w*(2 - g) = const - w*g`, so a quarter to a half of each cell's
+# allele content would oppose the rest and the cell's burden would become a
+# signed contrast between its ultra-rare and rare halves rather than their sum.
+# `GENE1 lof` stays at AF 0.374 with `Number_rare` 0 and is the control row --
+# it is byte-identical to its P62 row.
+run step2_plink_group_urmixed_burden.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_urmixed_burden.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.5 --MACCutoff_to_CollapseUltraRare=700 \
+  --is_single_in_groupTest=TRUE --r.corr=1 --is_fastTest=FALSE
 
 ############ PGEN-vs-PLINK byte identity, checked in the candidate dir #########
 # The step-0 and step-1 PGEN runs above are NOT committed as separate goldens:

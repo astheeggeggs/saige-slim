@@ -98,7 +98,10 @@ test_that("group-test structural invariants", {
   hi <- pmax(num(r$Pvalue_Burden), num(r$Pvalue_SKAT))
   expect_true(all(num(r$Pvalue) >= lo * (1 - 1e-12) & num(r$Pvalue) <= hi * (1 + 1e-12)))
   expect_true(all(num(r$Pvalue) <= 2 * lo * (1 + 1e-12)))
-  # MAC accounting
+  # MAC accounting. Holds here because no cell of this golden sits above AF
+  # 0.5; it is NOT a general identity -- the group MAC is folded and the
+  # case/control split is not, so the two diverge on any cell above 0.5
+  # (LEDGER #133, exhibited by P62/P63 and pinned in test-step2-region-flip.R).
   expect_equal(num(r$MAC), num(r$MAC_case) + num(r$MAC_control))
   # all-ultra-rare rows degenerate to a single test: string-equal p-values
   allur <- r$Number_rare == "0"
@@ -416,7 +419,16 @@ test_that("FlexRV goldens: a MAC threshold above every MAC is unw, and the axis 
   # per-set MAC now lands in a different variance-ratio band from the cell's
   # became distinguishable. It is a COVERAGE measurement of this fixture, so it
   # is re-measured when the numbers legitimately move, never predicted.
-  distinct <- list(plink_group_flexrv_burden.txt = c(GENE1 = 100L, GENE2 = 104L),
+  #
+  # LEDGER #129 moved the collapse-ON counts 100 -> 111 and 104 -> 111, and
+  # WHERE they landed is the point: 111 is what the collapse-OFF run has always
+  # had. The dosage filter had been cleaning several sets' weighted
+  # pseudo-markers down to one shared support -- REVEL_cbrt0.4..0.9_MAC1 all
+  # printed the same 1.453839E-02 -- so the fixture's power to tell sets apart
+  # depended on --MACCutoff_to_CollapseUltraRare. It no longer does, and the two
+  # rows of this list agreeing is that statement. Re-measured on the fixed
+  # build, not carried over from the screen that predicted it.
+  distinct <- list(plink_group_flexrv_burden.txt = c(GENE1 = 111L, GENE2 = 111L),
                    plink_group_flexrv_burden_quant.txt = c(GENE1 = 111L, GENE2 = 111L))
   for (f in names(flexrv_goldens)) {
     d <- golden2(f)

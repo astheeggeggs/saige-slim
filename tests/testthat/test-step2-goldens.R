@@ -414,11 +414,15 @@ test_that("step2 quantitative conditional region test matches golden", {
                  extra_outputs = ".singleAssoc.txt")
 })
 
-# ---- P62-P64: the ultra-rare pseudo-marker's two OPEN defects --------------
-# These three goldens exist to make the fixes for LEDGER #129/#130 MOVE
-# something: no pre-existing golden reaches either defect (0 of the 269 UR rows
-# across every group golden with a .singleAssoc.txt has AF > 0.5, and no group
-# golden carries a custom weight small enough to look like an imputed dosage).
+# ---- P62-P64: the ultra-rare pseudo-marker's two defects, both FIXED -------
+# These three goldens were added at unpatched HEAD so the fixes for LEDGER #129
+# and #130 would MOVE something. Two claims this block first made were wrong
+# and are corrected in full at harness/make_goldens.sh (read it there): the
+# pre-existing UR-row count is 359, not 269 -- none of them above AF 0.5, so
+# #130 was indeed unreached -- and "no group golden carries a custom weight
+# small enough" is FALSE, falsified by the #129 fix itself, which moved 17
+# pre-existing goldens through group_new_snpid_multiWeights.txt's REVEL weights
+# of 0.01-0.07. P64 is the minimal reproduction, not the only golden.
 # The commands and the fixture arithmetic are recorded beside the runs in
 # harness/make_goldens.sh; test-step2-region-flip.R and
 # test-step2-region-ur-zerod.R are the characterization tests that say what the
@@ -429,26 +433,47 @@ URFLIP_COMMON <- c("--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
                    "--maxMAF_in_groupTest=0.5", "--MACCutoff_to_CollapseUltraRare=2000",
                    "--is_single_in_groupTest=TRUE", "--is_fastTest=FALSE")
 
-test_that("step2 flipped ultra-rare pseudo-marker, BURDEN path, matches golden", {
+test_that("step2 high-AF ultra-rare pseudo-marker, BURDEN path, matches golden", {
   run_step2_case("plink_group_urflip_burden.txt",
     c(PLINK_ARGS(), GRP_MODEL, SG_ARGS, URFLIP_COMMON, "--r.corr=1"),
     extra_outputs = ".singleAssoc.txt")
 })
 
-test_that("step2 flipped ultra-rare pseudo-marker, SKAT-O path, matches golden", {
+test_that("step2 high-AF ultra-rare pseudo-marker, SKAT-O path, matches golden", {
   run_step2_case("plink_group_urflip_skato.txt",
     c(PLINK_ARGS(), GRP_MODEL, SG_ARGS, URFLIP_COMMON),
     extra_outputs = ".singleAssoc.txt")
 })
 
+test_that("step2 MIXED cell (rare + high-AF pseudo-marker) matches golden", {
+  # P65: the only bundled configuration where a cell holds BOTH surviving rare
+  # markers and a collapsed pseudo-marker above AF 0.5 -- the regime in which
+  # the pseudo-marker's coding changes the statistic rather than only its sign.
+  # The cutoff of 700 is the fixture arithmetic (harness/make_goldens.sh); the
+  # mixed-cell properties are asserted in test-step2-region-flip.R.
+  run_step2_case("plink_group_urmixed_burden.txt",
+    c(PLINK_ARGS(), GRP_MODEL, SG_ARGS,
+      "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
+      "--groupFile=./input/group_new_snpid.txt",
+      "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+      "--maxMAF_in_groupTest=0.5", "--MACCutoff_to_CollapseUltraRare=700",
+      "--is_single_in_groupTest=TRUE", "--r.corr=1", "--is_fastTest=FALSE"),
+    extra_outputs = ".singleAssoc.txt")
+})
+
 test_that("step2 all-ultra-rare cell with small custom weights matches golden", {
-  # the cell vanishes to the dosage filter (LEDGER #129), so the golden is a
-  # bare Cauchy NA row plus the #127 sidecar that discloses the zero
+  # LEDGER #129 FIXED: the cell used to vanish to the dosage filter, and this
+  # golden was a bare Cauchy NA row plus the #127 sidecar disclosing the zero.
+  # It is now one tested cell at MAC 2 with Pvalue_Burden 2.522646E-01 -- the
+  # value the row had already recorded for the SAME data at weights 0.5 and at
+  # collapse 0 -- and no sidecar at all, since the region has nothing left to
+  # disclose. That absence is asserted in test-step2-region-ur-zerod.R; here it
+  # is simply not in extra_outputs, and compare_goldens.sh would flag an EXTRA
+  # file if one came back.
   run_step2_case("plink_group_ur_smallweights.txt",
     c(PLINK_ARGS(), GRP_MODEL, SG_ARGS,
       "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
       "--groupFile=./input/group_ur_smallWeights.txt",
       "--annotation_in_groupTest=lof", "--maxMAF_in_groupTest=0.01",
-      "--MACCutoff_to_CollapseUltraRare=10", "--r.corr=1", "--is_fastTest=FALSE"),
-    extra_outputs = ".pooledTests.txt")
+      "--MACCutoff_to_CollapseUltraRare=10", "--r.corr=1", "--is_fastTest=FALSE"))
 })

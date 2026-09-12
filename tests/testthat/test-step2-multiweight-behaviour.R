@@ -178,15 +178,37 @@ test_that("burden linearity: scaling every weight by 2 is exact without the UR c
   expect_lt(max(abs(pnum(rb$SE_Burden) / pnum(ra$SE_Burden) - 0.5)), 1e-9)
 })
 
-test_that("the ultra-rare collapse makes custom weights only approximately scale-free", {
-  # With the collapse ON the same doubling stops being exact: the collapsed
-  # pseudo-genotype is max(w_r*G), so its apparent allele count doubles too
-  # (AC 38.40 -> 76.80 in the singleAssoc output) while its weight in
-  # AnnoWeights stays 1, and the MAC-dependent machinery downstream therefore
-  # sees a different marker. So a uniform rescaling of a group file -- which a
-  # user would reasonably expect to be a no-op -- shifts the answer slightly.
-  # Bounded, not asserted equal: a real weight-handling regression would move
-  # these by orders of magnitude, while this residual is ~1e-2.
+test_that("with the collapse ON, custom weights are scale-free except in ACAT-V", {
+  # INVERTED with the LEDGER #129 fix, and the inversion RELOCATED a defect.
+  #
+  # This test used to be called "the ultra-rare collapse makes custom weights
+  # only approximately scale-free", and it asserted that doubling every weight
+  # in the group file CHANGED Pvalue_Burden (bounded at 5 %). Its stated cause
+  # was that the collapsed pseudo-genotype is max(w_r*G), so its apparent
+  # allele count doubles (AC 38.40 -> 76.80 in the singleAssoc output) while
+  # its AnnoWeights entry stays 1, and "the MAC-dependent machinery downstream
+  # therefore sees a different marker".
+  #
+  # Both halves of that were wrong, and measuring separated them:
+  #  - The Pvalue_Burden inexactness was LEDGER #129 -- the dosage filter
+  #    zeroing the WEIGHTED pseudo-marker, which is scale-dependent by
+  #    construction. With #129 fixed, Pvalue, Pvalue_Burden and Pvalue_SKAT are
+  #    BYTE-identical under doubling and BETA_Burden/SE_Burden scale by exactly
+  #    0.5, so this test now asserts the exact invariance the collapse-OFF
+  #    sibling above asserts. The AC still doubles (38.40 -> 76.80) and the
+  #    pseudo-marker's own single p is unchanged by it, so the MAC-dependent
+  #    machinery is NOT what was moving the burden.
+  #  - What the doubling really moves is Pvalue_ACATV and Pvalue_ACATO, and
+  #    that is LEDGER #132: ACAT-V's combination weights ARE AnnoWeights
+  #    (get_ACATV_pvalue -> CCT(p, weights)), and for a custom set that vector
+  #    is `c(w, rep(1, numofUR))` (R/SAIGE_SPATest_Region.R). CCT normalises by
+  #    sum(w), so a uniform doubling of the user's weights is NOT uniform over
+  #    the vector -- the pseudo-marker's fixed 1 does not double -- and the
+  #    pseudo-marker's relative weight in the combination changes. With the
+  #    collapse OFF there is no pseudo-marker, the doubling IS uniform, and
+  #    ACAT-V is exactly invariant (measured: identical in every column).
+  # So the residual is bounded here and characterized on #132, not explained
+  # away.
   skip_unless_level("standard")
   doubled <- local({
     lines <- readLines(file.path(saige_extdata, "input",
@@ -212,13 +234,37 @@ test_that("the ultra-rare collapse makes custom weights only approximately scale
   ra <- a[a$Group != "Cauchy", ]
   rb <- b[b$Group != "Cauchy", ]
   expect_true(all(pnum(ra$Number_ultra_rare) > 0))   # collapse really is active
-  rel <- function(x, y) max(abs(x - y) / (abs(x) + abs(y) + 1e-300))
-  # not exact any more ...
-  expect_false(identical(ra$Pvalue_Burden, rb$Pvalue_Burden))
-  # ... but still close, and BETA/SE still halve to within a couple of percent
-  expect_lt(rel(pnum(ra$Pvalue_Burden), pnum(rb$Pvalue_Burden)), 0.05)
-  expect_lt(max(abs(pnum(rb$BETA_Burden) / pnum(ra$BETA_Burden) - 0.5)), 0.05)
-  expect_lt(max(abs(pnum(rb$SE_Burden) / pnum(ra$SE_Burden) - 0.5)), 0.05)
+  # the AC of the pseudo-marker DOES double -- the property the old comment
+  # blamed -- and it moves none of the three p-values below, which is what
+  # makes this a located finding rather than a plausible story
+  sb <- read_saige_table(paste0(out, ".singleAssoc.txt"))
+  ur_a <- multi_run()$single[multi_run()$single$CHR == "UR", ]
+  ur_b <- sb[sb$CHR == "UR", ]
+  expect_identical(ur_a$MarkerID, ur_b$MarkerID)
+  expect_equal(pnum(ur_b$AC_Allele2) / pnum(ur_a$AC_Allele2), rep(2, nrow(ur_a)),
+               tolerance = 1e-9)
+  expect_identical(ur_a$p.value, ur_b$p.value)
+  # INVERTED (was: expect_false(identical(...)) plus a 5 % bound). Exactly
+  # invariant now, to the printed byte -- the same claim the collapse-OFF
+  # sibling above makes, which is the point: the collapse no longer changes
+  # whether a rescaling is a no-op.
+  expect_identical(ra$Pvalue, rb$Pvalue)
+  expect_identical(ra$Pvalue_Burden, rb$Pvalue_Burden)
+  expect_identical(ra$Pvalue_SKAT, rb$Pvalue_SKAT)
+  # and exactly equivariant: doubling is exact in binary floating point, so the
+  # score doubles and the variance quadruples with no rounding change at all
+  expect_equal(pnum(rb$BETA_Burden) / pnum(ra$BETA_Burden), rep(0.5, nrow(ra)),
+               tolerance = 1e-12)
+  expect_equal(pnum(rb$SE_Burden) / pnum(ra$SE_Burden), rep(0.5, nrow(ra)),
+               tolerance = 1e-12)
+  # LEDGER #132, the residual this inversion located: ACAT-V and ACAT-O are the
+  # ONLY columns a uniform rescaling still moves, because the pseudo-marker's
+  # combination weight is a fixed 1 among weights that doubled. Bounded, not
+  # asserted equal -- and asserted NON-equal, so the row cannot be quietly
+  # fixed without this test noticing.
+  expect_false(identical(ra$Pvalue_ACATV, rb$Pvalue_ACATV))
+  expect_lt(rel_err(pnum(ra$Pvalue_ACATV), pnum(rb$Pvalue_ACATV)), 0.2)
+  expect_lt(rel_err(pnum(ra$Pvalue_ACATO), pnum(rb$Pvalue_ACATO)), 0.2)
 })
 
 test_that("No_Weights rows reproduce a plain all-ones run", {

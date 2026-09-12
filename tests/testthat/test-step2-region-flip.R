@@ -10,10 +10,14 @@
 # which made it DENSE (every non-carrier holding 2) -- while the BURDEN
 # emitter read the POST-fold values at the PRE-fold carrier positions, so one
 # collapsed marker was tested as two different vectors and the emitted column
-# was neither. The pseudo-marker is now never folded: the group file's
-# annotation is a property of the ALT allele, and this marker IS the collapse
-# of ALT-annotated ultra-rare variants, so its burden counts the ALT allele
-# (src/Main.cpp, the note at the collapse). Goldens P62/P63.
+# was neither. The pseudo-marker is now never
+# folded, because folding a collapse INVERTS what it means: `max(w G)` reads
+# "carries at least one of the set's ultra-rare variants" and its fold reads
+# "carries NONE of them", a burden of absence (src/Main.cpp, the note at the
+# collapse). Be careful with the stronger claim: this does NOT make the burden
+# a count of the ALT allele, because every constituent marker was already
+# folded to minor coding in the per-marker prepare -- that residual is the same
+# question one level down and is LEDGER #131. Goldens P62/P63.
 #
 # What it holds, on BOTH region paths:
 #
@@ -45,7 +49,7 @@
 #    emitter's summed column in C++, the SKAT-O path's Score/Phi in R, and the
 #    per-marker test). Before the fix only `GENE1 lof` agreed. The sign goes
 #    with it: `BETA_Burden` is negative wherever the single row's `BETA` is,
-#    because both now count the ALT allele.
+#    because both now describe the same un-folded vector.
 
 FL_G <- c("--bedFile=./input/genotype_100markers.bed",
           "--bimFile=./input/genotype_100markers.bim",
@@ -152,6 +156,18 @@ fl_expect_flip <- function(res, label) {
   testthat::expect_identical(unique(r$Number_rare), "0", label = paste(label, "Number_rare"))
   testthat::expect_true(all(as.numeric(r$Number_ultra_rare) > 0))
   testthat::expect_equal(as.numeric(r$MAC), pmin(ac, FL_2N - ac), label = paste(label, "MAC"))
+  # LEDGER #133, which these goldens are the first to exhibit: the group MAC is
+  # FOLDED (above) while its case/control split is the raw unfolded count, so
+  # MAC != MAC_case + MAC_control on exactly the cells above AF 0.5, and the
+  # sum is the UN-folded AC. test-invariants-goldens.R asserts that identity on
+  # plink_group_fastTest.txt, where no cell is above 0.5; it is pinned HERE for
+  # the cells where it fails, so the row cannot be fixed unnoticed.
+  cc <- as.numeric(r$MAC_case) + as.numeric(r$MAC_control)
+  testthat::expect_equal(cc, ac, label = paste(label, "case+control == unfolded AC"))
+  above <- af > 0.5
+  testthat::expect_true(all(abs(as.numeric(r$MAC)[above] - cc[above]) > 1))
+  testthat::expect_equal(as.numeric(r$MAC)[!above], cc[!above],
+                         label = paste(label, "MAC agrees below AF 0.5"))
 }
 
 test_that("SKAT-O: every marker collapses and five of six cells sit above AF 0.5", {
@@ -207,9 +223,11 @@ test_that("LEDGER #130 FIXED: every one-marker cell's burden IS its own single t
                tolerance = 1e-5)
   # was c(0.2516356, 0.5758082, 0.5758082, 0.2634589, 0.7021056, 0.7021056)
   expect_equal(region, single, tolerance = 1e-6)
-  # The SIGN. Nothing is folded any more, so no `Beta * (1 - 2*flip)`
-  # correction is in play on either path and both count the ALT allele: the
-  # emitter's BETA_Burden is negative wherever the single row's BETA is. Its
+  # The SIGN. The pseudo-marker is not folded, so no `Beta * (1 - 2*flip)`
+  # correction is in play on either path and both describe the same direction
+  # as the single-variant row (NOT "both count the ALT allele" -- see the
+  # header): the emitter's BETA_Burden is negative wherever that row's BETA
+  # is. Its
   # MAGNITUDE is the single Beta divided by the cell's weight -- the burden
   # column is w0 * G with w0 = dbeta(MAF, 1, 25) = 0.060565 at MAF 0.222, and
   # 0.05205 / 0.060565 = 0.859 against the printed 0.860935. The last 0.2 % is
@@ -230,6 +248,59 @@ test_that("LEDGER #130 FIXED: every one-marker cell's burden IS its own single t
   cs <- rs$Region == "GENE1" & rs$Group == "missense;lof"
   expect_equal(as.numeric(r$BETA_Burden[cell]), as.numeric(rs$BETA_Burden[cs]),
                tolerance = 1e-5)
+})
+
+test_that("the MIXED cell: a high-AF pseudo-marker beside surviving rare markers", {
+  # Golden P65. This is the configuration that tells the coding options apart,
+  # and until 2026-09-12 nothing reached it: P62/P63 above collapse EVERY marker
+  # (Number_rare 0, so the pseudo-marker IS the cell, and folding it could only
+  # flip a sign), while every other group golden sits below AF 0.5.
+  #
+  # Found by sweeping --MACCutoff_to_CollapseUltraRare between the default 10
+  # and P62's 2000: 50/100/200 put no pseudo-marker above 0.5, 1000 leaves
+  # nothing rare, 400 gives two mixed cells and 700 gives five. What makes those
+  # five load-bearing is the SHARE: the pseudo-marker carries 28-53 % of the
+  # cell's MAC, so under LEDGER #130's rejected option -- folding it, where it
+  # would enter as `w*(2 - g) = const - w*g` -- that share would oppose the rest
+  # and the cell's burden would be a contrast between its ultra-rare and rare
+  # halves instead of their sum. The shares are asserted below so that the
+  # regime cannot quietly stop being mixed.
+  fl_skip("standard")
+  res <- fl_run(c("--MACCutoff_to_CollapseUltraRare=700", "--r.corr=1"), "mixed")
+  fl_ok(res$status)
+  r <- res$region[res$region$Group != "Cauchy", ]
+  s <- res$single[res$single$CHR == "UR", ]
+  expect_identical(nrow(r), 6L)
+  expect_identical(nrow(s), 6L)
+  n_rare <- as.numeric(r$Number_rare)
+  af <- as.numeric(s$AF_Allele2)
+  ac <- as.numeric(s$AC_Allele2)
+  cell_mac <- as.numeric(r$MAC)
+  mixed <- n_rare > 0 & af > 0.5
+  # FIVE mixed cells -- two pairs of which are duplicates, because no marker of
+  # the fixture is annotated synonymous, so `missense;lof;synonymous` selects
+  # exactly the markers `missense;lof` does (the same fixture fact the SKAT-O
+  # memo's twin count rests on). GENE1 lof is the control: all-ultra-rare and
+  # below 0.5.
+  expect_identical(sum(mixed), 5L)
+  expect_identical(r$Region[!mixed], "GENE1")
+  expect_identical(r$Group[!mixed], "lof")
+  expect_equal(af[!mixed], 0.374, tolerance = 1e-6)
+  expect_identical(r$Number_rare[!mixed], "0")
+  # every mixed cell really has both halves
+  expect_true(all(as.numeric(r$Number_ultra_rare)[mixed] > 0))
+  expect_true(all(n_rare[mixed] > 0))
+  # the share, which is what makes the configuration discriminating
+  share <- pmin(ac, FL_2N - ac)[mixed] / cell_mac[mixed]
+  expect_true(all(share > 0.25 & share < 0.55))
+  expect_equal(sort(round(100 * share, 1)), c(28.3, 28.3, 28.7, 28.7, 52.5),
+               tolerance = 1e-3)
+  # and the control row is byte-identical to its all-collapsed twin in P62: the
+  # same cell, a cutoff 3x apart, nothing rare in it either way
+  rb <- fl_burden()$region
+  cb <- rb$Region == "GENE1" & rb$Group == "lof"
+  cm <- r$Region == "GENE1" & r$Group == "lof"
+  expect_identical(unlist(r[cm, ]), unlist(rb[cb, ]))
 })
 
 test_that("BURDEN: the high-AF pseudo-marker reaches the burden emitter too", {

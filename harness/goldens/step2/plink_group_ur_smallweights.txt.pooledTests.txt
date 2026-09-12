@@ -1,2 +1,0 @@
-Region	Model	Path	Rows	Pvalues_combined	Cells_refused_minGroupMAC	Rule	Pvalue_pooled
-GENET	1	BURDEN	0	0	0	none	NA

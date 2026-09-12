@@ -1,2 +1,3 @@
 Region	Group	max_MAF	Pvalue_Burden	BETA_Burden	SE_Burden	MAC	MAC_case	MAC_control	Number_rare	Number_ultra_rare
-GENET	Cauchy	NA	NA	NA	NA	NA	NA	NA	NA	NA
+GENET	lof	0.01	2.522646E-01	232.633	203.197	2	1	1	0	2
+GENET	Cauchy	NA	0.252265	NA	NA	NA	NA	NA	NA	NA

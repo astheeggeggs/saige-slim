@@ -565,14 +565,11 @@ struct CarrierStore {
       if(t_col[sorted[k] * q + t_c] != 0){ t_out[o++] = carriers[sorted[k]]; }
     }
   }
-  // Mat::clean(limit): val = (abs(val) <= limit) ? 0 : val (arrayops::clean)
-  void cleanDense(double* t_d, double t_limit) const
-  {
-    for(std::size_t k = 0; k < sorted.size(); k++){
-      double & v = t_d[carriers[sorted[k]]];
-      v = (std::abs(v) <= t_limit) ? 0.0 : v;
-    }
-  }
+  // (LEDGER #129 removed the only caller of a cleanDense(double*, limit) here
+  // -- the carrier-space spelling of Mat::clean(limit), which applied the
+  // dosage-zeroing filter to the collapsed pseudo-marker. Deleted rather than
+  // noted like urFill because it had no callers AND no entanglement with the
+  // store's API: four lines, no signature anywhere else depends on them.)
 
   void begin(arma::uword t_n, unsigned int t_q)
   {
@@ -2463,7 +2460,7 @@ Rcpp::List mainRegionInCPP(
   NumUltraRare_GroupVec.zeros();
   arma::vec gtildeVec;
   double MACgroup, MACcasegroup, MACcontrolgroup, AF_case, AF_ctrl, N_case_hom, N_ctrl_het, N_case_het, N_ctrl_hom;
-  uint32_t N_case, N_ctrl, N; 
+  uint32_t N; 
 
   //single-variant assoc output
   arma::uvec indicatorVec(q, arma::fill::zeros);       // 0: does not pass QC, 1: non-URV, 2: URV
@@ -3391,9 +3388,11 @@ if(i2 > 0){
     std::vector<uint> & indexZeroVec = sc.indexZeroVec;       // per-worker scratch, not the
     std::vector<uint> & indexNonZeroVec = sc.indexNonZeroVec; // function-level vectors
 	// The cell's collapse, scattered from carrier space into the worker's
-	// (all-zero) scratch: imputeGenoAndFlip below flips, imputes and zeroes
-	// it in place there, and the end of this body gathers it back into
-	// cs.ur for the test (B2). The twin likewise, read-only.
+	// (all-zero) scratch, and gathered back into cs.ur at the end of this body
+	// for the test (B2). The twin likewise, read-only. (This used to say
+	// "imputeGenoAndFlip below flips, imputes and zeroes it in place": all
+	// three are gone -- the fold with LEDGER #130, the zeroing with #129, and
+	// the imputation was never reachable here, a collapse has no missing entry.)
 	cs.scatterUr(jmr, sc.urScratch);
 	arma::vec & genoURVec = sc.urScratch;
 	// LEDGER #118: set r's OWN unweighted collapse (its ultra-rare markers
@@ -3470,17 +3469,28 @@ if(i2 > 0){
 	  // of ONE marker reported a burden p that was not that marker's own p
 	  // (measured, golden P62).
 	  //
-	  // The fix is NOT to emit over the post-flip list, because the choice of
-	  // allele is not free here. The group file's annotation -- `lof`,
-	  // `missense` -- is a property of the ALT allele, and this pseudo-marker
-	  // IS the collapse of ALT-annotated ultra-rare variants: `max_m(w_m g_m)`
-	  // reads "carries at least one of them", and its fold reads "carries NONE
-	  // of them", which is a burden of absence and not of anything annotated.
-	  // So the vector stays ALT-coded, which also makes the two region paths
-	  // agree: the SKAT-O path's burden reads TstatVec_flip
-	  // (R/SAIGE_SPATest_Region.R), the un-corrected score, so with flip false
-	  // the emitter and region_postprocess describe the same allele and their
-	  // BETA_Burden reconcile (they already did on an un-flipped cell).
+	  // The fix is NOT to emit over the post-flip list, because the choice is
+	  // between two ALLELES rather than two carrier lists, and one of them is
+	  // not a burden of anything. `max_m(w_m g_m)` reads "carries at least one
+	  // of the set's ultra-rare variants"; folding it reads "carries NONE of
+	  // them", which is a burden of ABSENCE. That is the decisive argument, and
+	  // it is a statement about DIRECTION, not about which allele the
+	  // constituents count -- be precise about that, because an earlier version
+	  // of this comment said the vector "stays ALT-coded" and that is FALSE:
+	  // every constituent marker has already been through imputeGenoAndFlip in
+	  // the per-marker prepare above, so a constituent with alt frequency > 0.5
+	  // enters the collapse MINOR-coded (`pr.gnz` is post-fold values at
+	  // post-fold positions). The collapse is therefore over minor-allele
+	  // dosages, which for the overwhelming majority of markers IS the ALT
+	  // allele -- and where it is not, that divergence from the ALT-based
+	  // annotation is the SAME question one level down, recorded on LEDGER #131
+	  // and NOT fixed here.
+	  // What the fix does buy, measured: the two region paths now agree. The
+	  // SKAT-O path's burden reads TstatVec_flip (R/SAIGE_SPATest_Region.R),
+	  // the un-corrected score, so with flip false the emitter and
+	  // region_postprocess describe the same vector and their BETA_Burden
+	  // reconcile -- they already did on a cell that was never folded, which is
+	  // the control that says so.
 	  //
 	  // Folding remains for the STATISTICS: MAF and MAC above are
 	  // min(altFreq, 1 - altFreq) as they always were, so the reported MAC, the
@@ -3492,16 +3502,47 @@ if(i2 > 0){
 	  //
 	  // What follows is the pre-existing un-flipped branch, now unconditional:
 	  // imputeGenoAndFlip (UTIL.cpp) for a pseudo-marker with no missing
-	  // genotype, over the carriers -- no flip, no imputation, the dosage
-	  // zeroing, the recount, the nonzero list. Each step is the routine's own
-	  // statement over the same values (see the CarrierStore helpers for why
-	  // the sums are bit-identical).
+	  // genotype, over the carriers -- no flip, no imputation, the recount, the
+	  // nonzero list. Each step is the routine's own statement over the same
+	  // values (see the CarrierStore helpers for why the sums are bit-identical).
+	  //
+	  // LEDGER #129 FIXED: the dosage-zeroing filter is NOT applied here. It
+	  // used to be -- `if(MAC <= g_cfg.dosage_zerod_MAC_cutoff){ cleanDense(...,
+	  // g_cfg.dosage_zerod_cutoff) }`, the routine's own statement -- and on
+	  // this vector it is a category error. `--dosage_zerod_cutoff` (0.2) exists
+	  // to zero a DOSAGE that mean imputation has just written into a sample
+	  // where the genotype was missing; the pseudo-marker's entries are
+	  // `max_m(w_m g_m)`, so on a custom or transform set the number compared
+	  // with 0.2 is in WEIGHT units and the MAC gating the comparison is the
+	  // weighted sum. A set whose weights put every carrier at or below 0.2 had
+	  // its pseudo-marker cleaned to all zeros and emitted NO row -- not
+	  // refused, not a SKAT failure: the pooled row read NA and the #127
+	  // sidecar 0 / 0 / `none`. So whether a set was TESTED depended on the
+	  // scale of its weights, which a burden p does not depend on at all (the
+	  // same set at weights 0.5, or at collapse 0, was tested and gave the same
+	  // p), and collapse 0 and 10 did not agree on which sets existed.
+	  //
+	  // Skipping it rather than re-pointing it at the unweighted twin
+	  // (`genoURVec_noweights`, the other candidate on the row) is the owner's
+	  // decision, and the reason it loses nothing: every constituent marker has
+	  // ALREADY been through this same filter as a dosage, in
+	  // imputeGenoAndFlip's own call on it in the per-marker prepare above. At
+	  // the DEFAULTS the two cutoffs are co-extensive -- ultra-rare means
+	  // MAC <= --MACCutoff_to_CollapseUltraRare (10) and the filter applies at
+	  // MAC <= --dosage_zerod_MAC_cutoff (10) -- so nothing reaches the collapse
+	  // unfiltered. The one corner where the two candidates differ is a RAISED
+	  // collapse cutoff: a marker with MAC between 10 and it enters the collapse
+	  // without having been filtered, so a sub-cutoff entry survives into the
+	  // pseudo-marker here and would not have under the twin. NOTE what such an
+	  // entry can be -- an earlier version of this comment said "on this
+	  // branch's hard-call readers that imputed value is the only fractional
+	  // entry that exists", and that is FALSE: PGEN decodes real dosages
+	  // (`PgrGet1D` with dosage_main, src/PGEN.cpp; goldens
+	  // pgen_marker_dosage*), so it can be a genuine low dosage and not only
+	  // mean-imputation noise. The argument stands at the DEFAULTS, where the
+	  // cutoffs are co-extensive and every constituent was filtered as a dosage
+	  // before the collapse; above them it is a knowing choice.
 	  flip = false;
-	  if(g_cfg.dosage_zerod_cutoff > 0){
-	    if(MAC <= g_cfg.dosage_zerod_MAC_cutoff){
-	      cs.cleanDense(genoURVec.memptr(), g_cfg.dosage_zerod_cutoff);
-	    }
-	  }
 	  altCounts = cs.paritySumDense(genoURVec.memptr());
 	  altFreq = altCounts / (2*t_n);
 	  cs.nonzeroDenseU(genoURVec.memptr(), indexNonZeroVec);
@@ -3679,13 +3720,27 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
               // carrier-space reductions did not apply), followed by
               // `AF_case = 1 - AF_case` and a complement for the hom counts.
               // The pseudo-marker is no longer folded, so that arm was
-              // unreachable and is gone. It was value-identical to this one
-              // wherever it ran: mean(2 - G_case)/2 then 1 - that IS
-              // sum(G_case)/(2 n_case), and on hard calls the complemented hom
-              // count #{G > 1.5} and this one's #{G in [1.5, 2]} are both
-              // #{G = 2}. They could differ only for a CUSTOM-weighted collapse
-              // landing exactly on 0.5 or 1.5, and only under
-              // --is_output_moreDetails.
+              // unreachable and is gone.
+              //
+              // Its two halves were NOT equally benign, and an earlier version
+              // of this note called the whole thing "value-identical", which
+              // was wrong. The frequency half was value-identical:
+              // mean(2 - G_case)/2 then 1 - that IS sum(G_case)/(2 n_case).
+              // The hom-count half was NOT -- it computed
+              // `N_case - het - hom` from the FUNCTION-SCOPE `N_case`/`N_ctrl`
+              // of mainRegionInCPP, which are declared and never assigned (the
+              // identically-named locals in the per-marker prepare are a
+              // different, shadowing declaration). So under
+              // --is_output_moreDetails a folded pseudo-marker's
+              // N_case_hom/N_ctrl_hom were derived from an UNINITIALISED read.
+              // Deleting the arm removes that; the declarations went with it.
+              //
+              // One limitation of the surviving arm, noted rather than fixed:
+              // the hom/het predicates are dosage-scaled (`x <= 2 && x >= 1.5`
+              // and `x < 1.5 && x >= 0.5`), and a CUSTOM-weighted collapse's
+              // entries are w*g, which can exceed 2 -- such a carrier is
+              // counted as neither hom nor het. Pre-existing, only under
+              // --is_output_moreDetails, and no golden reaches it.
               arma::uword nCaseHom = 0, nCaseHet = 0, nCtrlHom = 0, nCtrlHet = 0;
               MACcasegroup = cs.paritySumRanked(genoURVec_noweights.memptr(), w.caseRank);
               MACcontrolgroup = cs.paritySumRanked(genoURVec_noweights.memptr(), w.ctrlRank);
@@ -3742,9 +3797,10 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
     }
 
     }
-    // the post-impute pseudo-marker back into carrier space for B2 (a
-    // flipped one is dense: every non-carrier holds 2), and the worker's
-    // scratches back to zero
+    // the pseudo-marker back into carrier space for B2, and the worker's
+    // scratches back to zero. (This used to say "the post-impute pseudo-marker
+    // ... a flipped one is dense: every non-carrier holds 2": there is no
+    // impute call and no fold here any more.)
     // LEDGER #130: the fill is now always 0 and the scratch always sparse,
     // because the pseudo-marker is never folded (a folded one held 2 at every
     // NON-carrier, which is what CarrierStore::urFill and the dense clear were

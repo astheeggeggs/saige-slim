@@ -43,6 +43,21 @@ ALLOW = "docdrift-allow"
 # the rule's positive control in `selftest`.
 RULES = [
     dict(
+        id="burden-counts-alt",
+        pattern=r"burden (?:now )?counts the ALT allele|both (?:now )?count the ALT allele",
+        why="a group test folds EVERY marker above alt frequency 0.5 to its minor allele "
+            "in the per-marker prepare, and both the burden column and the ultra-rare "
+            "collapse are built from those post-fold values, so the burden counts each "
+            "constituent's MINOR allele. LEDGER #130 settled only the COLLAPSE's "
+            "direction (folding it would read 'carries NONE of them'); the ALT-vs-minor "
+            "question for the constituents is LEDGER #131 and is NOT fixed",
+        evidence="src/Main.cpp:2746 (imputeGenoAndFlip on every marker) and the pr.gnz "
+                 "that accumulate() feeds into both cs.sum and cs.ur; the retraction is "
+                 "in the LEDGER #130 STATUS cell and section 8.1 of "
+                 "docs/state/handoff-2026-09-12-ur-pseudomarker-129-130.md",
+        canary="its burden counts the ALT allele",
+    ),
+    dict(
         id="region-loop-serial",
         pattern=r"marker loop stays on one thread",
         why="the C++ region marker loop has been threaded since 2026-09-06",
