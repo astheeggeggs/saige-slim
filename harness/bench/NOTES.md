@@ -1908,6 +1908,71 @@ planted control). 41 min wall at four wide; peak RSS 0.8 GB (flex192) and
   detects causal genes (the generator), `y_quant` is still undetectable.
   Decision memo: `docs/state/flexrv-study-decisions-2026-09-12.md`.
 
+## The pre-push gate: instrumented, measured, and what actually helps (2026-09-12)
+
+The gate had never been timed per mode. CLAUDE.md recorded the standard tier at
+"~1.5-2.5 min", a 2026-09-05 note at 4m20s, and the real number on this box is
+**7 minutes per compare mode, 14 minutes for the gate**. `prepush.sh` now
+prints its own wall time per mode and in total, with the load average and CPU
+idle at each mode's start, because a timing without its conditions is not a
+measurement here.
+
+**Baseline, 2 reps at d59e0ef4 (serial, as it always ran):**
+
+| rep | byte | numeric | total | load at start | state |
+|---|---|---|---|---|---|
+| 1 | 8m36s | 7m29s | 16m06s | 4.56 | cold page cache (straight after a clean build) |
+| 2 | 6m07s | 5m57s | 12m04s | 64.65 | warm |
+
+**A 33% rep-to-rep spread, and the FASTER rep started on the HOTTER box** --
+page-cache warmth dominates load entirely. Any gate timing from a single rep,
+or compared across sessions, is measuring the cache.
+
+**Running the two compare modes concurrently gains NOTHING.** Paired
+alternating reps, warm, which is the only design that can see an effect
+smaller than the 33% noise:
+
+| | concurrent | serial |
+|---|---|---|
+| rep 1 | 14m15s | 14m03s |
+| rep 2 | 14m08s | 14m20s |
+| mean | **851.5s** | **851.5s** |
+
+Identical to the second, signs disagreeing between reps. The predictor that was
+right, and the one to use before trying this again: a 240-sample trace across a
+full tier puts **mean CPU idle at 6.2%, 92% of samples under 10%**. One mode
+already saturates 4 physical cores, so total CPU work binds. The hypothesis --
+that a mode is bounded by its slowest FILE, leaving half the box idle -- is
+false for this tier. Kept behind `SAIGE_PREPUSH_CONCURRENT=1`, default serial,
+because time to first failure is 7 minutes rather than 14.
+
+Concurrency did earn its keep once, though: on its first run it exposed a real
+race in the TESTS (two FlexRV guard tests wrote a fixed-name group file into
+`extdata/input` and unlinked it on exit -- safe while testthat parallelises by
+file, a race across two suites; `396e66b4`).
+
+**What DID get faster:**
+
+- **`build.sh --incremental`: 167s -> 57s (2.9x)** for the common case of one
+  edited `.cpp`. It enforces the clean-objects rule instead of asking anyone to
+  remember it: no `.hpp`/`.h` may be newer than the OLDEST object (oldest,
+  because one straggler compiled before the header change is enough to
+  corrupt). Drilled three ways -- unknown argument refused, headers-unchanged
+  accepted, planted `touch` on a header refused with both filenames.
+- **Not running the full gate when it cannot tell you anything** (CLAUDE.md,
+  "When the full gate is not required"). One full 14-minute both-modes run was
+  spent today on a TSAN-annotation-only diff, whose macros compile to
+  `((void)0)` in every normal build.
+
+**The lever still on the table, and it is the big one.** The two modes run the
+SAME step-2 CLI invocations and differ only in how the outputs are COMPARED
+(byte-exact against parsed-table tolerance). Serial byte 7m04s + numeric 6m58s
+is two nearly identical halves generating the same files twice. Generating once
+and applying both comparators would be ~2x on the gate -- far more than
+anything tried here -- and it preserves the byte-vs-numeric requirement, which
+is about comparison and not about generation. It is a test-harness refactor,
+not a flag, so it is a decision rather than a patch.
+
 ## FlexRV RAM/CPU levers on the step-2 region path (2026-09-12)
 
 The owner asked for the five levers the threading/RAM assessment named

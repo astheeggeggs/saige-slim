@@ -107,6 +107,26 @@ Standing facts that have each cost at least one session. One line of why each.
   in the prose -- `|Beta|`, `a || b`, `x |= y`, inside backticks or not -- must
   be written `\|`. `ledger.py lint` enforces it; before it existed, five OPEN
   rows were invisible to `ledger.py open` for days.
+- **When the full gate is NOT required.** The gate is **~7 min per compare
+  mode, 14 min total** (measured 2026-09-12, `harness/bench/NOTES.md`), and one
+  full both-modes run was spent that day on a diff that could not possibly move
+  a golden. A golden moves only if the INSTALLED PACKAGE's behaviour moves, so:
+  - **docs-only** (`docs/`, `*.md`, comments): no tier. Run `ledger.py lint`
+    and `docdrift.py` -- they are what a docs change can break, and both are
+    seconds.
+  - **TSAN-annotation-only** (`SAIGE_TSAN_HAPPENS_*`): cannot move a golden,
+    the macros are `((void)0)` unless `harness/tsan.sh` defines
+    `SAIGE_TSAN_ANNOTATIONS`. Run the thing it actually affects --
+    `SAIGE_TSAN_WORKLOADS=<arm> bash harness/tsan.sh clean`.
+  - **test-only**: run the changed file (`test_file`) at `standard`. Escalate
+    to BOTH compare modes only if it adds a CROSS-RUN comparison -- that is the
+    byte-vs-numeric trap's shape, and nothing else in a test file has it.
+  - **anything under `src/` or `R/`**: the full gate, both modes, no
+    exceptions. That includes a change you are sure is inert; "inert" is what
+    the goldens are for.
+  The gate is also ~33% faster on a warm page cache than a cold one, so a
+  timing taken right after a clean build is not comparable to one taken after a
+  previous run -- and a timing without its conditions is not a measurement.
 - **Push through the pre-push gate.** `bash harness/prepush.sh` runs the ledger
   lint and the standard tier in BOTH compare modes; `.githooks/pre-push` runs it
   on every push to `slim` once `git config core.hooksPath .githooks` is set (see
@@ -132,6 +152,8 @@ Standing facts that have each cost at least one session. One line of why each.
 ```sh
 pixi install
 bash harness/build.sh            # clean objects, compileAttributes, R CMD INSTALL
+bash harness/build.sh --incremental   # keeps src/*.o (167s -> 57s); REFUSES if a
+                                      # header is newer than the oldest object
 git config core.hooksPath .githooks   # once per clone: arms the pre-push gate
 ```
 
