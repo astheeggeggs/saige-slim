@@ -47,7 +47,13 @@ the schema fix (always write a header) over a `--chrom`-shaped refusal.
 **Also corrected 2026-09-13, each verified by hand at `f5e173a9` before being
 written:** #134's blast radius is now MEASURED rather than predicted, and
 `cond_customweight` is IN (6 of 6 UR-only cells cross a band; the row had said
-"needs measuring") while no FlexRV BURDEN golden moves at all; #134's ER decision
+"needs measuring") while NO FlexRV golden moves at all -- including
+`plink_group_flexrv_skato`, which the first version of that correction wrongly
+called undeterminable from the bytes: a transform set's `unw_unw` row has weights
+identically 1, so its pseudo-marker `AC_Allele2` IS the cell's `MAC_nw`, and every
+value in that golden (54 and 41 against 24.5-50.5) sits above the top band edge.
+The direction is the part that generalises: FlexRV weights are at most 1, so they
+bias a pseudo-marker's band DOWNWARD, opposite to CADD-scale custom weights; #134's ER decision
 point is structurally inert, so it has TWO live sites, not three; #139's PGEN
 failure writes `BETA=NA SE=NA` rather than `nan`, making it byte-shaped exactly
 like a legitimate #44 declined-effect row; CLAUDE.md's claim that <!-- docdrift-allow: quotes the
