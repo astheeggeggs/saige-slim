@@ -1,5 +1,20 @@
 # What is worth doing next (2026-09-03, updated 2026-09-13; read docs/state/handoff-2026-09-13-flexrv-sweep-rerun.md first, THEN the correction directly below)
 
+**2026-09-13 (later): LEDGER #128 is FIXED, crash-only, and #116 stays open on
+purpose.** A SKAT-O run whose every cell is refused by
+`--minGroupMAC_in_BurdenTest` used to kill the whole run one region later; the
+degenerate branch now writes no pooled row, which is what that path already did
+for a one-cell region. Moves no golden. Test inverted in the same commit and
+drilled both ways (4 failures against a scratch install of the unpatched tree, at
+exactly the crash assertions; 19 passes with the fix; the two control tests pass
+in BOTH). **The owner's decision was to fix the crash and NOT the reporting
+question**, because how an empty region is reported is an output-schema change
+that deserves its own decision and its own goldens. So the live inconsistency is
+now exactly #116 and nothing else: the BURDEN path writes an `NA` Cauchy row for
+the region the SKAT-O path omits entirely. The third test in
+`test-step2-region-allrefused.R` pins that disagreement so a later harmonisation
+cannot land unnoticed.
+
 **Current handoff: `docs/state/handoff-2026-09-13-flexrv-sweep-rerun.md`** -- the
 FlexRV sweep is RE-RUN and no longer owed. All 72 collapse-10 runs at
 `head=976e73ce dirty=0`, exit 0; the 72 collapse-0 runs were left alone because

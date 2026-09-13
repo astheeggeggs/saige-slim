@@ -4,15 +4,27 @@
 # p-value came back "NA", or a weighted ultra-rare collapse produced an
 # all-zero pseudo-genotype.
 #
-# This is the branch added as the C6 review fix: `rep(NA, ncol(NULL))` used to
-# error out mid-run, so the guard reproduces HEAD's legacy construction
-# instead -- get_CCT_pvalue(NULL) is NA for every field and rbind(NULL, cctVec)
-# yields a one-row CHARACTER MATRIX (not a data.frame). Nothing in the golden
-# fixtures reaches this path, which is why it is driven directly here.
+# LEDGER #128 (FIXED 2026-09-13) CHANGED THE CONTRACT HERE, and these tests are
+# inverted to match. The branch used to reproduce HEAD's legacy construction --
+# get_CCT_pvalue(NULL) is NA for every field and rbind(NULL, cctVec) yields a
+# one-row CHARACTER MATRIX with NO column names. That was bad two ways, both
+# MEASURED on the bundled fixture before the fix landed:
+#   * with two or more regions it KILLED the run one region later, in
+#     regionFinish's cross-region rbind ("names do not match previous names");
+#   * with ONE region it exited 0 and wrote an 89-byte results file whose header
+#     was `V1 V2 V3 ... V13` -- R's placeholder names for an unnamed matrix --
+#     over a single all-NA row. A file that looks parseable and has the wrong
+#     name on every column is worse than no file, which is why "keep the legacy
+#     shape" was not a contract worth holding.
+# The branch now builds NO pooled row: pval.Region stays NULL, the CCT values are
+# still computed (cctpval is the fastTest escalation signal and is returned), and
+# LEDGER #127's .pooledTests.txt sidecar carries the region with Rows = 0.
 #
-# The contract being pinned is "continue, do not crash, and keep the legacy
-# shape". If a future change makes this return a data.frame, the writer
-# downstream would silently emit different bytes for the degenerate region.
+# Nothing in the golden fixtures reaches this path, which is why it is driven
+# directly here. NOTE what is NOT settled: on the single-region path the output
+# is now a 0-byte file, which is LEDGER #116's symptom -- deliberately left open
+# (the 2026-09-13 decision was to fix the crash only), and #116 is where the
+# reporting question belongs.
 
 # C++ writes p-values as strings and missing ones as the literal "NA";
 # convert_str_to_log() is what turns them into log(p), and it requires that
@@ -49,33 +61,34 @@ degenerate_run <- function(traitType = "binary",
     weight_sets = weight_sets)
 }
 
-test_that("a region with no emitting cell returns a legacy Cauchy row instead of erroring", {
+test_that("a region with no emitting cell builds NO pooled row, and does not error", {
   r <- degenerate_run("binary")
-  expect_identical(dim(r$pval.Region), c(1L, 13L))
-  expect_true(is.matrix(r$pval.Region))
-  expect_type(r$pval.Region, "character")
-  expect_identical(unname(r$pval.Region[1, 1]), "GENE1")
-  expect_identical(unname(r$pval.Region[1, 2]), "Cauchy")
-  # every statistic field is NA: get_CCT_pvalue(NULL) is NA
-  expect_true(all(is.na(r$pval.Region[1, 3:13])))
+  # the whole point of the fix: no row, so nothing name-less reaches the
+  # cross-region rbind in regionFinish and nothing V1..V13 reaches the writer
+  expect_null(r$pval.Region)
+  # the CCT value is still computed and returned -- it is the fastTest
+  # escalation signal, and get_CCT_pvalue(NULL) is NA
   expect_identical(r$cctpval, NA)
 })
 
-test_that("the degenerate row drops the two binary-only columns for a quantitative trait", {
+test_that("the trait type no longer changes the degenerate result, because there is no row", {
+  # It used to: 13 columns on a binary trait, 11 on a quantitative one, because
+  # the legacy vector appended the two binary-only fields. With no row built,
+  # the trait type cannot reach the output at all.
   r <- degenerate_run("quantitative")
-  expect_identical(dim(r$pval.Region), c(1L, 11L))
-  expect_identical(unname(r$pval.Region[1, 2]), "Cauchy")
+  expect_null(r$pval.Region)
+  expect_identical(r$cctpval, NA)
 })
 
-test_that("multi-weight reuses the same degenerate row, not one row per set", {
-  # Exactly ONE pooled Cauchy row per region, whatever K is -- the degenerate
-  # branch is shared, so K = 2 must not multiply it.
+test_that("multi-weight builds no degenerate row either, whatever K is", {
+  # It used to build exactly ONE shared legacy row however large K was; now it
+  # builds none, and K still must not multiply anything into existence.
   ws <- list(kind = c("custom", "custom"), customCol = c(1, 2),
              betaA = c(NA_real_, NA_real_), betaB = c(NA_real_, NA_real_),
              force = FALSE, name = c("CADD", "REVEL"))
   r <- degenerate_run("binary", weight_sets = ws, WEIGHT = matrix(1, 4, 2), nIndCol = 4L)
-  expect_identical(dim(r$pval.Region), c(1L, 13L))
-  expect_identical(unname(r$pval.Region[1, 1:2]), c("GENE1", "Cauchy"))
+  expect_null(r$pval.Region)
+  expect_identical(r$cctpval, NA)
 })
 
 test_that("convert_str_to_log parses the C++ 'mEe' form", {

@@ -636,60 +636,53 @@ region_postprocess <- function(outList,
       if (is.null(pval.Region)) {
         # Degenerate corner: run_core was TRUE (the region has rare/ultra-rare
         # carriers) but no (anno, max_MAF, weight set) cell emitted a row --
-        # e.g. every flagged marker's p-value came back NA, or a weighted URV
-        # collapse produced an all-zero pseudo-genotype. ncol(NULL) is NULL, so
-        # the named construction below would error; reproduce the legacy
-        # construction verbatim instead (every get_CCT_pvalue(NULL) is NA and
-        # rbind(NULL, cctVec) is a 1-row character matrix), so the run continues
-        # exactly as at HEAD. Multi-weight mode reuses the same degenerate row.
+        # e.g. every flagged marker's p-value came back NA, a weighted URV
+        # collapse produced an all-zero pseudo-genotype, or (since LEDGER #126)
+        # --minGroupMAC_in_BurdenTest refused every cell.
+        #
+        # LEDGER #128 FIXED: NO POOLED ROW IS BUILT HERE. The CCT values are
+        # still computed, because `cctpval` is the fastTest escalation signal and
+        # is returned, but nothing is appended to pval.Region.
+        #
+        # What this replaces: the legacy code built the row as a BARE UNNAMED
+        # character vector and did `rbind(NULL, cctVec)`, giving a 1-row matrix
+        # with no column names. ncol(NULL) is NULL, so the named construction in
+        # the else-arm cannot run here -- that is why the legacy form existed.
+        # The run then continued *inside* this region and died one region LATER,
+        # in regionFinish's cross-region accumulator, where rbind dispatches to
+        # rbind.data.frame and match.names stops with "names do not match
+        # previous names". The old comment here claimed the run "continues
+        # exactly as at HEAD", which was true within the region and false a
+        # region later.
+        #
+        # Why not name the columns instead: the column set depends on
+        # regionTestType, isCondition, isMultiWeight and traitType, so building
+        # it without a pval.Region to read colnames() from means RE-DERIVING the
+        # schema, and one wrong position silently puts an NA in the wrong column.
+        # Writing no row needs no schema and matches what this path ALREADY does
+        # for a region with one cell (the `cctpval <- 1` else-arm below, pinned
+        # by test-step2-region-allrefused.R): on the SKAT-O path a region with no
+        # tested cell contributes no row, and LEDGER #127's .pooledTests.txt
+        # sidecar carries it with Rows = 0.
+        #
+        # This deliberately does NOT harmonise with the BURDEN path, which builds
+        # its pooled row in C++ and writes an NA Cauchy row for the same region.
+        # That disagreement is LEDGER #116 and is where the decision belongs.
         cctpval_Burden <- get_CCT_pvalue(pval.Region$Pvalue_Burden)
         if (regionTestType != "BURDEN") {
           cctpval <- get_CCT_pvalue(pval.Region$Pvalue)
           cctpval_SKAT <- get_CCT_pvalue(pval.Region$Pvalue_SKAT)
-          cctVec <- c(
-            regionName,
-            "Cauchy",
-            NA,
-            cctpval,
-            cctpval_Burden,
-            cctpval_SKAT,
-            NA,
-            NA
-          )
-        } else {
-          cctVec <- c(
-            regionName,
-            "Cauchy",
-            NA,
-            cctpval_Burden,
-            NA,
-            NA
-          )
         }
         if (isCondition) {
+          # Same overwrite-with-the-conditional-value order as the else-arm
+          # (upstream behaviour, preserved): cctpval ends up conditional.
           cctpval_Burden <- get_CCT_pvalue(pval.Region$Pvalue_Burden_cond)
           if (regionTestType != "BURDEN") {
             cctpval <- get_CCT_pvalue(pval.Region$Pvalue_cond)
             cctpval_SKAT <- get_CCT_pvalue(pval.Region$Pvalue_SKAT_cond)
-            cctVec <- c(
-              cctVec,
-              cctpval,
-              cctpval_Burden,
-              cctpval_SKAT,
-              NA,
-              NA
-            )
-          } else {
-            cctVec <- c(cctVec, cctpval_Burden, NA, NA)
           }
         }
-        cctVec <- c(cctVec, NA)
-        if (traitType == "binary") {
-          cctVec <- c(cctVec, NA, NA)
-        }
-        cctVec <- c(cctVec, NA, NA)
         pooledP <- if (regionTestType != "BURDEN") cctpval else cctpval_Burden
-        pval.Region <- rbind(pval.Region, cctVec)
       } else {
         # Exactly ONE pooled Cauchy row per region, combining every
         # (anno x max_MAF x weight set) row of the region. NOTE on the names:

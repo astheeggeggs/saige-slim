@@ -1,18 +1,24 @@
-# LEDGER #128 (characterization, OPEN): on the SKAT-O path a region with TWO or
-# more cells, every one of them refused by --minGroupMAC_in_BurdenTest, kills the
-# run in regionFinish's cross-region rbind ("names do not match previous names").
-# The pooled row of a region with no surviving cell is built by the degenerate
-# `rbind(NULL, cctVec)` branch of region_postprocess as a name-less character
-# matrix, which rbind.data.frame then refuses. Two escapes: a ONE-cell region
-# gets no pooled row at all, and the BURDEN path builds its pooled row in C++
-# and writes NA (#127). Unreachable at the default gate 1 (#126: a surviving
-# cell has MAC >= 1), so the gate is NAMED here, as test-step2-region-threads.R
-# does.
+# LEDGER #128 (FIXED 2026-09-13): on the SKAT-O path a region with TWO or more
+# cells, every one of them refused by --minGroupMAC_in_BurdenTest, USED TO KILL
+# the run in regionFinish's cross-region rbind ("names do not match previous
+# names") -- the pooled row of a region with no surviving cell was built by the
+# degenerate `rbind(NULL, cctVec)` branch of region_postprocess as a name-less
+# character matrix, which rbind.data.frame refused one region later.
+#
+# The fix builds NO pooled row in that branch, which is what this path ALREADY
+# did for a region with ONE cell (second test below, unchanged and now the
+# CONTROL for the first: a two-cell all-refused region must behave exactly like
+# the one-cell one). Unreachable at the default gate 1 (#126: a surviving cell
+# has MAC >= 1), so the gate is NAMED here, as test-step2-region-threads.R does.
+#
+# The BURDEN path still writes an NA Cauchy row for the same region (third test,
+# unchanged) -- that disagreement is LEDGER #116 and is deliberately NOT closed
+# here, so the third test is what would notice if someone harmonised the two
+# paths without deciding #116.
 #
 # Fixture: GENET var rs28 rs32 (AC 1 each, cell MAC 2) beside GENE1 of
 # group_new_snpid.txt, on the frozen example_binary_sparseGRM model.
-# These pin what the code does TODAY; invert them with the fix, same commit.
-# Tier: standard (three step-2 runs, one of which fails fast).
+# Tier: standard (three step-2 runs).
 
 allrefused_group_file <- function() {
   gf <- tempfile(fileext = ".txt")
@@ -44,15 +50,24 @@ allrefused_run <- function(anno, r_corr = NULL, gate = 5) {
   list(status = as.integer(st), log = readLines(attr(st, "log"), warn = FALSE), out = out)
 }
 
-test_that("SKAT-O: a region whose two cells are both refused by the gate kills the run", {
+test_that("SKAT-O: a region whose two cells are both refused by the gate no longer kills the run", {
   skip_unless_level("standard")
   r <- allrefused_run("lof,lof:missense")
-  expect_false(identical(r$status, 0L))
+  expect_cli_ok(r$status)
   expect_true(any(grepl("Analyzing Region GENET", r$log, fixed = TRUE)))
-  expect_true(any(grepl("names do not match previous names", r$log, fixed = TRUE)))
-  expect_false(any(grepl("Analysis done", r$log, fixed = TRUE)))
-  # and what it leaves behind is a zero-byte results file
-  expect_true(file.exists(r$out) && file.size(r$out) == 0)
+  # the crash signature is gone, and the run reaches the end
+  expect_false(any(grepl("names do not match previous names", r$log, fixed = TRUE)))
+  expect_true(any(grepl("Analysis done", r$log, fixed = TRUE)))
+  # GENE1 still reports; GENET contributes no row at all, exactly as the
+  # one-cell region does in the next test (LEDGER #116 keeps that open)
+  x <- read_saige_table(r$out)
+  expect_true(all(x$Region == "GENE1"))
+  expect_false("GENET" %in% x$Region)
+  # ... and the sidecar is what carries GENET, with BOTH cells recorded refused
+  side <- read.table(paste0(r$out, ".pooledTests.txt"), header = TRUE, sep = "\t",
+                     stringsAsFactors = FALSE)
+  expect_equal(side$Cells_refused_minGroupMAC[side$Region == "GENET"], 2L)
+  expect_equal(side$Rows[side$Region == "GENET"], 0L)
 })
 
 test_that("SKAT-O: the same region with ONE refused cell escapes (no pooled row is built)", {
