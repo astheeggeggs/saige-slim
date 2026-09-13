@@ -155,48 +155,109 @@ in full -- rather than from the weighting. It is ALSO consistent with the fixtur
 being too underpowered to separate the two. **Distinguishing those two is the
 power question, and it needs a different fixture.**
 
-## 6. The power arm is not interpretable, and the reason is not (only) low power
+## 6. The power arm, RESOLVED 2026-09-13: the fixture is behaving correctly
 
-Stating the expected magnitude first, from the fixture's own `sim_meta.json`:
-coding h2 = `h2_realised` 0.0220 x `frac_h2_coding` 0.6 = 0.0132 over
-`n_causal_genes` 63 -> mean per-gene h2 2.1e-4 -> **mean NCP = N x h2 = 10.5**. At
-Bonferroni alpha = 0.05/210 = 2.38e-4 the 1-df critical value is 13.50, giving
-power 0.332 at the mean NCP. **Expected detections: 21 if every gene sat at the
-mean, 48 under the `ncp_ladder = 1,60` spread.**
+Section 6 originally said the power arm showed a "10-40x shortfall" against the
+fixture's h2 budget that was "NOT explained", and named three candidate causes.
+**That was wrong, it has been run down, and the answer is that there is no
+anomaly.** The corrected account, with each of the three candidates resolved:
 
-Observed: **`y_quant` 1-3 of 63**, `y_binary` 8-11 of 63.
+### 6a. The variance decomposition (a sum over the truth table, no model)
 
-That is a 10-40x shortfall and it is NOT explained. Per this project's own rule a
-result that lands that far off is a located error until shown otherwise, so the
-power arm must not be read as "underpowered by design" until one of these is
-tested:
+Summing `2*MAF*(1-MAF)*beta^2` over `variants.tsv.gz` gives 0.02248, against
+`sim_meta.json`'s `h2_realised` 0.02200 -- that reconciliation is the control
+that the formula and the beta scale are right. Split by what the sweep can see
+(`--annotation_in_groupTest=high:medium`, `--flexRV_maxMAF=0.001`):
 
-1. **The tested MAF window is not the h2 window.** The sweep tests
-   `--flexRV_maxMAF=0.001` (MAC <= 100 at N = 50,000) while the gene's coding h2
-   spans all frequencies. If most coding h2 sits above MAF 0.001 the test never
-   sees it. **Check this first** -- it is a one-pass calculation over the
-   fixture's `variants.tsv.gz` and needs no run.
-2. **`frac_directional = 0.5`**: half the causal genes have mixed-sign effects,
-   which a burden cancels by construction, and `link_mix` is step/lof/graded so
-   the genotype-to-burden map is not linear either.
-3. The NCP ladder may be concentrated at the low end rather than uniform on
-   [1, 60].
+| bucket | variants | share of causal variance |
+|---|---|---|
+| **visible: mask AND MAF <= 0.001** | 498 | **30.2%** |
+| outside mask, MAF > 0.001 | 105 | 37.5% |
+| outside mask, MAF <= 0.001 | 972 | 26.4% |
+| in mask, MAF > 0.001 | 15 | **6.0%** |
 
-The `oracle` column bounds where the ceiling is and is the sharpest number in the
-file: on `y_quant` c0 the oracle -- best single set per gene, Bonferroni over
-sets -- detects **2**. flex192's 2 is AT that ceiling. No weighting scheme can do
-better on this fixture, which is why CONTROL 2 (rho > 0.5 expected, observed
--0.04 to 0.25 on `y_quant`) and CONTROL 3 are being evaluated at a resolution of
-one or two genes.
+**CANDIDATE 1 IS REFUTED. The MAF window costs 6 points; the annotation mask
+costs 64.** `--flexRV_maxMAF=0.001` is not what starves the test -- the
+simulation put most causal variance in `low` and `noncoding`, which a gene-based
+test on a `high:medium` mask is not supposed to see. So this is not a defect, it
+is the wrong denominator: the right one for this sweep is 30.2% of 0.0225 =
+0.0068, not `h2 * frac_h2_coding` = 0.0132.
+
+### 6b. Candidates 2 and 3 are both CONFIRMED, and both are real
+
+Per causal gene, over visible variants only, unweighted burden
+(`NCP = N * Cov^2 / Var`, `Cov = sum b*2p(1-p)`, `Var = sum 2p(1-p)`):
+
+- **22 of 62 genes have mixed-sign visible betas**, and directional cancellation
+  takes expected detections from 9.1 (no-cancellation bound) to **4.9**.
+- **The ladder is heavily skewed**: median gene NCP **0.62**, with only a handful
+  appreciable (34.3, 34.2, 15.5, 12.5, ...).
+
+### 6c. What was actually wrong, and it was MY ESTIMATOR, not the fixture
+
+The 4.9 figure still did not match the observed 1-2 on `y_quant`, so the
+estimator was validated against the data before being trusted further -- and it
+FAILED: Spearman(predicted NCP, observed -log10 p) = 0.243, and the two
+top-predicted genes, **both at NCP ~34, gave observed -log10 p of 0.13 and
+9.01**. Same prediction, one null and one a 1e-9 hit, is a wrong model rather
+than a mis-scaled one.
+
+The cause, found by checking the one thing never checked -- whether the variants
+being summed over are variants a test can actually resolve: **GENE0190's entire
+NCP of 34.3 comes from ONE variant at MAF 2e-05, i.e. MAC 2, two carriers, with
+beta 4.14.** The chi-square NCP approximation is meaningless at two carriers,
+which is exactly what SPA and the exact test exist for. GENE0210's NCP comes from
+MAC 9/29/74 variants and duly detects at p = 1e-9.
+
+Quantified, splitting the naive 4.9 by whether a gene's signal is resolvable:
+
+| gene set | genes | E[detections] |
+|---|---|---|
+| all 62 | 62 | 4.9 |
+| total visible MAC >= 20 | 35 | **1.8** |
+| total visible MAC >= 50 | 19 | 1.4 |
+| total visible MAC >= 100 | 9 | 1.1 |
+
+**3.1 of the naive 4.9 comes from 27 genes whose entire visible signal sits below
+MAC 20.** Against resolvable genes only the prediction is **1.8**, and the
+observed `y_quant` detections are **1 (`unw`) and 2 (`flex192`)`. That
+reconciles. `y_binary`'s 8-11 follows from `h2_binary_mult` 13.9 lifting every
+beta above threshold.
+
+**So there is no unexplained shortfall.** The fixture is doing what its
+parameters say it should; the earlier "10-40x" and the intermediate "~3x" were
+both artefacts of crediting signal that no test can resolve.
+
+### 6d. The collapse is a no-op here, which also refutes a fourth guess
+
+`c0` (nothing collapsed) against `c10`, same arm: **193-194 of 210 genes have
+IDENTICAL p-values**, median |dlog10 p| 0.0000, max 0.264. At MAC <= 10 out of
+2N = 100,000 essentially no sample carries two of a gene's ultra-rare variants,
+so `max()` and `sum()` coincide. The collapse cutoff cannot explain anything on
+this fixture.
+
+### 6e. The design constraint this hands to a power fixture
+
+**Control the MAC of the causal variants, not just their h2.** A beta of 4.14 on
+a MAC-2 variant generates heritability on paper and nothing detectable in
+practice, and 27 of this fixture's 62 causal genes are built that way. A fixture
+intended to separate weighting schemes needs its causal signal in variants the
+test can resolve -- concentrated in fewer genes at higher MAC -- or the oracle
+ceiling stays at a handful of genes however much h2 is nominally present.
+
+Three hypotheses were refuted in the course of this (the MAF window, the
+collapse, and the estimator itself). The missing control, in hindsight, was the
+cheap one: **reconcile the variants being summed against the variants a test can
+resolve, before predicting anything from them.**
 
 ## 7. What to do next on this
 
 - **Do not re-run the sweep for power.** It is re-run, its null half is valid and
   current, and its power half is at the oracle ceiling.
-- **Resolve item 1 above before designing anything**, because if the h2 is mostly
-  outside the tested MAF window then the fixture is not underpowered, it is
-  mis-targeted, and the fix is a different `--flexRV_maxMAF` rather than a bigger
-  effect.
+- **Item 1 is DONE (section 6) and the answer was no**: the MAF window costs 6
+  points of causal variance and the annotation mask costs 64, so a different
+  `--flexRV_maxMAF` fixes nothing. What a new fixture needs is in 6e -- causal
+  signal at resolvable MAC, not more h2.
 - **The power question, stated so it can be answered**: does FlexRV's advantage
   over the unweighted burden survive permuting the score? Today's answer is
   "yes", which would be a statement about the method rather than about this

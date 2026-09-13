@@ -25,11 +25,17 @@ fractional-weight sets and is monotone in weight shrinkage, with `unw` and `lof`
 exactly zero over 104,760 rows -- the mechanism is #129's dosage filter against
 the 0.2 cutoff. The pre-fix outputs are kept at
 `harness/work/flexrv_study/results-prefix-38eee5f5/`. **Two things that outlive
-it**: the power arm is at its own oracle ceiling and is NOT interpretable (and
-the shortfall against the h2 budget is 10-40x and unexplained -- section 6 names
-the check to run first, which needs no run); and `uninf<=unw=FALSE` on every
-line, i.e. at this fixture's resolution FlexRV's advantage over the unweighted
-burden survives PERMUTING the score.
+it**: the power arm is at its own oracle ceiling, and `uninf<=unw=FALSE` on every
+line -- i.e. at this fixture's resolution FlexRV's advantage over the unweighted
+burden survives PERMUTING the score, which is the open scientific question.
+**Section 6 was REWRITTEN on 2026-09-13 and its "10-40x unexplained shortfall" is
+withdrawn**: the MAF window costs 6 points of causal variance and the annotation
+mask costs 64 (so a different `--flexRV_maxMAF` fixes nothing), 22 of 62 genes
+cancel directionally, and 3.1 of the naive 4.9 expected detections came from 27
+genes whose entire visible signal sits below MAC 20, where the chi-square
+approximation is invalid. Against resolvable genes the prediction is 1.8 and the
+observation is 1-2. **There is no anomaly.** The design constraint for any new
+power fixture is 6e: control the causal variants' MAC, not just their h2.
 
 
 **2026-09-13: the current handoff's closing recommendation is WRONG, and this is
