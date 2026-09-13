@@ -29,6 +29,21 @@ gated together at `both` modes. The ledger is at **6 open**. Read the rows
   row's "would move every golden with a header" was a mis-stated blast radius,
   #133's shape). `test-step2-region-allrefused.R`'s two SKAT-O tests were
   inverted with it.
+**Later the same evening: #137, #138 and #136 FIXED too** (`49274ad1`,
+`742726b3`, `51a8e7f2`), the ledger at **3 open** (#135, #139, #142). #137 is
+the missing `--varianceRatioFile` refusal beside the manifest; #138 REFUSES any
+set composed beside FlexRV's transform sets (weight line, extra beta pairs,
+No_Weights), placed at set composition because weight lines are known only
+once the group file is read; #136 corrects six help sentences in every copy
+(a seventh twin of the LOCO claim was in `R/SAIGE_extractNeff.R`), DECIDES to
+delete the `isCateVarianceRatio` claim rather than enforce it, and adds six
+`docdrift.py` rules -- the drill at `4c2ca05a^` now reports 42 hits, not 10.
+`man/` was regenerated with `roxygen2::roxygenise(roclets = "rd")`, which also
+re-wrapped one unrelated paragraph (whitespace only). Next: #142 is a DECISION
+(dedupe FlexRV MAC sets before the Cauchy row, or document that `p_FlexRV`
+depends on N through the duplicate count); #139 needs a chrX fixture with
+missing calls; #135 needs a fixture whose cell count approaches 2N.
+
 Three things a later session should hold on to: (1) a scratch install of
 unpatched HEAD reusing the tree's `src/*.o` (all but the changed file's) takes
 about a minute and is what every red drill above ran against -- assert
