@@ -1,4 +1,9 @@
-# What is worth doing next (2026-09-03, updated 2026-09-13; read docs/state/handoff-2026-09-13-132-133-134.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-13 evening; read docs/state/handoff-2026-09-13-evening-six-rows.md first)
+
+**Current handoff: `docs/state/handoff-2026-09-13-evening-six-rows.md`** -- the
+six rows of the evening, the three that remain (#142 a DECISION with a measured
+pooling-rule pipeline, `harness/sim/flexrv_study/pool_rules.R`; #139 and #135
+need fixtures), and the drill recipe.
 
 **2026-09-13 (evening): LEDGER #141, #140 and #116 are FIXED**, one commit each,
 gated together at `both` modes. The ledger is at **6 open**. Read the rows
