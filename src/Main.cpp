@@ -4143,15 +4143,19 @@ if(t_regionTestType == "BURDEN"){
 	// read below, so a set that zeroes most of its cell is no longer tested
 	// with the whole cell's MAC.
 	double altCounts =  genoSumcount_noweight(jmr);   // weight-independent count
-	double altFreq = altCounts/(2*t_n);
-	double MAC, MAF;
-	if(altFreq > 1){
-		MAF = 1;
-		MAC = t_n;
-	}else{
-		MAF = std::min(altFreq, 1 - altFreq);
-		MAC = MAF*2*t_n;
-	}
+	double altFreq = altCounts/(2*t_n);               // handed to getMarkerPval as before (c.altFreq)
+	// LEDGER #135 FIXED (2026-09-13): the cell's AGGREGATE allele count used to
+	// be divided by 2N and FOLDED as though it were one marker's frequency
+	// (MAF = min(f, 1 - f); MAC = MAF * 2N, with a clamp to N above f = 1), so
+	// the MAC the min-group-MAC gate, the variance-ratio band and the ER
+	// predicate read DECREASED as the cell's count grew past N: an aggregate of
+	// 1915 on N = 1,000 gated as 85, and 3064 as 1000. A sum over the cell's
+	// markers of each marker's own folded count is not a frequency of anything
+	// and can exceed 2N. The gating MAC is now that count itself, which is
+	// what the printed MAC (MAC_GroupVec) already was, so the two are one
+	// number. Golden P66 reaches the regime; every other golden's cells sit
+	// far below N, where the two formulas agree.
+	double MAC = altCounts;
         if(indexNonZeroVec_arma.n_elem > 0 && MAC < g_cfg.min_gourpmac_for_burdenonly){
           burdenRefused[jmr] = 1;
         }

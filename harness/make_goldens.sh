@@ -1540,6 +1540,30 @@ run step2_plink_group_urmixed_burden.log R2 step2_SPAtests.R \
   --maxMAF_in_groupTest=0.5 --MACCutoff_to_CollapseUltraRare=700 \
   --is_single_in_groupTest=TRUE --r.corr=1 --is_fastTest=FALSE
 
+# P66 (2026-09-13, LEDGER #135): P65 with --minGroupMAC_in_BurdenTest=1500, the
+# gate raised past N. The BURDEN emitter used to divide a cell's AGGREGATE
+# allele count by 2N and fold it as though it were one marker's frequency, so
+# the MAC it gated on FELL as the cell's count grew past N. P65's four distinct
+# cells print MAC 748, 3064, 1915 and 2997 (plink2 --freq --keep over the
+# model's 1,000 samples puts the plain folded sums at 959, 5271, 3043 and 5789;
+# the collapse at 700 takes a per-sample max over the collapsed markers, which
+# is what brings them down to the printed values -- every cell but GENE1 lof
+# is past N either way) but were gated as 748, 1000 (the clamp), 85 (2000 -
+# 1915) and 1000, so at 1500 every cell was refused and this file was two
+# `Cauchy NA` rows. Gating on the count itself refuses only GENE1 lof (748):
+# the other five rows are P65's bytes, GENE1's pooled row is the CCT of its two
+# remaining (twin) cells, and the #127 sidecar discloses the one refusal.
+run step2_plink_group_urmixed_burden_gate1500.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_urmixed_burden_gate1500.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.5 --MACCutoff_to_CollapseUltraRare=700 \
+  --is_single_in_groupTest=TRUE --r.corr=1 --is_fastTest=FALSE \
+  --minGroupMAC_in_BurdenTest=1500
+
 ############ PGEN-vs-PLINK byte identity, checked in the candidate dir #########
 # The step-0 and step-1 PGEN runs above are NOT committed as separate goldens:
 # each is byte-identical to its PLINK twin, so committing them would double the

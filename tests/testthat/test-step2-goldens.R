@@ -461,6 +461,23 @@ test_that("step2 MIXED cell (rare + high-AF pseudo-marker) matches golden", {
     extra_outputs = ".singleAssoc.txt")
 })
 
+test_that("step2 MIXED cell at --minGroupMAC_in_BurdenTest=1500 matches golden", {
+  # P66 (LEDGER #135 FIXED): P65 with the gate raised past N. The emitter used
+  # to fold a cell's AGGREGATE count as a frequency, so cells of 3064, 1915 and
+  # 2997 alleles gated as 1000, 85 and 1000 and this file was two `Cauchy NA`
+  # rows. It now refuses only GENE1 lof (748); the mechanism is characterized in
+  # test-step2-burden-aggregate-mac.R.
+  run_step2_case("plink_group_urmixed_burden_gate1500.txt",
+    c(PLINK_ARGS(), GRP_MODEL, SG_ARGS,
+      "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
+      "--groupFile=./input/group_new_snpid.txt",
+      "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+      "--maxMAF_in_groupTest=0.5", "--MACCutoff_to_CollapseUltraRare=700",
+      "--is_single_in_groupTest=TRUE", "--r.corr=1", "--is_fastTest=FALSE",
+      "--minGroupMAC_in_BurdenTest=1500"),
+    extra_outputs = c(".singleAssoc.txt", ".pooledTests.txt"))
+})
+
 test_that("step2 all-ultra-rare cell with small custom weights matches golden", {
   # LEDGER #129 FIXED: the cell used to vanish to the dosage filter, and this
   # golden was a bare Cauchy NA row plus the #127 sidecar disclosing the zero.

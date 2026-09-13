@@ -473,11 +473,13 @@ was written down. The rule, and the one deliberate exception:
 3. **A MAC is an allele count of the rarer allele** (#118), and the collapse
    criterion is that count: `MAC = min(altCounts, 2N - altCounts)` at `:2747`,
    then `MAC > --MACCutoff_to_CollapseUltraRare` decides whether a marker is
-   collapsed. **Three places still break this and are OPEN**: the pseudo-marker's
-   band/ER decision reads the WEIGHTED collapse sum (#134), the BURDEN
-   emitter folds a cell's AGGREGATE count as if it were a frequency so its
-   gating MAC falls as the cell grows (#135), and `MAC_case`/`MAC_control`
-   are un-folded halves that do not sum to the folded `MAC` (#133).
+   collapsed. Three places broke this and are now FIXED: the pseudo-marker's
+   band/ER decision read the WEIGHTED collapse sum (#134), the BURDEN
+   emitter folded a cell's AGGREGATE count as if it were a frequency so its
+   gating MAC fell as the cell grew past N (#135, fixed 2026-09-13: the gating
+   MAC is the count itself, golden P66 at `--minGroupMAC_in_BurdenTest=1500`),
+   and `MAC_case`/`MAC_control` were un-folded halves that did not sum to the
+   folded `MAC` (#133).
 4. **Reported frequencies and effects are per ALT allele.** `imputeGenoAndFlip`
    undoes its own fold for `altFreq`/`altCounts`, and the single-variant path
    negates the effect with `Beta * (1 - 2*flip)`. So an `AF_Allele2` above 0.5

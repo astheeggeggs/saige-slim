@@ -1,0 +1,2 @@
+Region	Model	Path	Rows	Pvalues_combined	Cells_refused_minGroupMAC	Rule	Pvalue_pooled
+GENE1	1	BURDEN	2	2	1	Cauchy	0.1196903

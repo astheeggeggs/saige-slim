@@ -49,6 +49,20 @@ re-wrapped one unrelated paragraph (whitespace only). Next: #142 is a DECISION
 depends on N through the duplicate count); #139 needs a chrX fixture with
 missing calls; #135 needs a fixture whose cell count approaches 2N.
 
+**2026-09-13 (night): LEDGER #135 FIXED.** The BURDEN emitter gates on the
+cell's aggregate count itself (`MAC = altCounts`); the fold and the clamp are
+gone. The fixture needed no new group file: `plink2 --freq --keep` over the
+model's 1,000 samples showed every P65 cell but GENE1 lof past N before the
+collapse (plain folded sums 959, 5271, 3043, 5789; printed after the collapse
+at 700: 748, 3064, 1915, 2997). Golden P66 is P65 at
+`--minGroupMAC_in_BurdenTest=1500`: at unpatched HEAD the four cells gated as
+748, 1000, 85 and 1000, ALL were refused and the file was two `Cauchy NA` rows
+while the SKAT-O path refused only GENE1 lof; fixed, five of P65's six rows
+are byte-identical, GENE1 lof is refused and its pooled row is the CCT of the
+two twins (0.11969). `test-step2-burden-aggregate-mac.R` is the
+characterization (red at the scratch install of HEAD, green after). No
+committed golden moved. Read `ledger.py 135`.
+
 Three things a later session should hold on to: (1) a scratch install of
 unpatched HEAD reusing the tree's `src/*.o` (all but the changed file's) takes
 about a minute and is what every red drill above ran against -- assert
