@@ -339,8 +339,8 @@ option_list <- list(
       "Required. Whether to estimate variance ratio based on different MAC ",
       "categories. If yes, variance ratio will be estiamted for multiple MAC ",
       "categories corresponding to cateVarRatioMinMACVecExclude and ",
-      "cateVarRatioMaxMACVecInclude. Currently, if isCateVarianceRatio=TRUE, then ",
-      "LOCO=FALSE [default=FALSE]"
+      "cateVarRatioMaxMACVecInclude. Combines freely with --LOCO (nothing forces ",
+      "LOCO=FALSE) [default=FALSE]"
     )
   ),
   make_option(

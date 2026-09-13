@@ -42,6 +42,64 @@ ALLOW = "docdrift-allow"
 # how to re-check. `canary` is the sentence as it was actually written, and is
 # the rule's positive control in `selftest`.
 RULES = [
+    # LEDGER #136 (fixed 2026-09-13): six help/roxygen sentences that stated what
+    # the code does not do, each copied across the wrapper, the roxygen and man/.
+    dict(
+        id="136-fasttest-cutoff-single-variant",
+        pattern=r"[Nn]o effect on single-variant runs",
+        why="false: src/Main.cpp's single-variant escalation gate reads "
+            "m_pval_cutoff_for_fastTest, so on a marker run with --is_fastTest=TRUE the "
+            "cutoff decides which markers are re-tested and changes their p-values",
+        evidence="grep -n 'pval_cutoff_for_fastTest' src/Main.cpp: the compare sits inside "
+                 "the marker-path fastTest re-test block",
+        canary="and that second result is the one reported. No effect on single-variant runs.",
+    ),
+    dict(
+        id="136-xpar-colon",
+        pattern=r"in the format start:end",
+        why="false: the X_PARregion parser splits each token on '-' and stops with "
+            "'is not of the form start-end', so following the help aborts the run",
+        evidence="R/SAIGE_Test_main.R, the X_PARregion token parser (LEDGER #38)",
+        canary="which are seperated by comma and in the format start:end. By default:",
+    ),
+    dict(
+        id="136-moredetails-columns",
+        pattern=r"homN_Allele2_cases|hetN_Allelelogical2_cases|homN_Allele2_ctrls|hetN_Allele2_ctrls",
+        why="no writer emits those column names; --is_output_moreDetails appends "
+            "N_case_hom, N_case_het, N_ctrl_hom, N_ctrl_het on a binary trait and nothing "
+            "on a quantitative one (golden P32's header ends at N)",
+        evidence="grep -n 'N_case_hom' src/Main.cpp: the two writer headers",
+        canary="If True, the columns homN_Allele2_cases, hetN_Allelelogical2_cases, "
+               "homN_Allele2_ctrls, hetN_Allele2_ctrls will be output",
+    ),
+    dict(
+        id="136-marker-id-format",
+        pattern=r"chr:pos_ref/alt",
+        why="this branch matches marker IDs against bim column 2 / the pvar ID column; "
+            "the markerInfo$ID2 fallback that would have supported chr:pos_ref/alt is "
+            "dead (nothing assigns ID2)",
+        evidence="CLAUDE.md Harness: 'PLINK group files key on bim column 2 (rs IDs); "
+                 "--condition takes rsIDs'",
+        canary="Variant ids are in the format chr:pos_ref/alt and seperated by by comma",
+    ),
+    dict(
+        id="136-catevr-forces-loco-off",
+        pattern=r"then LOCO=FALSE",
+        why="nothing enforces it: every LOCO <- FALSE in the fitter is conditioned on "
+            "useSparseGRMtoFitNULL or isLowMemLOCO, never on isCateVarianceRatio, so the "
+            "two options combine freely and the user's LOCO choice stands",
+        evidence="grep -n 'LOCO <- FALSE' R/SAIGE_fitGLMM_fast.R and read each condition",
+        canary="cateVarRatioMaxMACVecInclude. If TRUE then LOCO=FALSE. By default, FALSE",
+    ),
+    dict(
+        id="136-overwrite-refusal-as-warning",
+        pattern=r"WARNING: The variance ratio file",
+        why="the message is a stop(): a fatal refusal that opened with WARNING and said "
+            "the new ratios 'will be output to' the file it was refusing to touch",
+        evidence="R/SAIGE_fitGLMM_fast.R, the IsOverwriteVarianceRatioFile branch: the "
+                 "call is stop(), and the run halts before fitting",
+        canary="\"WARNING: The variance ratio file \", varRatioFile,",
+    ),
     dict(
         id="ledger-49-remains",
         pattern=r"#49 remains|#49 (?:is )?(?:still )?open",

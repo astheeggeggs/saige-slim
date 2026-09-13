@@ -65,7 +65,9 @@ option_list <- list(
     help = paste0(
       "Path to a file containing variant ids to be included from the dosage ",
       "file. The file does not have a header and each line is for a marker ID. ",
-      "Marker ids are in the format chr:pos_ref/alt"
+      "Marker IDs must match the genotype file's own IDs: bim column 2 for PLINK, ",
+      "the pvar ID column for PGEN (e.g. rs12345, or chr3:101651171:C:T if that is ",
+      "how the file names it)"
     )
   ),
   make_option(
@@ -238,10 +240,11 @@ option_list <- list(
     type = "logical",
     default = FALSE,
     help = paste0(
-      "Whether to output heterozygous and homozygous counts in cases and ",
-      "controls. By default, FALSE. If True, the columns homN_Allele2_cases, ",
-      "hetN_Allelelogical2_cases, homN_Allele2_ctrls, hetN_Allele2_ctrls will be ",
-      "output [default=FALSE]"
+      "Whether to output heterozygous and homozygous carrier counts in cases and ",
+      "controls. Binary traits only: the columns N_case_hom, N_case_het, ",
+      "N_ctrl_hom, N_ctrl_het are appended to the single-variant output (and to ",
+      "the single-in-group output of a group run); on a quantitative trait the ",
+      "flag adds no column [default=FALSE]"
     )
   ),
   make_option(
@@ -347,7 +350,8 @@ option_list <- list(
     default = "",
     help = paste0(
       "ranges of (pseudoautosomal) PAR region on chromosome X, which are ",
-      "seperated by comma and in the format start:end. By default: ",
+      "separated by comma and in the format start-end (a hyphen; a colon is ",
+      "rejected). By default: ",
       "'60001-2699520,154931044-155260560' in the UCSC build hg19. For males, ",
       "there are two X alleles in the PAR region, so PAR regions are treated the ",
       "same as autosomes. In the NON-PAR regions (outside the specified PAR ",
@@ -445,8 +449,10 @@ option_list <- list(
     type = "character",
     default = "",
     help = paste0(
-      "For conditional analysis. Variant ids are in the format chr:pos_ref/alt ",
-      "and seperated by by comma. e.g.chr3:101651171_C/T,chr3:101651186_G/A"
+      "For conditional analysis. Variant IDs separated by comma, each matching ",
+      "the genotype file's own ID (bim column 2 for PLINK, the pvar ID column for ",
+      "PGEN), e.g. rs12345,rs67890 or chr3:101651171:C:T,chr3:101651186:G:A if ",
+      "that is how the file names them"
     )
   ),
   make_option(
@@ -653,10 +659,11 @@ option_list <- list(
     type = "numeric",
     default = 0.05,
     help = paste0(
-      "Only when --is_fastTest=TRUE and --groupFile is specified: a region whose ",
-      "Cauchy p-value from the fast pass is below this cutoff is re-tested with the ",
-      "sparse GRM, and that second result is the one reported. Has no effect on ",
-      "single-variant runs [default=0.05]"
+      "Only when --is_fastTest=TRUE. On a group run, a region whose Cauchy p-value ",
+      "from the fast pass is below this cutoff is re-tested with the sparse GRM; on ",
+      "a single-variant run, a marker whose fast-pass p-value is below it is re-tested ",
+      "the same way. In both cases the second result is the one reported, so the ",
+      "cutoff changes single-variant p-values too [default=0.05]"
     )
   ),
   make_option(

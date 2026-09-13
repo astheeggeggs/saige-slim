@@ -728,7 +728,7 @@ solveSpMatrixUsingArma <- function(sparseGRMtest) {
 #' @param bimFile character. Path to bim file. If plinkFile is specified, 'plinkFile'.bim is used
 #' @param famFile character. Path to fam file. If plinkFile is specified, 'plinkFile'.fam is used
 #' @param isLowMemLOCO logical. Whether to write the model file by chromosome when LOCO=TRUE. If TRUE, memory use in Step 1 and Step 2 is lower. By default, FALSE
-#' @param isCateVarianceRatio logical. Whether to estimate the variance ratio separately for each MAC category, corresponding to cateVarRatioMinMACVecExclude and cateVarRatioMaxMACVecInclude. If TRUE then LOCO=FALSE. By default, FALSE
+#' @param isCateVarianceRatio logical. Whether to estimate the variance ratio separately for each MAC category, corresponding to cateVarRatioMinMACVecExclude and cateVarRatioMaxMACVecInclude. Combines freely with LOCO (nothing forces LOCO=FALSE; the earlier claim that it did was false). By default, FALSE
 #' @param maxMissingRateforGRM numeric. Maximum missing rate of the markers used for the GRM. By default, 0.15
 #' @param SampleIDIncludeFile character. Path to a file with one column of IDs of the samples to include in the null model fit
 #' @param skipVarianceRatioEstimation logical. Whether to skip variance ratio estimation. By default, FALSE
@@ -885,11 +885,14 @@ fitNULLGLMM <- function(plinkFile = "",
       file.create(varRatioFile, showWarnings = TRUE)
     } else {
       if (!IsOverwriteVarianceRatioFile) {
+        # LEDGER #136 (6): this is a fatal refusal and says so; it used to open
+        # with "WARNING" and describe an overwrite it was not going to do
         stop(
-          "WARNING: The variance ratio file ", varRatioFile,
-          " already exists. The new variance ratios will be output to ",
-          varRatioFile, ". In order to avoid overwriting the file, please remove the ",
-          varRatioFile, " or use the argument outputPrefix_varRatio to specify a different prefix to output the variance ratio(s). Otherwise, specify --IsOverwriteVarianceRatioFile=TRUE so the file will be overwritten with new variance ratio(s)\n"
+          "ERROR: the variance ratio file ", varRatioFile,
+          " already exists and --IsOverwriteVarianceRatioFile=FALSE, so the run stops ",
+          "before fitting. Remove the file, use --outputPrefix_varRatio to write the ",
+          "variance ratio(s) under a different prefix, or pass ",
+          "--IsOverwriteVarianceRatioFile=TRUE to overwrite it\n"
         )
       } else {
         cat("The variance ratio file ", varRatioFile, " already exists. IsOverwriteVarianceRatioFile=TRUE so the file will be overwritten\n")

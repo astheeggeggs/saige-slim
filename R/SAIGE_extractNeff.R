@@ -62,7 +62,7 @@
 #' @param noEstFixedEff logical. Whether to estimate fixed effect coeffciets. By default, FALSE.
 #' @return a file ended with .rda that contains the glmm model information, a file ended with .varianceRatio.txt that contains the variance ratio values, and a file ended with #markers.SPAOut.txt that contains the SPAGMMAT tests results for the markers used for estimating the variance ratio.
 #' @export
-#' @param isCateVarianceRatio logical. Whether to estimate the variance ratio separately for each MAC category, corresponding to cateVarRatioMinMACVecExclude and cateVarRatioMaxMACVecInclude. If TRUE then LOCO=FALSE. By default, FALSE
+#' @param isCateVarianceRatio logical. Whether to estimate the variance ratio separately for each MAC category, corresponding to cateVarRatioMinMACVecExclude and cateVarRatioMaxMACVecInclude. Combines freely with LOCO (nothing forces LOCO=FALSE; the earlier claim that it did was false). By default, FALSE
 #' @param skipVarianceRatioEstimation logical. Whether to skip variance ratio estimation. By default, FALSE
 getNeff <- function(plinkFile = "",
                     bedFile = "",
@@ -219,23 +219,6 @@ getNeff <- function(plinkFile = "",
     outputPrefix_varRatio <- outputPrefix
   }
   varRatioFile <- paste0(outputPrefix_varRatio, ".varianceRatio.txt")
-  # if (!file.exists(varRatioFile)) {
-  #    file.create(varRatioFile, showWarnings = TRUE)
-  # }
-  # else {
-  #    if (!IsOverwriteVarianceRatioFile) {
-  #        stop("WARNING: The variance ratio file ", varRatioFile,
-  #            " already exists. The new variance ratios will be output to ",
-  #            varRatioFile, ". In order to avoid overwriting the file, please remove the ",
-  #            varRatioFile, " or use the argument outputPrefix_varRatio to specify a different prefix to output the variance ratio(s). Otherwise, specify IsOverwriteVarianceRatioFile=TRUE so the file will be overwritten with new variance ratio(s)\n")
-  #    }
-  #    else {
-  #        cat("The variance ratio file ", varRatioFile, " already exists. IsOverwriteVarianceRatioFile=TRUE so the file will be overwritten\n")
-  #    }
-  # }
-  # if (!file.exists(modelOut)) {
-  #    file.create(modelOut, showWarnings = TRUE)
-  # }
   if (skipVarianceRatioEstimation & useSparseGRMtoFitNULL) {
     print("a sparse GRM will be used to fit the null model and the variance ratio estimation will be skipped, so plink files are not required")
     sampleListwithGenov0 <- data.table:::fread(sparseGRMSampleIDFile,

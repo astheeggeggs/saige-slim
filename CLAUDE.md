@@ -227,7 +227,8 @@ the other was not. It scans only the CURRENT-state surfaces (`CLAUDE.md`,
 `docs/state/next.md`, `R/`, `man/`, `extdata/`); dated handoffs and `LEDGER.md`
 are correct about their own date and are never scanned. `docdrift.py selftest`
 is the control that no rule has quietly stopped matching, and every rule is
-drilled against `4c2ca05a^`, where the tool reports 10 hits. Add a rule only
+drilled against `4c2ca05a^`, where the tool reports 42 hits (10 before the six
+#136 rules of 2026-09-13). Add a rule only
 after a claim has actually been written wrongly; a line that must quote a false
 claim on purpose carries the marker the tool names.
 

@@ -297,11 +297,11 @@ it (write-up: `docs/cli-options-and-group-file.md`, which also records which
 options are refused, inert, trait-gated or path-gated, and the group-file format
 with and without weights and with FlexRV). #136: SIX help strings and roxygen
 lines state something the code does not do -- `--pval_cutoff_for_fastTest`
-claims no effect on single-variant runs while `src/Main.cpp:1006` IS the
+claims no effect on single-variant runs while `src/Main.cpp:1006` IS the (docdrift-allow: quotes the false sentence)
 single-variant escalation gate; `--X_PARregion` documents `start:end` while the
 parser splits on `-`; `--is_output_moreDetails` names four columns no writer
-emits; `chr:pos_ref/alt` appears in six places where the branch matches bim
-column 2; `isCateVarianceRatio`'s "If TRUE then LOCO=FALSE" is enforced nowhere;
+emits; `chr:pos_ref/alt` appears in six places where the branch matches bim (docdrift-allow: quotes the false sentence)
+column 2; `isCateVarianceRatio`'s "If TRUE then LOCO=FALSE" is enforced nowhere; (docdrift-allow: quotes the false sentence)
 and the `--IsOverwriteVarianceRatioFile` refusal is a `stop()` that opens
 "WARNING" and describes work it will not do. Each was re-verified by hand before
 the row was written. #137: the multi-model manifest's help promises to refuse

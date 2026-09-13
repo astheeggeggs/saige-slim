@@ -87,7 +87,7 @@ SPAGMMATtest(
 
 \item{AlleleOrder}{character. alt-first or ref-first, for PLINK bed/bim/fam input. alt-first (the default) counts bim column 5, ref-first counts column 6. Ignored for PGEN: a pvar is always REF/ALT-ordered.}
 
-\item{idstoIncludeFile}{character. Path to a file containing variant ids to be included from the dosage file. The file does not have a header and each line is for a marker ID. Variant ids are in the format chr:pos_ref/alt}
+\item{idstoIncludeFile}{character. Path to a file containing variant ids to be included from the dosage file. The file does not have a header and each line is for a marker ID. Variant IDs must match the genotype file's own IDs: bim column 2 for PLINK, the pvar ID column for PGEN (e.g. rs12345, or chr3:101651171:C:T if that is how the file names it)}
 
 \item{rangestoIncludeFile}{character. Path to a file containing genome regions to be included from the dosage file. The file contains three columns for chromosome, start, and end respectively with no header.}
 
@@ -130,7 +130,7 @@ is refused rather than returning a constant column. By default, FALSE}
 
 \item{markers_per_chunk_in_groupTest}{numeric. Number of markers in each chunk when calculating the variance covariance matrix in the set/group-based tests. By default, 100.}
 
-\item{condition}{character. For conditional analysis. Variant ids are in the format chr:pos_ref/alt and seperated by by comma. e.g."chr3:101651171:C:T,chr3:101651186:G:A".}
+\item{condition}{character. For conditional analysis. Variant IDs separated by comma, each matching the genotype file's own ID (bim column 2 for PLINK, the pvar ID column for PGEN), e.g. "rs12345,rs67890" or "chr3:101651171:C:T,chr3:101651186:G:A" if that is how the file names them.}
 
 \item{sparseGRMFile}{character. Path to the pre-calculated sparse GRM file that was used in Step 1}
 
@@ -156,9 +156,9 @@ it off. By default, 0.2}
 dosage_zerod_cutoff applies. Applies to every run, not only when
 is_imputed_data = TRUE. By default, 10}
 
-\item{is_output_moreDetails}{logical. Whether to output heterozygous and homozygous counts in cases and controls. By default, FALSE. If True, the columns homN_Allele2_cases, hetN_Allelelogical2_cases, homN_Allele2_ctrls, hetN_Allele2_ctrls will be output. By default, FALSE}
+\item{is_output_moreDetails}{logical. Whether to output heterozygous and homozygous carrier counts in cases and controls. Binary traits only: the columns N_case_hom, N_case_het, N_ctrl_hom, N_ctrl_het are appended to the single-variant output (and to the single-in-group output of a group run); on a quantitative trait the flag adds no column. By default, FALSE}
 
-\item{X_PARregion}{character. ranges of (pseudoautosomal) PAR region on chromosome X, which are seperated by comma and in the format start:end. By default: '60001-2699520,154931044-155260560' in the UCSC build hg19. For males, there are two X alleles in the PAR region, so PAR regions are treated the same as autosomes. In the NON-PAR regions (outside the specified PAR regions on chromosome X), for males, there is only one X allele. If is_rewrite_XnonPAR_forMales=TRUE, genotypes/dosages of all variants in the NON-PAR regions on chromosome X will be multiplied by 2 (Not activated).}
+\item{X_PARregion}{character. ranges of (pseudoautosomal) PAR region on chromosome X, which are separated by comma and in the format start-end (a hyphen; a colon is rejected). By default: '60001-2699520,154931044-155260560' in the UCSC build hg19. For males, there are two X alleles in the PAR region, so PAR regions are treated the same as autosomes. In the NON-PAR regions (outside the specified PAR regions on chromosome X), for males, there is only one X allele. If is_rewrite_XnonPAR_forMales=TRUE, genotypes/dosages of all variants in the NON-PAR regions on chromosome X will be multiplied by 2 (Not activated).}
 
 \item{is_rewrite_XnonPAR_forMales}{logical. Whether to rewrite gentoypes or dosages of variants in the NON-PAR regions on chromosome X for males (multiply by 2). By default, FALSE. Only variants whose chromosome is X (X, x, 23, chrX, chr23) are rewritten; other chromosomes in the same file are left alone (LEDGER #69).}
 
@@ -193,7 +193,7 @@ the printed digits. Only for binary traits with is_Firth_beta = TRUE.}
 
 \item{is_fastTest}{logical. Whether to use the fast mode for tests. By default, FALSE}
 
-\item{pval_cutoff_for_fastTest}{numeric. Only when is_fastTest=TRUE and groupFile is specified: a region whose Cauchy p-value from the fast pass is below this cutoff is re-tested with the sparse GRM, and that second result is the one reported. No effect on single-variant runs. By default, 0.05}
+\item{pval_cutoff_for_fastTest}{numeric. Only when is_fastTest=TRUE. On a group run, a region whose Cauchy p-value from the fast pass is below this cutoff is re-tested with the sparse GRM; on a single-variant run, a marker whose fast-pass p-value is below it is re-tested the same way (src/Main.cpp, the single-variant escalation gate). In both cases the second result is the one reported, so the cutoff changes single-variant p-values too. By default, 0.05}
 
 \item{max_MAC_use_ER}{numeric. p-values of genetic variants with MAC <= max_MAC_use_ER are calculated by efficient resampling (the exact test). Such markers report Is.SPA = TRUE and their SE is back-derived from the exact p. By default, 4}
 

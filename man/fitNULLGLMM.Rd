@@ -107,7 +107,10 @@ specified, 'plink2File'.psam will be used}
 
 \item{tol}{numeric. The tolerance for fitting the null model to converge. By default, 0.02.}
 
-\item{tolCoef}{numeric. The tolerance of the inner (alpha, b) pass of a binary fit at each variance-component iterate (LEDGER #125: it was tied to tol, which left the REML score noisier than its own signal). By default, 1e-5. Quantitative fits solve that pass directly and ignore it.}
+\item{tolCoef}{numeric. The tolerance of the inner (alpha, b) pass of a binary fit at each
+variance-component iterate (LEDGER #125: it was tied to tol, which left the REML score
+noisier than its own signal). By default, 1e-5. Quantitative fits solve that pass directly
+and ignore it.}
 
 \item{maxiter}{integer. The maximum number of iterations used to fit the null GLMMM. By default, 20.}
 
@@ -153,7 +156,7 @@ TRUE otherwise}
 
 \item{relatednessCutoff}{float. The threshold for coefficient of relatedness to treat two samples as unrelated in the sparse GRM.}
 
-\item{isCateVarianceRatio}{logical. Whether to estimate the variance ratio separately for each MAC category, corresponding to cateVarRatioMinMACVecExclude and cateVarRatioMaxMACVecInclude. If TRUE then LOCO=FALSE. By default, FALSE}
+\item{isCateVarianceRatio}{logical. Whether to estimate the variance ratio separately for each MAC category, corresponding to cateVarRatioMinMACVecExclude and cateVarRatioMaxMACVecInclude. Combines freely with LOCO (nothing forces LOCO=FALSE; the earlier claim that it did was false). By default, FALSE}
 
 \item{cateVarRatioIndexVec}{vector of integer 0 or 1. The length of cateVarRatioIndexVec is the number of MAC categories for variance ratio estimation. 1 indicates variance ratio in the MAC category is to be estimated, otherwise 0. By default, NULL. If NULL, variance ratios corresponding to all specified MAC categories will be estimated. This argument is only activated when isCateVarianceRatio=TRUE}
 
