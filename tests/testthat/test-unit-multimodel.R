@@ -70,6 +70,19 @@ test_that("the manifest and --GMMATmodelFile are mutually exclusive", {
     SAIGE:::resolveModelSpecs(mm_rda, mm_vr, path),
     "mutually exclusive"
   )
+  expect_error(SAIGE:::resolveModelSpecs(mm_rda, "", path), "--GMMATmodelFile are mutually")
+})
+
+test_that("LEDGER #137: the manifest and --varianceRatioFile are mutually exclusive too", {
+  skip_if_no_goldens()
+  path <- write_manifest(paste("a", mm_rda, mm_vr))
+  # used to be accepted and silently ignored (the manifest's third column is
+  # what is read), while the help promised the refusal
+  expect_error(SAIGE:::resolveModelSpecs("", mm_vr, path), "--varianceRatioFile are mutually")
+  expect_error(SAIGE:::resolveModelSpecs(mm_rda, mm_vr, path),
+               "--GMMATmodelFile/--varianceRatioFile are mutually")
+  # the manifest alone still resolves
+  expect_identical(length(SAIGE:::resolveModelSpecs("", "", path)), 1L)
 })
 
 test_that("the suffix rule: only a MULTI-row manifest renames the output", {

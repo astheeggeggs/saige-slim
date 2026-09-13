@@ -98,10 +98,20 @@ readModelManifest <- function(path) {
 # produces an unsuffixed output file, so a 1-row manifest run is byte- AND
 # name-identical to the equivalent --GMMATmodelFile run.
 resolveModelSpecs <- function(GMMATmodelFile, varianceRatioFile, manifestFile) {
-  if (manifestFile != "" && GMMATmodelFile != "") {
+  # LEDGER #137 FIXED: the help promises the manifest is exclusive with BOTH
+  # single-model flags, and only --GMMATmodelFile was refused; a
+  # --varianceRatioFile beside the manifest was accepted and silently ignored
+  # (the manifest's third column is what is read). Both are named now.
+  if (manifestFile != "" && (GMMATmodelFile != "" || varianceRatioFile != "")) {
+    offending <- c(
+      if (GMMATmodelFile != "") "--GMMATmodelFile",
+      if (varianceRatioFile != "") "--varianceRatioFile"
+    )
     stop(
-      "--GMMATmodel_varianceRatio_multiTraits_File and --GMMATmodelFile are ",
-      "mutually exclusive: give the manifest, or the single model, not both\n"
+      "--GMMATmodel_varianceRatio_multiTraits_File and ",
+      paste(offending, collapse = "/"), " are mutually exclusive: the manifest ",
+      "names every model's file and ratio file, so give the manifest, or the ",
+      "single model's flags, not both\n"
     )
   }
   if (manifestFile == "") {
