@@ -284,8 +284,25 @@ test_that("ACAT-V recomputes from the single-variant p-values and the fixture we
     expect_identical(length(p_ur), 1L)   # one UR pseudo-marker per cell
 
     if (r$Number_rare[i] == "0") {
-      # nothing but the pseudo-marker in the cell: ACAT-V is its p-value
-      expect_identical(num(r$Pvalue_ACATV[i]), p_ur)
+      # nothing but the pseudo-marker in the cell: ACAT-V is its p-value.
+      #
+      # TOLERANCED, not identical (loosened 2026-09-13 with the LEDGER #134 fix).
+      # This compares two INDEPENDENTLY PRINTED representations of the same
+      # quantity -- the region writer's Pvalue_ACATV and the single-assoc
+      # writer's p.value -- and they do not use the same precision: the region
+      # file carries 0.0323588500000001 where the single-assoc file carries
+      # 3.235885E-02. On top of that ACAT-V is a CCT ROUND TRIP of that single p
+      # (tan then atan), which CLAUDE.md records as costing ~6.6e-12 at p = 1e-5
+      # and which test-unit-cct.R already tolerances at 1e-10.
+      #
+      # expect_identical held here only by luck: before #134 the round trip
+      # happened to land on a double whose shortest representation matched the
+      # single-assoc file's 7 significant figures. #134 legitimately moved these
+      # cells' p-values (a different variance-ratio band) and the luck ran out at
+      # 3.0e-15 relative, ~13 ULP. That is the branch's own rule -- "never assert
+      # bit-identity between two different code paths ... compare statistics at
+      # ~1e-12 relative" -- and this line was breaking it.
+      expect_equal(num(r$Pvalue_ACATV[i]), p_ur, tolerance = 1e-10)
       next
     }
     vars  <- grouprow(r$Region[i], "^var$")

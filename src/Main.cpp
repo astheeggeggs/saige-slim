@@ -3452,6 +3452,12 @@ if(i2 > 0){
 	  // row (upstream's pseudo contribution stays weighted on that path).
 	  // Computed from the same pre-imputeGenoAndFlip vector the weighted MAC
 	  // above is, and with the same (1 - missingRate) factor.
+	  // LEDGER #134 (2026-09-13) widened its use: MAC_nw is no longer only the
+	  // REPORTED count. It is also what the variance-ratio band, the sparse-GRM
+	  // choice and the ER predicate read, ~200 lines below -- the weighted MAC
+	  // decided those until #134, so the SCALE of a group file's weights chose
+	  // the statistical treatment. Anything added here that MAC_nw feeds is now
+	  // on a result path, not just a reporting one.
 	  const double altFreq_nw = (cs.paritySumDense(genoURVec_noweights.memptr()) / (double)t_n) / 2;
 	  const double MAF_nw = std::min(altFreq_nw, 1 - altFreq_nw);
 	  const double MAC_nw = MAF_nw * 2 * t_n * (1 - missingRate);
@@ -3652,16 +3658,39 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
         // a cell silently tested with a variance ratio of 0.
         bool hasVarRatio = true;
         SAIGE::TestContext ctx;
-        ctx.useSparseGRM = (MAC > model.m_cateVarRatioMinMACVecExclude.back())
+        // LEDGER #134 FIXED: these decisions read MAC_nw, the UNWEIGHTED
+        // collapse's allele count (computed ~200 lines above, and already what
+        // the REPORTED group MAC uses since #118), NOT the weighted collapse
+        // sum. They used to read MAC, whose units are weight x genotype, so the
+        // SCALE of a group file's weights decided which statistical treatment a
+        // set of alleles received: on the bundled multiweight fixture GENE1 lof
+        // at max MAF 0.001 is FIVE alleles and the code saw 38.4 under CADD (top
+        // band) and 3.34 under REVEL (bottom band) -- same five alleles, same
+        // carriers, a different variance ratio. The BURDEN emitter's identical
+        // three decisions already read genoSumcount_noweight, the
+        // weight-independent count (LEDGER #118 fixed that sibling and missed
+        // this one); this makes the two agree.
+        //
+        // On a beta or No_Weights set the collapse is unweighted, so
+        // MAC_nw == MAC exactly and nothing moves. Only custom and transform
+        // sets are affected.
+        //
+        // NOTE the third site is INERT and is changed only for consistency:
+        // cm.isER is &&-gated on erAllowedVec[r], which is true only when every
+        // weight of the set is exactly 1.0 (src/Main.cpp:2335/:2343), and in
+        // that case the collapse weight wUR is 1.0 so the weighted and
+        // unweighted collapses are the same vector. Do not write a test that
+        // asserts an ER change here -- it cannot happen.
+        ctx.useSparseGRM = (MAC_nw > model.m_cateVarRatioMinMACVecExclude.back())
                              ? false : model.m_flagSparseGRM;
         ctx.noadjCov = false;
         if(!W[km].isSingleVarianceRatio){
-          ctx.varRatioVal = model.selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
+          ctx.varRatioVal = model.selectVarianceRatio(MAC_nw, ctx.useSparseGRM, false, hasVarRatio);
         }else{
           ctx.varRatioVal = model.selectSingleVarianceRatio(ctx.useSparseGRM, false);
         }
         cm.ctx = ctx;
-        cm.isER = (MAC <= g_cfg.MACCutoffforER && W[km].traitType == "binary" && erAllowedVec[r]);
+        cm.isER = (MAC_nw <= g_cfg.MACCutoffforER && W[km].traitType == "binary" && erAllowedVec[r]);
       }
 
 
