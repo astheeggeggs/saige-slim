@@ -124,9 +124,12 @@ test_that("a region file gets its header even when the first chunk emits no rows
   lines <- readLines(out, warn = FALSE)
   expect_true(startsWith(lines[1], "Region\t"))
   # The barren region really was barren -- if these markers ever stop being
-  # monomorphic this test would otherwise pass for the wrong reason.
-  expect_identical(length(lines), 2L)
-  expect_true(startsWith(lines[2], "GENE_REAL\t"))
+  # monomorphic this test would otherwise pass for the wrong reason. Since
+  # LEDGER #116 (2026-09-13) it contributes exactly one row, "Cauchy NA ...",
+  # and the header is written at start rather than by the first chunk with rows.
+  expect_identical(length(lines), 3L)
+  expect_true(startsWith(lines[2], "GENE_BARREN\tCauchy\tNA\t"))
+  expect_true(startsWith(lines[3], "GENE_REAL\t"))
 })
 
 # --- LEDGER #60: the same short .bed, through the step-1 GRM ingest ----------

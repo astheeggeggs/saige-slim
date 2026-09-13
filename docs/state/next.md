@@ -1,5 +1,46 @@
 # What is worth doing next (2026-09-03, updated 2026-09-13; read docs/state/handoff-2026-09-13-132-133-134.md first)
 
+**2026-09-13 (evening): LEDGER #141, #140 and #116 are FIXED**, one commit each,
+gated together at `both` modes. The ledger is at **6 open**. Read the rows
+(`ledger.py 141`, `140`, `116`); the short version:
+- **#141**: a repeated IID in the fam/psam is refused at every step -- steps
+  0/1/getNeff in `readGenoSampleIDs` (`R/Geno.R`, both readers, #67's message
+  shape), step 2 in `readFamFile` (`src/PLINK.cpp`; PGEN already refused). Not
+  in the three-string `PgenShared` overload the row proposed: it never keys on
+  IDs, and every ID-keyed path reads them through R first.
+- **#140**: S9 carried to the region path. `flushOutfile_regionInCPP()`, an
+  index line carrying BOTH files' sizes (`... chunk N single_bytes S bytes B`,
+  writer `indexChunkLine()` beside reader `parseIndexChunkLine()` in
+  `R/Util.R`), and restart truncation of the results file and
+  `.singleAssoc.txt`. One pre-existing test pinned the legacy line verbatim
+  (`test-step2-multiweight-behaviour.R`) and was loosened in the same commit.
+  Still open on the row: the two end-of-run sidecars are rewritten over the
+  resumed regions only.
+- **#116, diagnosed then decided**: the mechanism is the INGEST QC gate (`rs1`
+  and `rs2` are monomorphic in the analysed 1,000; ALT count 0 measured with
+  `plink2 --freq --keep`), and the early return in `regionFinish` also skipped
+  the index bookkeeping (a one-region run recorded `chunk 0` and no completion
+  line). The decision is the BURDEN writer's rule on both paths: a header at
+  start and one `Region Cauchy NA ...` row per region with nothing tested,
+  disclosed in the #127 sidecar. `R/RegionSchema.R` states the SKAT-O schema
+  once and `regionAssertSchema` stops the run if any chunk of real rows
+  disagrees with it, so every committed golden gates the header. Moved no
+  golden (no committed golden is 0 bytes or carries an all-NA Cauchy row; the
+  row's "would move every golden with a header" was a mis-stated blast radius,
+  #133's shape). `test-step2-region-allrefused.R`'s two SKAT-O tests were
+  inverted with it.
+Three things a later session should hold on to: (1) a scratch install of
+unpatched HEAD reusing the tree's `src/*.o` (all but the changed file's) takes
+about a minute and is what every red drill above ran against -- assert
+`system.file(package = "SAIGE")` in the drill's output, and check the new
+guard's string is ABSENT from the scratch `.so` and PRESENT in the patched one
+before believing either colour; (2) `fitNULLGLMM` pre-creates the model `.rda`
+EMPTY before it reads anything (`file.create`, `R/SAIGE_fitGLMM_fast.R:851`),
+so a refusal test must assert the file's SIZE, not its existence; (3) the
+comment linter parses a comment line whose first token is a bare symbol
+(`LEDGER #140 FIXED. ...`) as code -- start such lines with a phrase.
+
+
 **Current handoff: `docs/state/handoff-2026-09-13-132-133-134.md`** -- LEDGER
 **#134, #132 and #133 are FIXED**, one commit each, each gated at `both` modes
 (`a2962701`, `58785e12`, `8bb5a510`). The ledger is at **9 open**, from 13 that

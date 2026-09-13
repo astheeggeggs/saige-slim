@@ -11,10 +11,11 @@
 # the one-cell one). Unreachable at the default gate 1 (#126: a surviving cell
 # has MAC >= 1), so the gate is NAMED here, as test-step2-region-threads.R does.
 #
-# The BURDEN path still writes an NA Cauchy row for the same region (third test,
-# unchanged) -- that disagreement is LEDGER #116 and is deliberately NOT closed
-# here, so the third test is what would notice if someone harmonised the two
-# paths without deciding #116.
+# LEDGER #116 (FIXED 2026-09-13) then decided how an empty region is reported:
+# BOTH paths write one "Region Cauchy NA ..." row for it, the row the BURDEN
+# writer always emitted (third test, unchanged). The first two tests were
+# inverted with it: the SKAT-O path now writes that row too, for a two-cell
+# and a one-cell all-refused region alike, from R/RegionSchema.R.
 #
 # Fixture: GENET var rs28 rs32 (AC 1 each, cell MAC 2) beside GENE1 of
 # group_new_snpid.txt, on the frozen example_binary_sparseGRM model.
@@ -58,11 +59,15 @@ test_that("SKAT-O: a region whose two cells are both refused by the gate no long
   # the crash signature is gone, and the run reaches the end
   expect_false(any(grepl("names do not match previous names", r$log, fixed = TRUE)))
   expect_true(any(grepl("Analysis done", r$log, fixed = TRUE)))
-  # GENE1 still reports; GENET contributes no row at all, exactly as the
-  # one-cell region does in the next test (LEDGER #116 keeps that open)
+  # GENE1 still reports; GENET contributes exactly ONE row, the NA Cauchy
+  # row the BURDEN path writes for it (LEDGER #116 FIXED; it used to be
+  # absent, and the two paths disagreed)
   x <- read_saige_table(r$out)
-  expect_true(all(x$Region == "GENE1"))
-  expect_false("GENET" %in% x$Region)
+  genet <- x[x$Region == "GENET", , drop = FALSE]
+  expect_identical(nrow(genet), 1L)
+  expect_identical(genet$Group, "Cauchy")
+  expect_identical(genet$Pvalue, "NA")
+  expect_identical(genet$Pvalue_Burden, "NA")
   # ... and the sidecar is what carries GENET, with BOTH cells recorded refused
   side <- read.table(paste0(r$out, ".pooledTests.txt"), header = TRUE, sep = "\t",
                      stringsAsFactors = FALSE)
@@ -70,12 +75,15 @@ test_that("SKAT-O: a region whose two cells are both refused by the gate no long
   expect_equal(side$Rows[side$Region == "GENET"], 0L)
 })
 
-test_that("SKAT-O: the same region with ONE refused cell escapes (no pooled row is built)", {
+test_that("SKAT-O: the same region with ONE refused cell writes the same NA Cauchy row", {
   skip_unless_level("standard")
   r <- allrefused_run("lof")
   expect_cli_ok(r$status)
   x <- read_saige_table(r$out)
-  expect_equal(x$Region, "GENE1")
+  # a 1 x 1 configuration writes no Cauchy row for a TESTED region (GENE1 has
+  # its one cell row only), and one NA Cauchy row for the untested one
+  expect_identical(x$Region, c("GENE1", "GENET"))
+  expect_identical(x$Group, c("lof", "Cauchy"))
   side <- read.table(paste0(r$out, ".pooledTests.txt"), header = TRUE, sep = "\t",
                      stringsAsFactors = FALSE)
   expect_equal(side$Region, "GENET")

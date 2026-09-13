@@ -127,8 +127,12 @@ test_that("a chunk file that cannot be written stops the run instead of NA-ing a
   expect_true(any(grepl("region 'GENE1'", lg, fixed = TRUE)))
 
   # Before the fix this run exited 0 and wrote a full-looking table whose GENE1
-  # rows were silently all-NA. Nothing partial should survive now.
+  # rows were silently all-NA. Nothing partial should survive now: since
+  # LEDGER #116 the header is written when the run starts, so at most that
+  # one line is on disk, and no result row.
   if (file.exists(out)) {
-    expect_identical(length(readLines(out, warn = FALSE)), 0L)
+    lines <- readLines(out, warn = FALSE)
+    expect_lte(length(lines), 1L)
+    if (length(lines) == 1L) expect_true(startsWith(lines[1], "Region\t"))
   }
 })

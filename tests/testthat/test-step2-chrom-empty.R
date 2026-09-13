@@ -162,8 +162,10 @@ test_that("POSITIVE CONTROL: a PARTIAL match still runs, and empty regions stay 
   # fakes must still produce an answer, and the pre-existing "N markers in
   # 'RegionFile' are not in 'GenoFile'" notice must still be the only complaint.
   # Twenty rather than two: a gene small enough to yield no qualifying cell
-  # writes an empty file at exit 0 by a DIFFERENT route (the cell filters, not
-  # the join), which this control must not accidentally exercise.
+  # reaches a DIFFERENT route (the ingest QC gate, not the join) -- since
+  # LEDGER #116 was fixed it writes a header and an NA Cauchy row rather than
+  # an empty file (test-step2-region-empty.R) -- which this control must not
+  # accidentally exercise.
   gf <- group_file_with_ids(c(paste0("rs", 1:20), "1:100:A:C", "1:200:G:T"))
   r <- nomatch_run(gf, "plink")
   expect_identical(r$status, 0L)

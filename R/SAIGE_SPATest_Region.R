@@ -767,9 +767,9 @@ region_postprocess <- function(outList,
         # tested cell contributes no row, and LEDGER #127's .pooledTests.txt
         # sidecar carries it with Rows = 0.
         #
-        # This deliberately does NOT harmonise with the BURDEN path, which builds
-        # its pooled row in C++ and writes an NA Cauchy row for the same region.
-        # That disagreement is LEDGER #116 and is where the decision belongs.
+        # LEDGER #116 (FIXED 2026-09-13) then harmonised this with the BURDEN
+        # path: the NA Cauchy row for a region with no tested cell is built
+        # AFTER this if/else, from R/RegionSchema.R, for every configuration.
         cctpval_Burden <- get_CCT_pvalue(pval.Region$Pvalue_Burden)
         if (regionTestType != "BURDEN") {
           cctpval <- get_CCT_pvalue(pval.Region$Pvalue)
@@ -836,6 +836,17 @@ region_postprocess <- function(outList,
       if (!is_rerun) {
         cctpval <- 1
       }
+    }
+    # LEDGER #116 FIXED: a region with NO tested cell -- every cell refused by
+    # --minGroupMAC_in_BurdenTest, every flagged marker's p NA, or a 1 x 1
+    # configuration whose one cell was refused -- contributes the one row the
+    # BURDEN writer has always emitted for it, "Region Cauchy NA ...", instead
+    # of no row at all. The schema comes from R/RegionSchema.R (the "why not
+    # name the columns" objection above is answered there: the schema is now
+    # stated once and asserted against every written row). The #127 sidecar
+    # records the region with Rows = 0 below, as before.
+    if (is.null(pval.Region) && regionTestType != "BURDEN") {
+      pval.Region <- regionEmptyPooledRow(regionName, traitType, isCondition, isMultiWeight)
     }
     # LEDGER #127. One record per (region, model, pass). A region with one cell
     # writes no pooled row at all; it is still recorded, because a reader cannot
@@ -1317,6 +1328,20 @@ SAIGE.Region <- function(mu,
   cth_chunk_to_output <- 1
   iswriteMarkerList <- rep(FALSE, nModels)
   iswriteRegion <- rep(isappend, nModels)
+  # LEDGER #116 FIXED: the SKAT-O path writes its header when the run STARTS,
+  # from the schema in R/RegionSchema.R, so a run in which no cell qualifies
+  # leaves a parseable, visibly empty file rather than a 0-byte one at exit 0.
+  # The BURDEN path's C++ writer has always done this (openOutfile above); on
+  # a restart the header is already on disk. The first chunk that has rows
+  # re-checks the schema against them (regionAssertSchema, in the output
+  # block) and stops on any drift, so this cannot silently disagree with them.
+  if (regionTestType != "BURDEN" && !isappend) {
+    for (k in seq_len(nModels)) {
+      cat(regionHeaderLine(traitTypes[k], isCondition, isMultiWeightSchema),
+          file = OutputFiles[k])
+      iswriteRegion[k] <- TRUE
+    }
+  }
   i <- indexChunk + 1
   nEachChunk <- 1 # LEDGER #25 FIXED: was numberRegionsInChunk, still 0 here
 
@@ -1502,16 +1527,34 @@ SAIGE.Region <- function(mu,
   # Stage D for one region: the marker list and the result rows, into the
   # chunk accumulators of the enclosing frame.
   regionFinish <- function(S) {
-    if (!S$runCore) {
-      return(invisible(NULL))
-    }
     outList <- S$outLists[[1]]
     SNP <- S$SNP
     annolistsub <- S$annolistsub
     regionName <- S$regionName
 
+    if (!S$runCore) {
+      # LEDGER #116 FIXED. The region was analysed and NO marker survived the
+      # ingest QC gate (src/Main.cpp; e.g. monomorphic in the analysed sample
+      # at --minMAC=0.5, the row's bundled reproduction), so region_postprocess
+      # never ran. This used to RETURN here, before the index bookkeeping
+      # below: the region contributed no row AND left indexChunk/Start/End
+      # stale, so a run whose last region was such recorded "chunk 0" and no
+      # completion line. Now each model gets the one row a region with nothing
+      # tested contributes -- the "Region Cauchy NA" row the BURDEN writer has
+      # always emitted, disclosed in the #127 sidecar with Rows = 0 -- and the
+      # bookkeeping runs for both paths.
+      if (regionTestType != "BURDEN") {
+        for (k in seq_len(nModels)) {
+          S$pvalRegionK[k] <- list(regionEmptyPooledRow(regionName, traitTypes[k],
+                                                        isCondition, isMultiWeightSchema))
+          pooledRecord(regionName, k, rows = 0L, refused = 0L, combined = 0L,
+                       rule = pooledRule(numeric(0)), pvalue = NA_real_)
+        }
+      }
+    }
+
     Output_MarkerList <- NULL
-    if (is_output_markerList_in_groupTest) {
+    if (S$runCore && is_output_markerList_in_groupTest) {
       for (j in 1:length(annolistsub)) {
         AnnoName <- annolistsub[j]
         for (m in 1:length(maxMAFlist)) {
@@ -1564,14 +1607,16 @@ SAIGE.Region <- function(mu,
     }
 
     if (is_output_markerList_in_groupTest) {
-      colnames(Output_MarkerList) <- c(
-        "Region",
-        "Group",
-        "max_MAF",
-        "Rare_Variants",
-        "Ultra_Rare_Variants"
-      )
-      Output_MarkerList.all <<- rbind(Output_MarkerList.all, Output_MarkerList)
+      if (!is.null(Output_MarkerList)) {
+        colnames(Output_MarkerList) <- c(
+          "Region",
+          "Group",
+          "max_MAF",
+          "Rare_Variants",
+          "Ultra_Rare_Variants"
+        )
+        Output_MarkerList.all <<- rbind(Output_MarkerList.all, Output_MarkerList)
+      }
     } else {
       Output_MarkerList.all <<- NULL
     }
@@ -1860,6 +1905,9 @@ SAIGE.Region <- function(mu,
         # cat("n2 is ", n2, "\n")
         for (k in seq_len(nModels)) {
         if (regionTestType != "BURDEN") {
+          # LEDGER #116: the rows about to be written must carry exactly the
+          # schema whose header the run wrote at start (R/RegionSchema.R)
+          regionAssertSchema(pval.Region.all[[k]], traitTypes[k], isCondition, isMultiWeightSchema)
           # The truncate-vs-append decision is untouched; only the HEADER moves,
           # to the first chunk that actually HAS rows (LEDGER #59).
           if (Start) {
