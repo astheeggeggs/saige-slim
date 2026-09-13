@@ -687,3 +687,8 @@ the marker path as still broken. **E2** `varianceRatioBinsHaveGap` survives in
 - LOCO is three mechanisms: step-1 global-state mutation per chromosome, the
   save-time file layout, and step-2 `ReadModel` overwriting fitted values from
   `LOCOResult[[chrom]]` (`--chrom` mandatory when LOCO=TRUE).
+- **Sample IDs are IID alone, and a repeated IID is refused at every step**
+  (LEDGER #141, fixed 2026-09-13; #67 is the same rule for the phenotype
+  file). FID is discarded everywhere, so two fam/psam rows sharing an IID are
+  two individuals SAIGE cannot tell apart: steps 0/1/getNeff refuse in
+  `readGenoSampleIDs` (`R/Geno.R`, both readers) and step 2 in each reader.

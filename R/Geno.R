@@ -448,13 +448,33 @@ checkGenoInputStep1 <- function(plinkFile = "",
 #' The row order is load-bearing: it is the index space `ptrsubSampleInGeno`
 #' and `indicatorGenoSamplesWithPheno` live in on the C++ side.
 #' @noRd
+# LEDGER #141 FIXED: a repeated IID in the fam/psam is refused by name, as a
+# repeated ID in the phenotype file is (#67, R/PhenoPrep.R). A repeated IID is
+# legal PLINK1 (the key is FID+IID) but SAIGE discards FID everywhere, so two
+# rows sharing an IID are two individuals it cannot tell apart: the phenotype
+# merge (by IID) used to emit that phenotype twice with two IndexGeno, and step
+# 2's Rcpp::match then mapped both model slots to the FIRST file row -- so step 1
+# and step 2 read different genotypes for the same model row, at exit 0. This
+# guard sits under steps 0, 1 and getNeff through BOTH readers; step 2's own
+# readers refuse it too (src/PLINK.cpp readFamFile, src/PGEN.cpp readPsamFile).
+refuseDuplicateGenoSampleIDs <- function(ids, file, what) {
+  dupIDs <- unique(ids[duplicated(ids)])
+  if (length(dupIDs) > 0) {
+    stop("ERROR! ", length(dupIDs), " sample ID(s) appear more than once in the ", what,
+         " file ", file, ": ", paste(head(dupIDs, 10), collapse = ", "),
+         if (length(dupIDs) > 10) ", ..." else "",
+         ". Each sample must have exactly one row.\n")
+  }
+  invisible(ids)
+}
+
 readGenoSampleIDs <- function(genoType, famFile = "", psamFile = "") {
   if (genoType == "plink") {
     fam <- data.table::fread(
       famFile,
       header = FALSE, colClasses = list(character = 1:4), data.table = FALSE
     )
-    return(as.character(fam[, 2]))
+    return(refuseDuplicateGenoSampleIDs(as.character(fam[, 2]), famFile, "fam"))
   }
   if (genoType == "pgen") {
     # psam carries a '#'-prefixed column header. Take IID BY NAME: column 1 is
@@ -477,7 +497,7 @@ readGenoSampleIDs <- function(genoType, famFile = "", psamFile = "") {
       header = FALSE, skip = hdrPos, select = iidCol,
       colClasses = "character", data.table = FALSE
     )
-    return(as.character(psam[, 1]))
+    return(refuseDuplicateGenoSampleIDs(as.character(psam[, 1]), psamFile, "psam"))
   }
   stop("readGenoSampleIDs: unsupported genoType '", genoType, "'\n")
 }

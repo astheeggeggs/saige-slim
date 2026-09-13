@@ -16,6 +16,7 @@
 
 #include <RcppArmadilloExtensions/sample.h> // sample
 #include <string>
+#include <unordered_set>
 
 // make a global variable for future usage
 // static PLINK::PlinkClass* ptr_gPLINKobj = NULL;
@@ -201,11 +202,21 @@ void PlinkClass::readFamFile()
   std::ifstream fam(m_famFile);
   m_N0 = 0;
   std::string line;
+  // LEDGER #141 FIXED: a repeated IID is refused here as PGEN's psam reader
+  // refuses it (PGEN.cpp). It used to be accepted, and setPosSampleInPlink's
+  // Rcpp::match then mapped every model slot carrying that IID to the FIRST
+  // fam row -- never NA, so its only guard did not fire -- while step 1 had
+  // loaded BOTH rows as samples. Same message shape as the psam guard.
+  std::unordered_set<std::string> seen;
   while(getline(fam, line)){
     m_N0 ++;
     std::vector<std::string> line_elements;
     boost::split(line_elements, line, boost::is_any_of("\t "));
-    m_SampleInPlink.push_back(line_elements[1]);  // put IID to m_SampleInPlink
+    const std::string & iid = line_elements[1];
+    if(!seen.insert(iid).second){
+      Rcpp::stop("fam file has a duplicate IID (" + iid + ") in " + m_famFile + ".");
+    }
+    m_SampleInPlink.push_back(iid);  // put IID to m_SampleInPlink
   }
   m_N = m_N0;
   m_numBytesofEachMarker0 = (m_N0 + 3) / 4;
