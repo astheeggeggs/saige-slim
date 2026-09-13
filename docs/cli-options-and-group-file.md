@@ -55,7 +55,7 @@ Legend: **L** live · **P** partly live · **R** refused · **I** inert · `+` t
 | `varianceRatioFile` | "" | MAC-keyed variance ratios rescaling the score variance | L (see §4) |
 | `GMMATmodel_varianceRatio_multiTraits_File` `+` | "" | 3-col manifest: N models, one genotype pass, one file each | L |
 | `SAIGEOutputFile` `~` | "" | results path — and the prefix for `.index`, `.singleAssoc.txt`, `.markerList.txt`, `.skatFailures.txt`, `.pooledTests.txt`, `_<model>` | L |
-| `is_overwrite_output` `~` | TRUE | TRUE truncates; FALSE resumes from the `.index`. **The byte-count truncation is MARKER-PATH ONLY** -- a region restart can lose or duplicate regions (LEDGER #140) | L |
+| `is_overwrite_output` `~` | TRUE | TRUE truncates; FALSE resumes from the `.index`, truncating the results file (and, on a group run, `.singleAssoc.txt`) to the sizes the index recorded for the last completed chunk, on both the marker path (LEDGER #47) and the region path (LEDGER #140, fixed 2026-09-13). The end-of-run `.pooledTests.txt` / `.skatFailures.txt` sidecars are rewritten over the resumed regions only | L |
 | `is_output_moreDetails` | FALSE | adds N_case/ctrl hom/het columns | **P** (binary only) |
 | `LOCO` | TRUE | swap fitted values/residuals/obj.noK for the per-chrom fit | L |
 | `sparseGRMFile` `~` | "" | score test against the sparse Σ (PCG) instead of VR-only | L |

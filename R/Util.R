@@ -97,6 +97,14 @@ updateChrStartEndIndexVec <- function(chrVec) {
 # where the byte count is the size of the output file at the moment chunk 7's
 # rows had all been flushed. An index written by an older version parses with
 # bytes = NA, which restartOutputBytes() below treats as "cannot verify".
+#
+# LEDGER #140 (region path): a region run has TWO files a restart must cut back,
+# the results file and `.singleAssoc.txt`, so its line carries both counts:
+#   "Have completed the analysis of chunk 7 single_bytes 98765 bytes 123456"
+# `single_bytes` sits BEFORE `bytes` so the `bytes N$` anchor above is unchanged;
+# a line without it (a run that wrote no single-variant file, or an older
+# version) parses with single = NA. indexChunkLine() below is the one writer of
+# this format and this function its one reader; keep them together.
 parseIndexChunkLine <- function(line) {
   chunk <- suppressWarnings(as.numeric(
     sub("^Have completed the analysis of chunk ([0-9]+).*$", "\\1", line)
@@ -105,7 +113,25 @@ parseIndexChunkLine <- function(line) {
   if (grepl(" bytes [0-9]+$", line)) {
     bytes <- suppressWarnings(as.numeric(sub("^.* bytes ([0-9]+)$", "\\1", line)))
   }
-  list(chunk = chunk, bytes = bytes)
+  single <- NA_real_
+  if (grepl(" single_bytes [0-9]+ ", line)) {
+    single <- suppressWarnings(as.numeric(sub("^.* single_bytes ([0-9]+) .*$", "\\1", line)))
+  }
+  list(chunk = chunk, bytes = bytes, single = single)
+}
+
+# The per-chunk index line. NULL or NA counts are omitted, which is the legacy
+# line (no byte count) that parseIndexChunkLine() reads as "cannot verify".
+indexChunkLine <- function(indexChunk, outputBytes = NULL, singleBytes = NULL) {
+  line <- paste("Have completed the analysis of chunk", indexChunk)
+  hasBytes <- !is.null(outputBytes) && !is.na(outputBytes)
+  if (hasBytes && !is.null(singleBytes) && !is.na(singleBytes)) {
+    line <- paste(line, "single_bytes", format(singleBytes, scientific = FALSE))
+  }
+  if (hasBytes) {
+    line <- paste(line, "bytes", format(outputBytes, scientific = FALSE))
+  }
+  line
 }
 
 # Drop anything the interrupted run wrote past the last COMPLETED chunk.
@@ -178,6 +204,7 @@ checkOutputFile <- function(OutputFile,
   }
 
   chunkBytes <- numeric(0)
+  chunkSingleBytes <- numeric(0)
   if (isOverwriteOutput) {
     Check_OutputFile_Create(OutputFile)
     # Check_OutputFile_Create(OutputFileIndex)
@@ -211,6 +238,9 @@ checkOutputFile <- function(OutputFile,
         chunkBytes <- vapply(parsedAll, function(x) x$bytes, numeric(1))
         names(chunkBytes) <- vapply(parsedAll, function(x) as.character(x$chunk),
                                     character(1))
+        # LEDGER #140: the region path's second file, `.singleAssoc.txt`
+        chunkSingleBytes <- vapply(parsedAll, function(x) x$single, numeric(1))
+        names(chunkSingleBytes) <- names(chunkBytes)
 
         lastMessage <- outIndexData[nrow(outIndexData), 1]
         if (lastMessage == message5) {
@@ -250,7 +280,7 @@ checkOutputFile <- function(OutputFile,
   # finished (LEDGER #47), as a named numeric vector; empty for a fresh run and
   # all-NA for an index written before that record existed.
   returnList <- list(Start = Start, End = End, indexChunk = indexChunk,
-                     chunkBytes = chunkBytes)
+                     chunkBytes = chunkBytes, chunkSingleBytes = chunkSingleBytes)
   returnList
 }
 
@@ -321,15 +351,15 @@ writeOutputFileIndex <- function(OutputFileIndex,
                                  # Size of the output file with this chunk's rows all flushed. Recorded
                                  # so a restart can truncate to it (LEDGER #47); NULL keeps the legacy
                                  # line, which is what the region path has always written.
-                                 outputBytes = NULL) {
+                                 outputBytes = NULL,
+                                 # LEDGER #140: the region path's `.singleAssoc.txt`
+                                 # size at the same moment; NULL for the marker path
+                                 singleBytes = NULL) {
   ## The following messages are for 'OutputFileIndex'
   message1 <- "This is the output index file for SAIGE package to record the end point in case users want to restart the analysis. Please do not modify this file."
   message2 <- paste("This is a", AnalysisType, "level analysis.")
   message3 <- paste("nEachChunk =", nEachChunk)
-  message4 <- paste("Have completed the analysis of chunk", indexChunk)
-  if (!is.null(outputBytes) && !is.na(outputBytes)) {
-    message4 <- paste(message4, "bytes", format(outputBytes, scientific = FALSE))
-  }
+  message4 <- indexChunkLine(indexChunk, outputBytes, singleBytes)
   message5 <- "Have completed the analyses of all chunks."
 
   cat("write to output\n")

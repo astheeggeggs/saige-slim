@@ -511,6 +511,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// flushOutfile_regionInCPP
+bool flushOutfile_regionInCPP();
+RcppExport SEXP _SAIGE_flushOutfile_regionInCPP() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(flushOutfile_regionInCPP());
+    return rcpp_result_gen;
+END_RCPP
+}
 // setSingleOutputPrefixesInCPP
 void setSingleOutputPrefixesInCPP(std::vector<std::string> t_outputFilePrefixes);
 RcppExport SEXP _SAIGE_setSingleOutputPrefixesInCPP(SEXP t_outputFilePrefixesSEXP) {
@@ -2214,6 +2224,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_openOutfile_single", (DL_FUNC) &_SAIGE_openOutfile_single, 4},
     {"_SAIGE_closeOutfile_single", (DL_FUNC) &_SAIGE_closeOutfile_single, 0},
     {"_SAIGE_flushOutfile_singleInCPP", (DL_FUNC) &_SAIGE_flushOutfile_singleInCPP, 0},
+    {"_SAIGE_flushOutfile_regionInCPP", (DL_FUNC) &_SAIGE_flushOutfile_regionInCPP, 0},
     {"_SAIGE_setSingleOutputPrefixesInCPP", (DL_FUNC) &_SAIGE_setSingleOutputPrefixesInCPP, 1},
     {"_SAIGE_isGenoReaderForkSafeInCPP", (DL_FUNC) &_SAIGE_isGenoReaderForkSafeInCPP, 0},
     {"_SAIGE_isGenoReaderCloneableInCPP", (DL_FUNC) &_SAIGE_isGenoReaderCloneableInCPP, 0},

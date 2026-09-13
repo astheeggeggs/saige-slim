@@ -650,10 +650,15 @@ stream and the `.index` flushed independently, which was LEDGER #47 (restart
 duplicated rows; FIXED S9 by recording the file size per chunk line, `*.index`
 is excluded from the byte gate) -- #49 is FIXED too (2026-09-05: `checkOutputFile`
 returns the chunk to START AT, so a restart no longer re-runs the last completed
-chunk; `R/Util.R:224` carries the comment). What is still open on this family is
-**#140, and only on the REGION path**: the byte count and `truncateOutputToIndex()`
-were never carried over there, so a region restart can LOSE regions. Do not read
-the marker path as still broken. **E2** `varianceRatioBinsHaveGap` survives in
+chunk; `R/Util.R:224` carries the comment). **#140 carried S9 to the REGION path
+(2026-09-13)**: `flushOutfile_regionInCPP()` flushes the BURDEN and single-in-group
+streams at each chunk boundary, the region index line records BOTH files' sizes
+(`... chunk N single_bytes S bytes B`, writer `indexChunkLine()` beside its reader
+`parseIndexChunkLine()` in `R/Util.R`), and a restart truncates the results file
+and `.singleAssoc.txt` to them. What is still open there is only the two
+end-of-run sidecars, `.pooledTests.txt` and `.skatFailures.txt`, which a restart
+rewrites over the resumed regions alone (recorded on the row). **E2**
+`varianceRatioBinsHaveGap` survives in
 `R/MarkerScan.R` only because its message beats the C++ throw's.
 
 ### The step1 -> step2 contract (implicit, name-based)

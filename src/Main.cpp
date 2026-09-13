@@ -5205,6 +5205,30 @@ bool flushOutfile_singleInCPP(){
   return allOpen;
 }
 
+// Flush the region-test output streams of every null model: the group (BURDEN)
+// file and the single-in-group file. LEDGER #140: the marker path's #47 fix
+// (record the file size per index line, truncate to it on restart) was never
+// carried to the region path, whose index R appended at once while the BURDEN
+// rows sat in this unflushed ofstream -- so a killed run could leave the index
+// AHEAD of the file (regions silently missing on restart) or behind it (#47's
+// duplication). The region chunk loop calls this before it measures the files
+// and writes the index line, which is what makes the recorded sizes mean
+// "everything on disk belongs to chunks <= i". The fastTest temp stream is
+// not flushed: it is opened, written and closed within one region.
+//
+// Returns false when no region writer is open (a run that never opened one),
+// so the caller can tell "nothing to flush" from "flushed".
+// [[Rcpp::export]]
+bool flushOutfile_regionInCPP(){
+  bool anyOpen = false;
+  for(std::size_t k = 0; k < g_out.regions.size(); k++){
+    RegionWriter & rw = *g_out.regions[k];
+    if(rw.group.is_open()){ rw.group.flush(); anyOpen = true; }
+    if(rw.singleInGroup.is_open()){ rw.singleInGroup.flush(); anyOpen = true; }
+  }
+  return anyOpen;
+}
+
 // Re-point the single-variant output files. One prefix per null model, in
 // manifest order; the first is the one setAssocTest_GlobalVarsInCPP already
 // installed, and a single-model run never calls this at all (so its file naming

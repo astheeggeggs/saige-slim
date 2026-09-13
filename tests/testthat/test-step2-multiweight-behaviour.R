@@ -26,7 +26,9 @@ test_that("LEDGER #25/#81 FIXED: a completed region run validates its own index 
   idx <- readLines(paste0(out, ".index"), warn = FALSE)
   expect_true(any(grepl("^nEachChunk = 1$", idx)))
   expect_identical(tail(idx, 1), "Have completed the analyses of all chunks.")
-  expect_identical(tail(idx, 2)[1], "Have completed the analysis of chunk 2")   # two regions
+  # two regions; since LEDGER #140 the region line also records both files' sizes
+  expect_true(grepl("^Have completed the analysis of chunk 2( single_bytes [0-9]+)? bytes [0-9]+$",
+                    tail(idx, 2)[1]))
   before <- readLines(out)
 
   status <- run_saige_cli("step2_SPAtests.R", c(args, "--is_overwrite_output=FALSE"))

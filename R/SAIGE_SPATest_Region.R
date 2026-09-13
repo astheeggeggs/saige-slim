@@ -996,6 +996,23 @@ SAIGE.Region <- function(mu,
   isappend <- FALSE
   if (!Start) {
     isappend <- TRUE
+    # LEDGER #140 FIXED: S9 (#47) carried to the region path. The interrupted
+    # run may have left rows on disk past the last chunk the index recorded
+    # (the BURDEN rows sit in an unflushed C++ stream, the index hits the disk
+    # at once, so the two could be out of step in EITHER direction). Cut each
+    # model's results file, and its .singleAssoc.txt, back to the size the
+    # index recorded for the last completed chunk -- indexChunk itself here:
+    # the region loop below resumes AT indexChunk + 1 (LEDGER #25/#81), so the
+    # target is the end of chunk indexChunk. truncateOutputToIndex is in
+    # Util.R; an index without counts (an older version) warns and appends.
+    for (k in seq_len(nModels)) {
+      truncateOutputToIndex(OutputFiles[k], outChecks[[k]]$chunkBytes[as.character(indexChunk)])
+      singleOut <- paste0(OutputFiles[k], ".singleAssoc.txt")
+      if (file.exists(singleOut)) {
+        truncateOutputToIndex(singleOut,
+                              outChecks[[k]]$chunkSingleBytes[as.character(indexChunk)])
+      }
+    }
   }
 
   n <- length(mu[[1]]) # sample size
@@ -1828,11 +1845,17 @@ SAIGE.Region <- function(mu,
         message1 <- "This is the output index file for SAIGE package to record the end point in case users want to restart the analysis. Please do not modify this file."
         message2 <- "This is a Region level analysis."
         message3 <- paste("nEachChunk =", nEachChunk)
-        message4 <- paste("Have completed the analysis of chunk", indexChunk)
         message5 <- "Have completed the analyses of all chunks."
         # n1 = length(Output)
         # n2 = length(OutputFile)
         cat("write to output\n")
+        # Fix for LEDGER #140: flush the region output streams held in C++,
+        # the BURDEN rows and .singleAssoc.txt, FIRST; then record sizes; then
+        # write the index line carrying both: that order is what makes the
+        # recorded counts mean "everything on disk belongs to chunks up to
+        # indexChunk", so a restart can truncate to them; the marker path's
+        # #47 fix, S9. The R-side rows, fwrite below, are on disk on return.
+        flushOutfile_regionInCPP()
         # cat("n1 is ", n1, "\n")
         # cat("n2 is ", n2, "\n")
         for (k in seq_len(nModels)) {
@@ -1925,8 +1948,13 @@ SAIGE.Region <- function(mu,
             row.names = FALSE
           )
         }
+        # LEDGER #140: this model's line carries the sizes measured AFTER its
+        # rows above were written (indexChunkLine in Util.R; NA omits a count)
+        regionBytes <- if (file.exists(OutputFiles[k])) file.size(OutputFiles[k]) else NA_real_
+        singleOut <- paste0(OutputFiles[k], ".singleAssoc.txt")
+        singleBytes <- if (file.exists(singleOut)) file.size(singleOut) else NA_real_
         write.table(
-          message4,
+          indexChunkLine(indexChunk, regionBytes, singleBytes),
           OutputFileIndexes[k],
           quote = FALSE,
           sep = "\t",
