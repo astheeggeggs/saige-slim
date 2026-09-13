@@ -1,4 +1,83 @@
-# What is worth doing next (2026-09-03, updated 2026-09-12; read docs/state/handoff-2026-09-12-ur-pseudomarker-129-130.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-13; read docs/state/handoff-2026-09-12-ur-pseudomarker-129-130.md first, THEN the correction directly below)
+
+**2026-09-13: the current handoff's closing recommendation is WRONG, and this is
+the correction.** `handoff-2026-09-12-ur-pseudomarker-129-130.md` ends "where to
+start next ... **#134** ... so fixing it before the sweep is re-run means running
+the sweep once instead of twice". That reason is false. #134's decision points sit
+inside `if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest)` at
+`src/Main.cpp:3634`; every FlexRV arm of the sweep is `--r.corr=1` with
+`is_single_in_groupTest` at its FALSE default, and the sweep's only SKAT-O arms
+use beta weights, whose collapse is unweighted. **#134 cannot move one number in
+the FlexRV sweep.** The handoff is dated and is not edited; the correction lives
+here and in the #134 STATUS cell, which is authoritative.
+
+Three consequences, in order:
+
+1. **The FlexRV sweep re-run is UNBLOCKED and is the cheapest owed item.** It is
+   genuinely still owed -- its outputs were generated at `38eee5f5`, before the
+   #129/#130 fixes, and only the 72 collapse-10 runs are affected.
+2. **Do #132 + #133 + #134 as ONE commit series over ONE gate cycle.** Five of
+   #134's six measured movers are also #132's movers, and #133's option (b) moves
+   `MAC` in every group golden. Landing them separately re-baselines the same
+   files two or three times, and each re-baseline destroys the BEFORE state the
+   next row's prediction must be read from -- which is this branch's own Trap
+   ("predict which goldens should move BEFORE the gate, from the goldens
+   themselves where possible").
+3. **If one item must go alone, it is #128**, the only open row with its
+   characterization test already written, moving no golden, on a configuration
+   that currently DIES. It is blocked only on #116's decision -- and #116's
+   mechanism is now diagnosed (below), so that block is liftable.
+
+**#116's mechanism is diagnosed, and it is NEITHER candidate the row names.** On
+the row's own bundled reproduction, `rs1` and `rs2` are both monomorphic in the
+analysed 1,000 (AC 0 each; they are polymorphic only across the full 10,000 fam
+rows), so at the default `--minMAC=0.5` both are rejected by the region ingest
+gate at `src/Main.cpp:2751`, which `return`s before `pr.passQC = true`. Neither
+marker ever reaches the ultra-rare collapse, so the min-group-MAC gate and the
+max-MAF cell filters -- the row's two candidates -- never see anything. The tell
+for anyone re-checking is the log line at `src/Main.cpp:3278` ("In chunks 0-N, i2
+markers are ultra-rare and i1 markers are not ultra-rare"), guarded by
+`if(i1InChunk != 0)`: its ABSENCE means nothing passed QC, its presence with
+`i1 == 0, i2 > 0` would mean the collapse/gate candidates. That costs one grep of
+an existing log, no instrumentation and no build. The consequence for the
+decision: the same 0-byte file is now reachable by THREE unrelated causes (#76's
+`--chrom` filter, #113(a)'s ID join, and all-markers-fail-QC), which argues for
+the schema fix (always write a header) over a `--chrom`-shaped refusal.
+
+**Also corrected 2026-09-13, each verified by hand at `f5e173a9` before being
+written:** #134's blast radius is now MEASURED rather than predicted, and
+`cond_customweight` is IN (6 of 6 UR-only cells cross a band; the row had said
+"needs measuring") while no FlexRV BURDEN golden moves at all; #134's ER decision
+point is structurally inert, so it has TWO live sites, not three; #139's PGEN
+failure writes `BETA=NA SE=NA` rather than `nan`, making it byte-shaped exactly
+like a legitimate #44 declined-effect row; CLAUDE.md's claim that <!-- docdrift-allow: quotes the
+falsified sentence on purpose -->#49 remains
+(it was fixed 2026-09-05) and its claim that no bundled marker exceeds AF 0.5
+(`rs26` in the dosage goldens is 0.500034) are fixed, each with a `docdrift.py`
+rule -- and adding the second rule immediately found a SECOND copy of that claim
+in the allele-convention section, which is the copied-twin shape the tool exists
+for.
+
+**LEDGER #142 opened 2026-09-13** from `docs/flag-surprises.md` F5, which had been
+workflow-verified only: every FlexRV `mac:` threshold at or above `2*N*maxMAF` is
+identically 1, i.e. a duplicate of `unw`, and the duplicates still enter the
+pooled Cauchy row. Re-derived by hand from `plink_group_flexrv_burden.txt` before
+the row was written: exactly **80 of 192** rows per gene are byte-identical to
+their score transform's `_unw` row (precisely `MAC25`/`MAC50`/`MAC100`/`MAC200`/
+`MAC500` x 16 score transforms), the CCT over all 192 reproduces the committed
+pooled row to every printed digit, and over the value-distinct rows it is
+**0.095698 against the golden's 0.139077 on GENE1 (1.45x) and 0.939638 against
+0.907609 on GENE2 (0.966x)** -- so the distortion has no fixed sign. At the
+paper's default `--flexRV_maxMAF=0.001` this is degenerate on any cohort below
+N = 250,000. **Eight of the nine other leads in `docs/flag-surprises.md` remain
+unharvested and have no row**; F12 is the next cheapest and is likewise already
+confirmable from a committed golden.
+
+**Structural gap worth budgeting for: eight of the thirteen open rows have no
+characterization test** (#134, #135, #136, #137, #138, #139, #140, #141, #142).
+The bug-for-bug rule requires the row's test to be INVERTED in the fix commit, so
+each of those carries an unbudgeted "write it first, prove it red at unpatched
+HEAD" step that none of the fix sizings on the rows includes.
 
 **Current handoff: `docs/state/handoff-2026-09-12-ur-pseudomarker-129-130.md`**
 (LEDGER #129 and #130 FIXED, one commit each -- the two decisions and the

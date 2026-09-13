@@ -71,10 +71,18 @@ Standing facts that have each cost at least one session. One line of why each.
 - **`rs20` and `rs22` in `genotype_100markers.bed` ARE the covariates `a9`/`a10`**
   (R^2 = 1.000000). Any covariate-adjusting path reports `BETA=NA SE=NA` on them
   (LEDGER #44); expect two degenerate rows and do not read them as a signal.
-- **No bundled marker has AF_Allele2 > 0.5.** Reach that half of the marker path
+- **No HARD-CALL bundled marker has AF_Allele2 > 0.5, and the one dosage marker
+  that does is useless for the question.** Reach that half of the marker path
   with `--AlleleOrder=ref-first` on the same bed (golden P11); the default path
-  is now exactly flip-invariant (#28/#29 fixed). A native AF > 0.5 fixture is
-  still absent.
+  is now exactly flip-invariant (#28/#29 fixed). The earlier wording of this
+  trap said "no bundled marker", which is false of the repo: `rs26` in the PGEN
+  dosage fixture is AF 0.500034 (AC 1000.07 on N = 1,000) and appears in all
+  three dosage goldens -- `pgen_marker_dosage.txt`, `_mac100`, `_nozerod` -- so
+  it IS natively ALT-major and IS folded by `imputeGenoAndFlip`. But it sits
+  3.4e-5 above 0.5, so it discriminates nothing about weighting, MAC bands or
+  annotation binning, which is what #131's revisit trigger needs. A native
+  AF > 0.5 fixture with real separation is still absent; the cheap way to make
+  one is `harness/tools/make_dosage_fixture.py`, which already generates that file.
 - **Do not force `--pCutoffforFirth` upward** to make Firth fire: above the
   intended cutoff the penalised fit drifts to `maxstep*maxit` = 750 (#26). Use
   0.05, which fires on 5 of the 70 bundled markers.
@@ -479,8 +487,11 @@ was written down. The rule, and the one deliberate exception:
    cell labelled "rare LoF" can be driven by a rare allele carrying no
    annotation. **The revisit trigger is one number** -- the fraction of
    annotated sites in a real callset whose ALT allele is major -- and it cannot
-   be measured on the bundled fixture, which has 0 of 70 markers above AF 0.5
-   (`--AlleleOrder=ref-first` inverts all 70 rather than giving a mixture). The
+   be measured on the bundled fixture, whose 70 HARD-CALL markers are all below
+   AF 0.5 (`--AlleleOrder=ref-first` inverts all 70 rather than giving a
+   mixture). The one native exception in the repo does not help: `rs26` in the
+   PGEN dosage goldens is AF 0.500034, i.e. ALT-major by 3.4e-5, which exercises
+   the fold branch but separates nothing. The
    three candidate answers, and why the chosen one is (a) for now, are on the
    row.
 
@@ -613,9 +624,13 @@ the output bytes (`markers_per_chunk` drives only a stdout counter); **E1**
 `closeOutfile_single()`/`flushOutfile_singleInCPP()` exist because the output
 stream and the `.index` flushed independently, which was LEDGER #47 (restart
 duplicated rows; FIXED S9 by recording the file size per chunk line, `*.index`
-is excluded from the byte gate) -- #49 remains (a restart re-runs the last
-completed chunk); and `varianceRatioBinsHaveGap` survives in `R/MarkerScan.R`
-only because its message beats the C++ throw's.
+is excluded from the byte gate) -- #49 is FIXED too (2026-09-05: `checkOutputFile`
+returns the chunk to START AT, so a restart no longer re-runs the last completed
+chunk; `R/Util.R:224` carries the comment). What is still open on this family is
+**#140, and only on the REGION path**: the byte count and `truncateOutputToIndex()`
+were never carried over there, so a region restart can LOSE regions. Do not read
+the marker path as still broken. **E2** `varianceRatioBinsHaveGap` survives in
+`R/MarkerScan.R` only because its message beats the C++ throw's.
 
 ### The step1 -> step2 contract (implicit, name-based)
 
