@@ -127,6 +127,79 @@ setSparseSigma_new <- function(sparseGRMFile,
 # The returned list carries pval.Region plus cctpval/resultDF only when they
 # were bound, so the caller can reproduce the exact frame state the inline
 # blocks used to leave behind.
+# LEDGER #132: the ACAT-V COMBINATION weight of a collapsed ultra-rare
+# pseudo-marker, for a custom or transform set.
+#
+# It used to be a hardcoded 1, which is correct for the BURDEN (C++ has already
+# baked w_r into the collapse max(w_r*G), LEDGER #17) but is not commensurable
+# with the surviving markers' own weights when the SAME vector is reused as
+# CCT's combination weights. CCT normalises by sum(weights)
+# (R/CCT_modified.R), so a 1 sitting beside CADD-scale weights (0.5-10) and
+# beside REVEL-scale weights (0.01-0.95) means the pseudo-marker's share of the
+# combination is decided by the SCALE of the group file -- a uniform rescale,
+# which is byte-exactly a no-op for Pvalue, Pvalue_Burden and Pvalue_SKAT,
+# moved Pvalue_ACATV by up to 10.5%.
+#
+# The share is 1 / (sum(w) + 1), so as the scale falls ACAT-V tends to the
+# pseudo-marker's own single-variant p and as it rises it tends to the Cauchy of
+# the rare markers alone. Every scale is validly calibrated under the null; what
+# the scale silently chooses is where between those two limits the statistic
+# sits, which is a POWER choice the user never made.
+#
+# THE RULE (owner's decision, 2026-09-13): the pseudo-marker's combination
+# weight is the MEAN of w_r over the markers that were actually folded into it
+# IN THAT CELL.
+#   - Per cell, not per set: annoMAFIndicatorMat marks a marker 2 in column jmr
+#     when it was collapsed into that cell's pseudo-marker (src/Main.cpp:3025),
+#     1 when it survived as a rare marker (:2955), and the pseudo-marker's own
+#     row carries 1 in its own column (:3701) so it is in tempPos.
+#   - NON-ZERO weights only, and that qualifier is load-bearing rather than
+#     cosmetic: :3025 marks an ultra-rare marker 2 whatever its weight, but
+#     :3052's `if(wUR != 0)` decides whether it is actually accumulated
+#     (LEDGER #118). So the non-zero subset is exactly the set of markers the
+#     collapse contains, not an approximation of it.
+#   - MEAN rather than MAX: max matches the collapse operator, but it would make
+#     the pseudo-marker the heaviest element of nearly every cell, and the mean
+#     is what ACAT-V does with a very-rare burden component. Pending the paper
+#     text.
+#   - Beta sets need no equivalent: they already weight the pseudo-marker by
+#     dbeta at its own collapsed MAF, over every output row.
+#
+# This is a KNOWING DIVERGENCE from SAIGE-QTL, recorded in the same shape as
+# LEDGER #118's divergence from upstream SAIGE.
+#
+# APPLIED AT THE ACAT-V CALL SITE ONLY, and that separation is the whole
+# subtlety. AnnoWeights is not just ACAT-V's combination vector: it also builds
+# wStatVec (StatVec * w) and the weighted variance sub-matrix, i.e. the BURDEN
+# and SKAT statistics. There the pseudo-marker's 1 is CORRECT, because C++ has
+# already baked w_r into the collapse max(w_r*G) (#17) -- weighting its score
+# again would count w_r twice. The first attempt at this fix changed the shared
+# vector and did exactly that; test-step2-multiweight-behaviour.R caught it
+# immediately, failing on Pvalue, Pvalue_Burden, Pvalue_SKAT, BETA_Burden and
+# SE_Burden rather than on anything to do with ACAT-V. Hence two vectors:
+# AnnoWeightsList for the statistics, AnnoWeightsACATVList for the combination.
+#
+# Fallback: a cell with no folded marker keeps 1. Its pseudo-marker row is
+# zeroed in C++ (src/Main.cpp:3701 is not reached for an empty collapse) so the
+# value is never read; 1 is the pre-#132 value and the safest thing to leave.
+urCombinationWeight <- function(w, outList) {
+  n <- outList$numofUR
+  if (is.null(n) || n == 0) {
+    return(numeric(0))
+  }
+  ind <- outList$annoMAFIndicatorMat
+  if (is.null(ind) || ncol(ind) < n) {
+    return(rep(1, n))
+  }
+  vapply(seq_len(n), function(jmr) {
+    folded <- which(ind[, jmr] == 2)
+    folded <- folded[folded <= length(w)]
+    wf <- w[folded]
+    wf <- wf[!is.na(wf) & wf != 0]
+    if (length(wf) == 0) 1 else mean(wf)
+  }, numeric(1))
+}
+
 region_postprocess <- function(outList,
                                mu,
                                WEIGHT,
@@ -250,9 +323,27 @@ region_postprocess <- function(outList,
           },
           beta = dbeta(outList$MAFVec, ws_betaA[r], ws_betaB[r]),
           noweight = rep(1, length(outList$MAFVec)),
-          transform = c(outList$transformWeightMat[, ws_transformCol[r]], rep(1, outList$numofUR)),
+          transform = c(outList$transformWeightMat[, ws_transformCol[r]],
+                        rep(1, outList$numofUR)),
           stop("region_postprocess: unknown weight-set kind '", ws_kind[r], "'\n")
         )
+      })
+      # LEDGER #132: the ACAT-V COMBINATION weights are a SEPARATE vector from
+      # the statistics weights above. See urCombinationWeight for why the
+      # pseudo-marker's entry differs between the two, and why getting that
+      # wrong double-counts w_r in the burden.
+      AnnoWeightsACATVList <- lapply(seq_len(nWeightSets), function(r) {
+        aw <- AnnoWeightsList[[r]]
+        if (!(ws_kind[r] %in% c("custom", "transform"))) {
+          return(aw)
+        }
+        q0 <- length(aw) - outList$numofUR
+        if (q0 < 0) {
+          return(aw)
+        }
+        aw[seq_len(outList$numofUR) + q0] <-
+          urCombinationWeight(aw[seq_len(q0)], outList)
+        aw
       })
     } else if (sum(WEIGHT) > 0) {
       AnnoWeights <- c(WEIGHT, rep(1, outList$numofUR))
@@ -325,6 +416,7 @@ region_postprocess <- function(outList,
 
     if (isMultiWeight) {
       AnnoWeightsList <- lapply(AnnoWeightsList, function(w) w[noNAIndices])
+      AnnoWeightsACATVList <- lapply(AnnoWeightsACATVList, function(w) w[noNAIndices])
     } else if (sum(WEIGHT) > 0 || identical(ws_kind, "transform")) {
       # AnnoWeights = AnnoWeights[varTestedIndices]
       # (a single FlexRV transform set is a custom set here, LEDGER #119)
@@ -383,6 +475,8 @@ region_postprocess <- function(outList,
           jmr <- (jm - 1) * nWeightSets + r # K = 1, r = 1 -> jmr == jm
           if (isMultiWeight) {
             AnnoWeights <- AnnoWeightsList[[r]]
+            # LEDGER #132: ACAT-V combines with its OWN weight vector
+            AnnoWeightsACATV <- AnnoWeightsACATVList[[r]]
             wStatVec <- wStatVecList[[r]]
           }
           if (m <= maxMAF0) {
@@ -457,7 +551,15 @@ region_postprocess <- function(outList,
                 # ACAT-V combines this cell's single-variant p-values with set r's
                 # weights; ACAT-O is the Cauchy combination of (ACAT-V, Burden,
                 # SKAT) for this row.
-                Pvalue_ACATV <- get_ACATV_pvalue(exp(adjPVec[tempPos]), AnnoWeights[tempPos])
+                # LEDGER #132: AnnoWeightsACATV, not AnnoWeights. The two differ
+                # only in the collapsed pseudo-marker's entry -- 1 in the
+                # statistics vector (C++ already baked w_r into the collapse,
+                # #17, so weighting the score again would double-count it) and
+                # the mean of the folded markers' non-zero weights here, where
+                # a bare 1 is not commensurable with the surviving markers'
+                # own weights and made ACAT-V depend on the group file's SCALE.
+                Pvalue_ACATV <- get_ACATV_pvalue(exp(adjPVec[tempPos]),
+                                                 AnnoWeightsACATV[tempPos])
                 Pvalue_ACATO <- get_CCT_pvalue(c(
                   Pvalue_ACATV,
                   groupOutList$Pvalue_Burden,

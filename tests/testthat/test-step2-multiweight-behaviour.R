@@ -257,14 +257,24 @@ test_that("with the collapse ON, custom weights are scale-free except in ACAT-V"
                tolerance = 1e-12)
   expect_equal(pnum(rb$SE_Burden) / pnum(ra$SE_Burden), rep(0.5, nrow(ra)),
                tolerance = 1e-12)
-  # LEDGER #132, the residual this inversion located: ACAT-V and ACAT-O are the
-  # ONLY columns a uniform rescaling still moves, because the pseudo-marker's
-  # combination weight is a fixed 1 among weights that doubled. Bounded, not
-  # asserted equal -- and asserted NON-equal, so the row cannot be quietly
-  # fixed without this test noticing.
-  expect_false(identical(ra$Pvalue_ACATV, rb$Pvalue_ACATV))
-  expect_lt(rel_err(pnum(ra$Pvalue_ACATV), pnum(rb$Pvalue_ACATV)), 0.2)
-  expect_lt(rel_err(pnum(ra$Pvalue_ACATO), pnum(rb$Pvalue_ACATO)), 0.2)
+  # LEDGER #132 FIXED (2026-09-13): ACAT-V and ACAT-O are now rescale-invariant
+  # too, and this assertion is the INVERSION of the one that pinned the bug.
+  #
+  # It used to read expect_false(identical(...)) plus a 20% bound, because the
+  # pseudo-marker's ACAT-V combination weight was a fixed 1 among weights that
+  # had doubled, and CCT normalises by sum(weights) -- so the pseudo-marker's
+  # share, 1/(sum(w)+1), moved with the scale. The pseudo-marker now carries the
+  # MEAN of the weights of the markers actually folded into it in that cell
+  # (urCombinationWeight in R/SAIGE_SPATest_Region.R), which doubles with
+  # everything else, leaving every relative weight unchanged.
+  #
+  # Toleranced rather than identical: the mean is a fresh arithmetic operation
+  # on the weights, so a doubling round-trips through it at ~1 ULP rather than
+  # exactly, and ACAT-V is a CCT round trip through tan/atan on top of that
+  # (CLAUDE.md: never assert bit-identity across two paths; compare statistics
+  # at ~1e-12 relative).
+  expect_equal(pnum(ra$Pvalue_ACATV), pnum(rb$Pvalue_ACATV), tolerance = 1e-10)
+  expect_equal(pnum(ra$Pvalue_ACATO), pnum(rb$Pvalue_ACATO), tolerance = 1e-10)
 })
 
 test_that("No_Weights rows reproduce a plain all-ones run", {

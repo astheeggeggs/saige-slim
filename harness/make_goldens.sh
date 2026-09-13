@@ -549,6 +549,25 @@ run step2_plink_marker_chunked.log R2 step2_SPAtests.R \
 
 # P8: group test, SKAT-O, K=2 custom weight sets — the Weight column plus the
 # additive Pvalue_ACATV/Pvalue_ACATO columns
+# --is_output_markerList_in_groupTest=TRUE on the six goldens below (LEDGER
+# #132, 2026-09-13). It writes a `.markerList.txt` sidecar: one row per
+# (region, annotation, max_MAF) with the surviving RARE rsIDs and the folded
+# ULTRA-RARE rsIDs (R/SAIGE_SPATest_Region.R:1497-1556, weight-independent
+# because the indicator marks a marker folded regardless of its weight).
+#
+# It is here because that membership is the one input
+# tests/testthat/test-invariants-goldens.R could not reconstruct once #132 made
+# the pseudo-marker's ACAT-V weight the MEAN of the folded markers' non-zero
+# weights: folded membership is per cell (annotation AND max_MAF AND below the
+# collapse MAC cutoff) and a folded marker has no single-assoc row, so its MAC
+# is in no committed file. With the sidecar the test recomputes ACAT-V from
+# first principles again -- members from here, weights from the group file,
+# per-set non-zero filter applied by the test -- instead of solving for a free
+# parameter and bounding it.
+#
+# The flag gates only the block at :1497, so it adds a file and changes nothing
+# else; that was PREDICTED and then CHECKED against a full regeneration rather
+# than assumed. #118 and #134 both wanted this membership pinned and never had it.
 run step2_plink_group_multiweight.log R2 step2_SPAtests.R \
   $PLINK_G \
   --SAIGEOutputFile="$GOLD/step2/plink_group_multiweight.txt" \
@@ -557,7 +576,8 @@ run step2_plink_group_multiweight.log R2 step2_SPAtests.R \
   --groupFile=./input/group_new_snpid_multiWeights.txt \
   --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
   --maxMAF_in_groupTest=0.0001,0.001,0.01 \
-  --is_fastTest=TRUE
+  --is_fastTest=TRUE \
+  --is_output_markerList_in_groupTest=TRUE
 
 # P9: same, BURDEN only (r.corr=1) — the C7 Weight column in the C++ BURDEN
 # writer, which is a different emitter from P8's R post-processing.
@@ -601,7 +621,8 @@ run step2_plink_group_cond_multiweight.log R2 step2_SPAtests.R \
   --groupFile=./input/group_new_snpid_multiWeights.txt \
   --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
   --maxMAF_in_groupTest=0.0001,0.001,0.01 \
-  --condition=rs30,rs79 --is_fastTest=TRUE
+  --condition=rs30,rs79 --is_fastTest=TRUE \
+  --is_output_markerList_in_groupTest=TRUE
 
 # P11 (added during the AF>0.5 investigation; P10 above is the C11
 # conditional multi-weight golden): the SAME bed as P1, read
@@ -748,7 +769,8 @@ run step2_pgen_group_multiweight.log R2 step2_SPAtests.R \
   --groupFile=./input/group_new_snpid_multiWeights.txt \
   --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
   --maxMAF_in_groupTest=0.0001,0.001,0.01 \
-  --is_fastTest=TRUE
+  --is_fastTest=TRUE \
+  --is_output_markerList_in_groupTest=TRUE
 
 # P22: group test, multiweight BURDEN, r.corr=1, is_fastTest=FALSE (mirrors
 # P9) -- the C7 Weight column in the C++ BURDEN writer through the pgen
@@ -786,7 +808,8 @@ run step2_pgen_group_cond_multiweight.log R2 step2_SPAtests.R \
   --groupFile=./input/group_new_snpid_multiWeights.txt \
   --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
   --maxMAF_in_groupTest=0.0001,0.001,0.01 \
-  --condition=rs30,rs79 --is_fastTest=TRUE
+  --condition=rs30,rs79 --is_fastTest=TRUE \
+  --is_output_markerList_in_groupTest=TRUE
 
 # P34 (added with the LEDGER #17 fix): K=1 CUSTOM-weighted group file WITH
 # --condition -- the one combination that read an uninitialised `w0`. Nothing
@@ -1317,7 +1340,8 @@ run step2_plink_group_multiweight_quant.log R2 step2_SPAtests.R \
   --groupFile=./input/group_new_snpid_multiWeights.txt \
   --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
   --maxMAF_in_groupTest=0.0001,0.001,0.01 \
-  --is_fastTest=TRUE
+  --is_fastTest=TRUE \
+  --is_output_markerList_in_groupTest=TRUE
 
 # P57: conditional region test on a quantitative model, the quantitative twin of
 # plink_group_cond_binary. Conditioning markers are rsIDs (bim column 2).
@@ -1390,7 +1414,8 @@ run step2_plink_group_flexrv_skato.log R2 step2_SPAtests.R \
   --flexRV_score=REVEL --flexRV_maxMAF=0.02 \
   --flexRV_scoreTransforms="unw;sbeta:2" --flexRV_MAFTransforms="unw;mafbeta:2" \
   --annotation_in_groupTest=lof:missense \
-  --is_fastTest=FALSE
+  --is_fastTest=FALSE \
+  --is_output_markerList_in_groupTest=TRUE
 
 # P61: P58 through the pgen reader (the in-sample MAC/MAF the MAC ladder and
 # the mafbeta transforms read must not depend on the reader).

@@ -1,0 +1,13 @@
+Region	Group	max_MAF	Rare_Variants	Ultra_Rare_Variants
+GENE1	lof	0.001		rs3,rs32,rs42,rs44
+GENE1	lof	0.01	rs4,rs31,rs33	rs3,rs8,rs9,rs10,rs32,rs34,rs35,rs42,rs44,rs45,rs46,rs49
+GENE1	missense;lof	0.001		rs3,rs11,rs13,rs28,rs32,rs42,rs44
+GENE1	missense;lof	0.01	rs4,rs17,rs31,rs33	rs3,rs8,rs9,rs10,rs11,rs13,rs16,rs18,rs28,rs32,rs34,rs35,rs42,rs44,rs45,rs46,rs49
+GENE1	missense;lof;synonymous	0.001		rs3,rs11,rs13,rs28,rs32,rs42,rs44
+GENE1	missense;lof;synonymous	0.01	rs4,rs17,rs31,rs33	rs3,rs8,rs9,rs10,rs11,rs13,rs16,rs18,rs28,rs32,rs34,rs35,rs42,rs44,rs45,rs46,rs49
+GENE2	lof	0.001		rs84,rs85,rs89
+GENE2	lof	0.01	rs91	rs84,rs85,rs89,rs98
+GENE2	missense;lof	0.001		rs55,rs56,rs62,rs76,rs77,rs78,rs84,rs85,rs89
+GENE2	missense;lof	0.01	rs60,rs70,rs91	rs55,rs56,rs58,rs61,rs62,rs65,rs72,rs74,rs76,rs77,rs78,rs84,rs85,rs89,rs98
+GENE2	missense;lof;synonymous	0.001		rs55,rs56,rs62,rs76,rs77,rs78,rs84,rs85,rs89
+GENE2	missense;lof;synonymous	0.01	rs60,rs70,rs91	rs55,rs56,rs58,rs61,rs62,rs65,rs72,rs74,rs76,rs77,rs78,rs84,rs85,rs89,rs98

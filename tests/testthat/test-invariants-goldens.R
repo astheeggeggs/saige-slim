@@ -269,6 +269,8 @@ test_that("ACAT-V recomputes from the single-variant p-values and the fixture we
   # nothing pins ACATV's own value.
   reg <- golden2("plink_group_multiweight.txt")
   sa  <- golden2("plink_group_multiweight.txt.singleAssoc.txt")
+  # LEDGER #132: the folded-marker membership, per (region, annotation, max_MAF)
+  ml  <- golden2("plink_group_multiweight.txt.markerList.txt")
   gl <- strsplit(readLines(file.path(saige_extdata, "input",
                                      "group_new_snpid_multiWeights.txt")), "[ \t]+")
   grouprow <- function(gene, pattern) {
@@ -313,8 +315,40 @@ test_that("ACAT-V recomputes from the single-variant p-values and the fixture we
     keep  <- annos %in% strsplit(r$Group[i], ";")[[1]] &
              !is.na(idx) & num(real$AF_Allele2[idx]) <= num(r$max_MAF[i])
     expect_identical(sum(keep), as.integer(num(r$Number_rare[i])))
+
+    # LEDGER #132: the pseudo-marker's ACAT-V combination weight is the MEAN of
+    # w_r over the markers actually folded into THIS cell, non-zero weights
+    # only. This is still a FIRST-PRINCIPLES reconstruction with no free
+    # parameter -- the folded membership comes from the `.markerList.txt`
+    # sidecar, which `make_goldens.sh` now asks for on this run
+    # (--is_output_markerList_in_groupTest=TRUE).
+    #
+    # An interim version of this assertion solved for the pseudo-marker's weight
+    # and only checked the root lay inside the set's own weight range. That was
+    # much weaker: on the CADD set the range is 0.8 to 10, so a wrong
+    # membership, a wrong per-marker p or a modestly shifted ACAT-V golden still
+    # yields a root in range. It failed only on gross errors where this version
+    # fails on any of them. Do not go back to it.
+    #
+    # The sidecar is per (region, annotation, max_MAF) and weight-INDEPENDENT --
+    # the C++ indicator marks a marker folded whatever its weight -- so the
+    # per-set `w != 0` filter is applied HERE, which is the implementation's own
+    # rule (src/Main.cpp:3052 `if(wUR != 0)`) rather than a restatement of its
+    # output.
+    ml_row <- ml[ml$Region == r$Region[i] & ml$Group == r$Group[i] &
+                   ml$max_MAF == r$max_MAF[i], ]
+    expect_identical(nrow(ml_row), 1L)
+    ur_ids <- strsplit(ml_row$Ultra_Rare_Variants, ",")[[1]]
+    ur_ids <- ur_ids[nzchar(ur_ids)]
+    # the sidecar's membership must agree with the result file's own count
+    expect_identical(length(ur_ids), as.integer(num(r$Number_ultra_rare[i])))
+    w_ur_members <- w[match(ur_ids, vars)]
+    expect_false(anyNA(w_ur_members))
+    w_ur_members <- w_ur_members[w_ur_members != 0]
+    expect_gt(length(w_ur_members), 0)
+    w_ur <- mean(w_ur_members)
     expect_lt(rel_err(num(r$Pvalue_ACATV[i]),
-                      CCT(c(num(real$p.value[idx[keep]]), p_ur), c(w[keep], 1))),
+                      CCT(c(num(real$p.value[idx[keep]]), p_ur), c(w[keep], w_ur))),
               1e-12)
   }
 })
