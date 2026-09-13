@@ -1,9 +1,11 @@
-# What is worth doing next (2026-09-03, updated 2026-09-13 evening; read docs/state/handoff-2026-09-13-evening-six-rows.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-13 night; read docs/state/handoff-2026-09-13-night-135-139-142.md first)
 
-**Current handoff: `docs/state/handoff-2026-09-13-evening-six-rows.md`** -- the
-six rows of the evening, the three that remain (#142 a DECISION with a measured
-pooling-rule pipeline, `harness/sim/flexrv_study/pool_rules.R`; #139 and #135
-need fixtures), and the drill recipe.
+**Current handoff: `docs/state/handoff-2026-09-13-night-135-139-142.md`** --
+#135 and #139 fixed (goldens P66, P67/P68), the ONE open row #142 laid out
+as a decision with its evidence and a recommendation, the corrected scratch
+install recipe, and the pre-push sequencing trap. The evening handoff
+(`handoff-2026-09-13-evening-six-rows.md`) holds the six earlier rows and the
+`pool_rules.R` first run.
 
 **2026-09-13 (evening): LEDGER #141, #140 and #116 are FIXED**, one commit each,
 gated together at `both` modes. The ledger is at **6 open**. Read the rows
@@ -62,6 +64,19 @@ are byte-identical, GENE1 lof is refused and its pooled row is the CCT of the
 two twins (0.11969). `test-step2-burden-aggregate-mac.R` is the
 characterization (red at the scratch install of HEAD, green after). No
 committed golden moved. Read `ledger.py 135`.
+
+**2026-09-13 (night): LEDGER #139 FIXED.** `applyMaleXnonPAR` recounts the
+doubled males over the non-missing entries only (it now takes the reader's
+missing index). The fixture is `genotype_100markers_missing` with the
+bim/pvar chromosome rewritten to X (`extdata/input/..._missing_chrX.{bim,pvar}`)
+plus the bundled `sampleid_males.txt`: at unpatched HEAD the PLINK run tested
+6 of P42's 48 markers (the six without a missing call) and the PGEN run died
+on `MAC nan`; fixed, goldens P67/P68 are byte-identical across readers with
+all 48. `test-step2-xnonpar-missing.R` (red at the scratch install, 9
+failures) also covers `--condition` on a chrX marker with missing calls. The
+false chrX `cat()` is corrected and a `docdrift.py` rule pins it (the
+`4c2ca05a^` drill is 43 hits now). No committed golden moved. Read
+`ledger.py 139`.
 
 Three things a later session should hold on to: (1) a scratch install of
 unpatched HEAD reusing the tree's `src/*.o` (all but the changed file's) takes

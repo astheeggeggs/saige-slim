@@ -333,7 +333,7 @@ void setRegion_GlobalVarsInCPP(
 
 
 
-static void applyMaleXnonPAR(arma::vec& t_GVec, uint32_t& t_pd, double& t_altCounts, double& t_altFreq, const std::string& t_chr);
+static void applyMaleXnonPAR(arma::vec& t_GVec, uint32_t& t_pd, double& t_altCounts, double& t_altFreq, const std::string& t_chr, bool t_hasIndexForMissing, const std::vector<uint>& t_indexForMissing);
 
 // A printed p-value back to a double, tolerating what the writer can print
 // and std::stod cannot read: a subnormal (out_of_range) reads as 0, and a
@@ -381,7 +381,7 @@ static bool getOneMarkerThrough(Geno::GenoReader& t_reader,
    t_missingRate = meta.missingRate; t_imputeInfo = meta.imputeInfo;
   }
 
-  applyMaleXnonPAR(t_GVec, t_pd, t_altCounts, t_altFreq, t_chr);
+  applyMaleXnonPAR(t_GVec, t_pd, t_altCounts, t_altFreq, t_chr, t_isOutputIndexForMissing, t_indexForMissing);
 
   return isBoolRead;
 }
@@ -1631,12 +1631,44 @@ static bool isChromosomeX(const std::string& chr)
   return c == "X" || c == "x" || c == "23";
 }
 
-static void applyMaleXnonPAR(arma::vec& t_GVec, uint32_t& t_pd, double& t_altCounts, double& t_altFreq, const std::string& t_chr)
+// LEDGER #139 FIXED (2026-09-13). This runs BEFORE imputeGenoAndFlip, so the
+// vector it recounts still holds the reader's MISSING SENTINEL (-1 from
+// PLINK's genoMaps, NA_REAL from pgenlib), and the sentinel used to enter
+// arma::sum/arma::mean: on chrX with a male doubled, a marker with ANY missing
+// call got a garbage altFreq, which then chose the imputed value AND drove
+// the QC gates -- PLINK's rows vanished as ordinary QC, PGEN's went NaN and
+// were written as `BETA=NA SE=NA` beside `nan` frequencies (single-ratio
+// model) or killed the run (categorical ratios). The two readers disagreed on
+// the same data. The recount is now over the NON-MISSING entries with the
+// reader's own denominator (altCounts / nonMissing / 2, src/PLINK.cpp
+// summariseCounts and src/PGEN.cpp getOneMarker), so the imputed value and
+// the gates see the doubled males exactly as they see everything else; the
+// sentinel entries are overwritten by imputeGenoAndFlip as before. With no
+// missing call this is arma::sum(G) / N / 2 == arma::mean(G) / 2, the old
+// arithmetic to the bit (accu is the same two-accumulator sum; the divide by
+// 2 is exact).
+static void applyMaleXnonPAR(arma::vec& t_GVec, uint32_t& t_pd, double& t_altCounts, double& t_altFreq, const std::string& t_chr, bool t_hasIndexForMissing, const std::vector<uint>& t_indexForMissing)
 {
   if(g_cfg.is_rewrite_XnonPAR_forMales && isChromosomeX(t_chr)){
   	processMale_XnonPAR(t_GVec, t_pd, g_cfg.X_PARregion_mat);
-	t_altCounts = arma::sum(t_GVec);
-	t_altFreq = arma::mean(t_GVec)/2.0;	
+	const arma::uword N = t_GVec.n_elem;
+	if(t_indexForMissing.empty()){
+	  t_altCounts = arma::sum(t_GVec);
+	  t_altFreq = (N > 0) ? t_altCounts / (double)N / 2.0 : 0.0;
+	  return;
+	}
+	if(!t_hasIndexForMissing){
+	  // every step-2 reader call asks for the missing index; a caller that
+	  // did not cannot be recounted honestly here, and silence is #139's shape
+	  Rcpp::stop("applyMaleXnonPAR: the male recount needs the missing-call index (internal error)");
+	}
+	arma::vec keep = t_GVec;
+	for(std::size_t i = 0; i < t_indexForMissing.size(); i++){
+	  keep(t_indexForMissing[i]) = 0.0;
+	}
+	const arma::uword nNonMissing = N - (arma::uword)t_indexForMissing.size();
+	t_altCounts = arma::sum(keep);
+	t_altFreq = (nNonMissing > 0) ? t_altCounts / (double)nNonMissing / 2.0 : 0.0;
   }
 }
 

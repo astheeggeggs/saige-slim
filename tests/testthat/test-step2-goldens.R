@@ -296,6 +296,27 @@ test_that("step2 PGEN mirror under missing calls matches golden", {
     c(MISSING_PGEN_ARGS(), MISSING_COMMON, bin_model()))
 })
 
+# P67/P68 (LEDGER #139 FIXED): the chrX male rewrite over the missing fixture,
+# through both readers. The bim/pvar carry chromosome X; the .bed/.pgen are the
+# missing fixture's. Before the fix the PLINK file had 6 rows and the PGEN run
+# died; the two goldens are byte-identical (test-step2-xnonpar-missing.R).
+MISSING_X <- c("--chrom=X", "--minMAF=0", "--minMAC=1", "--LOCO=FALSE",
+               "--is_output_moreDetails=TRUE", "--is_rewrite_XnonPAR_forMales=TRUE",
+               "--sampleFile_male=./input/sampleid_males.txt",
+               "--X_PARregion=60001-2699520,154931044-155260560")
+
+test_that("step2 chrX male rewrite with missing calls, PLINK, matches golden", {
+  run_step2_case("plink_marker_missing_chrX.txt",
+    c(sub("_missing.bim", "_missing_chrX.bim", MISSING_ARGS(), fixed = TRUE),
+      MISSING_X, bin_model()))
+})
+
+test_that("step2 chrX male rewrite with missing calls, PGEN, matches golden", {
+  run_step2_case("pgen_marker_missing_chrX.txt",
+    c(sub("_missing.pvar", "_missing_chrX.pvar", MISSING_PGEN_ARGS(), fixed = TRUE),
+      MISSING_X, bin_model()))
+})
+
 # P48 retired 2026-09-09 (LEDGER #108): --is_imputed_data=TRUE is now refused,
 # so there is no output to compare. The refusal itself is pinned by
 # test-step2-missing.R; nothing here can run that flag any more.

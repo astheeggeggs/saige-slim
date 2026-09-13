@@ -232,6 +232,19 @@ RULES = [
                  "the SAME sample set'; tests/testthat/test-step2-region-multimodel.R",
         canary="Single-variant tests only: a groupFile with more than one model is an error.",
     ),
+    # LEDGER #139 (fixed 2026-09-13): the chrX male-rewrite stdout line claimed the
+    # two gates were switched off; both are applied, at values the flag sets.
+    dict(
+        id="139-xnonpar-minmaf-not-applied",
+        pattern=r"minInfo and minMAF won.t be applied",
+        why="false: R/SAIGE_Test_main.R sets minInfo <- 0 and minMAF <- 1/(2N) two lines "
+            "later and both gates run on every chrX marker; minMAF is one of the gates "
+            "that dropped the #139 markers",
+        evidence="grep -n 'minMAF <- 1 / (2' R/SAIGE_Test_main.R; "
+                 "tests/testthat/test-step2-xnonpar-missing.R asserts the corrected line",
+        canary="is_rewrite_XnonPAR_forMales=TRUE and minInfo and minMAF won't be applied to "
+               "all X chromosome variants",
+    ),
 ]
 
 BENIGN = (

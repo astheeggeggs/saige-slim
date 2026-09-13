@@ -1181,6 +1181,26 @@ run step2_pgen_marker_missing.log R2 step2_SPAtests.R \
   $MISS_PGEN_G --SAIGEOutputFile="$GOLD/step2/pgen_marker_missing.txt" \
   $MISS_COMMON $BIN_MODEL
 
+# P67/P68 (2026-09-13, LEDGER #139): P42 on chromosome X with the male rewrite,
+# through BOTH readers, whose whole point is that they agree. The bim/pvar are
+# the missing fixture's with the chromosome column rewritten to X (the .bed and
+# .pgen are row-indexed and shared); the male list is the bundled
+# sampleid_males.txt (500 of the model's 1,000). Before the fix applyMaleXnonPAR
+# recounted the alleles from a vector still holding the reader's missing
+# sentinel, so the PLINK run tested 6 markers (the six of P42's 48 with no
+# missing call) and the PGEN run died on "no categorical variance ratio covers
+# MAC nan". Fixed, the two files are byte-identical (asserted in the identity
+# block below and in test-step2-xnonpar-missing.R) and carry P42's 48 markers.
+MISSX_G="--bedFile=./input/genotype_100markers_missing.bed --bimFile=./input/genotype_100markers_missing_chrX.bim --famFile=./input/genotype_100markers_missing.fam --AlleleOrder=alt-first"
+MISSX_PGEN_G="--pgenFile=./input/genotype_100markers_missing.pgen --pvarFile=./input/genotype_100markers_missing_chrX.pvar --psamFile=./input/genotype_100markers_missing.psam --AlleleOrder=alt-first"
+MISSX_COMMON="--chrom=X --minMAF=0 --minMAC=1 --LOCO=FALSE --is_output_moreDetails=TRUE --is_rewrite_XnonPAR_forMales=TRUE --sampleFile_male=./input/sampleid_males.txt --X_PARregion=60001-2699520,154931044-155260560"
+run step2_plink_marker_missing_chrX.log R2 step2_SPAtests.R \
+  $MISSX_G --SAIGEOutputFile="$GOLD/step2/plink_marker_missing_chrX.txt" \
+  $MISSX_COMMON $BIN_MODEL
+run step2_pgen_marker_missing_chrX.log R2 step2_SPAtests.R \
+  $MISSX_PGEN_G --SAIGEOutputFile="$GOLD/step2/pgen_marker_missing_chrX.txt" \
+  $MISSX_COMMON $BIN_MODEL
+
 # P48 RETIRED 2026-09-09 (LEDGER #108). It ran --is_imputed_data=TRUE, which
 # does NOT add a column -- it EXCHANGES `MissingRate` for `imputationInfo`,
 # which on this branch can only ever read 1, because both readers assign
@@ -1593,6 +1613,9 @@ for n in binary_sparseGRM_a binary_sparseGRM_b quant_sparseGRM binary_denseGRM b
   check_identical "$GOLD/step1/$n.rda"                "$GOLD/step1/${n}_pgen.rda"
   check_identical "$GOLD/step1/$n.varianceRatio.txt"  "$GOLD/step1/${n}_pgen.varianceRatio.txt"
 done
+# LEDGER #139: the chrX male-rewrite pair, the one step-2 pair whose readers
+# used to DISAGREE (P67/P68 above).
+check_identical "$GOLD/step2/plink_marker_missing_chrX.txt" "$GOLD/step2/pgen_marker_missing_chrX.txt"
 if [ "$PGEN_IDENTITY_FAILS" -gt 0 ]; then
   echo "=== PGEN/PLINK byte identity FAILED ($PGEN_IDENTITY_FAILS file(s))"
   FAILED_RUNS+=("pgen_plink_byte_identity")

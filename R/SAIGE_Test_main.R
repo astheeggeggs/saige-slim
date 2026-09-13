@@ -541,7 +541,13 @@ SPAGMMATtest <- function(bedFile = "",
           )
         }
       } else {
-        cat("is_rewrite_XnonPAR_forMales=TRUE and minInfo and minMAF won't be applied to all X chromosome variants\n")
+        # LEDGER #139: the old line said minInfo and minMAF "won't be applied",
+        # which was false -- both ARE applied, at the values set on the next two
+        # lines, and minMAF = 1/(2N) is one of the gates a chrX marker can fail.
+        cat("is_rewrite_XnonPAR_forMales=TRUE: for this run minInfo is set to 0 and ",
+            "minMAF to 1/(2N) = ", 1 / (2 * length(obj.model$sampleID)),
+            " (the flag replaces --minInfo and --minMAF, it does not disable them)\n",
+            sep = "")
         minInfo <- 0
         minMAF <- 1 / (2 * length(obj.model$sampleID))
 
