@@ -144,3 +144,40 @@ test_that("a constant score, and a 0/1 score, are warned about per region", {
   expect_identical(reg$Pvalue_Burden[reg$Weight == "REVEL_cbrt0.5_unw"],
                    reg$Pvalue_Burden[reg$Weight == "REVEL_sbeta2_unw"])
 })
+
+test_that("LEDGER #138: a group-file weight line on a FlexRV run is refused, not composed", {
+  fx_skip("standard")
+  # the FlexRV fixture with ONE custom weight line added to each region: the
+  # natural single-file setup for a custom-weight run and a FlexRV run
+  gf <- tempfile(fileext = ".txt")
+  lines <- readLines(file.path(saige_extdata, "input", "group_new_snpid_flexrv.txt"))
+  out <- character(0)
+  for (l in lines) {
+    out <- c(out, l)
+    if (grepl("^GENE[0-9]+ score:", l)) {
+      n <- length(strsplit(l, "[ \t]+")[[1]]) - 2L
+      out <- c(out, paste(c(sub(" .*$", "", l), "weight:CADD", rep("1", n)), collapse = " "))
+    }
+  }
+  writeLines(out, gf)
+  # refused by name, before any test runs: it used to compose 1 + 192 = 193
+  # sets and pool them, so the region's Cauchy row was not p_FlexRV
+  r <- fx_run(c(FX_G, FX_BIN, FX_SG, FX_COMMON, paste0("--groupFile=", gf), FX_FLEX, FX_BURDEN),
+              "weightline")
+  expect_false(identical(as.integer(r$status), 0L))
+  expect_true(fx_log_has(r, "would be composed beside them"))
+  expect_true(fx_log_has(r, "weight set(s) CADD"))
+  expect_false(fx_log_has(r, "193 weight sets"))
+  # CONTROL: the same file WITHOUT --flexRV_score is a plain custom-weight run
+  # (the score line is ignored, the weight line is honoured)
+  r0 <- fx_run(c(FX_G, FX_BIN, FX_SG, FX_COMMON, paste0("--groupFile=", gf),
+                 "--annotation_in_groupTest=lof:missense", "--maxMAF_in_groupTest=0.01",
+                 FX_BURDEN), "weightline_noflex")
+  fx_cli_ok(r0$status)
+  expect_true(any(grepl("^GENE1\t", readLines(r0$path))))
+  # --weights.beta pairs and No_Weights are refused the same way
+  r2 <- fx_run(c(FX_G, FX_BIN, FX_SG, FX_COMMON, FX_FLEX, FX_BURDEN,
+                 "--is_no_weight_in_groupTest=TRUE"), "noweights_flex")
+  expect_false(identical(as.integer(r2$status), 0L))
+  expect_true(fx_log_has(r2, "--is_no_weight_in_groupTest=TRUE would be composed"))
+})

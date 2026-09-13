@@ -1179,6 +1179,27 @@ SAIGE.Region <- function(mu,
   if (includeNoWeightsSet) {
     cat("is_no_weight_in_groupTest = TRUE: an all-ones 'No_Weights' weight set is appended to the group test\n")
   }
+  # LEDGER #138 FIXED: a FlexRV run tests ONE cell with its own transform sets
+  # and its pooled row is p_FlexRV, the Cauchy combination over exactly those.
+  # Any other set composed beside them -- a group-file weight line, explicit
+  # --weights.beta pairs, or the No_Weights set -- silently made the pooled
+  # row a combination over 193+ rows. Refused here, beside the three FlexRV
+  # cell guards in R/SAIGE_Test_main.R, because the weight lines are known
+  # only once the group file is read. (A score line WITHOUT --flexRV_score is
+  # ignored; a weight line WITH it is not, hence the explicit refusal.)
+  if (nTransformSets > 0 && (nWeightSets > 0 || useExplicitBeta || includeNoWeightsSet)) {
+    extra <- c(
+      if (nWeightSets > 0) paste0("group-file weight set(s) ",
+                                  paste(weightSetNames, collapse = ", ")),
+      if (useExplicitBeta) paste0(nBetaPairs, " --weights.beta pairs"),
+      if (includeNoWeightsSet) "--is_no_weight_in_groupTest=TRUE"
+    )
+    stop("A FlexRV run tests ONE cell with its ", nTransformSets, " transform sets, and its ",
+         "pooled row is p_FlexRV, the Cauchy combination over exactly those; ",
+         paste(extra, collapse = " and "), " would be composed beside them and the pooled ",
+         "row would no longer be p_FlexRV. Drop the weight line(s) from the group file, or ",
+         "run the custom-weight test separately without --flexRV_score\n")
+  }
   composedNames <- c(
     if (legacyNoWeight) "No_Weights",
     if (nWeightSets > 0) weightSetNames,
