@@ -3441,9 +3441,33 @@ if(i2 > 0){
     	  std::string chr, ref, alt, marker;
     	  bool flip = false;
 	  std::string info = "UR";	
+    	  // LEDGER #133 FIXED (2026-09-13): the collapsed pseudo-marker's reported
+	  // MAC is its RAW carrier-allele count, not a count derived from a FOLDED
+	  // frequency. Since LEDGER #130 its vector is never folded, and its
+	  // case/control halves are cs.paritySumRanked over that same unfolded
+	  // vector -- so deriving MAC from std::min(altFreq, 1-altFreq) made it
+	  // disagree with its own halves above alt frequency 0.5 (golden P62:
+	  // MAC 444 against 151 + 1405 = 1556, and 444 == 2000 - 1556 exactly).
+	  //
+	  // MAF STAYS FOLDED, deliberately. It is NOT a reported quantity: nothing
+	  // writes MAFVec to any output file, and its only consumers are the two
+	  // dbeta() calls in R/SAIGE_SPATest_Region.R (:324, :430), i.e. the BETA
+	  // weight. The pseudo-marker's only reported frequency is AF_Allele2 in
+	  // the single-variant file, which is altFreq and already raw. Making MAF
+	  // raw here would therefore change the WEIGHTING, not the reporting:
+	  // measured, dbeta(0.778,1,25) = 5.1e-15 against dbeta(0.222,1,25) =
+	  // 0.0605, which left every p-value byte-identical but blew BETA_Burden up
+	  // to -1.01393e+13 (the coefficient per unit of a burden weighted to
+	  // nothing; BETA/SE was unchanged at -0.210239). Whether dbeta should see a
+	  // collapse's CARRIER frequency at all is a modelling question, parked on
+	  // LEDGER #131 with that number attached -- it is not this row's to answer.
+	  //
+	  // Every REAL marker is already consistent and is not touched here:
+	  // imputeGenoAndFlip flips the VECTOR and rewrites altFreq/altCounts, and
+	  // :2746-2747 derives MAF/MAC from the post-flip values.
     	  double MAF = std::min(altFreq, 1 - altFreq);
 	  double w0;
-	  double MAC = MAF * 2 * t_n * (1 - missingRate);
+	  double MAC = altCounts * (1 - missingRate);   // LEDGER #133: raw, not MAF-derived
 	  // LEDGER #118, option (b): the REPORTED group MAC is a genuine allele
 	  // count, so the pseudo-marker contributes the MAC of set r's UNWEIGHTED
 	  // collapse rather than the weighted sum. On a beta / No_Weights set the
@@ -3458,9 +3482,16 @@ if(i2 > 0){
 	  // decided those until #134, so the SCALE of a group file's weights chose
 	  // the statistical treatment. Anything added here that MAC_nw feeds is now
 	  // on a result path, not just a reporting one.
-	  const double altFreq_nw = (cs.paritySumDense(genoURVec_noweights.memptr()) / (double)t_n) / 2;
+	  const double altCounts_nw = cs.paritySumDense(genoURVec_noweights.memptr());
+	  const double altFreq_nw = (altCounts_nw / (double)t_n) / 2;
+	  // LEDGER #133: MAF_nw stays FOLDED for the same reason as MAF above (it is
+	  // never reported; only dbeta reads the MAF vector), while MAC_nw is the
+	  // RAW unweighted collapse allele count. MAC_nw is what LEDGER #134's
+	  // variance-ratio band and ER predicate read, and on these cells both the
+	  // folded and the raw value sit above the top band edge, so no p-value
+	  // moves -- predicted in docs/state/prediction-133.md and verified.
 	  const double MAF_nw = std::min(altFreq_nw, 1 - altFreq_nw);
-	  const double MAC_nw = MAF_nw * 2 * t_n * (1 - missingRate);
+	  const double MAC_nw = altCounts_nw * (1 - missingRate);
 	  std::vector<uint32_t> indexForMissing;
 	  // LEDGER #130 FIXED: the collapsed pseudo-marker is NEVER folded to its
 	  // minor allele. Above alt frequency 0.5 this used to call

@@ -15,6 +15,25 @@ the region the SKAT-O path omits entirely. The third test in
 `test-step2-region-allrefused.R` pins that disagreement so a later harmonisation
 cannot land unnoticed.
 
+**2026-09-13 DECISION: the FlexRV collapse cutoff stays at 10, and 0 is not to be
+recommended for a BINARY trait until a replicate null sweep says it is safe.**
+The paper's unbinned run is available at 0 and golden P59 pins it, but
+SAIGE-GENE+ introduced the collapse FOR CALIBRATION, this repo has never measured
+the regime where that matters, and the bundled fixture and the 50k sim study both
+run with it ON -- so every calibration result here, null and power, describes
+cutoff 10. Turning it off is not a neutral "closer to the paper" choice: it
+removes the mechanism the method's calibration was built on, in a regime nobody
+has checked. The gate on changing it is a replicate NULL sweep at cutoff 0 on a
+binary trait showing type-I error holds. Recorded in CLAUDE.md's FlexRV section.
+
+**This CONSTRAINS a live recommendation**: `docs/state/flexrv-study-decisions-2026-09-12.md`
+recommends "stratified + class-only + flex24 now at collapse 0", and its arms
+include `y_binary`. That memo is dated and is not edited; read it with this
+constraint applied -- the collapse-0 half of that recommendation is
+quantitative-only until the null sweep exists. `handoff-2026-09-09-flexrv-f0.md`
+already scoped its own "cutoff 0" recommendation to quantitative and needs no
+qualification.
+
 **Current handoff: `docs/state/handoff-2026-09-13-flexrv-sweep-rerun.md`** -- the
 FlexRV sweep is RE-RUN and no longer owed. All 72 collapse-10 runs at
 `head=976e73ce dirty=0`, exit 0; the 72 collapse-0 runs were left alone because

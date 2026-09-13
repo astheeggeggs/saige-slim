@@ -155,19 +155,29 @@ fl_expect_flip <- function(res, label) {
                              label = paste(label, "region rows"))
   testthat::expect_identical(unique(r$Number_rare), "0", label = paste(label, "Number_rare"))
   testthat::expect_true(all(as.numeric(r$Number_ultra_rare) > 0))
-  testthat::expect_equal(as.numeric(r$MAC), pmin(ac, FL_2N - ac), label = paste(label, "MAC"))
-  # LEDGER #133, which these goldens are the first to exhibit: the group MAC is
-  # FOLDED (above) while its case/control split is the raw unfolded count, so
-  # MAC != MAC_case + MAC_control on exactly the cells above AF 0.5, and the
-  # sum is the UN-folded AC. test-invariants-goldens.R asserts that identity on
-  # plink_group_fastTest.txt, where no cell is above 0.5; it is pinned HERE for
-  # the cells where it fails, so the row cannot be fixed unnoticed.
+  # LEDGER #133 FIXED (2026-09-13), and this is the INVERSION of what this
+  # helper used to assert. It pinned `MAC == pmin(ac, 2N - ac)` -- the FOLDED
+  # count -- together with `MAC != MAC_case + MAC_control` on the cells above
+  # AF 0.5, because the pseudo-marker's number was folded through std::min
+  # while its VECTOR (never folded since #130) and its case/control halves
+  # (summed over that vector) were not.
+  #
+  # The pseudo-marker's reported MAC is now its RAW carrier-allele count, so:
+  testthat::expect_equal(as.numeric(r$MAC), ac, label = paste(label, "MAC is the raw AC"))
   cc <- as.numeric(r$MAC_case) + as.numeric(r$MAC_control)
-  testthat::expect_equal(cc, ac, label = paste(label, "case+control == unfolded AC"))
+  testthat::expect_equal(cc, ac, label = paste(label, "case+control == raw AC"))
+  # and the identity now holds on EVERY cell, above and below 0.5 alike --
+  # which is the whole point of the row and is asserted over every group golden
+  # in test-invariants-goldens.R
+  testthat::expect_equal(as.numeric(r$MAC), cc, label = paste(label, "MAC == case + control"))
+  # NON-VACUITY: these goldens must still CONTAIN the regime the row was about,
+  # or the assertions above would hold trivially on unfolded-anyway data
   above <- af > 0.5
-  testthat::expect_true(all(abs(as.numeric(r$MAC)[above] - cc[above]) > 1))
-  testthat::expect_equal(as.numeric(r$MAC)[!above], cc[!above],
-                         label = paste(label, "MAC agrees below AF 0.5"))
+  testthat::expect_gt(sum(above), 0)
+  # below 0.5 the fold was always the identity, so those cells prove nothing on
+  # their own; the cells above 0.5 are the ones that used to disagree
+  testthat::expect_true(all(as.numeric(r$MAC)[above] != pmin(ac, FL_2N - ac)[above]),
+                        label = paste(label, "above 0.5 the raw and folded counts differ"))
 }
 
 test_that("SKAT-O: every marker collapses and five of six cells sit above AF 0.5", {
@@ -290,10 +300,19 @@ test_that("the MIXED cell: a high-AF pseudo-marker beside surviving rare markers
   # every mixed cell really has both halves
   expect_true(all(as.numeric(r$Number_ultra_rare)[mixed] > 0))
   expect_true(all(n_rare[mixed] > 0))
-  # the share, which is what makes the configuration discriminating
-  share <- pmin(ac, FL_2N - ac)[mixed] / cell_mac[mixed]
-  expect_true(all(share > 0.25 & share < 0.55))
-  expect_equal(sort(round(100 * share, 1)), c(28.3, 28.3, 28.7, 28.7, 52.5),
+  # The share, which is what makes the configuration discriminating: how much of
+  # the cell's MAC the collapsed pseudo-marker carries.
+  #
+  # LEDGER #133 changed the NUMERATOR's definition, not just its value. It was
+  # pmin(ac, 2N - ac), the folded count, because that is what the pseudo-marker's
+  # MAC used to be; the reported MAC is now the RAW carrier-allele count, so the
+  # share is ac / cell_mac and both ends moved. 28.3/28.7/52.5 became
+  # 42.6/44.3/58.2 -- the pseudo-marker carries MORE of the cell than the folded
+  # reading suggested, which strengthens rather than weakens #130's argument that
+  # folding it would set that share against the rest of the cell.
+  share <- ac[mixed] / cell_mac[mixed]
+  expect_true(all(share > 0.40 & share < 0.65))
+  expect_equal(sort(round(100 * share, 1)), c(42.6, 42.6, 44.3, 44.3, 58.2),
                tolerance = 1e-3)
   # and the control row is byte-identical to its all-collapsed twin in P62: the
   # same cell, a cutoff 3x apart, nothing rare in it either way

@@ -391,6 +391,18 @@ and names the beta sets `mafbeta<b>@M`. Every set's row is written
 - **`MAC<=1,3,5,10` sit at or below the default collapse cutoff**, so those
   sets test the `max()` pseudo-marker alone; `--MACCutoff_to_CollapseUltraRare=0`
   is the paper's unbinned quantitative run (P59).
+- **LEAVE THE COLLAPSE CUTOFF AT 10 FOR FlexRV; do NOT recommend 0, and
+  especially not on a binary trait** (decision, 2026-09-13). The paper's unbinned
+  run IS available at 0 and P59 pins it, but SAIGE-GENE+ introduced the collapse
+  FOR CALIBRATION, this repo has never measured the regime where that matters,
+  and both the bundled fixture and the 50k sim study run with the collapse ON --
+  so every calibration result this branch has, null and power, describes cutoff
+  10 (`docs/state/handoff-2026-09-13-flexrv-sweep-rerun.md`). Turning it off is
+  not a neutral "more faithful to the paper" choice: it removes the mechanism the
+  method's own calibration was built on, in a regime nobody here has checked.
+  **The gate on changing this is a replicate NULL sweep at cutoff 0 on a binary
+  trait showing the type-I error holds.** Until that exists, 0 is a
+  quantitative-only, paper-reproduction setting.
 - **A weight of exactly 0 inside a binary SKAT-O cell returns NA** (LEDGER
   #117, pre-existing, custom weights too), which the `lof` mask and every MAC
   threshold produce; on a binary trait FlexRV is a `--r.corr=1` run.
@@ -469,8 +481,20 @@ was written down. The rule, and the one deliberate exception:
    undoes its own fold for `altFreq`/`altCounts`, and the single-variant path
    negates the effect with `Beta * (1 - 2*flip)`. So an `AF_Allele2` above 0.5
    in output means "this marker was folded for testing", not an error.
-5. **THE EXCEPTION: a collapsed ultra-rare pseudo-marker is NOT a variant and is
-   never folded** (#130, fixed 2026-09-12). Do not "restore consistency" here --
+5. **THE EXCEPTION: a collapsed ultra-rare pseudo-marker is NOT a variant, is
+   never folded, and its reported MAC is its RAW carrier-allele count** (#130
+   fixed 2026-09-12; the count half is #133, fixed 2026-09-13 -- `MAC` used to be
+   derived from a FOLDED frequency while the vector it describes was not, so it
+   disagreed with its own `MAC_case + MAC_control` above alt frequency 0.5).
+   **Its MAF stays FOLDED and that is deliberate**: `MAFVec` is never written to
+   any output, and its only consumers are the two `dbeta()` calls in
+   `R/SAIGE_SPATest_Region.R` (`:324`, `:430`) -- i.e. the BETA weight. The
+   pseudo-marker's only reported frequency is `AF_Allele2` in the single-variant
+   file, which is `altFreq` and already raw. Making MAF raw would change the
+   WEIGHTING, not the reporting: measured, it left every p-value byte-identical
+   and blew `BETA_Burden` up to `-1.01393e+13`, because `dbeta(0.778,1,25)` =
+   5.1e-15. Whether `dbeta` should see a collapse's CARRIER frequency at all is
+   parked on #131 with that number attached. Do not "restore consistency" here --
    three measured reasons: `max_m(w_m g_m)` means "carries at least one of the
    set's ultra-rare variants" and folding inverts it to "carries NONE"; for a
    weighted set its entries are `w*g` (7.7 to 20 on the bundled multiweight

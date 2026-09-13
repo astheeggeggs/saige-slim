@@ -98,10 +98,10 @@ test_that("group-test structural invariants", {
   hi <- pmax(num(r$Pvalue_Burden), num(r$Pvalue_SKAT))
   expect_true(all(num(r$Pvalue) >= lo * (1 - 1e-12) & num(r$Pvalue) <= hi * (1 + 1e-12)))
   expect_true(all(num(r$Pvalue) <= 2 * lo * (1 + 1e-12)))
-  # MAC accounting. Holds here because no cell of this golden sits above AF
-  # 0.5; it is NOT a general identity -- the group MAC is folded and the
-  # case/control split is not, so the two diverge on any cell above 0.5
-  # (LEDGER #133, exhibited by P62/P63 and pinned in test-step2-region-flip.R).
+  # MAC accounting. LEDGER #133 FIXED (2026-09-13): this IS a general identity
+  # now, and it is asserted over every group golden in its own test below rather
+  # than only here. The narrow assertion -- this golden only, where no cell sits
+  # above alt frequency 0.5 -- is exactly why the defect was never caught.
   expect_equal(num(r$MAC), num(r$MAC_case) + num(r$MAC_control))
   # all-ultra-rare rows degenerate to a single test: string-equal p-values
   allur <- r$Number_rare == "0"
@@ -524,4 +524,50 @@ test_that("FlexRV SKAT-O golden: 4 sets per gene, multi-weight schema, no kernel
     expect_lt(rel_err(num(r$Pvalue_ACATO[i]), CCT(trio)), 1e-12)
   }
   expect_identical(sum(d$Group == "Cauchy"), 2L)
+})
+
+
+test_that("LEDGER #133: MAC == MAC_case + MAC_control on EVERY group golden", {
+  skip_if_no_goldens()
+  # The characterization for LEDGER #133, widened from the single-golden
+  # assertion above. Before the fix this failed on exactly 15 rows -- 5 in each
+  # of plink_group_urflip_burden, plink_group_urflip_skato and
+  # plink_group_urmixed_burden, the only three goldens whose collapsed
+  # pseudo-marker exceeds alt frequency 0.5 -- and passed on every other row of
+  # every other golden. Red at HEAD in a known place, green after.
+  #
+  # The cause was ONE marker, not the cell: since LEDGER #130 the pseudo-marker's
+  # VECTOR is never folded and its case/control halves are summed over that
+  # unfolded vector, but its reported frequency was still folded through
+  # std::min, so the number disagreed with its own halves. Every REAL marker was
+  # already consistent (imputeGenoAndFlip flips the vector and rewrites the
+  # counts together). The fix reports the pseudo-marker's RAW carrier-allele
+  # count and frequency.
+  files <- list.files(file.path(saige_goldens, "step2"), pattern = "^p.*group.*\\.txt$")
+  files <- files[!grepl("singleAssoc|pooledTests|markerList|skatFailures", files)]
+  expect_gt(length(files), 0)
+  checked <- 0
+  for (f in files) {
+    d <- golden2(f)
+    if (!all(c("MAC", "MAC_case", "MAC_control") %in% colnames(d))) next
+    r <- d[d$Group != "Cauchy" & d$MAC != "NA", ]
+    if (nrow(r) == 0) next
+    checked <- checked + nrow(r)
+    expect_equal(num(r$MAC), num(r$MAC_case) + num(r$MAC_control),
+                 info = paste("MAC != case + control in", f))
+  }
+  # non-vacuity: the loop must actually have found rows to check, and must
+  # include the three goldens that exhibited the defect
+  expect_gt(checked, 100)
+  for (f in c("plink_group_urflip_burden.txt", "plink_group_urflip_skato.txt",
+              "plink_group_urmixed_burden.txt")) {
+    d <- golden2(f)
+    r <- d[d$Group != "Cauchy" & d$MAC != "NA", ]
+    expect_gt(nrow(r), 0)
+    # and each of them must still CONTAIN the regime: a pseudo-marker above 0.5,
+    # or the fix is being tested on data that no longer reaches it
+    sa <- golden2(paste0(f, ".singleAssoc.txt"))
+    ur <- sa[sa$CHR == "UR", ]
+    expect_gt(sum(num(ur$AF_Allele2) > 0.5), 0)
+  }
 })
