@@ -1,4 +1,21 @@
-# What is worth doing next (2026-09-03, updated 2026-09-13; read docs/state/handoff-2026-09-12-ur-pseudomarker-129-130.md first, THEN the correction directly below)
+# What is worth doing next (2026-09-03, updated 2026-09-13; read docs/state/handoff-2026-09-13-flexrv-sweep-rerun.md first, THEN the correction directly below)
+
+**Current handoff: `docs/state/handoff-2026-09-13-flexrv-sweep-rerun.md`** -- the
+FlexRV sweep is RE-RUN and no longer owed. All 72 collapse-10 runs at
+`head=976e73ce dirty=0`, exit 0; the 72 collapse-0 runs were left alone because
+their logs prove 0 ultra-rare markers. Outcome in one line: **12.0% of rows moved
+(max |dlog10 p| 5.77), the null calibration did not move at all, and two CONTROL 3
+lines went from `monotone=FALSE` to TRUE.** The movement is confined to
+fractional-weight sets and is monotone in weight shrinkage, with `unw` and `lof`
+exactly zero over 104,760 rows -- the mechanism is #129's dosage filter against
+the 0.2 cutoff. The pre-fix outputs are kept at
+`harness/work/flexrv_study/results-prefix-38eee5f5/`. **Two things that outlive
+it**: the power arm is at its own oracle ceiling and is NOT interpretable (and
+the shortfall against the h2 budget is 10-40x and unexplained -- section 6 names
+the check to run first, which needs no run); and `uninf<=unw=FALSE` on every
+line, i.e. at this fixture's resolution FlexRV's advantage over the unweighted
+burden survives PERMUTING the score.
+
 
 **2026-09-13: the current handoff's closing recommendation is WRONG, and this is
 the correction.** `handoff-2026-09-12-ur-pseudomarker-129-130.md` ends "where to
