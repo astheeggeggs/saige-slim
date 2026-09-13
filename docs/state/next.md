@@ -1,4 +1,29 @@
-# What is worth doing next (2026-09-03, updated 2026-09-13; read docs/state/handoff-2026-09-13-flexrv-sweep-rerun.md first, THEN the correction directly below)
+# What is worth doing next (2026-09-03, updated 2026-09-13; read docs/state/handoff-2026-09-13-132-133-134.md first)
+
+**Current handoff: `docs/state/handoff-2026-09-13-132-133-134.md`** -- LEDGER
+**#134, #132 and #133 are FIXED**, one commit each, each gated at `both` modes
+(`a2962701`, `58785e12`, `8bb5a510`). The ledger is at **9 open**, from 13 that
+morning. Read that handoff, then this file. The three prediction documents beside
+it (`prediction-134.md`, `prediction-132.md`, `prediction-133.md`) were each
+written BEFORE their gate and had the outcome appended, including where the
+prediction was falsified.
+
+Two things from it that change what a later session should believe:
+**#133's WHAT and BOTH its candidate fixes were mis-located** (candidate A
+returns NEGATIVE values on a mixed cell; candidate B's blast radius was
+overstated), and **#134's row explained its own doubling measurement with the
+wrong reason** -- the band boundaries ARE crossed at x2, they just select the
+same variance ratio, because only 20.5 is live. Both corrections are on the rows.
+**#132's "normalise before ACAT-V" candidate is retired as INERT** -- CCT already
+normalises internally.
+
+Also landed: **folded ultra-rare membership is now a PINNED GOLDEN** -- six
+committed `.markerList.txt` sidecars, which #118 and #134 both wanted and never
+had. And the previous entry's earlier handoff pointer is superseded:
+`handoff-2026-09-13-flexrv-sweep-rerun.md` is still correct about the sweep and
+is the one to read for the FlexRV study state.
+
+
 
 **2026-09-13 (later): LEDGER #128 is FIXED, crash-only, and #116 stays open on
 purpose.** A SKAT-O run whose every cell is refused by
