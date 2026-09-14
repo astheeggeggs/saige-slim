@@ -2483,24 +2483,28 @@ Rcpp::List mainRegionInCPP(
   // The per-cell test records (passes B and D) split the same way: the
   // genotype side (URCell / BurdenCell below, persistent across regions) is
   // shared, the model side lives here.
-  struct URCellModel {
-    SAIGE::TestContext ctx;
-    bool isER = false;
+  // E5 (2026-09-14): the 14 result fields a cell test produces, ONCE.
+  // URCellModel, BurdenCellModel and RegionPrepModel repeated them
+  // field-for-field; inheritance (not composition) so every existing
+  // `prm.Beta` / `cm.pval` spelling stays as it is. The G1 rows are NOT in
+  // the base on purpose: URCellModel::G1 holds the raw G1tilde_P_G2tilde_Vec
+  // while RegionPrepModel::G1row holds the already-weighted row -- one name
+  // for two quantities is the LEDGER #118/#133/#135 shape.
+  struct CellResult {
     double Beta = 0.0, seBeta = 0.0, Tstat = 0.0, varT = 0.0, gy = 0.0;
     std::string pval, pval_noSPA;
     bool isSPAConverge = false;
     double Beta_c = 0.0, seBeta_c = 0.0, Tstat_c = 0.0, varT_c = 0.0;
     std::string pval_c, pval_noSPA_c;
+  };
+  struct URCellModel : CellResult {
+    SAIGE::TestContext ctx;
+    bool isER = false;
     arma::rowvec G1;               // G1tilde_P_G2tilde_Vec, conditional runs only
   };
-  struct BurdenCellModel {
+  struct BurdenCellModel : CellResult {
     SAIGE::TestContext ctx;
     bool isER = false;
-    double Beta = 0.0, seBeta = 0.0, Tstat = 0.0, varT = 0.0, gy = 0.0;
-    std::string pval, pval_noSPA;
-    bool isSPAConverge = false;
-    double Beta_c = 0.0, seBeta_c = 0.0, Tstat_c = 0.0, varT_c = 0.0;
-    std::string pval_c, pval_noSPA_c;
   };
   struct RegionModelWork {
     const SAIGE::SAIGEClass * model = nullptr;
@@ -2657,12 +2661,7 @@ Rcpp::List mainRegionInCPP(
   // then phase 2 over the same block in order. Every expression in phase 2 is
   // the pre-restructure one over the values phase 1 stored, so the output is
   // byte-identical whatever the thread count.
-  struct RegionPrepModel {
-    double Beta = 0.0, seBeta = 0.0, Tstat = 0.0, varT = 0.0, gy = 0.0;
-    std::string pval, pval_noSPA;
-    bool isSPAConverge = false;
-    double Beta_c = 0.0, seBeta_c = 0.0, Tstat_c = 0.0, varT_c = 0.0;
-    std::string pval_c, pval_noSPA_c;
+  struct RegionPrepModel : CellResult {
     arma::rowvec G1row;       // G1tilde_P_G2tilde_Weighted_Mat.row(i), already weighted
     double MACcasegroup = 0.0;
     double MACcontrolgroup = 0.0;
@@ -2860,6 +2859,33 @@ Rcpp::List mainRegionInCPP(
     } // for km (models)
   };
 
+  // E5: ONE write-back of a cell's result fields into the model's parallel
+  // vectors. The accumulate path and the ultra-rare pass assigned the same 15
+  // slots with the same (1 - 2*flip) corrections by hand; each caller keeps
+  // its own tail (G1row here, the q_weight == 1 conditional block there).
+  // LEDGER #130: on the ultra-rare path `flip` is always false -- the
+  // pseudo-marker is never folded -- so the correction there is a deliberately
+  // preserved no-op, not a bug.
+  auto writeBackCell = [&](RegionModelWork & w, unsigned int idx, const CellResult & r, bool flip){
+    w.BetaVec.at(idx) = r.Beta * (1 - 2*flip);  // Beta if flip = false, -1 * Beta if flip = true
+    w.seBetaVec.at(idx) = r.seBeta;
+    w.pvalVec.at(idx) = r.pval;
+    w.pvalNAVec.at(idx) = r.pval_noSPA;
+    w.TstatVec.at(idx) = r.Tstat * (1 - 2*flip);
+    w.TstatVec_flip.at(idx) = r.Tstat;
+    w.gyVec.at(idx) = r.gy;
+    w.varTVec.at(idx) = r.varT;
+    w.isSPAConvergeVec.at(idx) = r.isSPAConverge;
+    if(isCondition){
+      w.Beta_cVec.at(idx) = r.Beta_c * (1 - 2*flip);
+      w.seBeta_cVec.at(idx) = r.seBeta_c;
+      w.pval_cVec.at(idx) = r.pval_c;
+      w.pvalNA_cVec.at(idx) = r.pval_noSPA_c;
+      w.Tstat_cVec.at(idx) = r.Tstat_c * (1 - 2*flip);
+      w.varT_cVec.at(idx) = r.varT_c;
+    }
+  };
+
   auto accumulate = [&](unsigned int i, unsigned int k)
   {
     const RegionPrep & pr = preps[k];
@@ -2896,22 +2922,8 @@ Rcpp::List mainRegionInCPP(
         for(unsigned int km = 0; km < P; km++){
           RegionModelWork & w = W[km];
           const RegionPrepModel & prm = pr.m[km];
-          w.BetaVec.at(i) = prm.Beta * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true
-          w.seBetaVec.at(i) = prm.seBeta;
-          w.pvalVec.at(i) = prm.pval;
-          w.pvalNAVec.at(i) = prm.pval_noSPA;
-          w.TstatVec.at(i) = prm.Tstat * (1 - 2*flip);
-          w.TstatVec_flip.at(i) = prm.Tstat;
-          w.gyVec.at(i) = prm.gy;
-          w.varTVec.at(i) = prm.varT;
-          w.isSPAConvergeVec.at(i) = prm.isSPAConverge;
+          writeBackCell(w, i, prm, flip);
           if(isCondition){
-            w.Beta_cVec.at(i) = prm.Beta_c * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true
-            w.seBeta_cVec.at(i) = prm.seBeta_c;
-            w.pval_cVec.at(i) = prm.pval_c;
-            w.pvalNA_cVec.at(i) = prm.pval_noSPA_c;
-            w.Tstat_cVec.at(i) = prm.Tstat_c * (1 - 2*flip);
-            w.varT_cVec.at(i) = prm.varT_c;
             w.G1tilde_P_G2tilde_Weighted_Mat.row(i) = prm.G1row;
           }
           if(keepP1P2){
@@ -3897,22 +3909,8 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
     const URCellModel & cm = w.urOut[urTested[k]];
     const unsigned int ic = c.i;
     const bool flip = c.flip;
-    w.BetaVec.at(ic) = cm.Beta* (1 - 2*flip);
-    w.seBetaVec.at(ic) = cm.seBeta;
-    w.pvalVec.at(ic) = cm.pval;
-    w.pvalNAVec.at(ic) = cm.pval_noSPA;
-    w.TstatVec.at(ic) = cm.Tstat * (1 - 2*flip);
-    w.TstatVec_flip.at(ic) = cm.Tstat;
-    w.gyVec.at(ic) = cm.gy;
-    w.varTVec.at(ic) = cm.varT;
-    w.isSPAConvergeVec.at(ic) = cm.isSPAConverge;
+    writeBackCell(w, ic, cm, flip);
     if(isCondition){
-      w.Beta_cVec.at(ic) = cm.Beta_c * (1 - 2*flip);  // Beta if flip = false, -1 * Beta is flip = true
-      w.seBeta_cVec.at(ic) = cm.seBeta_c;
-      w.pval_cVec.at(ic) = cm.pval_c;
-      w.pvalNA_cVec.at(ic) = cm.pval_noSPA_c;
-      w.Tstat_cVec.at(ic) = cm.Tstat_c * (1 - 2*flip);
-      w.varT_cVec.at(ic) = cm.varT_c;
       if(q_weight == 1){
         // w0 is assigned on every branch of B1: 1.0 for custom sets (LEDGER
         // #17 -- their collapse already baked w_r into genoURVec),
