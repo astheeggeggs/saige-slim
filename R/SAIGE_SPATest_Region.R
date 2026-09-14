@@ -1925,13 +1925,6 @@ SAIGE.Region <- function(mu,
 
       # output
       if (mth == numberRegionsInChunk) {
-        message1 <- "This is the output index file for SAIGE package to record the end point in case users want to restart the analysis. Please do not modify this file."
-        message2 <- "This is a Region level analysis."
-        message3 <- paste("nEachChunk =", nEachChunk)
-        message5 <- "Have completed the analyses of all chunks."
-        # n1 = length(Output)
-        # n2 = length(OutputFile)
-        cat("write to output\n")
         # Fix for LEDGER #140: flush the region output streams held in C++,
         # the BURDEN rows and .singleAssoc.txt, FIRST; then record sizes; then
         # write the index line carrying both: that order is what makes the
@@ -2023,43 +2016,18 @@ SAIGE.Region <- function(mu,
             }
           }
         }
-        if (Start) {
-          write.table(
-            c(message1, message2, message3),
-            OutputFileIndexes[k],
-            quote = FALSE,
-            sep = "\t",
-            append = FALSE,
-            col.names = FALSE,
-            row.names = FALSE
-          )
-        }
         # LEDGER #140: this model's line carries the sizes measured AFTER its
-        # rows above were written (indexChunkLine in Util.R; NA omits a count)
+        # rows above were written. The index file itself is written by the
+        # shared writeOutputFileIndex (E6, 2026-09-14) -- the marker path's
+        # writer, whose singleBytes parameter had no caller until now -- so the
+        # analysis-type and nEachChunk lines are built by the same code
+        # checkOutputFile compares them against (the LEDGER #25 class). Its
+        # "write to output" line now prints once per model, after the flush.
         regionBytes <- if (file.exists(OutputFiles[k])) file.size(OutputFiles[k]) else NA_real_
         singleOut <- paste0(OutputFiles[k], ".singleAssoc.txt")
         singleBytes <- if (file.exists(singleOut)) file.size(singleOut) else NA_real_
-        write.table(
-          indexChunkLine(indexChunk, regionBytes, singleBytes),
-          OutputFileIndexes[k],
-          quote = FALSE,
-          sep = "\t",
-          append = TRUE,
-          col.names = FALSE,
-          row.names = FALSE
-        )
-
-        if (End) {
-          write.table(
-            message5,
-            OutputFileIndexes[k],
-            quote = FALSE,
-            sep = "\t",
-            append = TRUE,
-            col.names = FALSE,
-            row.names = FALSE
-          )
-        }
+        writeOutputFileIndex(OutputFileIndexes[k], "Region", nEachChunk, indexChunk,
+                             Start, End, outputBytes = regionBytes, singleBytes = singleBytes)
         } # for k (models)
         # }#if(FALSE)
 

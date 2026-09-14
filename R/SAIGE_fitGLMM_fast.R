@@ -1060,24 +1060,29 @@ fitNULLGLMM <- function(plinkFile = "",
     out.transform <- NULL
   }
 
-  mmat <- model.matrix(formula.new, data = data.new, na.action = NULL)
-
-  if (traitType == "binary") {
-    modwitcov <- glm(formula.new,
-      data = data.new,
-      family = binomial
-    )
-  } else {
-    modwitcov <- glm(formula.new,
-      data = data.new,
-      family = gaussian(link = "identity")
-    )
-  }
   # if(!hasCovariate){
   # 	covoffset = rep(0,nrow(data.new))
   #    }
 
   if (isCovariateOffset) {
+    # E6 (2026-09-14): this design matrix and GLM used to be built for EVERY
+    # run, ~15 lines above, and read only here -- so both branches below fitted
+    # the identical GLM twice, and mmat (N x p+1) stayed live through the GRM
+    # fit on the branch that never read it. One consequence to state rather
+    # than discover: a malformed binary phenotype now meets the repo's own 0/1
+    # check below before any glm() call, where before glm()'s message came first.
+    mmat <- model.matrix(formula.new, data = data.new, na.action = NULL)
+    if (traitType == "binary") {
+      modwitcov <- glm(formula.new,
+        data = data.new,
+        family = binomial
+      )
+    } else {
+      modwitcov <- glm(formula.new,
+        data = data.new,
+        family = gaussian(link = "identity")
+      )
+    }
     covoffset <- mmat[, -1, drop = FALSE] %*% modwitcov$coefficients[-1]
     print("isCovariateOffset=TRUE, so fixed effects coefficients won't be estimated.")
     formula.new.withCov <- formula.new

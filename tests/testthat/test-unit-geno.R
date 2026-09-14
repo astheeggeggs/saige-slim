@@ -28,7 +28,10 @@ test_that("checkGenoInput validation", {
 
 test_that("checkGenoInput accepts pgen input and defaults pvar/psam from pgenFile", {
   obj <- checkGenoInput(pgenFile = pgen100(), sampleInModel = "a")
-  expect_identical(obj, "pgen")
+  expect_identical(obj$genoType, "pgen")
+  # E6: the resolved companions come back with the type
+  expect_identical(obj$pvarFile, sub("pgen$", "pvar", pgen100()))
+  expect_identical(obj$psamFile, sub("pgen$", "psam", pgen100()))
 })
 
 test_that("setGenoInput builds the plink markerInfo contract", {

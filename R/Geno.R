@@ -45,7 +45,13 @@ checkGenoInput <- function(bedFile = "",
 
   cat("dosageFile type is ", dosageFileType, "\n")
 
-  dosageFileType
+  # E6 (2026-09-14): return the paths this function RESOLVED and checked, as
+  # checkGenoInputStep1 already does, instead of the type alone -- setGenoInput
+  # used to re-derive all four companions with its own gsub() and hand THOSE
+  # strings to C++, so the checked path and the used path were two derivations.
+  list(genoType = dosageFileType,
+       bedFile = bedFile, bimFile = bimFile, famFile = famFile,
+       pgenFile = pgenFile, pvarFile = pvarFile, psamFile = psamFile)
 }
 
 setGenoInput <- function(bedFile = "",
@@ -61,7 +67,7 @@ setGenoInput <- function(bedFile = "",
                          sampleInModel = NULL) {
   # time_geno_0 = proc.time()
 
-  dosageFileType <- checkGenoInput(
+  resolved <- checkGenoInput(
     bedFile = bedFile,
     bimFile = bimFile,
     famFile = famFile,
@@ -70,6 +76,12 @@ setGenoInput <- function(bedFile = "",
     psamFile = psamFile,
     sampleInModel = sampleInModel
   )
+  dosageFileType <- resolved$genoType
+  # the companions as checkGenoInput resolved and existence-checked them (E6)
+  bimFile <- resolved$bimFile
+  famFile <- resolved$famFile
+  pvarFile <- resolved$pvarFile
+  psamFile <- resolved$psamFile
 
   # time_geno_1 = proc.time()
 
@@ -83,12 +95,6 @@ setGenoInput <- function(bedFile = "",
 
     cat("allele order in the plink file is ", AlleleOrder, ".\n")
 
-    if (bimFile == "") {
-      bimFile <- gsub("bed$", "bim", bedFile)
-    }
-    if (famFile == "") {
-      famFile <- gsub("bed$", "fam", bedFile)
-    }
     # LEDGER #74 FIXED: colClasses pins the ID column (bim column 2) to
     # character. Without it data.table INFERS the type, and a bim whose IDs are
     # all numeric infers integer -- while group-file IDs and --condition IDs
@@ -128,12 +134,6 @@ setGenoInput <- function(bedFile = "",
   ########## ----------  PGEN format ---------- ##########
 
   if (dosageFileType == "pgen") {
-    if (pvarFile == "") {
-      pvarFile <- gsub("pgen$", "pvar", pgenFile)
-    }
-    if (psamFile == "") {
-      psamFile <- gsub("pgen$", "psam", pgenFile)
-    }
     # pvar is always REF/ALT-ordered -- unlike bim, there is no
     # AlleleOrder-dependent column swap to apply here.
     # LEDGER #74 FIXED, pgen half: same inference hazard, ID is pvar column 3.
