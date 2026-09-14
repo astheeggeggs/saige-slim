@@ -248,6 +248,17 @@ RULES = [
         canary="is_rewrite_XnonPAR_forMales=TRUE and minInfo and minMAF won't be applied to "
                "all X chromosome variants",
     ),
+    # Audit F (2026-09-14): src/Main.hpp is deleted. The standing CLAUDE.md
+    # sentence about its stale declarations had been true, then false (#5),
+    # then true again; a copy of it must not come back for a file that is gone.
+    dict(
+        id="F-main-hpp-declarations-stale",
+        pattern=r"Main\.hpp.{0,20}declarations are stale",
+        why="src/Main.hpp was deleted 2026-09-14 (audit F); the checked declarations are "
+            "RcppExports.cpp's and the four internal ones sit at the top of src/Main.cpp",
+        evidence="git ls-files src/Main.hpp returns nothing; grep -n 'Audit F' src/Main.cpp",
+        canary="`Main.hpp` declarations are stale (LEDGER #5).",
+    ),
     # LEDGER #150 (2026-09-14): the #139 correction of that line said the flag
     # REPLACES the two gates with 0 and 1/(2N); the assignments are dead locals.
     dict(

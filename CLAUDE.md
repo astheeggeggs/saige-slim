@@ -558,7 +558,12 @@ All C++ via Rcpp (`RcppExports` generated; `NAMESPACE` uses `exportPattern`).
 R pushes state into C++ **globals** via `set*InCPP()` calls, then invokes one
 long-running `main*InCPP()` loop that writes output files from C++; R writes
 only the `.index` progress file. Forgetting a `set*_GlobalVarsInCPP` call
-silently leaves stale values. `Main.hpp` declarations are stale (LEDGER #5).
+silently leaves stale values. `Main.hpp` was DELETED on 2026-09-14 (audit F):
+it was a third, unchecked copy of the step-2 signatures that re-drifted after
+LEDGER #5 had aligned it (a differing parameter list is a new overload, so only
+the declarations nothing depended on could drift); the compiler-checked
+declarations are `RcppExports.cpp`'s, and the four internal forward
+declarations sit at the top of `src/Main.cpp`.
 
 - `src/Main.cpp` -- step-2 bridge. `g_models`/`g_readers` own the null models
   and readers (`g_model`/`g_reader` alias element 0); `mainMarkerInCPP`,

@@ -21,7 +21,7 @@
 #include <unordered_map>    // lever 5: the BURDEN twin memo
 #include <cstring>          // memcmp
 #include <mutex>
-#include "Main.hpp"
+#include "MarkerLoop.hpp"   // Marker::MarkerResult (was reached through Main.hpp)
 #include "FlexRV.hpp"
 #include <cstring>
 #include <cstdlib>
@@ -36,6 +36,88 @@
 #include <Rcpp.h>
 
 #include <boost/math/distributions/beta.hpp>
+
+// Audit F (2026-09-14): src/Main.hpp is GONE. It was a third, unchecked copy
+// of the step-2 signatures -- 303 lines, one includer, eight declarations
+// that disagreed with their definitions after LEDGER #5 had "aligned" them,
+// because a differing parameter list is a new overload, not an error, and so
+// only the declarations nothing depended on could drift. RcppExports.cpp
+// carries the compiler-checked declaration of every exported function; the
+// four internal functions defined below their first use are declared here,
+// copied from their definitions.
+struct RegionWriter;
+void processMale_XnonPAR(arma::vec & t_GVec,  uint32_t& t_pd , arma::umat & t_XPARregion);
+void writeOutfile_single(bool t_isMoreOutput,
+			bool t_isImputation,
+			bool t_isCondition,
+			bool t_isFirth,
+                         int mFirth,
+                         int mFirthConverge,
+                        std::string t_traitType,
+                        const std::vector<Marker::MarkerResult> & t_resultVec,
+                        std::ofstream & t_stream
+
+);
+void writeOutfile_BURDEN(std::string regionName,
+			std::vector<std::string>  & BURDEN_AnnoName_Vec,
+			std::vector<std::string> & BURDEN_maxMAFName_Vec,
+			std::vector<std::string> & BURDEN_pval_Vec,
+			std::vector<double> & BURDEN_Beta_Vec,
+			std::vector<double> & BURDEN_seBeta_Vec,
+			std::vector<std::string> & BURDEN_pval_cVec,
+			std::vector<double> & BURDEN_Beta_cVec,
+			std::vector<double> & BURDEN_seBeta_cVec,
+			arma::vec & MAC_GroupVec,
+			arma::vec & MACCase_GroupVec,
+			arma::vec & MACControl_GroupVec,
+			arma::vec & NumRare_GroupVec,
+			arma::vec & NumUltraRare_GroupVec,
+			double cctpval,
+			double cctpval_cond,
+			unsigned int q_anno,
+			unsigned int q_maf,
+			unsigned int q_weight,
+			std::vector<std::string> & t_weightNames,
+			bool t_emitWeightColumn,
+			bool isCondition,
+			std::string t_traitType,
+			RegionWriter & rw);
+int writeOutfile_singleInGroup(bool t_isMoreOutput,
+                        bool t_isImputation,
+                        bool t_isCondition,
+                        std::string t_traitType,
+                        std::vector<std::string> & chrVec,
+                        std::vector<std::string> & posVec,
+                        std::vector<std::string> & markerVec,
+                        std::vector<std::string> & refVec,
+                        std::vector<std::string> & altVec,
+                        std::vector<double> & altCountsVec,
+                        std::vector<double> & altFreqVec,
+                        std::vector<double> & imputationInfoVec,
+                        std::vector<double> & missingRateVec,
+                        std::vector<double> & BetaVec,
+                        std::vector<double> & seBetaVec,
+                        std::vector<double> & TstatVec,
+                        std::vector<double> & varTVec,
+                        std::vector<std::string> & pvalVec,
+                        std::vector<std::string> & pvalNAVec,
+                        std::vector<unsigned char> & isSPAConvergeVec,
+                        std::vector<double> & Beta_cVec,
+                        std::vector<double> & seBeta_cVec,
+                        std::vector<double> & Tstat_cVec,
+                        std::vector<double> & varT_cVec,
+                        std::vector<std::string> & pval_cVec,
+                        std::vector<std::string> & pvalNA_cVec,
+                        std::vector<double> & AF_caseVec,
+                        std::vector<double> & AF_ctrlVec,
+                        std::vector<uint32_t> & N_caseVec,
+                        std::vector<uint32_t> & N_ctrlVec,
+                        std::vector<double>  & N_case_homVec,
+                        std::vector<double>  & N_ctrl_hetVec,
+                        std::vector<double>  & N_case_hetVec,
+                        std::vector<double>  & N_ctrl_homVec,
+                        std::vector<uint32_t> & N_Vec,
+                        std::ofstream & t_OutFile_singleInGroup);
 
 // the genotype reader for the current analysis (see GenoReader.hpp)
 

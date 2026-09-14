@@ -125,7 +125,7 @@ flexrvMafWeight(kind, param, MAF_i, MAC_i)` evaluated right after MAF/MAC are
 final (the `MACVec`/`MAFVec` fill, ~:2463); `isLof_i` comes from the marker's
 anno label. Kernels live in
 a new `src/FlexRV.cpp` with an `[[Rcpp::export]]` wrapper for tests (add to
-`OBJECTS` in `src/Makevars`, `compileAttributes`, align `Main.hpp`).
+`OBJECTS` in `src/Makevars`, `compileAttributes`; `Main.hpp` has since been deleted, audit F 2026-09-14).
 `erAllowedVec[r]` is true only for the `unw_unw` set (weights identically 1),
 false otherwise, matching the custom rule in the `erAllowedVec` fill (~:1963-1969). At `Kt == 0` nothing in
 the existing arms changes: every branch is on kind, the K=1 legacy arm is
@@ -214,7 +214,7 @@ per-cell Cauchy-over-sets rows are a follow-up decision, not in scope.
   form on a grid (fast tier, like `test-unit-spa.R`): s=0, s=1, s=t,
   MAF=0.001 boundary, MAC=t boundary, and the 16x12 product ordering.
 - **F3 engine + CLI.** `SET_TRANSFORM` through `mainRegionInCPP` (signature
-  change: regenerate RcppExports, align `Main.hpp`, delete `src/*.o`),
+  change: regenerate RcppExports, delete `src/*.o`; `Main.hpp` has since been deleted),
   `transformWeightMat` export, descriptor kind, composition/naming, the three
   CLI flags in `extdata/step2_SPAtests.R` and `SPAGMMATtest`, the memory
   print, the `--condition` without `--weights_for_condition` hard error,
@@ -366,6 +366,6 @@ per-cell Cauchy-over-sets rows are a follow-up decision, not in scope.
   `R/WeightSets.R`, `R/SAIGE_Test_main.R`, `extdata/step2_SPAtests.R`
 - `src/Main.cpp` (set tables ~:1956, MAF/MAC fill ~:2463, w0 fill ~:2331,
   collapse ~:2577, UR emission ~:2891, BURDEN writer ~:3551),
-  new `src/FlexRV.cpp`, `src/Main.hpp`, `src/Makevars`
+  new `src/FlexRV.cpp`, `src/Main.hpp` (since deleted, audit F), `src/Makevars`
 - `harness/make_goldens.sh`, `tests/testthat/test-invariants-goldens.R`,
   `tests/testthat/helper-multiweight.R`, `harness/sim/02_build_dataset.py`

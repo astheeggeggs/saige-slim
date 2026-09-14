@@ -16,10 +16,11 @@ are:
    and #37, and live-unrepaired today in the binary conditional region kernel
    (`R/SAIGE_SPATest_Region_Func.R:433-448`, a textual twin of the #104-repaired
    function 18 lines below it).
-2. **The R<->C++ boundary has no contract** -- `src/Main.hpp` is 303 lines with
-   one includer and **eight declarations that disagree with their definitions
-   today**; a differing parameter list is a new overload, so the drift is
-   structurally uncatchable.
+2. **The R<->C++ boundary has no contract** -- `src/Main.hpp` WAS 303 lines with
+   one includer and eight declarations that disagreed with their definitions;
+   a differing parameter list is a new overload, so the drift was
+   structurally uncatchable. **Deleted 2026-09-14 (Phase F)**: the class is
+   now impossible, `RcppExports.cpp` is the one checked copy.
 3. **~3,000 lines of dead surface**, most already inventoried by this repo's own
    2026-09-08 audit and parked -- plus a slice that audit's method could not see
    (it scanned functions, never parameters, never post-`stop()` tails, never a
@@ -97,8 +98,14 @@ writer is `writeOutputFileIndex`. **Not taken, by decision:** `finishScoreTest`
 (the three guards are not one predicate), the `ReadModel` merge (value-pinning
 tests for the subset-only branches must come first), `getNeff`'s LOCO block
 (LEDGER #149 is the owner's row), `Marker::MarkerResult` into `CellResult`
-(different defaults the writer keys on). Phase F (`Main.hpp`) and G (the god
-functions) remain; G is explicitly deferred.
+(different defaults the writer keys on).
+
+**Phase F LANDED 2026-09-14**: `src/Main.hpp` deleted; the four internal
+forward declarations (`processMale_XnonPAR`, the three `writeOutfile_*`) are at
+the top of `src/Main.cpp`, copied from their definitions; `MarkerLoop.hpp` is
+included directly; LEDGER #5's STATUS appended (not re-opened); a `docdrift.py`
+rule keeps that stale-declarations sentence from being copied back (docdrift-allow). Only
+Phase G (the god functions) remains, and it is explicitly deferred.
 
 **LEDGER #152** records the four enumeration-guarded uninitialised reads
 (two live, two in the dead exports) and, since CI run 34838510204, the six
@@ -1334,7 +1341,7 @@ owner's and none blocks F2**: whether the quantitative/binary collapse split is
 advice or an enforced default, whether the constant-score warning earns its
 surface, and whether per-set rows are written by default (recommended: yes,
 measured at 70 B/row). F3 is the commit that wants review: it changes `mainRegionInCPP`'s signature, which pulls in
-`RcppExports`, the stale `Main.hpp`, `src/Makevars` and the delete-`src/*.o`
+`RcppExports`, the stale `Main.hpp` (deleted 2026-09-14, audit F), `src/Makevars` and the delete-`src/*.o`
 rule. **The plan's line references were re-resolved on 2026-09-08 and are now
 SYMBOL-anchored** with the line number as a dated hint; they had drifted by up
 to ~145 lines within a day.
