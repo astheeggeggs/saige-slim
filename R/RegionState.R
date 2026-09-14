@@ -123,7 +123,7 @@ regionTestPlan <- function(r.corr, is_single_in_groupTest) {
 # Phase G1 slice 3: the value SAIGE.Region returns, which the CLI prints.
 # The sidecar summaries (#57, #127, the memo lines) are printed by the
 # caller before this is assembled, as before.
-regionDoneMessage <- function(OutputFiles, OutputFile, is_output_markerList_in_groupTest,
+regionDoneMessage <- function(OutputFiles, OutputFile, writeMarkerList,
                               is_single_in_groupTest) {
   message <- paste0(
     "Analysis done!",
@@ -131,7 +131,7 @@ regionDoneMessage <- function(OutputFiles, OutputFile, is_output_markerList_in_g
     paste(OutputFiles, collapse = "', '"),
     "'."
   )
-  if (is_output_markerList_in_groupTest) {
+  if (writeMarkerList) {
     message <- paste0(message, " The marker lists have been saved to '", OutputFile,
                       ".markerList.txt'.")
   }
@@ -141,4 +141,107 @@ regionDoneMessage <- function(OutputFiles, OutputFile, is_output_markerList_in_g
                       OutputFile, ".singleAssoc.txt'.")
   }
   message
+}
+
+# Phase G1 slice 4: the composed per-run weight-set list, in the NORMATIVE
+# order shared with C++ (src/Main.cpp mainRegionInCPP):
+#   custom sets (group-file weight lines, file order)
+#   -> FlexRV transform sets (F3; score-major over the transform table)
+#   -> explicit beta sets (weights.beta pairs in given order, named
+#      "Beta_a_b"; composed ONLY when more than one pair is supplied -- a
+#      single pair, default or not, keeps the legacy implicit-beta path)
+#   -> "No_Weights" (all-ones; appended when is_no_weight_in_groupTest =
+#      TRUE and the run has any other weight set)
+# At exactly one composed set every consumer reduces to the legacy
+# single-weight flow (same objects, same bytes). Moved verbatim from
+# SAIGE.Region (design D5/D10); the three stdout lines and the two stops are
+# unchanged. Pure apart from those: no file, no C++ state.
+composeWeightSets <- function(weights_beta_mat, is_no_weight_in_groupTest, is_weight_included,
+                              nTransformSets, nWeightSets, weightSetNames, flexNames,
+                              is_output_weight_column) {
+  nBetaPairs <- nrow(weights_beta_mat)
+  useExplicitBeta <- nBetaPairs > 1
+  betaSetNames <- if (useExplicitBeta) {
+    paste0("Beta_", weights_beta_mat[, 1], "_", weights_beta_mat[, 2])
+  } else {
+    character(0)
+  }
+  # is_no_weight_in_groupTest composition:
+  #  - no other weight set (unweighted group file, single weights.beta pair):
+  #    the LEGACY path verbatim -- the single all-ones set replaces the
+  #    implicit beta set, no new output columns
+  #  - group-file weight lines (which used to hard-error here) or explicit
+  #    beta sets: an all-ones "No_Weights" set is APPENDED as the last set
+  includeNoWeightsSet <- is_no_weight_in_groupTest &&
+    (is_weight_included || useExplicitBeta || nTransformSets > 0)
+  legacyNoWeight <- is_no_weight_in_groupTest && !includeNoWeightsSet
+  if (legacyNoWeight) {
+    cat("No weights are used in the group test\n")
+  }
+  if (includeNoWeightsSet) {
+    cat("is_no_weight_in_groupTest = TRUE: an all-ones 'No_Weights' weight set is appended to the group test\n")
+  }
+  # LEDGER #138 FIXED: a FlexRV run tests ONE cell with its own transform sets
+  # and its pooled row is p_FlexRV, the Cauchy combination over exactly those.
+  # Any other set composed beside them -- a group-file weight line, explicit
+  # --weights.beta pairs, or the No_Weights set -- silently made the pooled
+  # row a combination over 193+ rows. Refused here, beside the three FlexRV
+  # cell guards in R/SAIGE_Test_main.R, because the weight lines are known
+  # only once the group file is read. (A score line WITHOUT --flexRV_score is
+  # ignored; a weight line WITH it is not, hence the explicit refusal.)
+  if (nTransformSets > 0 && (nWeightSets > 0 || useExplicitBeta || includeNoWeightsSet)) {
+    extra <- c(
+      if (nWeightSets > 0) paste0("group-file weight set(s) ",
+                                  paste(weightSetNames, collapse = ", ")),
+      if (useExplicitBeta) paste0(nBetaPairs, " --weights.beta pairs"),
+      if (includeNoWeightsSet) "--is_no_weight_in_groupTest=TRUE"
+    )
+    stop("A FlexRV run tests ONE cell with its ", nTransformSets, " transform sets, and its ",
+         "pooled row is p_FlexRV, the Cauchy combination over exactly those; ",
+         paste(extra, collapse = " and "), " would be composed beside them and the pooled ",
+         "row would no longer be p_FlexRV. Drop the weight line(s) from the group file, or ",
+         "run the custom-weight test separately without --flexRV_score\n")
+  }
+  composedNames <- c(
+    if (legacyNoWeight) "No_Weights",
+    if (nWeightSets > 0) weightSetNames,
+    flexNames,
+    betaSetNames,
+    if (includeNoWeightsSet) "No_Weights"
+  )
+  nWeightSetsUsed <- max(1L, length(composedNames))
+  isMultiWeightRun <- nWeightSetsUsed > 1
+  if (isMultiWeightRun) {
+    if (anyDuplicated(composedNames) > 0) {
+      stop(
+        "Duplicate weight set name '",
+        composedNames[duplicated(composedNames)][1],
+        "' in the composed weight-set list (group-file sets, then weights.beta pairs, then No_Weights). Please rename the group-file weight set or drop the duplicate pair.\n"
+      )
+    }
+    cat(
+      nWeightSetsUsed, " weight sets are used in the group test: ",
+      paste(composedNames, collapse = ", "), "\n"
+    )
+  }
+  # Conditional analysis composes with the multi-weight schema (design D7,
+  # C11): the conditioning-marker weight vector stays a SINGLE vector across
+  # all sets (weights_for_condition, else pdf(beta(1,25)) of the conditioning
+  # MAFs); what varies per set is the G1-side weight, applied in
+  # region_postprocess from the raw exported G1tilde_P_G2tilde matrix.
+  # Schema switch for the region output file: the Weight column (and, for
+  # SKAT-O, Pvalue_ACATV/Pvalue_ACATO) is emitted when more than one weight
+  # set is composed OR the user forces it at a single set.
+  isMultiWeightSchema <- isMultiWeightRun || is_output_weight_column
+  list(
+    nBetaPairs = nBetaPairs,
+    useExplicitBeta = useExplicitBeta,
+    betaSetNames = betaSetNames,
+    includeNoWeightsSet = includeNoWeightsSet,
+    legacyNoWeight = legacyNoWeight,
+    composedNames = composedNames,
+    nWeightSetsUsed = nWeightSetsUsed,
+    isMultiWeightRun = isMultiWeightRun,
+    isMultiWeightSchema = isMultiWeightSchema
+  )
 }
