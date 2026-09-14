@@ -207,6 +207,14 @@ checkOutputFile <- function(OutputFile,
   chunkSingleBytes <- numeric(0)
   if (isOverwriteOutput) {
     Check_OutputFile_Create(OutputFile)
+    # LEDGER #145 FIXED: the region sidecars are written only when a run has
+    # something to disclose (.pooledTests.txt, .skatFailures.txt) or asks for
+    # one (.markerList.txt), so a previous run's copies survived an overwrite
+    # that produced none and described the wrong run. Removed with the
+    # results file; unlink() of an absent file is a no-op.
+    if (AnalysisType == "Region") {
+      unlink(paste0(OutputFile, c(".pooledTests.txt", ".skatFailures.txt", ".markerList.txt")))
+    }
     # Check_OutputFile_Create(OutputFileIndex)
     Start <- TRUE
     End <- FALSE
