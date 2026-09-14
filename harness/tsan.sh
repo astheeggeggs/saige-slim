@@ -82,9 +82,12 @@ if [ "$MODE" = plant ]; then
   # The S6 drill, as a compile-time defect: hand every worker the SAME scratch.
   # It must produce worker-vs-worker races AND a wrong answer; if it produces
   # only the second, TSAN is not seeing this code and a clean run proves nothing.
-  python3 - "$PKG/src/Main.cpp" <<'PY'
+  # Phase G2 (2026-09-14): the two region Workers live in src/RegionLoop.hpp
+  # now, so anchors e/g are patched there and a/c in Main.cpp.
+  python3 - "$PKG/src/Main.cpp" "$PKG/src/RegionLoop.hpp" <<'PY'
 import sys
 p = sys.argv[1]; s = open(p).read()
+q = sys.argv[2]; t = open(q).read()
 a = """    for(int i = 0; i < t_nStates; i++){
       m_free.push_back(make());
     }
@@ -108,8 +111,9 @@ f = "m_fn(m_iStart + k, k, *m_pool.m_plantShared, *state->readers[0]);"
 # defect, every cell's test in the first state's scratch.
 g = "m_fn((unsigned int)k, *state->scratch[0]);"
 h = "m_fn((unsigned int)k, *m_pool.m_plantShared);"
-assert s.count(a) == 1 and s.count(c) == 1 and s.count(e) == 1 and s.count(g) == 1, "plant anchors drifted; fix harness/tsan.sh"
-open(p, 'w').write(s.replace(a, b).replace(c, d).replace(e, f).replace(g, h))
+assert s.count(a) == 1 and s.count(c) == 1 and t.count(e) == 1 and t.count(g) == 1, "plant anchors drifted; fix harness/tsan.sh"
+open(p, 'w').write(s.replace(a, b).replace(c, d))
+open(q, 'w').write(t.replace(e, f).replace(g, h))
 PY
 fi
 
