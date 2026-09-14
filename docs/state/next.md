@@ -10,7 +10,16 @@ on the weight given to a conditioning marker, it did (0.3-6 % on P3's
 the digit (0.4733 -> 0.951743 -> 1.000000). Five goldens moved on their
 `_cond` columns only; everything else byte-identical, as predicted. One
 finding parked, not a row: `SPA_pval`'s absolute root tolerance makes the
-region burden SPA scale-dependent at ~1e-4 in log p.
+region burden SPA scale-dependent at ~1e-4 in log p. **Later the same
+evening: #147 and #148 FIXED** (`cab75ac5`, `6f333786`; one gate each, no
+golden moved, predicted): `--minGroupMAC_in_BurdenTest` is validated by
+name with `minVal = 0`, and quantitative `getNeff` with `--noEstFixedEff=TRUE`
+builds its offset the way the binary arm does (decidable by measurement, not
+the owner: `Nglmm` reads `fit0` only for its length). **LEDGER #153 OPENED**
+from that drill: `getNeff` prints `Nglmm` ~1e16 for N = 1,000 on both traits
+because `tauVec_ss = c(0, 1)` makes the solved system the GRM alone; upstream
+verbatim, owner's decision on the intended `tau`. #150 is untouched: its code
+stays by decision and the surfaces were already corrected.
 
 **Previous handoff: `docs/state/handoff-2026-09-14-flexrv-p2.md`** -- the
 FlexRV power fixture p2 (phenotypes only, on the 50k genotypes; causal signal
