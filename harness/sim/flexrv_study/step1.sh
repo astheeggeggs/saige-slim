@@ -41,12 +41,18 @@ fit() {
   grep -m1 -i 'theta\|tau' $D/s1_$col.flexrv.log || true
   echo "$col: $(cat $D/step1_$col.varianceRatio.txt | wc -l) VR rows"
 }
+# The second-generation power phenotypes (make_power_pheno.py, 2026-09-14)
+# live in pheno_pcs<suffix>.txt with their own y_null_bin<suffix> column, so a
+# trait carrying a suffix is fitted straight from that file.
 for t in ${@:-y_null y_null_bin y_quant y_binary}; do
   case $t in
     y_null)     fit y_null quantitative $PH ;;
     y_null_bin) fit y_null_bin binary $PHB ;;
     y_quant)    fit y_quant quantitative $PH ;;
     y_binary)   fit y_binary binary $PH ;;
+    y_quant_*)  fit $t quantitative $D/pheno_pcs${t#y_quant}.txt ;;
+    y_binary_*) fit $t binary $D/pheno_pcs${t#y_binary}.txt ;;
+    y_null_bin_*) fit $t binary $D/pheno_pcs${t#y_null_bin}.txt ;;
     *) echo "unknown trait $t" >&2; exit 2 ;;
   esac
 done

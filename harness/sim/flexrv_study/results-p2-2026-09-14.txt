@@ -1,0 +1,195 @@
+runs: 72  rows: 15120 
+
+CONTROL 1 -- null calibration: the ECDF at alpha with a binomial 95% CI; expected inside on every line
+  y_null collapse 10 flex1 informative                    alpha=0.05  obs=0.0476  [0.0231, 0.0858]  n=210
+  y_null collapse 10 flex1 informative                    alpha=0.01  obs=0.0190  [0.0052, 0.0480]  n=210
+  y_null collapse 10 flex1 uninformative                  alpha=0.05  obs=0.0476  [0.0231, 0.0858]  n=210
+  y_null collapse 10 flex1 uninformative                  alpha=0.01  obs=0.0190  [0.0052, 0.0480]  n=210
+  y_null collapse 10 flex1 realistic                      alpha=0.05  obs=0.0476  [0.0231, 0.0858]  n=210
+  y_null collapse 10 flex1 realistic                      alpha=0.01  obs=0.0190  [0.0052, 0.0480]  n=210
+  y_null collapse 10 grid plain                           alpha=0.05  obs=0.0952  [0.0591, 0.1433]  n=210 <-- OUTSIDE
+  y_null collapse 10 grid plain                           alpha=0.01  obs=0.0000  [0.0000, 0.0174]  n=210
+  y_null collapse 10 flexmaf informative                  alpha=0.05  obs=0.0905  [0.0554, 0.1377]  n=210 <-- OUTSIDE
+  y_null collapse 10 flexmaf informative                  alpha=0.01  obs=0.0190  [0.0052, 0.0480]  n=210
+  y_null collapse 10 flexmaf uninformative                alpha=0.05  obs=0.0905  [0.0554, 0.1377]  n=210 <-- OUTSIDE
+  y_null collapse 10 flexmaf uninformative                alpha=0.01  obs=0.0190  [0.0052, 0.0480]  n=210
+  y_null collapse 10 flexmaf realistic                    alpha=0.05  obs=0.0905  [0.0554, 0.1377]  n=210 <-- OUTSIDE
+  y_null collapse 10 flexmaf realistic                    alpha=0.01  obs=0.0190  [0.0052, 0.0480]  n=210
+  y_null collapse 10 flexscore informative                alpha=0.05  obs=0.0762  [0.0442, 0.1208]  n=210
+  y_null collapse 10 flexscore informative                alpha=0.01  obs=0.0143  [0.0030, 0.0412]  n=210
+  y_null collapse 10 flexscore uninformative              alpha=0.05  obs=0.0714  [0.0405, 0.1151]  n=210
+  y_null collapse 10 flexscore uninformative              alpha=0.01  obs=0.0190  [0.0052, 0.0480]  n=210
+  y_null collapse 10 flexscore realistic                  alpha=0.05  obs=0.0619  [0.0334, 0.1035]  n=210
+  y_null collapse 10 flexscore realistic                  alpha=0.01  obs=0.0048  [0.0001, 0.0262]  n=210
+  y_null collapse 10 unw plain                            alpha=0.05  obs=0.0476  [0.0231, 0.0858]  n=210
+  y_null collapse 10 unw plain                            alpha=0.01  obs=0.0190  [0.0052, 0.0480]  n=210
+  y_null collapse 10 unw synonymous                       alpha=0.05  obs=0.0619  [0.0334, 0.1035]  n=210
+  y_null collapse 10 unw synonymous                       alpha=0.01  obs=0.0048  [0.0001, 0.0262]  n=210
+  y_null collapse 10 beta plain                           alpha=0.05  obs=0.0476  [0.0231, 0.0858]  n=210
+  y_null collapse 10 beta plain                           alpha=0.01  obs=0.0190  [0.0052, 0.0480]  n=210
+  y_null collapse 10 flex192 informative                  alpha=0.05  obs=0.0952  [0.0591, 0.1433]  n=210 <-- OUTSIDE
+  y_null collapse 10 flex192 informative                  alpha=0.01  obs=0.0143  [0.0030, 0.0412]  n=210
+  y_null collapse 10 flex192 uninformative                alpha=0.05  obs=0.0905  [0.0554, 0.1377]  n=210 <-- OUTSIDE
+  y_null collapse 10 flex192 uninformative                alpha=0.01  obs=0.0143  [0.0030, 0.0412]  n=210
+  y_null collapse 10 flex192 realistic                    alpha=0.05  obs=0.0905  [0.0554, 0.1377]  n=210 <-- OUTSIDE
+  y_null collapse 10 flex192 realistic                    alpha=0.01  obs=0.0143  [0.0030, 0.0412]  n=210
+  y_null collapse 10 flex192 synonymous                   alpha=0.05  obs=0.0524  [0.0264, 0.0918]  n=210
+  y_null collapse 10 flex192 synonymous                   alpha=0.01  obs=0.0048  [0.0001, 0.0262]  n=210
+  y_null collapse 10 skato plain                          alpha=0.05  obs=0.0476  [0.0231, 0.0858]  n=210
+  y_null collapse 10 skato plain                          alpha=0.01  obs=0.0095  [0.0012, 0.0340]  n=210
+  y_null_bin_p2 collapse 10 flex1 informative             alpha=0.05  obs=0.0571  [0.0299, 0.0977]  n=210
+  y_null_bin_p2 collapse 10 flex1 informative             alpha=0.01  obs=0.0095  [0.0012, 0.0340]  n=210
+  y_null_bin_p2 collapse 10 flex1 uninformative           alpha=0.05  obs=0.0571  [0.0299, 0.0977]  n=210
+  y_null_bin_p2 collapse 10 flex1 uninformative           alpha=0.01  obs=0.0095  [0.0012, 0.0340]  n=210
+  y_null_bin_p2 collapse 10 flex1 realistic               alpha=0.05  obs=0.0571  [0.0299, 0.0977]  n=210
+  y_null_bin_p2 collapse 10 flex1 realistic               alpha=0.01  obs=0.0095  [0.0012, 0.0340]  n=210
+  y_null_bin_p2 collapse 10 grid plain                    alpha=0.05  obs=0.0810  [0.0479, 0.1264]  n=210
+  y_null_bin_p2 collapse 10 grid plain                    alpha=0.01  obs=0.0143  [0.0030, 0.0412]  n=210
+  y_null_bin_p2 collapse 10 flexmaf informative           alpha=0.05  obs=0.0571  [0.0299, 0.0977]  n=210
+  y_null_bin_p2 collapse 10 flexmaf informative           alpha=0.01  obs=0.0143  [0.0030, 0.0412]  n=210
+  y_null_bin_p2 collapse 10 flexmaf uninformative         alpha=0.05  obs=0.0571  [0.0299, 0.0977]  n=210
+  y_null_bin_p2 collapse 10 flexmaf uninformative         alpha=0.01  obs=0.0143  [0.0030, 0.0412]  n=210
+  y_null_bin_p2 collapse 10 flexmaf realistic             alpha=0.05  obs=0.0571  [0.0299, 0.0977]  n=210
+  y_null_bin_p2 collapse 10 flexmaf realistic             alpha=0.01  obs=0.0143  [0.0030, 0.0412]  n=210
+  y_null_bin_p2 collapse 10 flexscore informative         alpha=0.05  obs=0.0714  [0.0405, 0.1151]  n=210
+  y_null_bin_p2 collapse 10 flexscore informative         alpha=0.01  obs=0.0190  [0.0052, 0.0480]  n=210
+  y_null_bin_p2 collapse 10 flexscore uninformative       alpha=0.05  obs=0.0667  [0.0369, 0.1093]  n=210
+  y_null_bin_p2 collapse 10 flexscore uninformative       alpha=0.01  obs=0.0095  [0.0012, 0.0340]  n=210
+  y_null_bin_p2 collapse 10 flexscore realistic           alpha=0.05  obs=0.0524  [0.0264, 0.0918]  n=210
+  y_null_bin_p2 collapse 10 flexscore realistic           alpha=0.01  obs=0.0190  [0.0052, 0.0480]  n=210
+  y_null_bin_p2 collapse 10 unw plain                     alpha=0.05  obs=0.0571  [0.0299, 0.0977]  n=210
+  y_null_bin_p2 collapse 10 unw plain                     alpha=0.01  obs=0.0095  [0.0012, 0.0340]  n=210
+  y_null_bin_p2 collapse 10 unw synonymous                alpha=0.05  obs=0.0667  [0.0369, 0.1093]  n=210
+  y_null_bin_p2 collapse 10 unw synonymous                alpha=0.01  obs=0.0048  [0.0001, 0.0262]  n=210
+  y_null_bin_p2 collapse 10 beta plain                    alpha=0.05  obs=0.0571  [0.0299, 0.0977]  n=210
+  y_null_bin_p2 collapse 10 beta plain                    alpha=0.01  obs=0.0095  [0.0012, 0.0340]  n=210
+  y_null_bin_p2 collapse 10 flex192 informative           alpha=0.05  obs=0.0571  [0.0299, 0.0977]  n=210
+  y_null_bin_p2 collapse 10 flex192 informative           alpha=0.01  obs=0.0238  [0.0078, 0.0547]  n=210
+  y_null_bin_p2 collapse 10 flex192 uninformative         alpha=0.05  obs=0.0714  [0.0405, 0.1151]  n=210
+  y_null_bin_p2 collapse 10 flex192 uninformative         alpha=0.01  obs=0.0095  [0.0012, 0.0340]  n=210
+  y_null_bin_p2 collapse 10 flex192 realistic             alpha=0.05  obs=0.0524  [0.0264, 0.0918]  n=210
+  y_null_bin_p2 collapse 10 flex192 realistic             alpha=0.01  obs=0.0238  [0.0078, 0.0547]  n=210
+  y_null_bin_p2 collapse 10 flex192 synonymous            alpha=0.05  obs=0.0429  [0.0198, 0.0798]  n=210
+  y_null_bin_p2 collapse 10 flex192 synonymous            alpha=0.01  obs=0.0000  [0.0000, 0.0174]  n=210
+  y_null_bin_p2 collapse 10 skato plain                   alpha=0.05  obs=0.0619  [0.0334, 0.1035]  n=210
+  y_null_bin_p2 collapse 10 skato plain                   alpha=0.01  obs=0.0095  [0.0012, 0.0340]  n=210
+
+CONTROL 1b -- the non-causal genes of the signal traits
+  y_quant_p2 non-causal, collapse 10 flex1 informative    alpha=0.05  obs=0.0333  [0.0109, 0.0761]  n=150
+  y_quant_p2 non-causal, collapse 10 flex1 informative    alpha=0.01  obs=0.0200  [0.0041, 0.0573]  n=150
+  y_quant_p2 non-causal, collapse 10 flex1 uninformative  alpha=0.05  obs=0.0333  [0.0109, 0.0761]  n=150
+  y_quant_p2 non-causal, collapse 10 flex1 uninformative  alpha=0.01  obs=0.0200  [0.0041, 0.0573]  n=150
+  y_quant_p2 non-causal, collapse 10 flex1 realistic      alpha=0.05  obs=0.0333  [0.0109, 0.0761]  n=150
+  y_quant_p2 non-causal, collapse 10 flex1 realistic      alpha=0.01  obs=0.0200  [0.0041, 0.0573]  n=150
+  y_quant_p2 non-causal, collapse 10 grid plain           alpha=0.05  obs=0.0667  [0.0324, 0.1192]  n=150
+  y_quant_p2 non-causal, collapse 10 grid plain           alpha=0.01  obs=0.0067  [0.0002, 0.0366]  n=150
+  y_quant_p2 non-causal, collapse 10 flexmaf informative  alpha=0.05  obs=0.0733  [0.0372, 0.1274]  n=150
+  y_quant_p2 non-causal, collapse 10 flexmaf informative  alpha=0.01  obs=0.0200  [0.0041, 0.0573]  n=150
+  y_quant_p2 non-causal, collapse 10 flexmaf uninformative alpha=0.05  obs=0.0733  [0.0372, 0.1274]  n=150
+  y_quant_p2 non-causal, collapse 10 flexmaf uninformative alpha=0.01  obs=0.0200  [0.0041, 0.0573]  n=150
+  y_quant_p2 non-causal, collapse 10 flexmaf realistic    alpha=0.05  obs=0.0733  [0.0372, 0.1274]  n=150
+  y_quant_p2 non-causal, collapse 10 flexmaf realistic    alpha=0.01  obs=0.0200  [0.0041, 0.0573]  n=150
+  y_quant_p2 non-causal, collapse 10 flexscore informative alpha=0.05  obs=0.0533  [0.0233, 0.1024]  n=150
+  y_quant_p2 non-causal, collapse 10 flexscore informative alpha=0.01  obs=0.0267  [0.0073, 0.0669]  n=150
+  y_quant_p2 non-causal, collapse 10 flexscore uninformative alpha=0.05  obs=0.0533  [0.0233, 0.1024]  n=150
+  y_quant_p2 non-causal, collapse 10 flexscore uninformative alpha=0.01  obs=0.0267  [0.0073, 0.0669]  n=150
+  y_quant_p2 non-causal, collapse 10 flexscore realistic  alpha=0.05  obs=0.0533  [0.0233, 0.1024]  n=150
+  y_quant_p2 non-causal, collapse 10 flexscore realistic  alpha=0.01  obs=0.0133  [0.0016, 0.0473]  n=150
+  y_quant_p2 non-causal, collapse 10 unw plain            alpha=0.05  obs=0.0333  [0.0109, 0.0761]  n=150
+  y_quant_p2 non-causal, collapse 10 unw plain            alpha=0.01  obs=0.0200  [0.0041, 0.0573]  n=150
+  y_quant_p2 non-causal, collapse 10 unw synonymous       alpha=0.05  obs=0.0400  [0.0148, 0.0850]  n=150
+  y_quant_p2 non-causal, collapse 10 unw synonymous       alpha=0.01  obs=0.0067  [0.0002, 0.0366]  n=150
+  y_quant_p2 non-causal, collapse 10 beta plain           alpha=0.05  obs=0.0333  [0.0109, 0.0761]  n=150
+  y_quant_p2 non-causal, collapse 10 beta plain           alpha=0.01  obs=0.0200  [0.0041, 0.0573]  n=150
+  y_quant_p2 non-causal, collapse 10 flex192 informative  alpha=0.05  obs=0.0733  [0.0372, 0.1274]  n=150
+  y_quant_p2 non-causal, collapse 10 flex192 informative  alpha=0.01  obs=0.0200  [0.0041, 0.0573]  n=150
+  y_quant_p2 non-causal, collapse 10 flex192 uninformative alpha=0.05  obs=0.0667  [0.0324, 0.1192]  n=150
+  y_quant_p2 non-causal, collapse 10 flex192 uninformative alpha=0.01  obs=0.0267  [0.0073, 0.0669]  n=150
+  y_quant_p2 non-causal, collapse 10 flex192 realistic    alpha=0.05  obs=0.0800  [0.0420, 0.1356]  n=150
+  y_quant_p2 non-causal, collapse 10 flex192 realistic    alpha=0.01  obs=0.0200  [0.0041, 0.0573]  n=150
+  y_quant_p2 non-causal, collapse 10 flex192 synonymous   alpha=0.05  obs=0.0400  [0.0148, 0.0850]  n=150
+  y_quant_p2 non-causal, collapse 10 flex192 synonymous   alpha=0.01  obs=0.0067  [0.0002, 0.0366]  n=150
+  y_quant_p2 non-causal, collapse 10 skato plain          alpha=0.05  obs=0.0400  [0.0148, 0.0850]  n=150
+  y_quant_p2 non-causal, collapse 10 skato plain          alpha=0.01  obs=0.0200  [0.0041, 0.0573]  n=150
+  y_binary_p2 non-causal, collapse 10 flex1 informative   alpha=0.05  obs=0.0533  [0.0233, 0.1024]  n=150
+  y_binary_p2 non-causal, collapse 10 flex1 informative   alpha=0.01  obs=0.0067  [0.0002, 0.0366]  n=150
+  y_binary_p2 non-causal, collapse 10 flex1 uninformative alpha=0.05  obs=0.0533  [0.0233, 0.1024]  n=150
+  y_binary_p2 non-causal, collapse 10 flex1 uninformative alpha=0.01  obs=0.0067  [0.0002, 0.0366]  n=150
+  y_binary_p2 non-causal, collapse 10 flex1 realistic     alpha=0.05  obs=0.0533  [0.0233, 0.1024]  n=150
+  y_binary_p2 non-causal, collapse 10 flex1 realistic     alpha=0.01  obs=0.0067  [0.0002, 0.0366]  n=150
+  y_binary_p2 non-causal, collapse 10 grid plain          alpha=0.05  obs=0.0533  [0.0233, 0.1024]  n=150
+  y_binary_p2 non-causal, collapse 10 grid plain          alpha=0.01  obs=0.0067  [0.0002, 0.0366]  n=150
+  y_binary_p2 non-causal, collapse 10 flexmaf informative alpha=0.05  obs=0.0400  [0.0148, 0.0850]  n=150
+  y_binary_p2 non-causal, collapse 10 flexmaf informative alpha=0.01  obs=0.0067  [0.0002, 0.0366]  n=150
+  y_binary_p2 non-causal, collapse 10 flexmaf uninformative alpha=0.05  obs=0.0400  [0.0148, 0.0850]  n=150
+  y_binary_p2 non-causal, collapse 10 flexmaf uninformative alpha=0.01  obs=0.0067  [0.0002, 0.0366]  n=150
+  y_binary_p2 non-causal, collapse 10 flexmaf realistic   alpha=0.05  obs=0.0400  [0.0148, 0.0850]  n=150
+  y_binary_p2 non-causal, collapse 10 flexmaf realistic   alpha=0.01  obs=0.0067  [0.0002, 0.0366]  n=150
+  y_binary_p2 non-causal, collapse 10 flexscore informative alpha=0.05  obs=0.0800  [0.0420, 0.1356]  n=150
+  y_binary_p2 non-causal, collapse 10 flexscore informative alpha=0.01  obs=0.0200  [0.0041, 0.0573]  n=150
+  y_binary_p2 non-causal, collapse 10 flexscore uninformative alpha=0.05  obs=0.0600  [0.0278, 0.1108]  n=150
+  y_binary_p2 non-causal, collapse 10 flexscore uninformative alpha=0.01  obs=0.0133  [0.0016, 0.0473]  n=150
+  y_binary_p2 non-causal, collapse 10 flexscore realistic alpha=0.05  obs=0.0733  [0.0372, 0.1274]  n=150
+  y_binary_p2 non-causal, collapse 10 flexscore realistic alpha=0.01  obs=0.0267  [0.0073, 0.0669]  n=150
+  y_binary_p2 non-causal, collapse 10 unw plain           alpha=0.05  obs=0.0533  [0.0233, 0.1024]  n=150
+  y_binary_p2 non-causal, collapse 10 unw plain           alpha=0.01  obs=0.0067  [0.0002, 0.0366]  n=150
+  y_binary_p2 non-causal, collapse 10 unw synonymous      alpha=0.05  obs=0.0600  [0.0278, 0.1108]  n=150
+  y_binary_p2 non-causal, collapse 10 unw synonymous      alpha=0.01  obs=0.0067  [0.0002, 0.0366]  n=150
+  y_binary_p2 non-causal, collapse 10 beta plain          alpha=0.05  obs=0.0533  [0.0233, 0.1024]  n=150
+  y_binary_p2 non-causal, collapse 10 beta plain          alpha=0.01  obs=0.0067  [0.0002, 0.0366]  n=150
+  y_binary_p2 non-causal, collapse 10 flex192 informative alpha=0.05  obs=0.0600  [0.0278, 0.1108]  n=150
+  y_binary_p2 non-causal, collapse 10 flex192 informative alpha=0.01  obs=0.0200  [0.0041, 0.0573]  n=150
+  y_binary_p2 non-causal, collapse 10 flex192 uninformative alpha=0.05  obs=0.0333  [0.0109, 0.0761]  n=150
+  y_binary_p2 non-causal, collapse 10 flex192 uninformative alpha=0.01  obs=0.0133  [0.0016, 0.0473]  n=150
+  y_binary_p2 non-causal, collapse 10 flex192 realistic   alpha=0.05  obs=0.0533  [0.0233, 0.1024]  n=150
+  y_binary_p2 non-causal, collapse 10 flex192 realistic   alpha=0.01  obs=0.0133  [0.0016, 0.0473]  n=150
+  y_binary_p2 non-causal, collapse 10 flex192 synonymous  alpha=0.05  obs=0.0400  [0.0148, 0.0850]  n=150
+  y_binary_p2 non-causal, collapse 10 flex192 synonymous  alpha=0.01  obs=0.0067  [0.0002, 0.0366]  n=150
+  y_binary_p2 non-causal, collapse 10 skato plain         alpha=0.05  obs=0.0667  [0.0324, 0.1192]  n=150
+  y_binary_p2 non-causal, collapse 10 skato plain         alpha=0.01  obs=0.0067  [0.0002, 0.0366]  n=150
+
+CONTROL 2 -- Spearman(NCP, -log10 p) over causal genes, expected > 0.5 for every method
+   and detections at gene-level alpha = 0.05 / n_genes (Bonferroni) among causal genes
+  y_quant_p2 c10 informative   flex1     rho= 0.72  detected 36/60 (directional 36/60)  oracle 36  by link step - lof - graded 36/60
+  y_quant_p2 c10 informative   flexmaf   rho= 0.70  detected 39/60 (directional 39/60)  oracle 35  by link step - lof - graded 39/60
+  y_quant_p2 c10 informative   flexscore rho= 0.77  detected 47/60 (directional 47/60)  oracle 43  by link step - lof - graded 47/60
+  y_quant_p2 c10 informative   flex192   rho= 0.77  detected 47/60 (directional 47/60)  oracle 42  by link step - lof - graded 47/60
+  y_quant_p2 c10 plain         grid      rho= 0.73  detected 42/60 (directional 42/60)  oracle 39  by link step - lof - graded 42/60
+  y_quant_p2 c10 plain         unw       rho= 0.72  detected 36/60 (directional 36/60)  oracle 36  by link step - lof - graded 36/60
+  y_quant_p2 c10 plain         beta      rho= 0.72  detected 37/60 (directional 37/60)  oracle 37  by link step - lof - graded 37/60
+  y_quant_p2 c10 plain         skato     rho= 0.76  detected 39/60 (directional 39/60)  oracle -  by link step - lof - graded 39/60
+  y_quant_p2 c10 uninformative flex1     rho= 0.72  detected 36/60 (directional 36/60)  oracle 36  by link step - lof - graded 36/60
+  y_quant_p2 c10 uninformative flexmaf   rho= 0.70  detected 39/60 (directional 39/60)  oracle 35  by link step - lof - graded 39/60
+  y_quant_p2 c10 uninformative flexscore rho= 0.70  detected 39/60 (directional 39/60)  oracle 35  by link step - lof - graded 39/60
+  y_quant_p2 c10 uninformative flex192   rho= 0.70  detected 39/60 (directional 39/60)  oracle 37  by link step - lof - graded 39/60
+  y_quant_p2 c10 realistic     flex1     rho= 0.72  detected 36/60 (directional 36/60)  oracle 36  by link step - lof - graded 36/60
+  y_quant_p2 c10 realistic     flexmaf   rho= 0.70  detected 39/60 (directional 39/60)  oracle 35  by link step - lof - graded 39/60
+  y_quant_p2 c10 realistic     flexscore rho= 0.74  detected 44/60 (directional 44/60)  oracle 39  by link step - lof - graded 44/60
+  y_quant_p2 c10 realistic     flex192   rho= 0.74  detected 45/60 (directional 45/60)  oracle 39  by link step - lof - graded 45/60
+  y_quant_p2 c10 synonymous    unw       rho=-0.21  detected  0/60 (directional  0/60)  oracle 0  by link step - lof - graded 0/60
+  y_quant_p2 c10 synonymous    flex192   rho=-0.35  detected  0/60 (directional  0/60)  oracle 0  by link step - lof - graded 0/60
+  y_binary_p2 c10 informative   flex1     rho= 0.24  detected 22/60 (directional 22/60)  oracle 22  by link step - lof - graded 22/60
+  y_binary_p2 c10 informative   flexmaf   rho= 0.24  detected 21/60 (directional 21/60)  oracle 21  by link step - lof - graded 21/60
+  y_binary_p2 c10 informative   flexscore rho= 0.20  detected 24/60 (directional 24/60)  oracle 21  by link step - lof - graded 24/60
+  y_binary_p2 c10 informative   flex192   rho= 0.21  detected 23/60 (directional 23/60)  oracle 20  by link step - lof - graded 23/60
+  y_binary_p2 c10 plain         grid      rho= 0.26  detected 21/60 (directional 21/60)  oracle 21  by link step - lof - graded 21/60
+  y_binary_p2 c10 plain         unw       rho= 0.24  detected 22/60 (directional 22/60)  oracle 22  by link step - lof - graded 22/60
+  y_binary_p2 c10 plain         beta      rho= 0.24  detected 22/60 (directional 22/60)  oracle 22  by link step - lof - graded 22/60
+  y_binary_p2 c10 plain         skato     rho= 0.24  detected 25/60 (directional 25/60)  oracle -  by link step - lof - graded 25/60
+  y_binary_p2 c10 uninformative flex1     rho= 0.24  detected 22/60 (directional 22/60)  oracle 22  by link step - lof - graded 22/60
+  y_binary_p2 c10 uninformative flexmaf   rho= 0.24  detected 21/60 (directional 21/60)  oracle 21  by link step - lof - graded 21/60
+  y_binary_p2 c10 uninformative flexscore rho= 0.24  detected 23/60 (directional 23/60)  oracle 20  by link step - lof - graded 23/60
+  y_binary_p2 c10 uninformative flex192   rho= 0.24  detected 19/60 (directional 19/60)  oracle 18  by link step - lof - graded 19/60
+  y_binary_p2 c10 realistic     flex1     rho= 0.24  detected 22/60 (directional 22/60)  oracle 22  by link step - lof - graded 22/60
+  y_binary_p2 c10 realistic     flexmaf   rho= 0.24  detected 21/60 (directional 21/60)  oracle 21  by link step - lof - graded 21/60
+  y_binary_p2 c10 realistic     flexscore rho= 0.19  detected 23/60 (directional 23/60)  oracle 21  by link step - lof - graded 23/60
+  y_binary_p2 c10 realistic     flex192   rho= 0.24  detected 23/60 (directional 23/60)  oracle 20  by link step - lof - graded 23/60
+  y_binary_p2 c10 synonymous    unw       rho=-0.37  detected  0/60 (directional  0/60)  oracle 0  by link step - lof - graded 0/60
+  y_binary_p2 c10 synonymous    flex192   rho=-0.34  detected  0/60 (directional  0/60)  oracle 0  by link step - lof - graded 0/60
+
+CONTROL 3 -- FlexRV detections must be monotone informative >= realistic >= uninformative,
+   and on the uninformative arm must not beat the unweighted burden
+  y_quant_p2 c10 flex192: informative 47, realistic 45, uninformative 39, unw 36  monotone=TRUE  uninf<=unw=FALSE
+  y_binary_p2 c10 flex192: informative 23, realistic 23, uninformative 19, unw 22  monotone=TRUE  uninf<=unw=TRUE
+
+COLLAPSE 0 vs 10 (flex192): median and max |log10 p_c0 - log10 p_c10| over genes

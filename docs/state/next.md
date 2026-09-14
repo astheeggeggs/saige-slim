@@ -1,6 +1,27 @@
-# What is worth doing next (2026-09-03, updated 2026-09-14; read docs/state/handoff-2026-09-14-codebase-audit.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-14; read docs/state/handoff-2026-09-14-flexrv-p2.md first)
 
-**Current handoff: `docs/state/handoff-2026-09-14-codebase-audit.md`** --
+**Current handoff: `docs/state/handoff-2026-09-14-flexrv-p2.md`** -- the
+FlexRV power fixture p2 (phenotypes only, on the 50k genotypes; causal signal
+at resolvable MAC, the score informative by construction) and its 72-run
+sweep at collapse 10, predicted first (`prediction-flexrv-p2-2026-09-14.md`).
+**The 2026-09-13 open question is closed: on `y_quant_p2` the permuted score
+gives the unweighted burden gene for gene (29 : 31, sign p 0.90) while the
+informative score finds 47 of 60 genes against unw's 36 (47 : 13, p 1e-5),
+monotone in score quality, zero false detections among 150 null genes.**
+Two owner decisions recorded there: the collapse cutoff stays at 10 for both
+traits (upstream's default), and this fixture replaces the 2026-09-10 one for
+power questions. What it leaves open, in cost order: (1) the binary arm's
+NCP column is the generator's linearised liability-threshold constant and
+saturates above ~0.6 sd per allele (22 detections where 34 were designed;
+the paired statements hold on the binary trait too) -- replace it with the
+exact threshold-model NCP; (2) the pooled Cauchy rows sit at 0.09 on the
+quantitative null at alpha 0.05 (flex192, flexmaf, AND the 6-cell grid; the
+tail and every binary/non-causal line are clean), which is the #126-era
+"0.06-0.08" item made slightly worse by #142's rung drop, as that row
+predicted; (3) the 2026-09-12 decisions memo's fixture and collapse-0 halves
+are superseded. The audit handoff below is still the code-side pointer.
+
+**Previous handoff: `docs/state/handoff-2026-09-14-codebase-audit.md`** --
 a whole-codebase structural quality audit at `9deab7c9`. 96 findings raised,
 each faced by two independent skeptics (one attacking the facts, one attacking
 bug-for-bug preservation and golden movement); **62 survived, 34 refuted**, all

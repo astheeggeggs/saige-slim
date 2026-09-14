@@ -2,13 +2,18 @@
 # Controls FIRST, each with its expectation printed beside it; then the
 # tables. Reads results/<trait>_<arm>_<method>_c<collapse>_r1.txt written by
 # run.sh and truth_genes.tsv from the fixture.
-# usage: Rscript analyse.R [results dir] [fixture dir]
+# usage: Rscript analyse.R [results dir] [fixture dir] [suffix]
+# A suffix (e.g. _p2, make_power_pheno.py) selects the traits y_quant<suffix>,
+# y_binary<suffix>, y_null_bin<suffix> and truth_genes<suffix>.tsv; y_null (the
+# quantitative null) has no suffixed twin and is read as is.
 args <- commandArgs(TRUE)
 R <- if (length(args) >= 1) args[1] else "/Users/dpalmer/Repositories/SAIGE/harness/work/flexrv_study/results"
 D <- if (length(args) >= 2) args[2] else "/Users/dpalmer/Repositories/SAIGE-sim/harness/work/sim50k"
+SFX <- if (length(args) >= 3) args[3] else ""
+T_QUANT <- paste0("y_quant", SFX); T_BIN <- paste0("y_binary", SFX); T_NULLB <- paste0("y_null_bin", SFX)
 rd <- function(p) utils::read.table(p, header = TRUE, sep = "\t", colClasses = "character",
                                     quote = "", comment.char = "", na.strings = character(0))
-truth <- rd(file.path(D, "truth_genes.tsv"))
+truth <- rd(file.path(D, paste0("truth_genes", SFX, ".tsv")))
 truth$causal <- as.integer(truth$causal)
 truth$directional <- as.integer(truth$directional)
 truth$NCP_quant <- as.numeric(truth$NCP_quant)
@@ -17,7 +22,7 @@ if (!"link" %in% colnames(truth)) truth$link <- "."
 files <- list.files(R, pattern = "_r1\\.txt$", full.names = TRUE)
 parse_tag <- function(f) {
   t <- sub("_r1\\.txt$", "", basename(f))
-  m <- regmatches(t, regexec("^(y_[a-z_]+?)_(informative|realistic|uninformative|synonymous|plain)_([a-z0-9]+)_c([0-9]+)$", t))[[1]]
+  m <- regmatches(t, regexec("^(y_[a-z0-9_]+?)_(informative|realistic|uninformative|synonymous|plain)_([a-z0-9]+)_c([0-9]+)$", t))[[1]]
   list(trait = m[2], arm = m[3], method = m[4], collapse = m[5])
 }
 # the gene-level p per file: the pooled Cauchy row (FlexRV) or the cell row
@@ -57,12 +62,12 @@ ecdf_tab <- function(sub, label) {
   }
 }
 cat("CONTROL 1 -- null calibration: the ECDF at alpha with a binomial 95% CI; expected inside on every line\n")
-for (tr in c("y_null", "y_null_bin")) for (cl in unique(res$collapse)) for (m in unique(res$method)) for (a in unique(res$arm)) {
+for (tr in c("y_null", T_NULLB)) for (cl in unique(res$collapse)) for (m in unique(res$method)) for (a in unique(res$arm)) {
   sub <- res[res$trait == tr & res$collapse == cl & res$method == m & res$arm == a, ]
   if (nrow(sub)) ecdf_tab(sub, paste(tr, "collapse", cl, m, a))
 }
 cat("\nCONTROL 1b -- the non-causal genes of the signal traits\n")
-for (tr in c("y_quant", "y_binary")) for (cl in unique(res$collapse)) for (m in unique(res$method)) for (a in unique(res$arm)) {
+for (tr in c(T_QUANT, T_BIN)) for (cl in unique(res$collapse)) for (m in unique(res$method)) for (a in unique(res$arm)) {
   sub <- res[res$trait == tr & res$collapse == cl & res$method == m & res$arm == a & res$causal == 0, ]
   if (nrow(sub)) ecdf_tab(sub, paste(tr, "non-causal, collapse", cl, m, a))
 }
@@ -71,8 +76,8 @@ for (tr in c("y_quant", "y_binary")) for (cl in unique(res$collapse)) for (m in 
 cat("\nCONTROL 2 -- Spearman(NCP, -log10 p) over causal genes, expected > 0.5 for every method\n")
 cat("   and detections at gene-level alpha = 0.05 / n_genes (Bonferroni) among causal genes\n")
 pow <- list()
-for (tr in c("y_quant", "y_binary")) {
-  ncp <- if (tr == "y_quant") "NCP_quant" else "NCP_binary"
+for (tr in c(T_QUANT, T_BIN)) {
+  ncp <- if (tr == T_QUANT) "NCP_quant" else "NCP_binary"
   ng <- length(unique(res$gene[res$trait == tr]))
   for (cl in unique(res$collapse)) for (a in unique(res$arm)) for (m in unique(res$method)) {
     sub <- res[res$trait == tr & res$collapse == cl & res$method == m & res$arm == a & res$causal == 1, ]
@@ -94,7 +99,7 @@ for (tr in c("y_quant", "y_binary")) {
 # ---- control 3: monotonicity in the score arm (FlexRV only)
 cat("\nCONTROL 3 -- FlexRV detections must be monotone informative >= realistic >= uninformative,\n")
 cat("   and on the uninformative arm must not beat the unweighted burden\n")
-for (tr in c("y_quant", "y_binary")) for (cl in unique(res$collapse)) {
+for (tr in c(T_QUANT, T_BIN)) for (cl in unique(res$collapse)) {
   g <- function(a, m) { x <- pow[[paste(tr, cl, a, m)]]; if (is.null(x)) NA else x[["det"]] }
   di <- g("informative", "flex192"); dr <- g("realistic", "flex192"); du <- g("uninformative", "flex192")
   dp <- g("plain", "unw")
