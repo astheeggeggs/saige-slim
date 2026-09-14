@@ -4990,6 +4990,47 @@ bool openOutfile(int t_modelIndex, std::string t_traitType, bool isappend, unsig
      return(isopen);
 }
 
+// E2 (2026-09-14): ONE single-variant row schema. The marker path's writer
+// and the region path's in-group writer emitted the identical column ladder
+// from two hand-synced bodies (and two header emitters against two streams);
+// LEDGER #44's writeNumOrNA landed in one and reached the other a day later
+// as #66. The four flags below are the whole schema; the header and the row
+// are written by exactly one function each, byte for byte the old sequence.
+struct SingleVariantSchema {
+  bool isMoreOutput;
+  bool isImputation;
+  bool isCondition;
+  std::string traitType;
+};
+
+static void writeSingleVariantHeader(std::ofstream & os, const SingleVariantSchema & sc){
+  os << "CHR\tPOS\tMarkerID\tAllele1\tAllele2\tAC_Allele2\tAF_Allele2\t";
+  if(sc.isImputation){
+    os << "imputationInfo\t";
+  }else{
+    os << "MissingRate\t";
+  }
+  os << "BETA\tSE\tTstat\tvar\tp.value\t";
+  if(sc.traitType == "binary"){
+    os << "p.value.NA\tIs.SPA\t";
+  }
+  if(sc.isCondition){
+    os << "BETA_c\tSE_c\tTstat_c\tvar_c\tp.value_c\t";
+    if(sc.traitType == "binary"){
+      os << "p.value.NA_c\t";
+    }
+  }
+  if(sc.traitType == "binary"){
+    os << "AF_case\tAF_ctrl\tN_case\tN_ctrl";
+    if(sc.isMoreOutput){
+      os << "\tN_case_hom\tN_case_het\tN_ctrl_hom\tN_ctrl_het";
+    }
+    os << "\n";
+  }else if(sc.traitType == "quantitative"){
+    os << "N\n";
+  }
+}
+
 // [[Rcpp::export]]
 bool openOutfile_singleinGroup(int t_modelIndex, std::string t_traitType, bool t_isImputation, bool isappend, bool t_isMoreOutput){
         RegionWriter & rw = regionWriter(t_modelIndex);
@@ -4999,35 +5040,7 @@ bool openOutfile_singleinGroup(int t_modelIndex, std::string t_traitType, bool t
         rw.singleInGroup.open(rw.prefixSingleInGroup.c_str());
 	isopen = rw.singleInGroup.is_open();
         if(isopen){
-                rw.singleInGroup << "CHR\tPOS\tMarkerID\tAllele1\tAllele2\tAC_Allele2\tAF_Allele2\t";
-		if(t_isImputation){
-			rw.singleInGroup << "imputationInfo\t";
-		}else{
-			
-			rw.singleInGroup << "MissingRate\t";
-		}
-		rw.singleInGroup << "BETA\tSE\tTstat\tvar\tp.value\t";
-	        if(t_traitType == "binary"){
-                        rw.singleInGroup << "p.value.NA\tIs.SPA\t";
-                }	
-
-                if(model.m_isCondition){
-                        rw.singleInGroup << "BETA_c\tSE_c\tTstat_c\tvar_c\tp.value_c\t";
-			if(t_traitType == "binary"){
-				rw.singleInGroup << "p.value.NA_c\t";		
-			}
-                }
-		
-	        if(t_traitType == "binary"){
-                        rw.singleInGroup << "AF_case\tAF_ctrl\tN_case\tN_ctrl";
- 			if(t_isMoreOutput){
-                                rw.singleInGroup << "\tN_case_hom\tN_case_het\tN_ctrl_hom\tN_ctrl_het";
-                        }
-			rw.singleInGroup << "\n";
-                }else if(t_traitType == "quantitative"){
-			rw.singleInGroup << "N\n";	
-			
-		}
+                writeSingleVariantHeader(rw.singleInGroup, SingleVariantSchema{t_isMoreOutput, t_isImputation, model.m_isCondition, t_traitType});
 
         }
     }else{
@@ -5061,41 +5074,7 @@ bool openOutfile_single(int t_modelIndex, bool t_isImputation, bool isappend, bo
         w.stream.open(w.prefix.c_str());
         isopen = w.stream.is_open();
         if(isopen){
-                w.stream << "CHR\tPOS\tMarkerID\tAllele1\tAllele2\tAC_Allele2\tAF_Allele2\t";
-                if(t_isImputation){
-                        w.stream << "imputationInfo\t";
-                }else{
-
-                        w.stream << "MissingRate\t";
-                }
-                w.stream << "BETA\tSE\tTstat\tvar\tp.value\t";
-                if(t_traitType == "binary"){
-                        w.stream << "p.value.NA\tIs.SPA\t";
-                }
-
-                if(model.m_isCondition){
-                        w.stream << "BETA_c\tSE_c\tTstat_c\tvar_c\tp.value_c\t";
-			if(t_traitType == "binary"){
-				w.stream << "p.value.NA_c\t";
-			}
-
-
-
-                }
-		
-
-                if(t_traitType == "binary"){
-                        w.stream << "AF_case\tAF_ctrl\tN_case\tN_ctrl";
-
-			if(t_isMoreOutput){	
-				w.stream << "\tN_case_hom\tN_case_het\tN_ctrl_hom\tN_ctrl_het";
-			}
-			w.stream << "\n";
-
-                }else if(t_traitType == "quantitative"){
-                        w.stream << "N\n";
-
-                }
+                writeSingleVariantHeader(w.stream, SingleVariantSchema{t_isMoreOutput, t_isImputation, model.m_isCondition, t_traitType});
 
         }
      }else{
@@ -5332,9 +5311,93 @@ static inline void writeNumOrNA(std::ofstream & t_os, double t_x){
   }
 }
 
-// S4: the writer now streams MarkerResult slots instead of ~30 parallel
-// q-length vectors. Same rows, same order, same skip-on-"NA" rule, same
-// numtest; it just reads one object per marker rather than indexing thirty.
+// The row. `res.pval != "NA"` is the caller's skip rule (a QC-dropped marker
+// leaves its pval at the record default and is not written); the region
+// caller fills a local MarkerResult per index from its parallel vectors.
+static void writeSingleVariantRow(std::ofstream & os, const SingleVariantSchema & sc, const Marker::MarkerResult & res){
+  os << res.chr;
+  os << "\t";
+  os << res.pos;
+  os << "\t";
+  os << res.marker;
+  os << "\t";
+  os << res.ref;
+  os << "\t";
+  os << res.alt;
+  os << "\t";
+  os << res.altCounts;
+  os << "\t";
+  os << res.altFreq;
+  os << "\t";
+  if(sc.isImputation){
+    os << res.imputationInfo;
+    os << "\t";
+  }else{
+    os << res.missingRate;
+    os << "\t";
+  }
+  // LEDGER #44/#66: writeNumOrNA, not a raw <<, for the effect sizes a score
+  // test declined to compute (NA_REAL, whose bare spelling is platform-dependent).
+  writeNumOrNA(os, res.Beta);
+  os << "\t";
+  writeNumOrNA(os, res.seBeta);
+  os << "\t";
+  os << res.Tstat;
+  os << "\t";
+  os << res.varT;
+  os << "\t";
+  os << res.pval;
+  os << "\t";
+  if(sc.traitType == "binary"){
+    os << res.pvalNA;
+    os << "\t";
+    os << std::boolalpha << res.isSPAConverge;
+    os << "\t";
+  }
+  if(sc.isCondition){
+    writeNumOrNA(os, res.Beta_c);
+    os << "\t";
+    writeNumOrNA(os, res.seBeta_c);
+    os << "\t";
+    os << res.Tstat_c;
+    os << "\t";
+    os << res.varT_c;
+    os << "\t";
+    os << res.pval_c;
+    os << "\t";
+    if(sc.traitType == "binary"){
+      os << res.pvalNA_c;
+      os << "\t";
+    }
+  }
+  if(sc.traitType == "binary"){
+    os << res.AF_case;
+    os << "\t";
+    os << res.AF_ctrl;
+    os << "\t";
+    os << res.N_case;
+    os << "\t";
+    os << res.N_ctrl;
+    if(sc.isMoreOutput){
+      os << "\t";
+      os << res.N_case_hom;
+      os << "\t";
+      os << res.N_case_het;
+      os << "\t";
+      os << res.N_ctrl_hom;
+      os << "\t";
+      os << res.N_ctrl_het;
+    }
+    os << "\n";
+  }else if(sc.traitType == "quantitative"){
+    os << res.N;
+    os << "\n";
+  }
+}
+
+// S4: the writer streams MarkerResult slots; since E2 the row itself is
+// writeSingleVariantRow, shared with the region path. Same rows, same order,
+// same skip-on-"NA" rule, same numtest.
 void writeOutfile_single(bool t_isMoreOutput,
 			bool t_isImputation,
 			bool t_isCondition,
@@ -5346,92 +5409,13 @@ void writeOutfile_single(bool t_isMoreOutput,
                         std::ofstream & t_stream
 
 ){
+  const SingleVariantSchema sc{t_isMoreOutput, t_isImputation, t_isCondition, t_traitType};
   int numtest = 0;
   for(unsigned int k = 0; k < t_resultVec.size(); k++){
         const Marker::MarkerResult & res = t_resultVec.at(k);
         if(res.pval != "NA"){
                 numtest = numtest + 1;
-                t_stream << res.chr;
-                t_stream << "\t";
-                t_stream << res.pos;
-                t_stream << "\t";
-                t_stream << res.marker;
-                t_stream << "\t";
-                t_stream << res.ref;
-                t_stream << "\t";
-                t_stream << res.alt;
-                t_stream << "\t";
-                t_stream << res.altCounts;
-                t_stream << "\t";
-                t_stream << res.altFreq;
-                t_stream << "\t";
-
-                if(t_isImputation){
-                        t_stream << res.imputationInfo;
-                        t_stream << "\t";
-                }else{
-                        t_stream << res.missingRate;
-                        t_stream << "\t";
-
-                }
-                writeNumOrNA(t_stream, res.Beta);
-                t_stream << "\t";
-                writeNumOrNA(t_stream, res.seBeta);
-                t_stream << "\t";
-                t_stream << res.Tstat;
-                t_stream << "\t";
-                t_stream << res.varT;
-                t_stream << "\t";
-                t_stream << res.pval;
-                t_stream << "\t";
-
-                if(t_traitType == "binary"){
-                        t_stream << res.pvalNA;
-                        t_stream << "\t";
-                        t_stream << std::boolalpha << res.isSPAConverge;
-                        t_stream << "\t";
-                }
-                if(t_isCondition){
-                        writeNumOrNA(t_stream, res.Beta_c);
-                        t_stream << "\t";
-                        writeNumOrNA(t_stream, res.seBeta_c);
-                        t_stream << "\t";
-                        t_stream << res.Tstat_c;
-                        t_stream << "\t";
-                        t_stream << res.varT_c;
-                        t_stream << "\t";
-                        t_stream << res.pval_c;
-                        t_stream << "\t";
-			if(t_traitType == "binary"){	
-                        	t_stream << res.pvalNA_c;
-                        	t_stream << "\t";
-			}	
-                }
-                if(t_traitType == "binary"){
-                        t_stream << res.AF_case;
-                        t_stream << "\t";
-                        t_stream << res.AF_ctrl;
-                        t_stream << "\t";
-                        t_stream << res.N_case;
-                        t_stream << "\t";
-                        t_stream << res.N_ctrl;
-
-                        if(t_isMoreOutput){
-                                t_stream << "\t";
-                                t_stream << res.N_case_hom;
-                                t_stream << "\t";
-                                t_stream << res.N_case_het;
-                                t_stream << "\t";
-                                t_stream << res.N_ctrl_hom;
-                                t_stream << "\t";
-                                t_stream << res.N_ctrl_het;
-                        }
-                        t_stream << "\n";
-                }else if(t_traitType == "quantitative"){
-                        t_stream << res.N;
-                        t_stream << "\n";
-
-                }
+                writeSingleVariantRow(t_stream, sc, res);
         }
   }
   std::cout << numtest << " markers were tested." << std::endl;
@@ -5592,101 +5576,52 @@ int writeOutfile_singleInGroup(bool t_isMoreOutput,
                         std::vector<double>  & N_ctrl_homVec,
                         std::vector<uint32_t> & N_Vec,
                         std::ofstream & t_OutFile_singleInGroup){
+  // E2: the region path keeps its structure-of-arrays (the accumulate/OutList
+  // contract is untouched); each row is copied into a local MarkerResult and
+  // written by the shared writer. The trait type still comes from R
+  // (t_traitType), not from the model. Byte-identical to the old body: the
+  // same << sequence, and isSPAConvergeVec's unsigned char becomes the bool
+  // the old `!= 0` printed.
+  const SingleVariantSchema sc{t_isMoreOutput, t_isImputation, t_isCondition, t_traitType};
   int numofUR = 0;
   for(unsigned int k = 0; k < pvalVec.size(); k++){
-        //if(std::isfinite(pvalVec.at(k))){
-        //if(!std::isnan(pvalVec.at(k))){
         if(pvalVec.at(k) != "NA"){
 		if(chrVec.at(k) == "UR"){
                         numofUR = numofUR + 1;
                 }
-                t_OutFile_singleInGroup << chrVec.at(k);
-                t_OutFile_singleInGroup << "\t";
-                t_OutFile_singleInGroup << posVec.at(k);
-                t_OutFile_singleInGroup << "\t";
-                t_OutFile_singleInGroup << markerVec.at(k);
-                t_OutFile_singleInGroup << "\t";
-                t_OutFile_singleInGroup << refVec.at(k);
-                t_OutFile_singleInGroup << "\t";
-                t_OutFile_singleInGroup << altVec.at(k);
-                t_OutFile_singleInGroup << "\t";
-                t_OutFile_singleInGroup << altCountsVec.at(k);
-                t_OutFile_singleInGroup << "\t";
-                t_OutFile_singleInGroup << altFreqVec.at(k);
-                t_OutFile_singleInGroup << "\t";
-
-                if(t_isImputation){
-                        t_OutFile_singleInGroup << imputationInfoVec.at(k);
-                        t_OutFile_singleInGroup << "\t";
-                }else{
-                        t_OutFile_singleInGroup << missingRateVec.at(k);
-                        t_OutFile_singleInGroup << "\t";
-
-                }
-                // LEDGER #66: writeNumOrNA, not a raw <<. The score tests
-                // (LEDGER #44) and now the conditional block emit NA_REAL for
-                // an effect size they declined to compute, and this writer --
-                // unlike writeOutfile_single -- printed it as a bare NaN,
-                // whose spelling is platform-dependent. Byte-neutral on every
-                // committed golden: none carries a non-finite effect size.
-                writeNumOrNA(t_OutFile_singleInGroup, BetaVec.at(k));
-                t_OutFile_singleInGroup << "\t";
-                writeNumOrNA(t_OutFile_singleInGroup, seBetaVec.at(k));
-                t_OutFile_singleInGroup << "\t";
-                t_OutFile_singleInGroup << TstatVec.at(k);
-                t_OutFile_singleInGroup << "\t";
-                t_OutFile_singleInGroup << varTVec.at(k);
-                t_OutFile_singleInGroup << "\t";
-                t_OutFile_singleInGroup << pvalVec.at(k);
-                t_OutFile_singleInGroup << "\t";
-
-                if(t_traitType == "binary"){
-                        t_OutFile_singleInGroup << pvalNAVec.at(k);
-                        t_OutFile_singleInGroup << "\t";
-                        t_OutFile_singleInGroup << std::boolalpha << (isSPAConvergeVec.at(k) != 0);
-                        t_OutFile_singleInGroup << "\t";
-                }
-                if(t_isCondition){
-                        writeNumOrNA(t_OutFile_singleInGroup, Beta_cVec.at(k));
-                        t_OutFile_singleInGroup << "\t";
-                        writeNumOrNA(t_OutFile_singleInGroup, seBeta_cVec.at(k));
-                        t_OutFile_singleInGroup << "\t";
-                        t_OutFile_singleInGroup << Tstat_cVec.at(k);
-                        t_OutFile_singleInGroup << "\t";
-                        t_OutFile_singleInGroup << varT_cVec.at(k);
-                        t_OutFile_singleInGroup << "\t";
-                        t_OutFile_singleInGroup << pval_cVec.at(k);
-                        t_OutFile_singleInGroup << "\t";
-			if(t_traitType == "binary"){
-                        	t_OutFile_singleInGroup << pvalNA_cVec.at(k);
-                        	t_OutFile_singleInGroup << "\t";
-			}
-                }
-                if(t_traitType == "binary"){
-                        t_OutFile_singleInGroup << AF_caseVec.at(k);
-                        t_OutFile_singleInGroup << "\t";
-                        t_OutFile_singleInGroup << AF_ctrlVec.at(k);
-                        t_OutFile_singleInGroup << "\t";
-                        t_OutFile_singleInGroup << N_caseVec.at(k);
-                        t_OutFile_singleInGroup << "\t";
-                        t_OutFile_singleInGroup << N_ctrlVec.at(k);
-
-                        if(t_isMoreOutput){
-                                t_OutFile_singleInGroup << "\t";
-                                t_OutFile_singleInGroup << N_case_homVec.at(k);
-                                t_OutFile_singleInGroup << "\t";
-                                t_OutFile_singleInGroup << N_case_hetVec.at(k);
-                                t_OutFile_singleInGroup << "\t";
-                                t_OutFile_singleInGroup << N_ctrl_homVec.at(k);
-                                t_OutFile_singleInGroup << "\t";
-                                t_OutFile_singleInGroup << N_ctrl_hetVec.at(k);
-                        }
-                        t_OutFile_singleInGroup << "\n";
-                }else if(t_traitType == "quantitative"){
-                        t_OutFile_singleInGroup << N_Vec.at(k);
-                        t_OutFile_singleInGroup << "\n";
-
-                }
+                Marker::MarkerResult res;
+                res.chr = chrVec.at(k);
+                res.pos = posVec.at(k);
+                res.marker = markerVec.at(k);
+                res.ref = refVec.at(k);
+                res.alt = altVec.at(k);
+                res.altCounts = altCountsVec.at(k);
+                res.altFreq = altFreqVec.at(k);
+                res.imputationInfo = imputationInfoVec.at(k);
+                res.missingRate = missingRateVec.at(k);
+                res.Beta = BetaVec.at(k);
+                res.seBeta = seBetaVec.at(k);
+                res.Tstat = TstatVec.at(k);
+                res.varT = varTVec.at(k);
+                res.pval = pvalVec.at(k);
+                res.pvalNA = pvalNAVec.at(k);
+                res.isSPAConverge = (isSPAConvergeVec.at(k) != 0);
+                res.Beta_c = Beta_cVec.at(k);
+                res.seBeta_c = seBeta_cVec.at(k);
+                res.Tstat_c = Tstat_cVec.at(k);
+                res.varT_c = varT_cVec.at(k);
+                res.pval_c = pval_cVec.at(k);
+                res.pvalNA_c = pvalNA_cVec.at(k);
+                res.AF_case = AF_caseVec.at(k);
+                res.AF_ctrl = AF_ctrlVec.at(k);
+                res.N_case = N_caseVec.at(k);
+                res.N_ctrl = N_ctrlVec.at(k);
+                res.N_case_hom = N_case_homVec.at(k);
+                res.N_ctrl_het = N_ctrl_hetVec.at(k);
+                res.N_case_het = N_case_hetVec.at(k);
+                res.N_ctrl_hom = N_ctrl_homVec.at(k);
+                res.N = N_Vec.at(k);
+                writeSingleVariantRow(t_OutFile_singleInGroup, sc, res);
         }
   }
   return(numofUR);
