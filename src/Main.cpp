@@ -2108,9 +2108,19 @@ Rcpp::List RegionSetUpConditional_binary_InCPP(arma::vec & t_weight_cond, int t_
                 w0G2Vec_cond.at(ci) = w0G2_cond;
         }
 	arma::mat m_VarMat_weighted_cond = (w0G2Vec_cond * (w0G2Vec_cond.t())) % (model.m_VarMat_cond);
+	// LEDGER #143 (units half). m_Tstat_cond is the UNWEIGHTED per-marker
+	// score (TstatVec(i) = Tstat in assign_conditionMarkers_factors); the
+	// kernel this list feeds standardises sum(Score)^2 against Phi, q.sum and
+	// g.sum, which all carry w0. Exporting the raw score put one input of four
+	// in different units, so the per-marker scale factor carried a 1/w0 and
+	// the _cond columns depended on --weights_for_condition, which a linear
+	// reparameterisation cannot (test-characterization-ledger143.R). The
+	// weighted score is the same vector the region export forms as
+	// Tstat_G2_cond_w0 / (m_Tstat_cond % w0G2Vec_cond) below.
+	arma::vec Score_G2_cond_w0 = model.m_Tstat_cond % w0G2Vec_cond;
 
 	 Rcpp::List OutList = Rcpp::List::create(Rcpp::Named("VarMat_G2_cond") = m_VarMat_weighted_cond,
-                                          Rcpp::Named("Score_G2_cond") = model.m_Tstat_cond,
+                                          Rcpp::Named("Score_G2_cond") = Score_G2_cond_w0,
                                           Rcpp::Named("pval_G2_cond") = model.m_p_cond,
                                           Rcpp::Named("gsum_G2_cond") = model.m_gsum_cond,
                                           Rcpp::Named("qsum_G2_cond") = model.m_qsum_cond
@@ -4520,7 +4530,7 @@ if(t_regionTestType == "BURDEN"){
       OutList.push_back(w.G1tilde_P_G2tilde_Weighted_Mat, "G1tilde_P_G2tilde_Weighted_Mat");
       OutList.push_back(model.m_scalefactor_G2_cond, "scalefactor_G2_cond");
       OutList.push_back(model.m_VarInvMat_cond_scaled_weighted, "VarInvMat_G2_cond_scaled");
-      OutList.push_back(model.m_Tstat_cond, "Tstat_G2_cond"); //m_Tstat_cond is weighted
+      OutList.push_back(model.m_Tstat_cond, "Tstat_G2_cond"); // UNWEIGHTED (LEDGER #143); the w0 is applied in R
       OutList.push_back(model.m_G2_Weight_cond, "G2_Weight_cond");
       OutList.push_back(TstatAdjCond, "TstatAdjCond");
       OutList.push_back(VarMatAdjCond, "VarMatAdjCond");
