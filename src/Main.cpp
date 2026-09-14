@@ -2397,6 +2397,21 @@ Rcpp::List mainRegionInCPP(
     q_weight_beta = 1;
   }
   unsigned int q_weight = q_weight_custom + q_weight_transform + q_weight_beta + (t_includeNoWeights ? 1u : 0u);
+  // LEDGER #146 (a) FIXED: R composed the sets once (region_weight_names, one
+  // label per set, and the header for that count) and this function composed
+  // them again from the same inputs. The one way they could differ -- a
+  // region whose ENTIRE custom weight matrix is zero, which drops the custom
+  // sets above and falls through to one implicit beta set -- used to reach
+  // the writers as a size disagreement the "W" + r label fallbacks papered
+  // over: a header WITH a Weight column over rows WITHOUT it, at exit 0. The
+  // two compositions must agree, and the labels are R's, always.
+  if(q_weight != t_weightNames.size()){
+    Rcpp::stop("mainRegionInCPP: R composed " + std::to_string(t_weightNames.size()) +
+               " weight set(s) for this region but C++ composed " + std::to_string(q_weight) +
+               " (custom " + std::to_string(q_weight_custom) + ", transform " + std::to_string(q_weight_transform) +
+               ", beta " + std::to_string(q_weight_beta) + ", No_Weights " + std::to_string(t_includeNoWeights ? 1u : 0u) +
+               "). A region whose custom weight lines are ALL zero is the known cause (LEDGER #146).");
+  }
   // Weight-column emission in the BURDEN writer: on for a real multi-weight
   // run, or forced at a single set by is_output_weight_column (schema only;
   // no arithmetic depends on this flag)
@@ -3820,7 +3835,7 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
 	    if(q_weight > 1){
 	      // per-set UR pseudo-markers get a weight-set suffix; q_weight == 1
 	      // keeps the legacy name (and legacy output bytes)
-	      std::string wname = (r < t_weightNames.size()) ? t_weightNames.at(r) : ("W" + std::to_string(r + 1));
+	      const std::string & wname = t_weightNames.at(r); // sizes asserted equal (LEDGER #146)
 	      markerVec.at(i) = markerVec.at(i) + ":" + wname;
 	    }
             // LEDGER #118 (b): the REPORTED MAC and its case/control halves take
@@ -5565,9 +5580,9 @@ void writeOutfile_BURDEN(std::string regionName,
            rw.group << BURDEN_maxMAFName_Vec.at(i);
            rw.group << "\t";
            if(t_emitWeightColumn){
-             // per-set Weight label right after max_MAF (design D3); same
-             // name fallback as the UR pseudo-marker suffix in mainRegionInCPP
-             rw.group << ((r < t_weightNames.size()) ? t_weightNames.at(r) : ("W" + std::to_string(r + 1)));
+             // per-set Weight label right after max_MAF (design D3); R's label,
+             // the set counts having been asserted equal (LEDGER #146)
+             rw.group << t_weightNames.at(r);
              rw.group << "\t";
            }
            rw.group << BURDEN_pval_Vec.at(i);
