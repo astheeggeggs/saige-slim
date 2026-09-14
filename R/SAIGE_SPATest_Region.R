@@ -1023,24 +1023,13 @@ SAIGE.Region <- function(mu,
   n <- length(mu[[1]]) # sample size
 
 
-  if (r.corr == 0) {
-    out.method <- SKAT:::SKAT_Check_Method(method = "optimal.adj", r.corr = 0)
-    method <- out.method$method
-    r.corr <- out.method$r.corr
-    cat(
-      "SKAT-O test will be performed. P-values for BURDEN and SKAT tests will also be output\n"
-    )
-    regionTestType <- "SKAT-O"
-    is_single_in_groupTest <- TRUE
-  } else if (r.corr == 1) {
-    method <- NULL
-    cat("BURDEN test will be performed\n")
-    regionTestType <- "BURDEN"
-    # the BURDEN output file (written from Rcpp) is opened after the group
-    # file check below: its header needs the number of weight sets K
-  } else {
-    stop("r.corr needs to be either 1 (BURDEN test) or 0 (SKAT-O test)\n")
-  }
+  # Phase G1 slice 2: r.corr -> test plan (R/RegionState.R). The plan's
+  # r.corr is what every later consumer reads: SKAT_Check_Method promotes 0
+  # to the 7-element rho grid.
+  plan <- regionTestPlan(r.corr, is_single_in_groupTest)
+  r.corr <- plan$r.corr
+  regionTestType <- plan$regionTestType
+  is_single_in_groupTest <- plan$is_single_in_groupTest
 
 
   # Start the SKAT-O pool BEFORE the first C++ region call: with --nThreads > 1
@@ -1960,13 +1949,8 @@ SAIGE.Region <- function(mu,
     }
   }
 
-  message <- paste0(
-    "Analysis done! The results have been saved to '",
-    paste(OutputFiles, collapse = "', '"),
-    "' and '",
-    paste(paste0(OutputFiles, ".markerInfo"), collapse = "', '"),
-    "'."
-  )
+  # (a first "Analysis done! ... .markerInfo" message used to be assembled
+  # here and overwritten unconditionally below; deleted, Phase G1 slice 3)
 
   # LEDGER #57: how many cells the SKAT kernel failed on (their rows are NA),
   # and a sidecar naming each with its message when that count is not zero.
@@ -1981,31 +1965,9 @@ SAIGE.Region <- function(mu,
   # model's file when any region has something to disclose.
   pooledSummary(OutputFile)
 
-  message <- "Analysis done!"
-  message <- paste0(
-    message,
-    " The set-based tests results have been saved to '",
-    paste(OutputFiles, collapse = "', '"),
-    "'."
-  )
-  if (is_output_markerList_in_groupTest) {
-    message <- paste0(
-      message,
-      " The marker lists have been saved to '",
-      OutputFile,
-      ".markerList.txt'."
-    )
-  }
-  if (is_single_in_groupTest) {
-    message <- paste0(
-      message,
-      " The single-variant association tests results have been saved to '",
-      OutputFile,
-      ".singleAssoc.txt'."
-    )
-  }
-
-  message
+  # Phase G1 slice 3 (R/RegionState.R)
+  regionDoneMessage(OutputFiles, OutputFile, is_output_markerList_in_groupTest,
+                    is_single_in_groupTest)
 }
 
 

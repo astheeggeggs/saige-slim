@@ -95,3 +95,50 @@ regionStateFor <- function(region, regionName, i, nRegions, nModels,
     resultDFListK = vector("list", nModels) # the per-set carry-forward cache, per model
   )
 }
+
+# Phase G1 slice 2: the test plan r.corr selects. Returns r.corr as well as
+# the method, because SKAT_Check_Method promotes 0 to the 7-element rho grid
+# c(0, 0.01, 0.04, 0.09, 0.25, 0.5, 1) that skat_fun, region_postprocess and
+# the batch pipeline all consume; a plan that dropped it would move every
+# SKAT-O golden or die. The two stdout lines are the loop's, unchanged.
+regionTestPlan <- function(r.corr, is_single_in_groupTest) {
+  if (r.corr == 0) {
+    out.method <- SKAT:::SKAT_Check_Method(method = "optimal.adj", r.corr = 0)
+    cat(
+      "SKAT-O test will be performed. P-values for BURDEN and SKAT tests will also be output\n"
+    )
+    list(method = out.method$method, r.corr = out.method$r.corr,
+         regionTestType = "SKAT-O", is_single_in_groupTest = TRUE)
+  } else if (r.corr == 1) {
+    cat("BURDEN test will be performed\n")
+    # the BURDEN output file (written from Rcpp) is opened after the group
+    # file check in SAIGE.Region: its header needs the number of weight sets K
+    list(method = NULL, r.corr = r.corr,
+         regionTestType = "BURDEN", is_single_in_groupTest = is_single_in_groupTest)
+  } else {
+    stop("r.corr needs to be either 1 (BURDEN test) or 0 (SKAT-O test)\n")
+  }
+}
+
+# Phase G1 slice 3: the value SAIGE.Region returns, which the CLI prints.
+# The sidecar summaries (#57, #127, the memo lines) are printed by the
+# caller before this is assembled, as before.
+regionDoneMessage <- function(OutputFiles, OutputFile, is_output_markerList_in_groupTest,
+                              is_single_in_groupTest) {
+  message <- paste0(
+    "Analysis done!",
+    " The set-based tests results have been saved to '",
+    paste(OutputFiles, collapse = "', '"),
+    "'."
+  )
+  if (is_output_markerList_in_groupTest) {
+    message <- paste0(message, " The marker lists have been saved to '", OutputFile,
+                      ".markerList.txt'.")
+  }
+  if (is_single_in_groupTest) {
+    message <- paste0(message,
+                      " The single-variant association tests results have been saved to '",
+                      OutputFile, ".singleAssoc.txt'.")
+  }
+  message
+}
