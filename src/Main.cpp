@@ -124,7 +124,7 @@ static Step2Config g_cfg;
 // 2026-09-14; it had five sites in three spellings). A free function rather
 // than a SAIGEClass method because g_cfg is file-static here. The two per-cell
 // `cm.isER` sites keep their own expression on purpose: they carry an extra
-// erAllowedVec[r] conjunct and read the unweighted MAC (LEDGER #134).
+// sets[r].erAllowed conjunct and read the unweighted MAC (LEDGER #134).
 static bool isERCandidate(double MAC, const std::string & traitType){
   return MAC <= g_cfg.MACCutoffforER && traitType == "binary";
 }
@@ -2310,44 +2310,51 @@ Rcpp::List mainRegionInCPP(
   // no arithmetic depends on this flag)
   bool emitWeightColumn = (q_weight > 1) || t_forceWeightColumn;
   const int SET_CUSTOM = 0, SET_BETA = 1, SET_NOWEIGHT = 2, SET_TRANSFORM = 3;
-  std::vector<int> setKindVec(q_weight);
-  std::vector<unsigned int> setColVec(q_weight, 0);  // custom column / beta row per set
-  std::vector<boost::math::beta_distribution<>> betaDistVec;
-  // per-set ER exact-test gate: the legacy (!isWeightCustomized ||
-  // isEqualWeights) predicate evaluated per set (true for beta and
-  // No_Weights sets, all-ones test for custom sets)
-  std::vector<bool> erAllowedVec(q_weight, true);
+  // E4 (2026-09-14): the per-set table, ONE record per weight set. It used to
+  // be four parallel arrays over three index domains (setKindVec/setColVec by
+  // set, betaDistVec by the set's beta ROW, erAllowedVec by set with its
+  // vector<bool> constructor default standing in for "ER allowed" on beta and
+  // No_Weights sets). Here every field is explicit for every kind. The
+  // per-kind semantics are design doc D2 / the table in the comment above.
+  //   erAllowed: the legacy (!isWeightCustomized || isEqualWeights) predicate
+  //   per set -- true for beta and No_Weights, the all-ones test for custom,
+  //   FlexRV::isUnitRow for a transform set (only unw x unw is identically 1;
+  //   a zero weight is not a unit weight, so lof_unw is NOT exempt).
+  struct WeightSet {
+    int kind = -1;
+    unsigned int col = 0;                       // custom column / transform column / beta row
+    boost::math::beta_distribution<> dist;      // beta sets only
+    bool erAllowed = true;
+  };
+  std::vector<WeightSet> sets(q_weight);
   {
     unsigned int rset = 0;
     for(unsigned int c = 0; c < q_weight_custom; c++){
-      setKindVec[rset] = SET_CUSTOM;
-      setColVec[rset] = c;
-      erAllowedVec[rset] = arma::all(t_weight.col(c) == 1.0);
+      sets[rset].kind = SET_CUSTOM;
+      sets[rset].col = c;
+      sets[rset].erAllowed = arma::all(t_weight.col(c) == 1.0);
       rset++;
     }
     for(unsigned int c = 0; c < q_weight_transform; c++){
-      setKindVec[rset] = SET_TRANSFORM;
-      setColVec[rset] = c;
-      // only the unw x unw set has weights identically 1; a zero weight is
-      // not a unit weight, so lof_unw is NOT exempt (design doc, "ER gating")
-      erAllowedVec[rset] = FlexRV::isUnitRow(t_transformTable, c);
+      sets[rset].kind = SET_TRANSFORM;
+      sets[rset].col = c;
+      sets[rset].erAllowed = FlexRV::isUnitRow(t_transformTable, c);
       rset++;
     }
     for(unsigned int b = 0; b < q_weight_beta; b++){
-      setKindVec[rset] = SET_BETA;
-      setColVec[rset] = b;
-      if(useImplicitBeta){
-        betaDistVec.push_back(beta_dist);
-      }else{
-        betaDistVec.push_back(boost::math::beta_distribution<>(t_beta_params(b,0), t_beta_params(b,1)));
-      }
+      sets[rset].kind = SET_BETA;
+      sets[rset].col = b;
+      sets[rset].dist = useImplicitBeta ? beta_dist
+                                        : boost::math::beta_distribution<>(t_beta_params(b,0), t_beta_params(b,1));
       rset++;
     }
     if(t_includeNoWeights){
-      setKindVec[rset] = SET_NOWEIGHT;
+      sets[rset].kind = SET_NOWEIGHT;
+    }
+    for(unsigned int r = 0; r < q_weight; r++){
+      if(sets[r].kind < 0){ Rcpp::stop("weight-set table: set " + std::to_string(r) + " has no kind"); }
     }
   }
-  arma::vec w0_vec(q_weight);   // per-set weight of the marker being processed
   // -------------------------------------------------------------------------
 
   unsigned int q_anno = annoIndicatorMat.n_cols;
@@ -2741,14 +2748,14 @@ Rcpp::List mainRegionInCPP(
 
     pr.w0.set_size(q_weight);
     for(unsigned int r = 0; r < q_weight; r++){
-      if(setKindVec[r] == SET_CUSTOM){
-        pr.w0(r) = t_weight(i, setColVec[r]);
-      }else if(setKindVec[r] == SET_TRANSFORM){
+      if(sets[r].kind == SET_CUSTOM){
+        pr.w0(r) = t_weight(i, sets[r].col);
+      }else if(sets[r].kind == SET_TRANSFORM){
         // FlexRV: score transform x MAF transform on the marker's in-sample
         // MAF/MAC as fixed by imputeGenoAndFlip above (src/FlexRV.cpp)
-        pr.w0(r) = FlexRV::weight(t_transformTable, setColVec[r], t_score(i), t_isLof(i) != 0.0, MAF, MAC, t_flexMaxMAF);
-      }else if(setKindVec[r] == SET_BETA){
-        pr.w0(r) = boost::math::pdf(betaDistVec[setColVec[r]], MAF);
+        pr.w0(r) = FlexRV::weight(t_transformTable, sets[r].col, t_score(i), t_isLof(i) != 0.0, MAF, MAC, t_flexMaxMAF);
+      }else if(sets[r].kind == SET_BETA){
+        pr.w0(r) = boost::math::pdf(sets[r].dist, MAF);
       }else{
         pr.w0(r) = 1.0;
       }
@@ -2873,8 +2880,8 @@ Rcpp::List mainRegionInCPP(
       return;
     }
     for(unsigned int r = 0; r < q_weight; r++){
-      if(setKindVec[r] == SET_TRANSFORM){
-        transformWeightMat(i, setColVec[r]) = pr.w0(r);
+      if(sets[r].kind == SET_TRANSFORM){
+        transformWeightMat(i, sets[r].col) = pr.w0(r);
       }
     }
     const uint nNonZero = pr.nz.n_elem;
@@ -2998,7 +3005,7 @@ Rcpp::List mainRegionInCPP(
               for(unsigned int r = 0; r < q_weight; r++){
                 jmr = jm*q_weight + r;
                 annoMAFIndicatorVec(jmr) = 2;
-                if(setKindVec[r] != SET_CUSTOM && setKindVec[r] != SET_TRANSFORM){
+                if(sets[r].kind != SET_CUSTOM && sets[r].kind != SET_TRANSFORM){
                   // beta / No_Weights sets: unweighted collapse (per-kind table
                   // above), so the set's unweighted twin IS its own collapse.
                   // LEDGER #118 widened the twin to jmr and it is now filled at
@@ -3023,7 +3030,7 @@ Rcpp::List mainRegionInCPP(
                   // before-collapse order), so this gate changes only the twin
                   // and the ultra-rare COUNT -- which is why Number_ultra_rare
                   // used to name markers the set had dropped.
-                  const double wUR = (setKindVec[r] == SET_CUSTOM) ? t_weight(i, setColVec[r]) : pr.w0(r);
+                  const double wUR = (sets[r].kind == SET_CUSTOM) ? t_weight(i, sets[r].col) : pr.w0(r);
                   if(wUR != 0){
                     for(unsigned int k2 = 0; k2 < nNonZero; k2++){
                       { const int32_t sl = cs.slot(pr.nz(k2));
@@ -3473,7 +3480,7 @@ if(i2 > 0){
 	  // LEDGER #130 FIXED: the collapsed pseudo-marker is NEVER folded to its
 	  // minor allele. Above alt frequency 0.5 this used to call
 	  // imputeGenoAndFlip, which replaces the vector with `2 - G` in place --
-	  // and the BURDEN emitter's six emission loops below then read the
+	  // and the BURDEN emitter's emission loop below (one since E4) then reads the
 	  // POST-flip values at the PRE-flip carrier positions (indexForNonZero is
 	  // taken before the call), so a G = 2 carrier contributed 0, a G = 1
 	  // carrier contributed 1, and the non-carriers the flip had just made 2
@@ -3570,65 +3577,52 @@ if(i2 > 0){
 	  // so the emission loops touch genoSumMat only.
 	  // (jmr == jm at q_weight == 1, so these three sites address the same
 	  // slot they always did; LEDGER #118 only renamed the index.)
-	  if(setKindVec[r] == SET_CUSTOM || setKindVec[r] == SET_TRANSFORM){
-	    // (a FlexRV transform set is a custom set here: its weight is
-	    // already inside the collapse, so the pseudo-marker carries 1)
-	    // LEDGER #17 FIXED. w0 used to be left UNASSIGNED here, and the
-	    // conditional export below multiplies by it -- so a K=1 custom-weighted
-	    // group file plus --condition read an uninitialised double.
-	    //
-	    // 1.0 is the value, and it is not a placeholder: a custom set's UR
-	    // collapse is WEIGHTED (`max(w_r * G)` at the genoURMat line above), so
-	    // the weight is already inside genoURVec and hence inside
-	    // G1tilde_P_G2tilde_Vec. Multiplying by w_r again would double-count it.
-	    // That is exactly what the K>1 path does -- it exports the G1-raw row
-	    // and region_postprocess applies 1 for custom sets (design D7) -- so
-	    // this makes the two agree instead of merely making the read defined.
-	    // The emission loops below deliberately do NOT scale by w0, for the
-	    // same reason.
-	    w0 = 1.0;
-	    //genoSumMat.col(jm) = genoSumMat.col(jm) + genoURVec % (weightURMat.col(jm));
-	    //genoSumMat.col(jm) = genoSumMat.col(jm) + genoURVec;
+	  // E4 (2026-09-14): ONE emission loop where there were six (three kinds x
+	  // the q_weight == 1 count arm). Byte-identity rests on two facts stated
+	  // here on purpose: x * 1.0 == x exactly for every finite x (the custom and
+	  // No_Weights arms added genoURVec(k) with no multiply; now they multiply by
+	  // 1.0), and the count source is SELECTED per kind, not assumed equal to the
+	  // collapse.
+	  //
+	  // w0 is the pseudo-marker's set weight as the conditional export reads it:
+	  //   custom / transform: 1.0 -- LEDGER #17 FIXED. It used to be left
+	  //     UNASSIGNED and the conditional export multiplied by it, so a K=1
+	  //     custom-weighted group file plus --condition read an uninitialised
+	  //     double. 1.0 is the value, not a placeholder: a custom set's UR
+	  //     collapse is WEIGHTED (max(w_r * G) at the genoURMat line above), so
+	  //     the weight is already inside genoURVec and hence inside
+	  //     G1tilde_P_G2tilde_Vec; multiplying again would double-count it,
+	  //     which is exactly why the emission below does not scale by w0 either
+	  //     (the K>1 path exports the G1-raw row and region_postprocess applies
+	  //     1 for custom sets, design D7). A FlexRV transform set is a custom set
+	  //     here: its weight is already inside the collapse.
+	  //   beta: pdf(beta_r, MAF), and the emission scales by it.
+	  //   No_Weights: 1.0 (C5 review #3; reachable at q_weight == 1 via
+	  //     t_includeNoWeights).
+	  // The count (genoSumcount_noweight, read by the variance-ratio band, ER
+	  // eligibility and the min-group-MAC gate -- LEDGER #118/#134/#135) is
+	  // accumulated here only at q_weight == 1; at q_weight > 1 it was already
+	  // accumulated for this set at the top of the r loop. Its source is the
+	  // UNWEIGHTED twin for a custom/transform set (whose collapse is weighted)
+	  // and the collapse itself for beta / No_Weights (whose collapse is
+	  // unweighted, so the two are the same vector). LEDGER #129/#130/#133:
+	  // the pseudo-marker is never folded, its MAC is its raw carrier count.
+	  {
+	    const bool kindWeighted = (sets[r].kind == SET_CUSTOM || sets[r].kind == SET_TRANSFORM);
+	    w0 = (sets[r].kind == SET_BETA) ? boost::math::pdf(sets[r].dist, MAF) : 1.0;
+	    const double wEmit = (sets[r].kind == SET_BETA) ? w0 : 1.0;
+	    const arma::vec & countSrc = kindWeighted ? genoURVec_noweights : genoURVec;
 	    if(q_weight == 1){
 	      for(unsigned int k = 0; k < indexForNonZero.n_elem; k++){
-                cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) = cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) + genoURVec(indexForNonZero(k));
-	 	genoSumcount_noweight(jmr) = genoSumcount_noweight(jmr) + genoURVec_noweights(indexForNonZero(k));
+	        cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) = cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) + genoURVec(indexForNonZero(k)) * wEmit;
+	        genoSumcount_noweight(jmr) = genoSumcount_noweight(jmr) + countSrc(indexForNonZero(k));
 	      }
 	    }else{
 	      for(unsigned int k = 0; k < indexForNonZero.n_elem; k++){
-                cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) = cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) + genoURVec(indexForNonZero(k));
+	        cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) = cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) + genoURVec(indexForNonZero(k)) * wEmit;
 	      }
 	    }
-    	  }else if(setKindVec[r] == SET_BETA){
-                w0 = boost::math::pdf(betaDistVec[setColVec[r]], MAF);
-	        if(q_weight == 1){
-	        for(unsigned int k = 0; k < indexForNonZero.n_elem; k++){
-                cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) = cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) + genoURVec(indexForNonZero(k)) * w0;
-	 	genoSumcount_noweight(jmr) = genoSumcount_noweight(jmr) + genoURVec(indexForNonZero(k));
-	        }
-	        }else{
-	        for(unsigned int k = 0; k < indexForNonZero.n_elem; k++){
-                cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) = cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) + genoURVec(indexForNonZero(k)) * w0;
-	        }
-	        }
-    	  }else{
-	        // No_Weights: unweighted collapse contributes with weight 1.
-	        // w0 = 1.0 is assigned (C5 review #3): the conditional export
-	        // below reads w0, and this branch is reachable at q_weight == 1
-	        // via t_includeNoWeights (unlike the pre-existing custom-branch
-	        // non-assignment above, which stays as ledgered legacy behavior).
-	        w0 = 1.0;
-	        if(q_weight == 1){
-	        for(unsigned int k = 0; k < indexForNonZero.n_elem; k++){
-                cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) = cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) + genoURVec(indexForNonZero(k));
-	 	genoSumcount_noweight(jmr) = genoSumcount_noweight(jmr) + genoURVec(indexForNonZero(k));
-	        }
-	        }else{
-	        for(unsigned int k = 0; k < indexForNonZero.n_elem; k++){
-                cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) = cs.sumAt(cs.slotOf[indexForNonZero(k)], jmr) + genoURVec(indexForNonZero(k));
-	        }
-	        }
-    	  }
+	  }
 
 	 //genoSumMat.col(1).print("genoSumMat.col(1)");
 
@@ -3679,14 +3673,14 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
         // sets are affected.
         //
         // NOTE the third site is INERT and is changed only for consistency:
-        // cm.isER is &&-gated on erAllowedVec[r], which is true only when every
+        // cm.isER is &&-gated on sets[r].erAllowed, which is true only when every
         // weight of the set is exactly 1.0 (src/Main.cpp:2335/:2343), and in
         // that case the collapse weight wUR is 1.0 so the weighted and
         // unweighted collapses are the same vector. Do not write a test that
         // asserts an ER change here -- it cannot happen.
         SAIGE::TestContext ctx = model.contextForMAC(MAC_nw);
         cm.ctx = ctx;
-        cm.isER = (MAC_nw <= g_cfg.MACCutoffforER && W[km].traitType == "binary" && erAllowedVec[r]);
+        cm.isER = (MAC_nw <= g_cfg.MACCutoffforER && W[km].traitType == "binary" && sets[r].erAllowed);
       }
 
 
@@ -4135,7 +4129,7 @@ if(t_regionTestType == "BURDEN"){
       // and two markers could be tested at once without racing.
       SAIGE::TestContext ctx = model.contextForMAC(MAC);   // the shared rule (E1)
             cm.ctx = ctx;
-            cm.isER = (MAC <= g_cfg.MACCutoffforER && W[km].traitType == "binary" && erAllowedVec[r]);
+            cm.isER = (MAC <= g_cfg.MACCutoffforER && W[km].traitType == "binary" && sets[r].erAllowed);
           }
           BurdenCell & c = burdenCells[jmr];
           c.tested = true;
@@ -4161,7 +4155,7 @@ if(t_regionTestType == "BURDEN"){
        auto sameKey = [&](unsigned int a, unsigned int b) -> bool {
          const double ca = genoSumcount_noweight(a), cb = genoSumcount_noweight(b);
          if(std::memcmp(&ca, &cb, sizeof(double)) != 0){ return false; }
-         if((erAllowedVec[a % q_weight] ? 1 : 0) != (erAllowedVec[b % q_weight] ? 1 : 0)){ return false; }
+         if((sets[a % q_weight].erAllowed ? 1 : 0) != (sets[b % q_weight].erAllowed ? 1 : 0)){ return false; }
          for(std::size_t sl = 0; sl < nc; sl++){
            if(std::memcmp(&cs.sum[sl * qq + a], &cs.sum[sl * qq + b], sizeof(double)) != 0){ return false; }
          }
@@ -4178,7 +4172,7 @@ if(t_regionTestType == "BURDEN"){
          for(std::size_t sl = 0; sl < nc; sl++){ mix(&cs.sum[sl * qq + c], sizeof(double)); }
          const double cnt = genoSumcount_noweight(c);
          mix(&cnt, sizeof(double));
-         const unsigned char er = erAllowedVec[c % q_weight] ? 1 : 0;
+         const unsigned char er = sets[c % q_weight].erAllowed ? 1 : 0;
          mix(&er, 1);
          std::vector<unsigned int> & bucket = seen[h];
          int primary = -1;
