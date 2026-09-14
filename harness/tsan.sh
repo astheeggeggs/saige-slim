@@ -274,14 +274,20 @@ tsan_run() { # tsan_run <workload> <threads>
     printf '  %-14s t=%-2s races=%-4s %s\n' "$wl" "$nt" "$races" "$how"
     # Only under `clean` is this a failure of the script: a plant is licensed to
     # crash, and that is the whole point of running one.
-    [ "$MODE" = clean ] && DIED=1
-    return
+    # An explicit `if` and `return 0`, not `[ clean ] && DIED=1; return`: under
+    # `set -e` that `&&` list has status 1 whenever MODE is a plant, a bare
+    # `return` propagates it, and errexit killed the script here after the
+    # FIRST arm that died -- in the one mode where dying is the expected
+    # outcome. The operator saw one arm line and exit 1 (2026-09-14 audit).
+    if [ "$MODE" = clean ]; then DIED=1; fi
+    return 0
   fi
   # A threaded arm that quietly ran serially reports zero races and proves
   # nothing -- the LEDGER #30 shape, and the reason the standing test asserts
   # this same line.
   if [ "$nt" -gt 1 ] && [ "$threaded" -eq 0 ]; then
-    echo "  $wl t=$nt: DID NOT THREAD (no thread-count line) -- result is meaningless"; return
+    echo "  $wl t=$nt: DID NOT THREAD (no thread-count line) -- result is meaningless"
+    return 0
   fi
   local ident="n/a"
   if [ "$nt" -gt 1 ]; then

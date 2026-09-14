@@ -91,15 +91,21 @@ cpu_idle() {
 CONCURRENT="${SAIGE_PREPUSH_CONCURRENT:-0}"
 NPROC=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 
+# run_tier MODE SHAPE. SHAPE is "serial" or "concurrent" and is what the
+# caller actually did, passed in rather than read from $CONCURRENT: the log
+# used to print `concurrent=$CONCURRENT` on both paths, so the default
+# one-tier run under SAIGE_PREPUSH_CONCURRENT=1 recorded a concurrent run that
+# never happened -- the same shape as the wrong-commit line in item 2 above,
+# a gate log naming what it did not do (2026-09-14 audit).
 run_tier() {   # everything into the mode's own log; nonzero return on failure
-  local mode=$1 log="harness/work/prepush-$1.log"
+  local mode=$1 shape=$2 log="harness/work/prepush-$1.log"
   local t0 idle ld secs
   t0=$(date +%s)
   idle=$(cpu_idle)
   ld=$(uptime | sed 's/.*load averages*: //')
   {
     echo "prepush: mode=$mode start=$(date '+%F %T') load=[$ld] idle=${idle:-?}%"
-    echo "prepush: mode=$mode workers=${TESTTHAT_CPUS:-default} concurrent=$CONCURRENT"
+    echo "prepush: mode=$mode workers=${TESTTHAT_CPUS:-default} shape=$shape"
   } > "$log"
   if ! SAIGE_COMPARE_MODE="$mode" bash harness/run_tests.sh standard >> "$log" 2>&1; then
     secs=$(elapsed "$t0")
@@ -125,6 +131,19 @@ tier_report() {
   fi
 }
 
+# The tree, not the commit: a dirty tree is what a green run then licensed.
+report_tree() {
+  local dirty
+  dirty=$(git status --porcelain -- src R tests extdata harness | head -5)
+  if [ -n "$dirty" ]; then
+    echo "prepush gate OK on a DIRTY TREE at $(git rev-parse --short HEAD) + uncommitted changes:"
+    echo "$dirty" | sed 's/^/           /'
+    echo "           (the commit named above does NOT contain what was just tested)"
+  else
+    echo "prepush gate OK at $(git rev-parse --short HEAD) (clean tree)"
+  fi
+}
+
 # ONE tier, both comparators (2026-09-12). The two modes ran the same step-2
 # CLI invocations twice and differed only in how the outputs were COMPARED, so
 # the gate was generating every output twice to apply two cheap checks. `both`
@@ -143,21 +162,17 @@ MODES="${SAIGE_PREPUSH_MODES:-both}"
 set -- $MODES
 GATE_T0=$(date +%s)
 if [ "$#" = 1 ]; then
-  run_tier "$1"; rc_one=$?
+  if [ "$CONCURRENT" = 1 ]; then
+    echo "prepush: SAIGE_PREPUSH_CONCURRENT=1 with one mode ($1) -- nothing to run concurrently, running serially" >&2
+  fi
+  run_tier "$1" serial; rc_one=$?
   GATE_SECS=$(elapsed "$GATE_T0")
   tier_report "$1" "$rc_one"
   if [ "$rc_one" != 0 ]; then
     echo "prepush: FAILED in $1 mode after $(hms "$GATE_SECS")" >&2
     exit 1
   fi
-  DIRTY=$(git status --porcelain -- src R tests extdata harness | head -5)
-  if [ -n "$DIRTY" ]; then
-    echo "prepush gate OK on a DIRTY TREE at $(git rev-parse --short HEAD) + uncommitted changes:"
-    echo "$DIRTY" | sed 's/^/           /'
-    echo "           (the commit named above does NOT contain what was just tested)"
-  else
-    echo "prepush gate OK at $(git rev-parse --short HEAD) (clean tree)"
-  fi
+  report_tree
   echo "prepush timing: $1 $(hms "$(tier_secs "$1")") = $(hms "$GATE_SECS") total (one tier)"
   exit 0
 fi
@@ -166,14 +181,14 @@ if [ "$CONCURRENT" = 1 ]; then
   HALF=$(( (NPROC + 1) / 2 ))
   echo "== standard tier, BOTH compare modes at once, $HALF testthat workers each"
   echo "   start $(date '+%H:%M:%S')  load [$(uptime | sed 's/.*load averages*: //')]  idle $(cpu_idle)%"
-  ( export TESTTHAT_CPUS=$HALF; run_tier "$1" ) & pid_byte=$!
-  ( export TESTTHAT_CPUS=$HALF; run_tier "$2" ) & pid_numeric=$!
+  ( export TESTTHAT_CPUS=$HALF; run_tier "$1" concurrent ) & pid_byte=$!
+  ( export TESTTHAT_CPUS=$HALF; run_tier "$2" concurrent ) & pid_numeric=$!
   wait "$pid_byte";    rc_byte=$?
   wait "$pid_numeric"; rc_numeric=$?
 else
   echo "== standard tier, one mode then the other (SAIGE_PREPUSH_CONCURRENT=0)"
-  run_tier "$1"; rc_byte=$?
-  run_tier "$2"; rc_numeric=$?
+  run_tier "$1" serial; rc_byte=$?
+  run_tier "$2" serial; rc_numeric=$?
 fi
 GATE_SECS=$(elapsed "$GATE_T0")
 
@@ -188,15 +203,7 @@ if [ "$rc_byte" != 0 ] || [ "$rc_numeric" != 0 ]; then
   exit 1
 fi
 
-# The tree, not the commit: a dirty tree is what a green run then licensed.
-DIRTY=$(git status --porcelain -- src R tests extdata harness | head -5)
-if [ -n "$DIRTY" ]; then
-  echo "prepush gate OK on a DIRTY TREE at $(git rev-parse --short HEAD) + uncommitted changes:"
-  echo "$DIRTY" | sed 's/^/           /'
-  echo "           (the commit named above does NOT contain what was just tested)"
-else
-  echo "prepush gate OK at $(git rev-parse --short HEAD) (clean tree)"
-fi
+report_tree
 if [ "$CONCURRENT" = 1 ]; then
   echo "prepush timing: $1 $(hms "$(tier_secs "$1")") | $2 $(hms "$(tier_secs "$2")") | gate $(hms "$GATE_SECS") wall (concurrent)"
 else

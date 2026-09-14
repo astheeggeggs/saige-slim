@@ -31,10 +31,14 @@ are:
 **Nothing from the audit has been implemented.** No code changed, no row
 written, no gate run. The execution queue is in the handoff; the first two
 phases need no gate at all:
-- **Phase A** (~14 lines of shell, no gate): `harness/tsan.sh` aborts after the
-  first arm that dies under `plant` -- the mode where dying is expected, and the
-  positive control for every `clean` result on this branch; `harness/prepush.sh`
-  logs `concurrent=1` for a run that was serial.
+- **Phase A -- DONE 2026-09-14** (harness only, no gate): `harness/tsan.sh` no
+  longer aborts after the first arm that dies under `plant` (drilled both ways
+  with `SAIGE_TSAN_TIMEOUT=5`: unpatched one arm / exit 1, patched three arms /
+  exit 0, and `clean` still three arms / exit 1); `harness/prepush.sh` logs
+  `shape=serial|concurrent` from the branch that ran, warns when
+  `SAIGE_PREPUSH_CONCURRENT=1` arrives with one mode, and the dirty-tree
+  report is one function. Before this, every plant result on this branch
+  ended at the first timed-out or crashed arm with no t=4/t=8 run.
 - **Phase B** (`ledger.py lint` only): nine latent-defect rows.
 
 **THE NEXT SESSION'S FIRST DECISION.** Phase B flips the ledger from **0 open to
