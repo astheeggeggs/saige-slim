@@ -120,6 +120,14 @@ struct Step2Config {
   arma::umat X_PARregion_mat;
 };
 static Step2Config g_cfg;
+// The ER predicate, spelled once for the three plain sites (audit E1,
+// 2026-09-14; it had five sites in three spellings). A free function rather
+// than a SAIGEClass method because g_cfg is file-static here. The two per-cell
+// `cm.isER` sites keep their own expression on purpose: they carry an extra
+// erAllowedVec[r] conjunct and read the unweighted MAC (LEDGER #134).
+static bool isERCandidate(double MAC, const std::string & traitType){
+  return MAC <= g_cfg.MACCutoffforER && traitType == "binary";
+}
 
 
 // One single-variant output file per null model. unique_ptr because an open
@@ -946,15 +954,15 @@ static void testOneModel(const SAIGE::SAIGEClass & t_model,
   // selected for that choice -- but nothing is written to the model, so no
   // marker can read what another one left behind (LEDGER #32) and two markers
   // could be tested at once without racing.
-  bool hasVarRatio = true;
+  // NOT contextForMAC: this first pass has its own rule (fastTest forces the
+  // non-sparse pass; noadjCov follows the model; no MAC term).
   SAIGE::TestContext ctx;
   ctx.useSparseGRM = t_model.m_isFastTest ? false : t_model.m_flagSparseGRM;
   ctx.noadjCov = t_model.m_isnoadjCov;
   if(t_isSingleVarianceRatio){
       ctx.varRatioVal = t_model.selectSingleVarianceRatio(ctx.useSparseGRM, ctx.noadjCov);
-      hasVarRatio = true;
   }else{
-      ctx.varRatioVal = t_model.selectVarianceRatio(MAC, ctx.useSparseGRM, ctx.noadjCov, hasVarRatio);
+      ctx.varRatioVal = t_model.selectVarianceRatio(MAC, ctx.useSparseGRM, ctx.noadjCov);
   }
 
   bool is_region = false;
@@ -986,7 +994,7 @@ static void testOneModel(const SAIGE::SAIGEClass & t_model,
   ProfileScope profTest(g_markerProfile.enabled ? &g_markerProfile.test : nullptr,
                         &g_markerProfile.nTest);
 
-  if(MAC <= g_cfg.MACCutoffforER && t_traitType == "binary"){
+  if(isERCandidate(MAC, t_traitType)){
     t_model.getMarkerPval(
                   t_scratch.GVec,
                         t_scratch.indexNonZeroVec_arma, t_scratch.indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA,
@@ -1004,17 +1012,9 @@ static void testOneModel(const SAIGE::SAIGEClass & t_model,
     if(t_model.m_isFastTest && pval_num < (t_model.m_pval_cutoff_for_fastTest)){
      // The re-test escalates: a marker whose fast p-value cleared the cutoff is
      // re-tested with the covariate adjustment on, and on the sparse GRM unless
-     // its MAC is above the last category bound. Same derivation as before, into
+     // its MAC is above the last category bound -- the shared rule (E1), into
      // a second context rather than back onto the model.
-     SAIGE::TestContext ctxRetest;
-     ctxRetest.useSparseGRM = (MAC > t_model.m_cateVarRatioMinMACVecExclude.back()) ? false : t_model.m_flagSparseGRM;
-     ctxRetest.noadjCov = false;
-     if(!t_isSingleVarianceRatio){
-        ctxRetest.varRatioVal = t_model.selectVarianceRatio(MAC, ctxRetest.useSparseGRM, ctxRetest.noadjCov, hasVarRatio);
-     }else{
-        ctxRetest.varRatioVal = t_model.selectSingleVarianceRatio(ctxRetest.useSparseGRM, ctxRetest.noadjCov);
-        hasVarRatio = true;
-     }
+     SAIGE::TestContext ctxRetest = t_model.contextForMAC(MAC);
 
       t_model.getMarkerPval(
                     t_scratch.GVec,
@@ -1367,7 +1367,7 @@ void mainMarkerInCPP(
   // per model, because two models can have been fitted differently.
   std::vector<unsigned char> singleVR(P);
   for(int k = 0; k < P; k++){
-    singleVR[k] = ((g_models[k]->m_varRatio_null).n_elem == 1) ? 1 : 0;
+    singleVR[k] = g_models[k]->isSingleVarianceRatio() ? 1 : 0;
   }
 
   int nThreads = (t_nThreadsMarker < 1) ? 1 : t_nThreadsMarker;
@@ -2529,7 +2529,7 @@ Rcpp::List mainRegionInCPP(
     w.model = models[k];
     w.modelIndex = t_modelIdx[k];
     w.traitType = models[k]->m_traitType;
-    w.isSingleVarianceRatio = ((models[k]->m_varRatio_null).n_elem <= 1);
+    w.isSingleVarianceRatio = models[k]->isSingleVarianceRatio();
     // the same constructors as the single-model locals had, fill values included
     w.Beta_cVec = std::vector<double>(q, arma::datum::nan);
     w.seBeta_cVec = std::vector<double>(q, arma::datum::nan);
@@ -2776,25 +2776,15 @@ Rcpp::List mainRegionInCPP(
       // S12: this marker's test context, derived and consumed here. A common
       // marker uses the non-sparse variance ratio, a rare one follows the model;
       // nothing is parked on the model, so two markers can be tested at once.
-      // hasVarRatio is per call, as in testOneModel: selectVarianceRatio writes
-      // it, nothing here reads it, and a frame-shared flag written from every
-      // worker is a data race (TSAN, 2026-09-06) even when the value never changes.
-      bool hasVarRatio = true;
-      SAIGE::TestContext ctx;
-      ctx.useSparseGRM = (MAC > model.m_cateVarRatioMinMACVecExclude.back())
-                           ? false : model.m_flagSparseGRM;
-      ctx.noadjCov = false;
-      if(!W[km].isSingleVarianceRatio){
-        ctx.varRatioVal = model.selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
-      }else{
-        ctx.varRatioVal = model.selectSingleVarianceRatio(ctx.useSparseGRM, false);
-      }
+      // (The per-worker `hasVarRatio` that used to sit here -- the TSAN race
+      // of 2026-09-06 -- is gone with the out-parameter, E1.)
+      SAIGE::TestContext ctx = model.contextForMAC(MAC);
 
       if(doSingleTests){ //perform single-variant assoc tests
         bool is_gtilde, is_Firth, is_FirthConverge;
         ProfileScope rpTest(rp.enabled ? &rp.test : nullptr, &rp.nTest);
         // the worker's KernelWorkspace goes in.
-        if(MAC <=  g_cfg.MACCutoffforER && W[km].traitType == "binary"){
+        if(isERCandidate(MAC, W[km].traitType)){
           model.getMarkerPval(sc.GVec, sc.indexNonZeroVec_arma, sc.indexZeroVec_arma, prm.Beta, prm.seBeta, prm.pval, prm.pval_noSPA, altFreq, prm.Tstat, prm.gy, prm.varT, prm.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, prm.Beta_c, prm.seBeta_c, prm.pval_c, prm.pval_noSPA_c, prm.Tstat_c, prm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx, &sc.ws);
         }else{
           model.getMarkerPval(sc.GVec, sc.indexNonZeroVec_arma, sc.indexZeroVec_arma, prm.Beta, prm.seBeta, prm.pval, prm.pval_noSPA, altFreq, prm.Tstat, prm.gy, prm.varT, prm.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, prm.Beta_c, prm.seBeta_c, prm.pval_c, prm.pval_noSPA_c, prm.Tstat_c, prm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx, &sc.ws);
@@ -3136,9 +3126,11 @@ Rcpp::List mainRegionInCPP(
       // d36e7277's, which left the clean arm's baseline non-zero and gave a
       // future real race somewhere to hide. Declaring it is not a suppression:
       // it is main-vs-worker only. The worker-vs-worker class stays fully
-      // visible -- the hasVarRatio race was DETECTED at SAIGE_test.cpp:1274
-      // and :1279 with the join edge already declared, and went to zero only
-      // when that bug was fixed (harness/work/tsan-prefix vs harness/work/tsan).
+      // visible -- the hasVarRatio race (selectVarianceRatio's out-flag
+      // shared across workers; d36e7277 racing, e72e4186 clean, and since E1
+      // the flag is a local so the class cannot recur) was DETECTED with the
+      // join edge already declared, and went to zero only when that bug was
+      // fixed (harness/work/tsan-prefix vs harness/work/tsan).
       SAIGE_TSAN_HAPPENS_AFTER(this);
       std::unique_ptr<MarkerWorkerState> state = m_pool.checkout();
       RefuseMainThreadGuard noRAPI;
@@ -3664,16 +3656,11 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
       for(unsigned int km = 0; km < P; km++){
         const SAIGE::SAIGEClass & model = *W[km].model;
         URCellModel & cm = W[km].urOut[jmr];
-        // hasVarRatio is PER CALL, as at the marker loop's site above: this body
-        // runs one cell per worker on runCellTests, and selectVarianceRatio does
-        // not merely WRITE the flag -- it reads it back at three guards and throws
-        // on the last (src/SAIGE_test.cpp:1283/1290/1297/1307). A frame-shared flag
-        // written from every worker is a data race (TSAN, 2026-09-06) even when the
-        // value never changes; here a lost write is either a spurious "no
-        // categorical variance ratio covers MAC" abort on a MAC that IS covered, or
-        // a cell silently tested with a variance ratio of 0.
-        bool hasVarRatio = true;
-        SAIGE::TestContext ctx;
+        // (The per-worker `hasVarRatio` that used to sit here is gone with the
+        // out-parameter, E1: selectVarianceRatio's three guards read a LOCAL,
+        // so a lost write between workers -- a spurious "no categorical
+        // variance ratio covers MAC" abort, or a cell tested with ratio 0 --
+        // has nothing left to lose.)
         // LEDGER #134 FIXED: these decisions read MAC_nw, the UNWEIGHTED
         // collapse's allele count (computed ~200 lines above, and already what
         // the REPORTED group MAC uses since #118), NOT the weighted collapse
@@ -3697,14 +3684,7 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
         // that case the collapse weight wUR is 1.0 so the weighted and
         // unweighted collapses are the same vector. Do not write a test that
         // asserts an ER change here -- it cannot happen.
-        ctx.useSparseGRM = (MAC_nw > model.m_cateVarRatioMinMACVecExclude.back())
-                             ? false : model.m_flagSparseGRM;
-        ctx.noadjCov = false;
-        if(!W[km].isSingleVarianceRatio){
-          ctx.varRatioVal = model.selectVarianceRatio(MAC_nw, ctx.useSparseGRM, false, hasVarRatio);
-        }else{
-          ctx.varRatioVal = model.selectSingleVarianceRatio(ctx.useSparseGRM, false);
-        }
+        SAIGE::TestContext ctx = model.contextForMAC(MAC_nw);
         cm.ctx = ctx;
         cm.isER = (MAC_nw <= g_cfg.MACCutoffforER && W[km].traitType == "binary" && erAllowedVec[r]);
       }
@@ -4153,17 +4133,7 @@ if(t_regionTestType == "BURDEN"){
       // a rare one follows the model -- but nothing is parked on the model, so no
       // later read can pick up a marker's choice by accident (LEDGER #27/#50)
       // and two markers could be tested at once without racing.
-      // per call, not the frame's: see the note at the ultra-rare prepare above
-      bool hasVarRatio = true;
-      SAIGE::TestContext ctx;
-      ctx.useSparseGRM = (MAC > model.m_cateVarRatioMinMACVecExclude.back())
-                           ? false : model.m_flagSparseGRM;
-      ctx.noadjCov = false;
-      if(!W[km].isSingleVarianceRatio){
-        ctx.varRatioVal = model.selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
-      }else{
-        ctx.varRatioVal = model.selectSingleVarianceRatio(ctx.useSparseGRM, false);
-      }
+      SAIGE::TestContext ctx = model.contextForMAC(MAC);   // the shared rule (E1)
             cm.ctx = ctx;
             cm.isER = (MAC <= g_cfg.MACCutoffforER && W[km].traitType == "binary" && erAllowedVec[r]);
           }
@@ -4750,15 +4720,16 @@ void assign_conditionMarkers_factors(
   // to set m_flagSparseGRM_cur at entry and leave it set for whatever ran next;
   // now the model's own m_flagSparseGRM is read directly and the choice does not
   // outlive the marker.
-  bool hasVarRatio;
+  // NOT contextForMAC (E1): no MAC term in the sparse-GRM choice here, and
+  // adding one would move golden P4's _c columns.
   SAIGE::TestContext ctx;
   ctx.useSparseGRM = model.m_flagSparseGRM;
   ctx.noadjCov = false;
-  if((model.m_varRatio_null).n_elem == 1){
+  if(model.isSingleVarianceRatio()){
 	ctx.varRatioVal = model.selectSingleVarianceRatio(ctx.useSparseGRM, false);
   }else{
-	ctx.varRatioVal = model.selectVarianceRatio(MAC, ctx.useSparseGRM, false, hasVarRatio);
-  }	  
+	ctx.varRatioVal = model.selectVarianceRatio(MAC, ctx.useSparseGRM, false);
+  }
  
   flip = imputeGenoAndFlip(GVec, altFreq, altCounts, indexForMissing, g_cfg.impute_method, g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC, indexZeroVec, indexNonZeroVec);
 
@@ -4802,7 +4773,7 @@ void assign_conditionMarkers_factors(
   }
   arma::vec gtildeVec;
 
-  if(MAC <=  g_cfg.MACCutoffforER && model.m_traitType == "binary"){
+  if(isERCandidate(MAC, model.m_traitType)){
      // Called on ITS model (the second or later entry of a manifest is not
      // g_models[0]). Argument order
      // follows SAIGEClass::getMarkerPval (altFreq before Tstat), which is the

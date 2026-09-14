@@ -282,11 +282,32 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
     //arma::sp_mat gen_sp_SigmaMat();
 
     // Pure selectors: the bodies of the assign* family with no member write.
-    // t_hasVarRatio is an out parameter; a MAC that falls in no bin throws
-    // rather than leaving the caller with the previous marker's ratio
-    // (LEDGER #32).
-    double selectVarianceRatio(double MAC, bool issparseforVR, bool isnoXadj, bool & t_hasVarRatio) const;
+    // A MAC that falls in no bin throws rather than leaving the caller with
+    // the previous marker's ratio (LEDGER #32). The former `bool &
+    // t_hasVarRatio` out-parameter was written at every call site and read
+    // by none of them -- only by the three guards INSIDE this function -- and
+    // a frame-shared copy of it was the worker-vs-worker race TSAN caught on
+    // 2026-09-06 (d36e7277 racing, e72e4186 clean); demoted to a local on
+    // 2026-09-14 (audit E1), so that class cannot recur by construction.
+    double selectVarianceRatio(double MAC, bool issparseforVR, bool isnoXadj) const;
     double selectSingleVarianceRatio(bool issparseforVR, bool isnoXadj) const;
+    // Single vs categorical, spelled ONCE (it was `== 1` at two sites and
+    // `<= 1` at a third, which differ only at n_elem == 0 -- a `null`-less
+    // ratio file, which Get_Variance_Ratio now refuses).
+    bool isSingleVarianceRatio() const { return m_varRatio_null.n_elem <= 1; }
+    // ONE derivation of "how is this marker / cell tested" for the four sites
+    // that share it (the marker path's fastTest re-test, the region marker
+    // prepare, the ultra-rare cell prepare and the BURDEN cell prepare; audit
+    // E1, 2026-09-14): a common marker (MAC above the last category bound)
+    // uses the non-sparse variance ratio, a rare one follows the model; the
+    // covariate adjustment is on; the ratio is the single one or the MAC's
+    // band. Drift between hand-written copies of exactly this rule is the
+    // documented cause of LEDGER #118 -> #134 -> #135. Two sites deliberately
+    // keep their own: testOneModel's first pass (fastTest forces the
+    // non-sparse pass and noadjCov follows the model) and the
+    // conditioning-marker setup (no MAC term at all -- routing it here would
+    // ADD the gate and move golden P4's _c columns).
+    SAIGE::TestContext contextForMAC(double MAC) const;
 
     void assignConditionFactors(
       arma::mat & t_P2Mat_cond,

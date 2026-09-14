@@ -1188,7 +1188,7 @@ if(!t_isER){
 // (-inf, minExc[0]], each (minExc[i], maxInc[i]], and (maxInc.back(), inf), so a
 // gap needs a specification whose bins leave a hole; the CLI validates only the
 // lengths of the two vectors, which is what makes it reachable.
-double SAIGEClass::selectVarianceRatio(double MAC, bool issparseforVR, bool isnoXadj, bool & t_hasVarRatio) const {
+double SAIGEClass::selectVarianceRatio(double MAC, bool issparseforVR, bool isnoXadj) const {
     arma::vec varRatio;
     if(issparseforVR){
         varRatio = m_varRatio_sparse;
@@ -1201,7 +1201,7 @@ double SAIGEClass::selectVarianceRatio(double MAC, bool issparseforVR, bool isno
     }
 
     double varRatioVal = 0.0;
-    t_hasVarRatio = false;
+    bool t_hasVarRatio = false;   // local since E1; see the header
     for(unsigned int i = 0; i < m_cateVarRatioMaxMACVecInclude.n_elem; i++)
     {
         if(MAC <= m_cateVarRatioMaxMACVecInclude(i) && MAC > m_cateVarRatioMinMACVecExclude(i)){
@@ -1246,6 +1246,18 @@ double SAIGEClass::selectVarianceRatio(double MAC, bool issparseforVR, bool isno
 // throws "Mat::init(): requested size is not compatible with row vector layout"
 // (the LEDGER #10 message), so this is safe only for a single-ratio model, which
 // is exactly when its callers use it. Preserved rather than quietly widened.
+SAIGE::TestContext SAIGEClass::contextForMAC(double MAC) const {
+    SAIGE::TestContext ctx;
+    ctx.useSparseGRM = (MAC > m_cateVarRatioMinMACVecExclude.back()) ? false : m_flagSparseGRM;
+    ctx.noadjCov = false;
+    if(isSingleVarianceRatio()){
+        ctx.varRatioVal = selectSingleVarianceRatio(ctx.useSparseGRM, false);
+    }else{
+        ctx.varRatioVal = selectVarianceRatio(MAC, ctx.useSparseGRM, false);
+    }
+    return ctx;
+}
+
 double SAIGEClass::selectSingleVarianceRatio(bool issparseforVR, bool isnoXadj) const {
     arma::rowvec varRatio;
     if(issparseforVR){

@@ -422,6 +422,16 @@ Get_Variance_Ratio <- function(varianceRatioFile, cateVarRatioMinMACVecExclude, 
       }
       ratioVec_null <- varRatioData[which(varRatioData[, 2] == "null"), 1]
       ratioVec_null <- as.numeric(ratioVec_null)
+      # Refuse a 3-column file with no `null` row (audit E1, 2026-09-14): every
+      # step-2 test selects its ratio from the null rows for a common marker
+      # even under a sparse GRM, and the build is -DARMA_NO_DEBUG, so an empty
+      # vector in C++ is read off the end silently, not caught.
+      if (length(ratioVec_null) == 0) {
+        stop("varianceRatioFile ", varianceRatioFile, " has no 'null' row (types present: ",
+             paste(unique(varRatioData[, 2]), collapse = ","), "). Every step-2 test reads ",
+             "the null variance ratio for at least the common markers; re-run Step 1, or ",
+             "restore the null rows.\n")
+      }
       cat("variance Ratio null is ", ratioVec_null, "\n")
       if (length(ratioVec_null) > 1) {
         iscateVR <- TRUE

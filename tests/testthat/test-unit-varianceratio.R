@@ -4,6 +4,16 @@
 # LEDGER #85 shape (a never-forced missing promise), and the formals are
 # pinned below so a re-import shows up here.
 
+test_that("a 3-column file with no 'null' row is refused by name (audit E1)", {
+  f <- tempfile(fileext = ".txt")
+  writeLines(c("0.95 sparse 1", "0.94 sparse 2"), f)
+  expect_error(Get_Variance_Ratio(f, c(10, 20), c(20), TRUE), "has no 'null' row")
+  # and the positive control: the same rows plus null rows load (two ratios,
+  # so the category vectors are the two-bin shape the tests above use)
+  writeLines(c("0.95 sparse 1", "0.94 sparse 2", "0.9 null 1", "0.91 null 2"), f)
+  expect_no_error(Get_Variance_Ratio(f, c(10, 20), c(20), TRUE))
+})
+
 test_that("Get_Variance_Ratio's formals are exactly the four the body reads", {
   expect_identical(
     names(formals(SAIGE:::Get_Variance_Ratio)),
