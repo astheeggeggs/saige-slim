@@ -1,6 +1,18 @@
-# What is worth doing next (2026-09-03, updated 2026-09-14; read docs/state/handoff-2026-09-14-flexrv-p2.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-14 evening; read docs/state/handoff-2026-09-14-ledger-143.md first)
 
-**Current handoff: `docs/state/handoff-2026-09-14-flexrv-p2.md`** -- the
+**Current handoff: `docs/state/handoff-2026-09-14-ledger-143.md`** -- LEDGER
+#143 is FIXED in two commits (`5564c421` the units, the next the kernel). The
+binary conditional region path fed its scale-factor kernel an unweighted
+score against weighted inputs and ran a pre-#104 twin; the owner's decision
+the row asked for was settled by a control instead: conditioning cannot depend
+on the weight given to a conditioning marker, it did (0.3-6 % on P3's
+`_cond` p-values), and it does not now (1e-15). Both `r` predictions landed to
+the digit (0.4733 -> 0.951743 -> 1.000000). Five goldens moved on their
+`_cond` columns only; everything else byte-identical, as predicted. One
+finding parked, not a row: `SPA_pval`'s absolute root tolerance makes the
+region burden SPA scale-dependent at ~1e-4 in log p.
+
+**Previous handoff: `docs/state/handoff-2026-09-14-flexrv-p2.md`** -- the
 FlexRV power fixture p2 (phenotypes only, on the 50k genotypes; causal signal
 at resolvable MAC, the score informative by construction) and its 72-run
 sweep at collapse 10, predicted first (`prediction-flexrv-p2-2026-09-14.md`).

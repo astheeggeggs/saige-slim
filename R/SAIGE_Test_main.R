@@ -671,7 +671,15 @@ SPAGMMATtest <- function(bedFile = "",
 
         outG2cond$pval_G2_cond <- unlist(lapply(outG2cond$pval_G2_cond, convert_str_to_log))
 
-        G2condList <- get_newPhi_scaleFactor(q.sum = outG2cond$qsum_G2_cond, mu.a = prepared[[k]]$obj.model$mu, g.sum = outG2cond$gsum_G2_cond, p.new = outG2cond$pval_G2_cond, Score = outG2cond$Score_G2_cond, Phi = outG2cond$VarMat_G2_cond, "SKAT-O")
+        # LEDGER #143: the #104-repaired kernel (the former unsuffixed twin ran
+        # the pre-#104 standardisation on this path alone); every input is in
+        # w0 units since the units half of #143, so its identity holds here.
+        G2condList <- get_newPhi_scaleFactor_traitType(
+          q.sum = outG2cond$qsum_G2_cond, mu.a = prepared[[k]]$obj.model$mu,
+          g.sum = outG2cond$gsum_G2_cond, p.new = outG2cond$pval_G2_cond,
+          Score = outG2cond$Score_G2_cond, Phi = outG2cond$VarMat_G2_cond,
+          "SKAT-O", prepared[[k]]$obj.model$traitType
+        )
         # print(G2condList)
         scaleFactorVec <- as.vector(G2condList$scaleFactor)
         # print(scaleFactorVec)

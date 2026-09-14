@@ -367,24 +367,12 @@ SPA_ER_kernel_related_Phiadj_fast_new <- function(p.new, Score, Phi, p.value_bur
 }
 
 
-get_newPhi_scaleFactor <- function(q.sum, mu.a, g.sum, p.new, Score, Phi, regionTestType) {
-  m1 <- sum(mu.a * g.sum)
-  var1 <- sum(mu.a * (1 - mu.a) * g.sum^2)
-  qinv <- -sign(q.sum - m1) * abs(q.sum - m1) + m1
-  pval_noadj <- pchisq((q.sum - m1)^2 / var1, lower.tail = FALSE, df = 1, log.p = TRUE)
-  isSPAConverge <- TRUE
-  if (abs(q.sum - m1) / sqrt(var1) < 2) {
-    p.value_burden <- pval_noadj
-  } else {
-    p.value_burden <- SPA_pval(mu.a, g.sum, q.sum, qinv, pval_noadj, .Machine$double.eps^0.25, TRUE, "binary", isSPAConverge)
-  }
-  # p.value_burden<-SPAtest:::Saddle_Prob(q.sum, mu=mu.a, g=g.sum, Cutoff=2,alpha=2.5*10^-6, log.p =TRUE)$p.value
-  # cat("p.value_burden ", p.value_burden, "\n")
-  re_phi <- SPA_ER_kernel_related_Phiadj_fast_new(p.new, Score, Phi, p.value_burden, regionTestType)
-  re_phi
-}
-
-
+# LEDGER #143: this used to have an unsuffixed textual twin, get_newPhi_scaleFactor,
+# 18 lines above -- the pre-#104 body without the standardisation below -- and
+# that twin was the ONLY kernel the conditioning markers' scale factors went
+# through (SAIGE_Test_main.R, the binary group-test --condition set-up). One
+# rule, written twice, fixed once: the same shape as #44/#66 and #118/#134/#135.
+# The twin is deleted; both call sites use this function.
 get_newPhi_scaleFactor_traitType <- function(q.sum, mu.a, g.sum, p.new, Score, Phi, regionTestType, traitType) {
   m1 <- sum(mu.a * g.sum)
   if (traitType == "binary") {

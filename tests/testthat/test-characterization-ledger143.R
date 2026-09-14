@@ -1,7 +1,9 @@
-# LEDGER #143 (units half FIXED 2026-09-14): the binary conditional region
+# LEDGER #143 (FIXED 2026-09-14, two commits): the binary conditional region
 # path fed the burden scale-factor kernel an UNWEIGHTED conditioning score
 # against a WEIGHTED Phi, q.sum and g.sum (RegionSetUpConditional_binary_InCPP
-# exported m_Tstat_cond raw; it now exports m_Tstat_cond % w0).
+# exported m_Tstat_cond raw; it now exports m_Tstat_cond % w0), and ran it
+# through an unsuffixed textual twin of get_newPhi_scaleFactor_traitType that
+# lacked the #104 standardisation (deleted; one kernel, two call sites).
 #
 # The observable consequence was an invariance that failed. Conditioning on a
 # set of markers is a linear reparameterisation, so the conditional columns
@@ -16,8 +18,8 @@
 # two runs agree to 1e-15 on every conditional column.
 #
 # Two layers, so a failure is LOCATED rather than observed:
-#   1. fast tier: BOTH kernels are invariant under a CONSISTENT rescaling of
-#      their four inputs (q.sum, g.sum, Score by w; Phi by w^2). So the kernel
+#   1. fast tier: the kernel is invariant under a CONSISTENT rescaling of
+#      its four inputs (q.sum, g.sum, Score by w; Phi by w^2). So the kernel
 #      is not where a weight dependence could come from. Exactly (1e-15) below
 #      the |z| < 2 gate; above it the C++ saddlepoint root-finder's ABSOLUTE
 #      tolerance (eps^0.25 on the root, which scales as 1/w) puts a x7 rescale
@@ -86,9 +88,10 @@ l143_kernel <- function(fn, inp, ...) {
                 list("SKAT-O", ...)))
 }
 
-test_that("both scale-factor kernels are invariant under a consistent rescaling of their inputs", {
+test_that("the scale-factor kernel is invariant under a consistent rescaling of its inputs", {
   ns <- asNamespace("SAIGE")
-  twin <- get("get_newPhi_scaleFactor", ns)
+  # the twin this test also covered while #143 was open is gone
+  expect_false(exists("get_newPhi_scaleFactor", envir = ns, inherits = FALSE))
   fixed <- get("get_newPhi_scaleFactor_traitType", ns)
   for (z in c(0.8, 3.5)) {          # below and above the |z| < 2 saddlepoint gate
     inp <- l143_inputs(143L, z)
@@ -96,10 +99,6 @@ test_that("both scale-factor kernels are invariant under a consistent rescaling 
       sc <- l143_scale(inp, w)
       lab <- sprintf("z=%g w=%g", z, w)
       tol <- if (z < 2) 1e-12 else 1e-3
-      a <- l143_kernel(twin, inp)
-      b <- l143_kernel(twin, sc)
-      expect_equal(b$scaleFactor, a$scaleFactor, tolerance = tol, label = paste("twin", lab))
-      expect_equal(b$val / w^2, a$val, tolerance = tol, label = paste("twin val", lab))
       a <- l143_kernel(fixed, inp, "binary")
       b <- l143_kernel(fixed, sc, "binary")
       expect_equal(b$scaleFactor, a$scaleFactor, tolerance = tol, label = paste("fixed", lab))

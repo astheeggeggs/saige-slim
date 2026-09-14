@@ -521,7 +521,6 @@ region_postprocess <- function(outList,
                 q.sum <- sum(outList$gyVec[tempPos] * AnnoWeights[tempPos])
                 mu.a <- mu
 
-                # re_phi = get_newPhi_scaleFactor(q.sum,
                 re_phi <- get_newPhi_scaleFactor_traitType(
                   q.sum,
                   mu.a,
