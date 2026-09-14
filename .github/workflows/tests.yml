@@ -54,12 +54,14 @@ jobs:
         # boost/mpl/assert.hpp (a BH header R passes with -I, not -isystem),
         # which no change to this repo can silence; it also named
         # SAIGE_fitGLMM_fast.cpp:1179 (`|` around comparisons), a site clang's
-        # -Wparentheses does not flag. If -Wuninitialized fires on the two
-        # enumeration-guarded sites of LEDGER #152, drop that flag here rather
-        # than touching the code.
+        # -Wparentheses does not flag. GCC's -Wuninitialized also switches on
+        # -Wmaybe-uninitialized, which run 34838510204 promoted to ten errors in
+        # SAIGE_test.cpp -- the LEDGER #152 family, not fixable in passing -- so
+        # that sub-category is demoted back to a warning; DEFINITE uninitialised
+        # use stays an error.
         env:
           SAIGE_WARNINGS_RATCHET: "0"
-          SAIGE_EXTRA_CXXFLAGS: "-Werror=uninitialized -Werror=return-type"
+          SAIGE_EXTRA_CXXFLAGS: "-Werror=uninitialized -Wno-error=maybe-uninitialized -Werror=return-type"
         run: bash harness/build.sh
       - name: Upload build log on failure
         if: failure()

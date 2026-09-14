@@ -83,7 +83,9 @@ and at `SAIGE_fitGLMM_fast.cpp:1179`, a `|`-around-comparisons site clang does
 not flag -- note for a future row or a same-parse parenthesisation). The one source change is parentheses making
 the existing parse of `m_is_Firth_beta & (pval <= m_pCutoffforFirth)` explicit.
 **LEDGER #152** records the four enumeration-guarded uninitialised reads
-(two live, two in the dead exports). It adds a gate and deletes no
+(two live, two in the dead exports) and, since CI run 34838510204, the six
+more GCC's `-Wmaybe-uninitialized` names in `SAIGE_test.cpp` -- read them one
+by one before deciding anything; CI demotes that sub-category to a warning. It adds a gate and deletes no
 complexity. Next: Phase E (the deduplications), one push, several commits,
 E1 additionally needs the region TSAN clean + plant arms.
 
