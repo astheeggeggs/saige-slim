@@ -71,10 +71,12 @@ checkArgsListNumeric <- function(
   checkArgNumeric(markers_per_chunk, deparse(substitute(markers_per_chunk)), minVal = 1000)
   checkArgNumeric(groups_per_chunk, deparse(substitute(groups_per_chunk)), minVal = 1)
   checkArgNumeric(max_MAC_use_ER, deparse(substitute(max_MAC_use_ER)), minVal = 0)
-  # cat("min_MAC ", min_MAC, "\n")
-  # if(length(which(minGroupMAC_in_BurdenTest > 0)) > 0){
-  # 	cat("minGroupMAC_in_BurdenTest need to be >= min_MAC\n")
-  # }
+  # LEDGER #147 FIXED: taken as a formal and never checked, so a non-numeric
+  # value died ~200 lines later in an Rcpp conversion naming nothing and a
+  # negative one silently made the #126 gate inert. 0 is admitted: it is as
+  # inert as the default 1 (a surviving cell has at least one allele).
+  checkArgNumeric(minGroupMAC_in_BurdenTest, deparse(substitute(minGroupMAC_in_BurdenTest)),
+                  minVal = 0)
 }
 
 
