@@ -14,7 +14,6 @@
 #include <cstring>   // std::memcmp, for the GetTrace probe-cache check
 #include <boost/date_time.hpp> // for gettimeofday and timeval
 #include <oneapi/tbb/concurrent_vector.h>
-#include "getMem.hpp"
 #include "PGEN.hpp"
 using namespace Rcpp;
 using namespace std;

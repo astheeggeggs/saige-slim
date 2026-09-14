@@ -16,10 +16,6 @@ double getWeights(std::string t_kernel,
                   double t_freq, 
                   arma::vec t_wBeta);
 
-void imputeGeno(arma::vec& GVec, 
-                double freq, 
-                std::vector<uint32_t> posMissingGeno);
-
 double getInnerProd(arma::mat& x1Mat, arma::mat& x2Mat);
 
 

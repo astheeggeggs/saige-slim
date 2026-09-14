@@ -505,7 +505,7 @@ void PlinkClass::getOneMarker(				uint64_t t_gIndex,        // different meaning
     // Only built when the caller actually asked for the packed non-zero form.
     // Both step-2 call sites pass t_isOnlyOutputNonZero = false and then have
     // imputeGenoAndFlip rebuild this vector from scratch (it clears it first,
-    // UTIL.cpp:70-71), so the per-sample push_back here was pure waste.
+    // UTIL.cpp:50-51), so the per-sample push_back here was pure waste.
     if(t_isOnlyOutputNonZero && bufferG1 > 0){
       t_indexForNonZero.push_back(i);
     }

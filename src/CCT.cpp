@@ -2,7 +2,6 @@
 
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
-#include "getMem.hpp"
 #include <chrono>         // std::chrono::seconds
 #include <boost/iostreams/filter/zstd.hpp>
 #include <boost/date_time.hpp>

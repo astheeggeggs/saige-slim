@@ -106,7 +106,7 @@ test_that("best_guess and minor differ exactly where round(2*AF) is 1", {
   skip_if_no_goldens()
   bg <- miss_run("base")
   mi <- miss_run("minor", "--impute_method=minor")
-  # imputeG is round(2*AF) for best_guess and 0 for minor (src/UTIL.cpp:83-97),
+  # imputeG is round(2*AF) for best_guess and 0 for minor (src/UTIL.cpp:63-77),
   # so they can only differ where AF >= 0.25.
   expect_equal(differing_markers(bg, mi), sort(AF_GE_QUARTER_PASSING))
 })
@@ -248,7 +248,7 @@ test_that("--dosage_zerod_cutoff zeroes dosages exactly on the MAC-gated markers
   skip_if_no_goldens()
   on_  <- dos_run("dos_base")
   off_ <- dos_run("dos_nozerod", "--dosage_zerod_cutoff=0")
-  # src/UTIL.cpp:108-112 runs clean(cutoff) only when MAC <= the MAC cutoff, so
+  # src/UTIL.cpp:88-92 runs clean(cutoff) only when MAC <= the MAC cutoff, so
   # the differing set must be the MAC band EXACTLY, not merely inside it.
   expect_equal(differing_markers(on_, off_), sort(on_$MarkerID[dos_mac(on_) <= 10]))
 })
