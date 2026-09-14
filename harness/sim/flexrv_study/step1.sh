@@ -53,6 +53,7 @@ for t in ${@:-y_null y_null_bin y_quant y_binary}; do
     y_quant_*)  fit $t quantitative $D/pheno_pcs${t#y_quant}.txt ;;
     y_binary_*) fit $t binary $D/pheno_pcs${t#y_binary}.txt ;;
     y_null_bin_*) fit $t binary $D/pheno_pcs${t#y_null_bin}.txt ;;
+    y_null_r*)  fit $t quantitative $D/pheno_pcs_null.txt ;;   # make_null_series.py replicates
     *) echo "unknown trait $t" >&2; exit 2 ;;
   esac
 done

@@ -39,7 +39,7 @@ trait names). The design in one line each:
 - Background = the fixture's `y_null` scaled by sqrt(1 - h2): same pedigree
   polygenic component the null models were built on.
 - Binary at prevalence 0.10 (5,000 cases) on its own liability at
-  h2 / 0.342, so NCP_binary = NCP_quant on paper. (At K = 0.01 the equal-NCP
+  h2 / 0.342, so NCP_binary = NCP_quant on paper -- SUPERSEDED by 8a the same evening. (At K = 0.01 the equal-NCP
   liability h2 is 0.55 and does not fit the budget.)
 - Realised chr20 h2 0.0397; 1,182 causal variants; causal minor alleles per
   gene median 91, q10 20, min 3.
@@ -222,3 +222,74 @@ Rscript harness/sim/flexrv_study/analyse.R harness/work/flexrv_study/results-p2 
 `--dry-run` prints the prediction table without writing. The paired per-gene
 statistics of section 3 were computed by a scratch script on the same files;
 the numbers in the tables are what it printed.
+
+## 8. Same evening: items 1 and 2 of section 6 are DONE
+
+**8a. Binary arm rebuilt on the exact threshold model.** `make_power_pheno.py`
+now solves one scale `c_g` per gene (Brent's method, three fixed-point
+passes over the residual sd) so that the score test's non-centrality
+`N Cov(y, B)^2 / (K(1-K) Var(B))` with `P(case | B = b) = Phi((c b - t) /
+sd_rest)` equals the gene's quantitative NCP; every binary effect is
+risk-increasing (a protective rare burden's ceiling on a 0/1 trait is
+`K/(1-K)` times lower and no ladder could reach it; the sign is immaterial
+to the quantitative test). 0 of 60 genes unreachable; binary liability h2
+0.0566 (was 0.116 linearised). The quantitative and both null columns are
+byte-identical to the morning's (`cmp` on the columns; `truth_genes_p2.tsv`
+identical through `NCP_quant`), so nothing in section 3 moved. The
+generator's own two-ways check is now on the mean of `Z = U / sqrt(Var0 U)`
+against `sqrt(NCP)` (E[Z^2] - 1 is NOT the NCP on a binary trait: the
+alternative variance of U exceeds the null one): quant 0.990, binary 1.069
+against 1 +- 0.03 -- the binary is 2 sd high, i.e. delivered ~7% strong in
+Z, recorded and not chased. The v1 binary model, phenotype and 18 result
+files are kept under `p2_v1/` and `results-p2/binary_v1/`.
+
+Refit (`tau2` 0.135, `sparse` rows present), 18 binary runs re-run, all
+`exit=0`; `results-p2-2026-09-14.txt` regenerated and now holds v2:
+
+| `y_binary_p2` | v1 (linearised) | **v2 (exact)** | quant |
+|---|---|---|---|
+| unw | 22 | **38** | 36 |
+| beta / skato / grid | 22 / 22 / 20 | 38 / 42 / 43 | 37 / 37 / 40 |
+| flex192 informative / realistic / uninformative | 23 / 23 / 19 | **43 / 42 / 40** | 47 / 45 / 39 |
+| flexscore inf / uninf | 24 / 23 | 43 / 39 | 47 / 39 |
+| flexmaf | 21 | 40 | 39 |
+| Spearman(pred NCP, obs chi2), unw | 0.33 | **0.76** | 0.83 |
+| mean obs chi2 vs mean pred NCP + 1 | -- | 18.8 vs 19.7 | 21.6 vs 19.7 |
+
+Paired per gene on `y_binary_p2` v2: informative vs unw 43 : 17 (p 1e-3,
+median +0.57 decades), uninformative vs unw 26 : 34 (p 0.37, -0.28),
+informative vs uninformative 51 : 9 (p 3e-8), realistic vs uninformative
+44 : 16 (p 4e-4). Same ordering and same conclusion as the quantitative
+trait, with the score's gain about half the size in decades (+0.57 vs
++1.19); the permuted score is again the unweighted burden or slightly
+worse. One of the 36 binary null lines is outside its interval (`y_binary_p2`
+non-causal, flex192 realistic, 0.100 on n = 150; informative 0.060 and
+uninformative 0.033 on the same genes), which is the one-in-twenty.
+
+**8b. The Cauchy body excess was the draw, not the method.**
+`make_null_series.py` writes five fresh quantitative nulls with the
+fixture's own recipe (founder polygenic N(0, 0.35), child = midparent +
+N(0, 0.175), covariate effect at 0.10, noise; realised var(poly) 0.348-0.353,
+cor(child, midparent) 0.69-0.72 = sqrt(1/2)); `step1.sh` fits `y_null_r*`,
+`null_series.sh` runs unw / grid / flex192 / flexmaf on each and pools
+(`results-nullseries-2026-09-14.txt`). Over 5 x 210 genes at alpha 0.05:
+
+| method | pooled ECDF at 0.05 [95% CI] | at 0.01 | per-replicate range at 0.05 |
+|---|---|---|---|
+| unw | 0.0495 [0.037, 0.064] | 0.0105 | 0.033-0.081 |
+| grid (6-cell Cauchy) | 0.0619 [0.048, 0.078] | 0.0143 | 0.048-0.081 |
+| flex192 (144 sets) | 0.0562 [0.043, 0.072] | 0.0114 | 0.048-0.071 |
+| flexmaf | 0.0476 [0.036, 0.062] | 0.0086 | 0.029-0.071 |
+
+Every pooled line is inside its interval at both alphas. The original
+`y_null`'s 0.090-0.095 sits at the top of the per-replicate range (one
+replicate put even `unw` at 0.081), so it was a high draw of a
+210-gene ECDF, not a property of the pooled row. What remains true is
+small: the Cauchy rows run ~0.01 above nominal in the body (0.056-0.062
+against 0.0495 for unw), inside the interval, and nothing at 0.01. The
+#126-era "0.06-0.08 at 0.05" item is closed with these numbers.
+
+**What section 6 still leaves open:** nothing on this fixture. The next
+question on FlexRV is scientific rather than a fixture defect: how the score
+gain scales with cor(score, causal) (this fixture has one informative link,
+k = 10, cor 0.67; `--k` and `--pmax` are the knobs) and with N.

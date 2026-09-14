@@ -10,16 +10,16 @@ informative score finds 47 of 60 genes against unw's 36 (47 : 13, p 1e-5),
 monotone in score quality, zero false detections among 150 null genes.**
 Two owner decisions recorded there: the collapse cutoff stays at 10 for both
 traits (upstream's default), and this fixture replaces the 2026-09-10 one for
-power questions. What it leaves open, in cost order: (1) the binary arm's
-NCP column is the generator's linearised liability-threshold constant and
-saturates above ~0.6 sd per allele (22 detections where 34 were designed;
-the paired statements hold on the binary trait too) -- replace it with the
-exact threshold-model NCP; (2) the pooled Cauchy rows sit at 0.09 on the
-quantitative null at alpha 0.05 (flex192, flexmaf, AND the 6-cell grid; the
-tail and every binary/non-causal line are clean), which is the #126-era
-"0.06-0.08" item made slightly worse by #142's rung drop, as that row
-predicted; (3) the 2026-09-12 decisions memo's fixture and collapse-0 halves
-are superseded. The audit handoff below is still the code-side pointer.
+power questions. **Both loose ends were closed the same evening (section 8 of the handoff):
+the binary arm rebuilt on the exact liability-threshold model (per-gene
+scale; unw 38 of 60 where 22 had been, informative 43, permuted 40 = unw gene
+for gene, Spearman(pred, obs) 0.76), and a five-replicate null series that
+puts the pooled Cauchy rows at 0.056 (flex192) and 0.062 (grid) at alpha 0.05,
+inside the interval, so the single `y_null`'s 0.09 was a high draw.**
+Nothing is open on this fixture; the next FlexRV question is how the score
+gain scales with cor(score, causal) and N (`make_power_pheno.py --k --pmax`).
+The 2026-09-12 decisions memo's fixture and collapse-0 halves are superseded.
+The audit handoff below is still the code-side pointer.
 
 **Previous handoff: `docs/state/handoff-2026-09-14-codebase-audit.md`** --
 a whole-codebase structural quality audit at `9deab7c9`. 96 findings raised,
