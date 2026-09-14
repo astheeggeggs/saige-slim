@@ -364,7 +364,7 @@ int     ComputeExact::Run(int test_type){
     // Seed only when a resampling arm will actually draw.
     //
     // SL_setseed enters the R API -- Rcpp::Environment("package:base"),
-    // Rcpp::Function set.seed, GetRNGstate (Binary_resampling.cpp:50-66, the
+    // Rcpp::Function set.seed, GetRNGstate (Binary_resampling.cpp:43-58, the
     // LEDGER #2 fix) -- and Run() is reached for EVERY binary marker with
     // MAC <= max_MAC_for_ER whose |Z| exceeds the SPA cutoff, which on a
     // rare-variant scan is most of the ER markers. Only the two resampling
@@ -382,8 +382,9 @@ int     ComputeExact::Run(int test_type){
     // at entry exactly as before, so its draw sequence is unchanged; a marker
     // that does not draw cannot observe the seed. The only difference is the
     // end state of .Random.seed, and nothing else in step 2 consumes the R
-    // stream (the other two RNG users, SKAT_ExactMC and SKAT_Permu, are
-    // commented out and callerless respectively).
+    // stream (the other two RNG users this argument once named, SKAT_ExactMC
+    // and SKAT_Permu, were commented out and callerless then and were deleted
+    // in the 2026-09-14 dead-surface sweep).
     bool needsRNG = false;
     for(i = 0; i < m_k + 1; i++){
         if(m_IsExact.at(i) != 1){

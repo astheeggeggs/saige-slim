@@ -84,36 +84,9 @@ protected:
 
 };
 
-class ComputeExactSKATO : public ComputeExact {
-
-public: 
-    ComputeExactSKATO() ;
-
-    int     Init(int * resarray, int nres, int * nres_k, double * Z0, double *Z1, double * r_corr, int n_r, double * param, int k, int m, int total, int * total_k, double *prob_k, double * odds, double * p1, int * IsExact, double epsilon, bool IsSmallmemory=0);
-
-protected:
-    
-    virtual double     CalTestStat(int k, int * array, bool is_save=true, bool is_minIdx = false, int * minIdx = NULL);
-    virtual double     CalTestStat_INV(int k, int * array, bool is_save=true, bool is_minIdx = false, int * minIdx = NULL);
-    
-    double  Cal_Pvalue_Rcorr(double test_skat, double test_C, int idx);
-
-protected:
-    /* for SKAT-O */
-    vector<double>  m_rcorr;
-    vector<double> m_Z0_C;
-    vector<double> m_Z1_C;
-    double 	m_teststat_Z0_C;
-    double  m_teststat_Z1_C;
-    
-    vector<double> m_muQ;
-    vector<double> m_varQ;
-    vector<double> m_df;
-    
-    vector<int> m_minIdx;
-
-    
-};
+// ComputeExactSKATO (a subclass overriding CalTestStat/CalTestStat_INV) was
+// deleted 2026-09-14 (dead-surface sweep C1): its only instantiator was the
+// callerless SKATO_Exact. The virtuals above stay virtual on purpose.
 
 #endif 
 

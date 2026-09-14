@@ -19,7 +19,6 @@ void SKATExactBin_ComputProb_New(arma::uvec & idx, arma::uvec & idxCompVec, arma
 
 void  Get_Res_Arrays(arma::mat & res_out, arma::uvec & idx, std::vector<int> & resarray, int & nres, std::vector<int> & nres_k);
 
-std::vector< std::vector<double> > mat_to_std_vec(arma::mat &A);
 
 
 double SKATExactBin_Work(arma::mat & Z, arma::vec & res, arma::vec & pi1, uint32_t ncase, arma::uvec & idx, arma::uvec & idxCompVec, arma::mat & res_out, int NResampling, int ExactMax, double epsilon, int test_type);

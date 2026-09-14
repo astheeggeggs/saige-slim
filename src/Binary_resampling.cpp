@@ -39,13 +39,6 @@ int SL_runif_INT(int max){
 
 }
 
-int SL_runif_int(int max){
-
-	int re;
-	re = SL_runif_INT(max);
-	return re;
-}
-
 
 void  SL_setseed(int seed){
 
@@ -64,14 +57,6 @@ void  SL_setseed(int seed){
     #endif
 }
 
-void  SL_out(){
-
-    #ifndef _STAND_ALONE_
-        PutRNGstate();
-    #endif
-}
-
-
 
 /*
 	n : number of samples
@@ -87,20 +72,6 @@ void SL_GetSample(int n, int k, std::vector<int> & y, std::vector<int> & x){
         x[i] = i;
     }
     for (i = 0; i < k; i++) {
-        j = SL_runif_INT(n);
-        y[i] = x[j] ;
-        x[j] = x[--n];
-    }
-}
-
-void SL_GetPermu(int n, std::vector<int> & y, std::vector<int> & x){
-    int i, j;
-
-    for (i = 0; i < n; i++){
-        x[i] = y[i];
-    }
-    for (i = 0; i < n; i++) {
-
         j = SL_runif_INT(n);
         y[i] = x[j] ;
         x[j] = x[--n];
@@ -173,17 +144,3 @@ void SL_Binary_Boot1(int n, int ncase, std::vector<double> & pcase, std::vector<
 
 }
 
-void Test1(int * pn, int * pm, int *pncase, double * pcase, std::vector<int> & buf1, std::vector<int> & buf2, int *buf3){
-
-	int i, n, m, ncase, idx;
-	n = *pn;
-	m = *pm;
-	ncase = *pncase;
-
-	for(i=0;i<m;i++){
-
-		idx = i * n ;
-		/*SL_Binary_Boot1(n, ncase, pcase, buf1, buf2, buf3);*/
-		SL_GetSample(n, n, buf1, buf2);
-	}
-}

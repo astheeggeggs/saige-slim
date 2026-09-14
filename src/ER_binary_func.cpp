@@ -171,17 +171,6 @@ void  Get_Res_Arrays(arma::mat & res_out, arma::uvec & idx, std::vector<int> & r
 }
 
 
-std::vector< std::vector<double> > mat_to_std_vec(arma::mat &A) { 
-
-    std::vector< std::vector<double> > V(A.n_rows);
-    typedef std::vector<double> stdvec;
-    for (size_t i = 0; i < A.n_rows; ++i) {
-        V[i] = arma::conv_to< stdvec >::from(A.row(i));
-    };
-    return V;
-
-
-}
 
 
 double SKATExactBin_Work(arma::mat & Z, arma::vec & res, arma::vec & pi1, uint32_t ncase, arma::uvec & idx, arma::uvec & idxCompVec, arma::mat & res_out, int NResampling, int ExactMax, double epsilon, int test_type){
