@@ -86,7 +86,17 @@ fi
 
 pixi run Rscript -e 'Rcpp::compileAttributes(".")' > /dev/null
 mkdir -p harness/work
-pixi run R CMD INSTALL . > harness/work/build.log 2>&1 || { echo "INSTALL FAILED"; grep -iE "error" harness/work/build.log | head -20; exit 1; }
+# On failure print the DIAGNOSTICS, not every line containing "error": the
+# old `grep -iE "error" | head -20` was filled by Rcpp's `error_occured`
+# symbol and CI run 34837530220 failed with the real compiler error never
+# shown (the log is not uploaded from a runner). "error:" with the colon is
+# the compiler's and linker's spelling; "Error" R's.
+pixi run R CMD INSTALL . > harness/work/build.log 2>&1 || {
+  echo "INSTALL FAILED -- diagnostics from harness/work/build.log:"
+  grep -nE "error:|^Error|ERROR:|undefined reference|Undefined symbols" harness/work/build.log | head -40
+  echo "--- last 15 lines:"; tail -15 harness/work/build.log
+  exit 1
+}
 if [ "$INCREMENTAL" = 1 ]; then
   echo "incremental install OK ($(git rev-parse --short HEAD)) -- objects kept, no header moved"
 else

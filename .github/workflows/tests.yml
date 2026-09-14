@@ -61,5 +61,11 @@ jobs:
           SAIGE_WARNINGS_RATCHET: "0"
           SAIGE_EXTRA_CXXFLAGS: "-Werror=uninitialized -Werror=return-type"
         run: bash harness/build.sh
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: harness/work/build.log
       - name: Run tests (standard tier, numeric compare)
         run: SAIGE_COMPARE_MODE=numeric bash harness/run_tests.sh standard
