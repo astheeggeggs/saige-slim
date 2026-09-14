@@ -378,9 +378,16 @@ void SAIGEClass::scoreTestFast(arma::vec & t_GVec,
     arma::vec Z = A1.t() * g1;
     arma::vec B = X1 * Z;
     arma::vec g1_tilde = g1 - B;
-    double var1, var2, S, S1, S2, g1tildemu2;
+    // LEDGER #152: var2, Bmu2 and g1tildemu2 are assigned only inside the
+    // trait-type chain below and read after it. The chain is exhaustive on
+    // this branch (binary, quantitative) and now says so with a terminal
+    // else; the NaN initialisers make any future gap a NaN, not a stale
+    // stack value.
+    double var1, S, S1, S2;
+    double var2 = std::numeric_limits<double>::quiet_NaN();
+    double g1tildemu2 = std::numeric_limits<double>::quiet_NaN();
     arma::vec S_a2;
-    double Bmu2;
+    double Bmu2 = std::numeric_limits<double>::quiet_NaN();
     arma::mat  ZtXVXZ = Z.t() * m_XVX * Z;
     if(m_traitType == "binary"){
       mu21  = m_mu2.elem(t_indexForNonZero);
@@ -390,6 +397,8 @@ void SAIGEClass::scoreTestFast(arma::vec & t_GVec,
     }else if(m_traitType == "quantitative"){
       Bmu2 = dot(g1, B);
       var2 = ZtXVXZ(0,0)*m_tauvec[0] +  dot(g1,g1) - 2*Bmu2;
+    }else{
+      Rcpp::stop("scoreTest: unknown trait type '" + m_traitType + "' (LEDGER #152)");
     }
 
     // Term magnitudes for the cancellation test above. Free: all three are
@@ -627,7 +636,8 @@ void SAIGEClass::getMarkerPval(arma::vec & t_GVec,
   }
 
  
-  double pval_noadj, pval, t_qval_Firth; //can be log or not raw
+  double pval_noadj, pval; //can be log or not raw
+  double t_qval_Firth = std::numeric_limits<double>::quiet_NaN(); // LEDGER #152: assigned wherever t_isFirth is set, read under if(t_isFirth)
   bool ispvallog;
 
   //for test
@@ -660,7 +670,13 @@ if(!t_ctx.useSparseGRM && t_ctx.noadjCov){
   t_isSPAConverge = false;
   
  //arma::vec timeoutput3_a = getTime();
-  double q, qinv, m1, NAmu, NAsigma, tol1, p_iIndexComVecSize;
+  // LEDGER #152: q/qinv are assigned on the binary branch and the SPA block
+  // runs only for a non-quantitative trait; NAmu/NAsigma are assigned under
+  // p_iIndexComVecSize >= 0.5, the predicate that also selects the fast
+  // kernel that reads them. Flow-guarded, not compiler-provable; NaN so a
+  // gap can never be a stale stack value.
+  double m1, tol1, p_iIndexComVecSize;
+  double q = std::numeric_limits<double>::quiet_NaN(), qinv = std::numeric_limits<double>::quiet_NaN(), NAmu = std::numeric_limits<double>::quiet_NaN(), NAsigma = std::numeric_limits<double>::quiet_NaN();
 
 
   //arma::uvec iIndexComVec = arma::find(t_GVec == 0);
@@ -1006,7 +1022,8 @@ if(!t_isER){
         double m1_c = arma::dot(m_mu, gtilde_c);
         double var2_c = arma::sum(m_mu % (1 - m_mu) % arma::square(gtilde_c));
         double tol1_c = std::pow(std::numeric_limits<double>::epsilon(), 0.25);
-	double q_c, qinv_c, SPApval_c;
+	double SPApval_c;
+	double q_c = std::numeric_limits<double>::quiet_NaN(), qinv_c = std::numeric_limits<double>::quiet_NaN(); // LEDGER #152
 	if(m_traitType == "binary"){
                 q_c = t_Tstat_c/sqrt(t_varT_c/var2_c) + m1_c;
                 if((q_c-m1_c) > 0){
@@ -1016,6 +1033,9 @@ if(!t_isER){
                 }else{
                         qinv_c = std::abs(q_c-m1_c) + m1_c;
                 }
+        }else{
+                // unreachable: the enclosing block is guarded by m_traitType != "quantitative"
+                Rcpp::stop("conditional SPA: unknown trait type '" + m_traitType + "' (LEDGER #152)");
         }
         SPA_ws(m_mu, gtilde_c, q_c, qinv_c, pval_noSPA_c, tol1_c, ispvallog, m_traitType, SPApval_c, t_isSPAConverge_c, ws().spa);
 

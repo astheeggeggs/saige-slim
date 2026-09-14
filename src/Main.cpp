@@ -1802,18 +1802,22 @@ void processMale_XnonPAR(arma::vec & t_GVec,  uint32_t& t_pd , arma::umat & t_XP
 
 // [[Rcpp::export]]
 uint32_t Unified_getSampleSizeinGeno(std::string & t_genoType){
-    uint32_t N0;
+    uint32_t N0 = 0;
     if(t_genoType == "plink" || t_genoType == "pgen"){
 	N0 = g_reader->getN0();
+    }else{
+        Rcpp::stop("Unified_getSampleSizeinGeno: unknown genotype type '" + t_genoType + "' (LEDGER #152)");
     }
     return(N0);
 }	
 
 // [[Rcpp::export]]
 uint32_t Unified_getSampleSizeinAnalysis(std::string & t_genoType){
-    uint32_t N;
+    uint32_t N = 0;
     if(t_genoType == "plink" || t_genoType == "pgen"){
         N = g_reader->getN();
+    }else{
+        Rcpp::stop("Unified_getSampleSizeinAnalysis: unknown genotype type '" + t_genoType + "' (LEDGER #152)");
     }
     return(N);
 }
