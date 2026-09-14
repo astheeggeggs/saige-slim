@@ -416,7 +416,7 @@ Rcpp::List getroot_K1_fast_Binom(double init, const arma::vec & mu, const arma::
 	double gpos, gneg;
 	getGPosNeg_Binom(g, gpos, gneg);
 	SPAWorkspace ws(gNB.n_elem);
-	SPARoot out = getroot_K1_fast_Binom_core(init, mu, g, q, gNA, gNB, muNA, muNB, NAmu, NAsigma, tol, gpos, gneg, ws, maxiter);
+	SPARoot out = getroot_K1_fast_Binom_core(init, g, q, gNB, muNB, NAmu, NAsigma, tol, gpos, gneg, ws, maxiter);
 	Rcpp::List result;
 	result["root"]	= out.root;
 	result["niter"] = out.niter;
@@ -424,7 +424,7 @@ Rcpp::List getroot_K1_fast_Binom(double init, const arma::vec & mu, const arma::
 	return(result);
 }
 
-SPARoot getroot_K1_fast_Binom_core(double init, const arma::vec & mu, const arma::vec & g, double q, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, double tol, double gpos, double gneg, SPAWorkspace & ws, int maxiter){
+SPARoot getroot_K1_fast_Binom_core(double init, const arma::vec & g, double q, const arma::vec & gNB, const arma::vec & muNB,  double NAmu, double NAsigma, double tol, double gpos, double gneg, SPAWorkspace & ws, int maxiter){
 	SPARoot result;
 	double root;
 	int niter;
@@ -499,7 +499,7 @@ SPARoot getroot_K1_fast_Binom_core(double init, const arma::vec & mu, const arma
 Rcpp::List Get_Saddle_Prob_fast_Binom(double zeta,  const arma::vec & mu, const arma::vec & g, double q, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, bool logp)
 {
 	SPAWorkspace ws(gNB.n_elem);
-	SPASaddle out = Get_Saddle_Prob_fast_Binom_core(zeta, mu, g, q, gNA, gNB, muNA, muNB, NAmu, NAsigma, logp, ws);
+	SPASaddle out = Get_Saddle_Prob_fast_Binom_core(zeta, g, q, gNB, muNB, NAmu, NAsigma, logp, ws);
 	Rcpp::List result;
 	result["pval"] = out.pval;
 	result["isSaddle"] = out.isSaddle;
@@ -507,7 +507,7 @@ Rcpp::List Get_Saddle_Prob_fast_Binom(double zeta,  const arma::vec & mu, const 
 }
 
 
-SPASaddle Get_Saddle_Prob_fast_Binom_core(double zeta,  const arma::vec & mu, const arma::vec & g, double q, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, bool logp, SPAWorkspace & ws)
+SPASaddle Get_Saddle_Prob_fast_Binom_core(double zeta,  const arma::vec & g, double q, const arma::vec & gNB, const arma::vec & muNB,  double NAmu, double NAsigma, bool logp, SPAWorkspace & ws)
 {
 	double k1 = Korg_fast_Binom_ws(zeta, gNB, muNB, NAmu, NAsigma, ws);
 	double k2 = K2_fast_Binom_ws(zeta, gNB, muNB, NAsigma, ws);

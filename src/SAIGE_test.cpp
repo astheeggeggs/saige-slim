@@ -13,8 +13,6 @@
 #include "SPA.hpp"
 #include "ER_binary_func.hpp"
 #include "UTIL.hpp"
-#include "getMem.hpp"
-#include "getMem.hpp"
 #include <thread>         // std::this_thread::sleep_for
 #include <chrono>         // std::chrono::seconds
 #include <boost/iostreams/filter/zstd.hpp>
@@ -718,58 +716,31 @@ if(!t_ctx.useSparseGRM && t_ctx.noadjCov){
   
   unsigned int iIndexComVecSize = iIndexComVec.n_elem;
   unsigned int iIndexSize = iIndex.n_elem;
-  // Sized lazily. These four are only read on the SPA branches below, which
+  // Sized lazily. These two are only read on the SPA branches below, which
   // together take ~5% of binary markers and no quantitative one; sizing them
-  // for every marker cost two allocations of ~n doubles each (gNA and muNA are
-  // the zero-genotype side, so ~n for a rare variant), i.e. two mmap/munmap
+  // for every marker cost allocations of ~n doubles each, i.e. mmap/munmap
   // round trips per marker at biobank n, ~95% of them wasted.
   //
   // The marginal branch assigns them wholesale (gNB = t_gtilde(iIndex) etc.),
   // so it needs no explicit sizing. The CONDITIONAL branch is a different
   // predicate and can be reached without the marginal branch having run
-  // (LEDGER #40), and previously found them sized-but-uninitialised; it now
-  // sizes them there to reproduce exactly that state.
-  arma::vec gNB, gNA, muNB, muNA;
-
-
+  // (LEDGER #40); it computes its own saddlepoint context (see the block
+  // around SPA_ws below).
+  //
+  // gNA/muNA -- the zero-genotype halves -- were materialised here too and
+  // threaded through SPA_fast_ws and the two fast Binom kernels, which never
+  // read them (inherited; upstream's bodies do not read them either). Deleted
+  // 2026-09-14 (dead-surface sweep C4) from the three INTERNAL signatures
+  // only; the Rcpp-exported wrappers keep theirs.
+  //
+  // LEDGER #40 history: 8f3ded00 fixed it with a prepSPAContext() lambda
+  // armed at the top of the conditional block; b60141f9 (#84) made that block
+  // compute its own CGF and removed the call, and the lambda plus its
+  // 12-line "this is the fix" comment stayed here with no caller until the
+  // 2026-09-14 sweep. The guard is the conditional block's own arithmetic, not
+  // a lambda; goldens P12/P17 pin it.
+  arma::vec gNB, muNB;
   double gmuNB;
-
-  // LEDGER #40 fix. The conditional-analysis SPA block far below reads m1,
-  // p_iIndexComVecSize, NAmu, NAsigma, tol1 and gNA/gNB/muNA/muNB, but ONLY
-  // the marginal block assigns them, under a DIFFERENT predicate: the
-  // marginal one is `!t_isER && StdStat > m_SPA_Cutoff`, the conditional one
-  // is `stat_c > m_SPA_Cutoff^2`. A marker that takes the ER path, or whose
-  // marginal statistic is below the cutoff, therefore reached the conditional
-  // SPA with all of these uninitialised -- undefined behaviour, and
-  // p_iIndexComVecSize is itself the predicate choosing SPA_fast vs SPA.
-  // Observed on the bundled binary fixture: 2 of 70 markers under an ordinary
-  // --condition, both via the ER path with StdStat ABOVE the cutoff (3.94 and
-  // 2.63), i.e. markers that would otherwise have been SPA-corrected.
-  // The setup is idempotent and computed at most once per marker.
-  bool spaContextReady = false;
-  auto prepSPAContext = [&]() {
-    if(spaContextReady) return;
-    if(!is_gtilde){
-      t_gtilde.resize(m_n);
-      getadjGFast(t_GVec, t_gtilde, iIndex);
-      is_gtilde = true;
-    }
-    p_iIndexComVecSize = double(iIndexComVecSize)/m_n;
-    m1 = dot(m_mu, t_gtilde);
-    if(p_iIndexComVecSize >= 0.5){
-      gNB = t_gtilde(iIndex);
-      gNA = t_gtilde(iIndexComVec);
-      muNB = m_mu(iIndex);
-      muNA = m_mu(iIndexComVec);
-      gmuNB = dot(gNB, muNB);
-      NAmu = m1 - gmuNB;
-      if(m_traitType == "binary"){
-        NAsigma = t_var2 - arma::sum(muNB % (1-muNB) % arma::pow(gNB,2));
-      }
-    }
-    tol1 = std::pow(std::numeric_limits<double>::epsilon(), 0.25);
-    spaContextReady = true;
-  };
 
 //std::cout << "ok1" << std::endl;
 
@@ -795,58 +766,14 @@ if(!t_isER){
 	//int t_gtilden = t_gtilde.n_elem;
         p_iIndexComVecSize = double(iIndexComVecSize)/m_n;
    	m1 = dot(m_mu, t_gtilde);
-        spaContextReady = true;   // LEDGER #40: marginal path fills these itself
 
 	if(p_iIndexComVecSize >= 0.5){
-		unsigned int j1 = 0;
-		unsigned int j2 = 0;
-/*
-		for(unsigned int j = 0; j < m_n ; j++){	
-			//std::cout << "j " << j << std::endl;
-			if(t_GVec(j) != 0){
-			//std::cout << "j1 " << j1 << std::endl;
-				gNB(j1) = t_gtilde(j);
-				muNB(j1) = m_mu(j);
-				j1 = j1 + 1;	
-			}else{
-			//std::cout << "j2 " << j2 << std::endl;
-				gNA(j2) = t_gtilde(j);
-				muNA(j2) = m_mu(j);
-				j2 = j2 + 1;
-          //process_mem_usage(mem1, mem2);
-//   std::cout << "VM 4 a 1.3c: " << mem1/1000 << "; RSS 4 a 1.3: " << mem2/1000 << std::endl;
-			}	
-		}
-		*/
-
-/*
-	std::cout << "gNB.n_elem " <<  gNB.n_elem << std::endl;	
-	std::cout << "gNA.n_elem " <<  gNA.n_elem << std::endl;	
-*/
 	gNB = t_gtilde(iIndex);
-	gNA = t_gtilde(iIndexComVec);
    	muNB = m_mu(iIndex);
-   	muNA = m_mu(iIndexComVec);
-
-/*	
-	    std::cout << "gNA.n_elem 2 " << gNA.n_elem << std::endl;
-        std::cout << "gNB.n_elem 2 " << gNB.n_elem << std::endl;
-        std::cout << "muNA.n_elem 2 " << muNA.n_elem << std::endl;
-        std::cout << "muNB.n_elem 2 " << muNB.n_elem << std::endl;
-*/
-
-
   	gmuNB = dot(gNB,muNB);	 
    	NAmu= m1-gmuNB;
 
    }
-	/*else{
-		gNA.clear();
-		gNB.clear();
-		muNA.clear();
-		gNB.clear();
-
-	}*/
 
    	if(m_traitType == "binary"){
                 q = t_Tstat/sqrt(t_var1/t_var2) + m1;
@@ -867,7 +794,7 @@ if(!t_isER){
 	tol1 = std::pow(tol0, 0.25);
 	if(p_iIndexComVecSize >= 0.5 && !t_ctx.useSparseGRM){
 		//std::cout << "SPA_fast" << std::endl;
-        	SPA_fast_ws(m_mu, t_gtilde, q, qinv, pval_noadj, ispvallog, gNA, gNB, muNA, muNB, NAmu, NAsigma, tol1, m_traitType, t_SPApval, t_isSPAConverge, ws().spa);
+        	SPA_fast_ws(t_gtilde, q, qinv, pval_noadj, ispvallog, gNB, muNB, NAmu, NAsigma, tol1, m_traitType, t_SPApval, t_isSPAConverge, ws().spa);
 	
 	}else{
 		//std::cout << "SPA" << std::endl;
@@ -1220,10 +1147,8 @@ if(!t_isER){
  }
 
 
-    gNA.clear();
     gNB.clear();
-    muNA.clear();
-    gNB.clear();
+    muNB.clear();   // was a second gNB.clear() -- the copy-paste typo the audit found (C4)
 
 
 //std::cout << "ok3" << std::endl;

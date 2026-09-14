@@ -108,20 +108,14 @@ void SPA_ws(const arma::vec & mu, const arma::vec & g, double q, double qinv, do
 // [[Rcpp::export]]
 void SPA_fast(const arma::vec & mu, const arma::vec & g, double q, double qinv, double pval_noadj, bool logp, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, double tol, std::string traitType, double & pval, bool & isSPAConverge){
         SPAWorkspace ws(gNB.n_elem);
-        SPA_fast_ws(mu, g, q, qinv, pval_noadj, logp, gNA, gNB, muNA, muNB, NAmu, NAsigma, tol, traitType, pval, isSPAConverge, ws);
+        // mu/gNA/muNA are accepted for the exported signature and not forwarded (C4)
+        SPA_fast_ws(g, q, qinv, pval_noadj, logp, gNB, muNB, NAmu, NAsigma, tol, traitType, pval, isSPAConverge, ws);
 }
 
-void SPA_fast_ws(const arma::vec & mu, const arma::vec & g, double q, double qinv, double pval_noadj, bool logp, const arma::vec & gNA, const arma::vec & gNB, const arma::vec & muNA, const arma::vec & muNB,  double NAmu, double NAsigma, double tol, std::string traitType, double & pval, bool & isSPAConverge, SPAWorkspace & ws){
+void SPA_fast_ws(const arma::vec & g, double q, double qinv, double pval_noadj, bool logp, const arma::vec & gNB, const arma::vec & muNB,  double NAmu, double NAsigma, double tol, std::string traitType, double & pval, bool & isSPAConverge, SPAWorkspace & ws){
 
         double p1, p2;
         bool Isconverge = true;
-/*	std::cout << "mu.n_elem " << mu.n_elem << std::endl;
-	std::cout << "g.n_elem " << g.n_elem << std::endl;
-	std::cout << "gNA.n_elem " << gNA.n_elem << std::endl;
-	std::cout << "gNB.n_elem " << gNB.n_elem << std::endl;
-	std::cout << "muNA.n_elem " << muNA.n_elem << std::endl;
-	std::cout << "muNB.n_elem " << muNB.n_elem << std::endl;
-*/
         if( traitType != "binary"){
                 // Unreachable, and deliberately not an Rcpp::stop. Only the
                 // binary saddlepoint kernels exist, and SAIGE_test.cpp gates the
@@ -137,9 +131,9 @@ void SPA_fast_ws(const arma::vec & mu, const arma::vec & g, double q, double qin
         // gpos/gneg depend only on g, and both roots use the same g
         double gpos, gneg;
         getGPosNeg_Binom(g, gpos, gneg);
-        SPARoot outuni1 = getroot_K1_fast_Binom_core(0, mu, g, q, gNA,gNB,muNA,muNB,NAmu, NAsigma, tol, gpos, gneg, ws);
+        SPARoot outuni1 = getroot_K1_fast_Binom_core(0, g, q, gNB, muNB,NAmu, NAsigma, tol, gpos, gneg, ws);
         //double qinv = -1*q;
-        SPARoot outuni2 = getroot_K1_fast_Binom_core(0, mu, g, qinv, gNA,gNB,muNA,muNB,NAmu, NAsigma, tol, gpos, gneg, ws);
+        SPARoot outuni2 = getroot_K1_fast_Binom_core(0, g, qinv, gNB, muNB,NAmu, NAsigma, tol, gpos, gneg, ws);
 
 /*	double outuni1root = outuni1["root"];
         double outuni2root = outuni2["root"];
@@ -154,8 +148,8 @@ void SPA_fast_ws(const arma::vec & mu, const arma::vec & g, double q, double qin
 
         if(outuni1.Isconverge  && outuni2.Isconverge)
         {
-                SPASaddle getSaddle  = Get_Saddle_Prob_fast_Binom_core(outuni1.root, mu, g, q, gNA,gNB,muNA,muNB,NAmu, NAsigma, logp, ws);
-                SPASaddle getSaddle2 = Get_Saddle_Prob_fast_Binom_core(outuni2.root, mu, g, qinv, gNA,gNB,muNA,muNB,NAmu, NAsigma, logp, ws);
+                SPASaddle getSaddle  = Get_Saddle_Prob_fast_Binom_core(outuni1.root, g, q, gNB, muNB,NAmu, NAsigma, logp, ws);
+                SPASaddle getSaddle2 = Get_Saddle_Prob_fast_Binom_core(outuni2.root, g, qinv, gNB, muNB,NAmu, NAsigma, logp, ws);
                 if(getSaddle.isSaddle){
                         p1 = getSaddle.pval;
                 }else{
