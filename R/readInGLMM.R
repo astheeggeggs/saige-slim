@@ -371,7 +371,11 @@ ReadModel_subsample <- function(GMMATmodelFile = "", chrom = "", LOCO = TRUE, is
 }
 
 
-Get_Variance_Ratio <- function(varianceRatioFile, cateVarRatioMinMACVecExclude, cateVarRatioMaxMACVecInclude, isGroupTest, isSparseGRM, useSparseGRMtoFitNULL) {
+# isGroupTest and useSparseGRMtoFitNULL were formals until 2026-09-14 (C6):
+# neither appeared in the body, and the production caller passed five
+# arguments, so useSparseGRMtoFitNULL was a never-forced missing promise (the
+# LEDGER #85 shape). test-unit-varianceratio.R pins the formals.
+Get_Variance_Ratio <- function(varianceRatioFile, cateVarRatioMinMACVecExclude, cateVarRatioMaxMACVecInclude, isSparseGRM) {
   iscateVR <- FALSE
   # check variance ratio
   if (!file.exists(varianceRatioFile)) {
@@ -445,25 +449,9 @@ Get_Variance_Ratio <- function(varianceRatioFile, cateVarRatioMinMACVecExclude, 
         ncol(varRatioData), " column(s)); this version requires the 3-column ",
         "'value type category' format. Please re-run Step 1.\n"
       )
-      if (isSparseGRM) {
-        ratioVec_sparse <- varRatioData[, 1]
-        ratioVec_sparse <- as.numeric(ratioVec_sparse)
-        cat("variance Ratio is ", ratioVec_sparse, "\n")
-        ratioVec_null <- rep(-1, length(varRatioData[, 1]))
-        cat("WARNING: Sparse GRM is specified and the variance ratio(s) were specified. Please make sure the variance ratios were estimated using a full GRM and a sparse GRM.")
-      } else {
-        ratioVec_null <- varRatioData[, 1]
-        ratioVec_null <- as.numeric(ratioVec_null)
-        cat("variance Ratio is ", ratioVec_null, "\n")
-        cat("WARNING: Sparse GRM is not specified and the variance ratio(s) were specified. Please make sure that in Step 1, 1. the null model was fit using a full GRM (--useSparseGRMtoFitNULL=FALSE) and the variacne ratio was NOT estimated with the sparse GRM (useSparseGRMforVarRatio=FALSE) or 2. the null model was fit using a sparse GRM (--useSparseGRMtoFitNULL=TRUE) and the variacne ratio was estiamted with the sparse GRM and null --skipVarianceRatioEstimation=FALSE\n")
-        ratioVec_sparse <- c(-1)
-      }
-      if (length(varRatioData[, 1]) > 1) {
-        iscateVR <- TRUE
-        nrv <- length(varRatioData[, 1])
-      } else {
-        nrv <- 1
-      }
+      # The 19 lines that followed this stop() -- two WARNING strings describing
+      # the legacy format the branch refuses -- were unreachable since the
+      # LEDGER #13 fix and were deleted 2026-09-14 (C6).
     }
 
 

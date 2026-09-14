@@ -1797,7 +1797,8 @@ createSparseKinParallel <- function(nblocks, ncore, relatednessCutoff) {
   #  indexVec = bigGRMPar(MAT, nblocks = nblocks, verbose = FALSE, ncore = nblocks, relatednessCutoff = relatednessCutoff)
   #  indexVec = bigGRMPar_new(nblocks = nblocks, verbose = TRUE, ncore = nblocks, relatednessCutoff = relatednessCutoff)
 
-  printComb(3)
+  # printComb(3) -- the R call was deleted 2026-09-14 (C6): it printed two junk
+  # lines on every step-0 / internal-GRM run. The C++ printer stays (LEDGER #63).
   # indexVec = findIndiceRelatedSample()
   findIndiceRelatedSample()
 

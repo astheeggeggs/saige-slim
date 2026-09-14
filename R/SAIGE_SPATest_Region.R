@@ -122,11 +122,12 @@ setSparseSigma_new <- function(sparseGRMFile,
 #     already nested inside those guards)
 #   - only the primary copy set cctpval = 1 when the Cauchy combination is
 #     skipped (single annotation and single max MAF)
-# resultDF_carryover reproduces the re-run copy's visibility of the primary
-# pass's resultDF (pass list(resultDF), or NULL when it does not exist).
-# The returned list carries pval.Region plus cctpval/resultDF only when they
-# were bound, so the caller can reproduce the exact frame state the inline
-# blocks used to leave behind.
+# resultDF_carryover is the re-run copy's per-set carry-forward list
+# (resultDFList; NULL on the first pass). The returned list carries
+# pval.Region plus cctpval only when it was bound, so the caller can
+# reproduce the exact frame state the inline blocks used to leave behind.
+# (A scalar `resultDF` return field and the unpack that made `exists()` true
+# for it were deleted 2026-09-14, C6: nothing read them.)
 # LEDGER #132: the ACAT-V COMBINATION weight of a collapsed ultra-rare
 # pseudo-marker, for a custom or transform set.
 #
@@ -278,9 +279,6 @@ region_postprocess <- function(outList,
     resultDF_carryover
   } else {
     vector("list", nWeightSets)
-  }
-  if (!is.null(resultDF_carryover)) {
-    resultDF <- resultDF_carryover[[1]]
   }
   pval.Region <- NULL
   if (is_single_in_groupTest) {
@@ -866,9 +864,6 @@ region_postprocess <- function(outList,
   ret <- list(pval.Region = pval.Region)
   if (exists("cctpval", inherits = FALSE)) {
     ret$cctpval <- cctpval
-  }
-  if (exists("resultDF", inherits = FALSE)) {
-    ret$resultDF <- resultDF
   }
   if (any(!vapply(resultDFList, is.null, logical(1)))) {
     ret$resultDFList <- resultDFList

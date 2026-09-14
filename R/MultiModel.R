@@ -256,7 +256,7 @@ prepareNullModel <- function(spec, k, chrom, LOCO, is_Firth_beta, subSampleFile,
   # readInGLMM.R
   ratioVecList <- Get_Variance_Ratio(
     spec$varianceRatioFile, cateVarRatioMinMACVecExclude,
-    cateVarRatioMaxMACVecInclude, isGroupTest, isSparseGRM
+    cateVarRatioMaxMACVecInclude, isSparseGRM
   )
 
   # LEDGER #10 fix: single-variant analysis dereferences the null_noXadj
