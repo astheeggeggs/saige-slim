@@ -1362,7 +1362,11 @@ SAIGE.Region <- function(mu,
   OutList.all <- NULL
   Output_MarkerList.all <- NULL                  # model-independent content, written to every model's file
   cth_chunk_to_output <- 1
-  iswriteMarkerList <- rep(FALSE, nModels)
+  # LEDGER #144 FIXED: seeded FALSE regardless of a restart, so the first
+  # resumed chunk with marker-list rows took the fresh-write branch and
+  # truncated .markerList.txt to the resumed regions. Seeded from isappend
+  # like the results-file flag beside it (LEDGER #59).
+  iswriteMarkerList <- rep(isappend, nModels)
   iswriteRegion <- rep(isappend, nModels)
   # LEDGER #116 FIXED: the SKAT-O path writes its header when the run STARTS,
   # from the schema in R/RegionSchema.R, so a run in which no cell qualifies
