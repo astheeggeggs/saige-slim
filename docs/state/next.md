@@ -1,6 +1,15 @@
-# What is worth doing next (2026-09-03, updated 2026-09-14 evening; read docs/state/handoff-2026-09-14-ledger-143.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-14 night; read docs/state/handoff-2026-09-14-phase-g.md first)
 
-**Current handoff: `docs/state/handoff-2026-09-14-ledger-143.md`** -- LEDGER
+**Current handoff: `docs/state/handoff-2026-09-14-phase-g.md`** -- Phase G
+DONE as the audit prescribed: G1's five slices of `SAIGE.Region` (new
+`R/RegionState.R`: `regionStateFor`, `regionTestPlan`, `regionDoneMessage`,
+`composeWeightSets`, and the accumulator environment `scan`, no `<<-` left)
+and G2's verbatim hoist of `mainRegionInCPP`'s twelve function-local types
+into `src/RegionLoop.hpp`. One gate per slice, no golden moved, region TSAN
+clean + plant after G2. The ledger's open rows are all decisions (#146b,
+#150, #151, #153, #154). Nothing from the audit's execution queue remains.
+
+**Previous handoff: `docs/state/handoff-2026-09-14-ledger-143.md`** -- LEDGER
 #143 is FIXED in two commits (`5564c421` the units, the next the kernel). The
 binary conditional region path fed its scale-factor kernel an unweighted
 score against weighted inputs and ran a pre-#104 twin; the owner's decision
