@@ -76,10 +76,11 @@ collapse in `region_postprocess` (it would ADD an assignment on the
 **Phase D (turn the compiler back on) LANDED 2026-09-14**: `-w` out,
 `-Wall -Wextra -Wno-unused-parameter -Wno-cast-function-type-mismatch` in,
 `harness/build.sh` ratchets the src-anchored count against
-`harness/warnings-baseline.txt`, CI promotes `uninitialized`/`return-type`/
-`parentheses` to errors via `SAIGE_EXTRA_CXXFLAGS` (**unverified until the
-next push** -- if GCC's `-Wuninitialized` fires on #152's sites, drop the flag
-in the workflow, not the code). The one source change is parentheses making
+`harness/warnings-baseline.txt`, CI promotes `uninitialized`/`return-type` to errors
+via `SAIGE_EXTRA_CXXFLAGS`; `parentheses` was tried and dropped the same day
+(run 34836628887: GCC fires it inside `boost/mpl/assert.hpp`, unfixable here,
+and at `SAIGE_fitGLMM_fast.cpp:1179`, a `|`-around-comparisons site clang does
+not flag -- note for a future row or a same-parse parenthesisation). The one source change is parentheses making
 the existing parse of `m_is_Firth_beta & (pval <= m_pCutoffforFirth)` explicit.
 **LEDGER #152** records the four enumeration-guarded uninitialised reads
 (two live, two in the dead exports). It adds a gate and deletes no

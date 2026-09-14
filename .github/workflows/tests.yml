@@ -49,13 +49,17 @@ jobs:
       - name: Build and install SAIGE
         # No warning-count ratchet here (harness/warnings-baseline.txt is a
         # local-clang number; this is conda GCC on ubuntu, unpinned). Instead
-        # the bug-shaped classes become errors. The first push after
-        # 2026-09-14 is what verifies this line; if GCC's -Wuninitialized fires
-        # on the two enumeration-guarded sites of LEDGER #152, drop that flag
-        # here rather than touching the code.
+        # the bug-shaped classes become errors. -Werror=parentheses was tried
+        # in run 34836628887 and REMOVED: GCC applies it inside
+        # boost/mpl/assert.hpp (a BH header R passes with -I, not -isystem),
+        # which no change to this repo can silence; it also named
+        # SAIGE_fitGLMM_fast.cpp:1179 (`|` around comparisons), a site clang's
+        # -Wparentheses does not flag. If -Wuninitialized fires on the two
+        # enumeration-guarded sites of LEDGER #152, drop that flag here rather
+        # than touching the code.
         env:
           SAIGE_WARNINGS_RATCHET: "0"
-          SAIGE_EXTRA_CXXFLAGS: "-Werror=uninitialized -Werror=return-type -Werror=parentheses"
+          SAIGE_EXTRA_CXXFLAGS: "-Werror=uninitialized -Werror=return-type"
         run: bash harness/build.sh
       - name: Run tests (standard tier, numeric compare)
         run: SAIGE_COMPARE_MODE=numeric bash harness/run_tests.sh standard
