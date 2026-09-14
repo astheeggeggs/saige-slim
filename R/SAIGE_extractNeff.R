@@ -240,67 +240,18 @@ getNeff <- function(plinkFile = "",
     chromosomeEndIndexVec <- NULL
     if (LOCO) {
       cat("WARNING: leave-one-chromosome-out is activated! Note this option will only be applied to autosomal variants\n")
-      cat("WARNING: Genetic variants needs to be ordered by chromosome and position in the Plink file\n")
-      bimData <- data.frame(V1 = readVariantChromFromInput(genoIn))
-      for (i in 1:22) {
-        if (length(which(bimData[, 1] == i)) > 0) {
-          chromosomeStartIndexVec <- c(
-            chromosomeStartIndexVec,
-            min(which(bimData[, 1] == i)) - 1
-          )
-          chromosomeEndIndexVec <- c(
-            chromosomeEndIndexVec,
-            max(which(bimData[, 1] == i)) - 1
-          )
-          if (i > 1) {
-            if (!is.na(chromosomeStartIndexVec[i -
-              1])) {
-              if (chromosomeStartIndexVec[i] <= chromosomeStartIndexVec[i -
-                1] | chromosomeEndIndexVec[i] <= chromosomeEndIndexVec[i -
-                1]) {
-                stop(paste0(
-                  "ERROR! chromosomes need to be ordered from 1 to 22 in ",
-                  plinkFile, ".bim\n"
-                ))
-              }
-            }
-          }
-        } else {
-          chromosomeStartIndexVec <- c(
-            chromosomeStartIndexVec,
-            NA
-          )
-          chromosomeEndIndexVec <- c(
-            chromosomeEndIndexVec,
-            NA
-          )
-        }
-      }
-      cat(
-        "chromosomeStartIndexVec: ", chromosomeStartIndexVec,
-        "\n"
-      )
-      cat(
-        "chromosomeEndIndexVec: ", chromosomeEndIndexVec,
-        "\n"
-      )
-      if (sum(!is.na(chromosomeStartIndexVec)) <= 1 |
-        sum(!is.na(chromosomeEndIndexVec)) <= 1) {
-        cat("WARNING: The number of autosomal chromosomes is less than 2 and leave-one-chromosome-out can't be conducted! \n")
-        LOCO <- FALSE
-      }
-      chromosomeStartIndexVec_forcpp <- chromosomeStartIndexVec
-      chromosomeStartIndexVec_forcpp[is.na(chromosomeStartIndexVec_forcpp)] <- -1
-      chromosomeEndIndexVec_forcpp <- chromosomeEndIndexVec
-      chromosomeEndIndexVec_forcpp[is.na(chromosomeEndIndexVec_forcpp)] <- -1
-      setStartEndIndexVec(
-        chromosomeStartIndexVec_forcpp,
-        chromosomeEndIndexVec_forcpp
-      )
     } else {
       chromosomeStartIndexVec <- rep(NA, 22)
       chromosomeEndIndexVec <- rep(NA, 22)
     }
+    # LEDGER #149 FIXED: the LOCO windows used to be computed HERE, before
+    # ingest, by a stale inline copy of updateChrStartEndIndexVec over the raw
+    # bim chromosome column -- so they were in raw-bim space while everything
+    # that reads setStartEndIndexVec indexes the QC'd genotype store; the copy
+    # also lacked the LEDGER #62 contiguity guard and named plinkFile.bim in a
+    # message reachable from a PGEN run. They are now computed after each
+    # setgenoFromInput below, over the QC'd markers, by the shared helper --
+    # fitNULLGLMM's three lines.
     sampleListwithGeno <- NULL
     sampleListwithGeno$IIDgeno <- readGenoSampleIDsFromInput(genoIn)
     sampleListwithGeno <- data.frame(sampleListwithGeno)
@@ -419,6 +370,13 @@ getNeff <- function(plinkFile = "",
     indicatorGenoSamplesWithPheno <- (sampleListwithGeno$IndexGeno %in% dataMerge_sort$IndexGeno)
 
     setgenoFromInput(genoIn, dataMerge_sort$IndexGeno, indicatorGenoSamplesWithPheno, memoryChunk, FALSE)
+    if (LOCO) { # LEDGER #149: windows over the QC'd markers, after ingest
+      chrVec <- readVariantChromFromInput(genoIn)[which(getQCdMarkerIndex() == TRUE)]
+      updatechrList <- updateChrStartEndIndexVec(chrVec)
+      LOCO <- updatechrList$LOCO
+      chromosomeStartIndexVec <- updatechrList$chromosomeStartIndexVec
+      chromosomeEndIndexVec <- updatechrList$chromosomeEndIndexVec
+    }
     setisUseSparseSigmaforNullModelFitting(useSparseGRMtoFitNULL)
     cat("glm:\n")
     print(summary(fit0))
@@ -451,6 +409,13 @@ getNeff <- function(plinkFile = "",
     indicatorGenoSamplesWithPheno <- (sampleListwithGeno$IndexGeno %in% dataMerge_sort$IndexGeno)
 
     setgenoFromInput(genoIn, dataMerge_sort$IndexGeno, indicatorGenoSamplesWithPheno, memoryChunk, FALSE)
+    if (LOCO) { # LEDGER #149: windows over the QC'd markers, after ingest
+      chrVec <- readVariantChromFromInput(genoIn)[which(getQCdMarkerIndex() == TRUE)]
+      updatechrList <- updateChrStartEndIndexVec(chrVec)
+      LOCO <- updatechrList$LOCO
+      chromosomeStartIndexVec <- updatechrList$chromosomeStartIndexVec
+      chromosomeEndIndexVec <- updatechrList$chromosomeEndIndexVec
+    }
     setisUseSparseSigmaforNullModelFitting(useSparseGRMtoFitNULL)
     cat("glm:\n")
     print(summary(fit0))
