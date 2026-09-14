@@ -161,7 +161,8 @@ test_that("LEDGER #138: a group-file weight line on a FlexRV run is refused, not
   }
   writeLines(out, gf)
   # refused by name, before any test runs: it used to compose 1 + 192 = 193
-  # sets and pool them, so the region's Cauchy row was not p_FlexRV
+  # sets (1 + 112 = 113 since LEDGER #142) and pool them, so the region's
+  # Cauchy row was not p_FlexRV
   r <- fx_run(c(FX_G, FX_BIN, FX_SG, FX_COMMON, paste0("--groupFile=", gf), FX_FLEX, FX_BURDEN),
               "weightline")
   expect_false(identical(as.integer(r$status), 0L))
@@ -180,4 +181,25 @@ test_that("LEDGER #138: a group-file weight line on a FlexRV run is refused, not
                  "--is_no_weight_in_groupTest=TRUE"), "noweights_flex")
   expect_false(identical(as.integer(r2$status), 0L))
   expect_true(fx_log_has(r2, "--is_no_weight_in_groupTest=TRUE would be composed"))
+})
+
+test_that("LEDGER #142: a MAF spec left with only degenerate rungs is refused by name", {
+  fx_skip("standard")
+  # at N = 1,000 and max MAF 0.01 the bound is 20: mac:100,500 would compose
+  # two relabelled copies of unw and nothing else
+  r <- fx_run(c(FX_G, FX_BIN, FX_SG, FX_COMMON, FX_FLEX, FX_BURDEN, "--flexRV_scoreTransforms=unw",
+                "--flexRV_MAFTransforms=mac:100,500"), "alldegenerate")
+  expect_false(identical(as.integer(r$status), 0L))
+  expect_true(fx_log_has(r, "every MAF transform is a MAC rung at or above 2 * N * maxMAF = 20"))
+  expect_true(fx_log_has(r, "nothing is left to test"))
+  # CONTROL: one rung below the bound beside them runs, drops the two, says so.
+  # One composed set is the legacy K = 1 schema with no Weight column, so the
+  # label is asked for explicitly.
+  r0 <- fx_run(c(FX_G, FX_BIN, FX_SG, FX_COMMON, FX_FLEX, FX_BURDEN, "--flexRV_scoreTransforms=unw",
+                 "--flexRV_MAFTransforms=mac:10,100,500", "--is_output_weight_column=TRUE"),
+               "onelive")
+  fx_ok(r0)
+  expect_identical(fx_rows(r0)$Weight, rep("REVEL_unw_MAC10", 2))
+  expect_true(fx_log_has(r0, "so the MAC rungs 100, 500 would weight every marker 1"))
+  expect_true(fx_log_has(r0, "(LEDGER #142): 1 sets (1 score x 1 MAF), not 3"))
 })

@@ -78,6 +78,19 @@ false chrX `cat()` is corrected and a `docdrift.py` rule pins it (the
 `4c2ca05a^` drill is 43 hits now). No committed golden moved. Read
 `ledger.py 139`.
 
+**2026-09-13 (late night): LEDGER #142 DECIDED (owner: option (b)) AND FIXED.**
+`flexrvTransformTable(..., N = )` drops every `mac` rung at or above
+`2 * N * maxMAF` before the sets are composed and the run warns with N, the
+bound and the rungs; `SAIGE.Region` passes `length(mu[[1]])`. Goldens P58,
+P59 and P61 moved exactly as predicted from their own rows (193 -> 113 rows
+per gene; on P58 GENE1's pooled row 0.139077 -> 0.0956982, GENE2's 0.907609
+-> 0.93903), P60 stayed byte-identical (no `mac` rung in its spec).
+`test-step2-flexrv-rungs.R` is the characterization the request specified
+(80 dropped on the fixture, 0 with `--flexRV_maxMAF` raised past
+500 / (2N)); `test-step2-flexrv.R`'s row-for-row duplicate test became the
+absence assertion. The ledger has NO open row. Read `ledger.py 142` and the
+night handoff for the evidence the decision rested on.
+
 Three things a later session should hold on to: (1) a scratch install of
 unpatched HEAD reusing the tree's `src/*.o` (all but the changed file's) takes
 about a minute and is what every red drill above ran against -- assert

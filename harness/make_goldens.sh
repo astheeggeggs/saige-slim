@@ -1383,14 +1383,17 @@ run step2_plink_group_cond_quant.log R2 step2_SPAtests.R \
 # THE FIXTURE ARITHMETIC PINS THESE FLAGS. The model holds 1,000 samples, so
 # max MAF 0.01 admits MAC <= 20: 21 polymorphic markers in GENE1 (MAC 1..20)
 # and 18 in GENE2 (MAC 1..13). At the default collapse cutoff the real markers
-# are rs4/rs17/rs31/rs33 and rs60/rs70/rs91; MAC25..MAC500 are then duplicates
-# of unw, and MAC1/3/5/10 select only collapsed markers. 0.001 (MAC <= 2) would
+# are rs4/rs17/rs31/rs33 and rs60/rs70/rs91; MAC25..MAC500 sit at or above the
+# bound 2*N*maxMAF = 20 and are dropped before composition (LEDGER #142,
+# 2026-09-13; they would duplicate unw), and MAC1/3/5/10 select only collapsed
+# markers. 0.001 (MAC <= 2) would
 # leave no real marker at all, so a golden on the paper's boundary would gate
 # nothing (the "a golden that reproduces P1 gates nothing" trap).
 #
-# P58: the default 192 sets, binary BURDEN, one cell (lof:missense at 0.01),
-# ultra-rare collapse on -- the recommended binary run. The C++ BURDEN writer
-# emits 192 rows + 1 Cauchy row per gene.
+# P58: the default ladder (112 sets at N = 1,000 since LEDGER #142), binary
+# BURDEN, one cell (lof:missense at 0.01), ultra-rare collapse on -- the
+# recommended binary run. The C++ BURDEN writer emits 112 rows + 1 Cauchy row
+# per gene; the pooled rows are 0.0956982 / 0.93903, the CCT over those rows.
 run step2_plink_group_flexrv_burden.log R2 step2_SPAtests.R \
   $PLINK_G \
   --SAIGEOutputFile="$GOLD/step2/plink_group_flexrv_burden.txt" \

@@ -420,18 +420,21 @@ test_that("the same holds for the QUANTITATIVE variance-ratio pair", {
 })
 
 # ---- FlexRV goldens (F4, 2026-09-09; P58-P61) --------------------------------
-# One cell (lof;missense at max MAF 0.01) and the default 192 transform sets on
+# One cell (lof;missense at max MAF 0.01) and the default transform sets on
 # group_new_snpid_flexrv.txt. The fixture arithmetic is in
 # helper-step2-flexrv.R: at the model's 1,000 samples no in-cell marker has
-# MAC > 20, so MAC25..MAC500 are duplicates of unw; at the default collapse
-# cutoff MAC1/3/5/10 select only collapsed markers.
+# MAC > 20, so MAC25..MAC500 would duplicate unw and are DROPPED before the
+# sets are composed (LEDGER #142, 2026-09-13): 112 sets per gene, not 192; at
+# the default collapse cutoff MAC1/3/5/10 select only collapsed markers.
 
 flexrv_goldens <- c(plink_group_flexrv_burden.txt = 10L, plink_group_flexrv_burden_quant.txt = 0L)
 
-test_that("FlexRV goldens: 192 sets per gene in the normative order, one Cauchy row, p_FlexRV = CCT", {
+test_that("FlexRV goldens: 112 sets per gene in the normative order, one Cauchy row, p_FlexRV = CCT", {
   skip_if_no_goldens()
-  names192 <- flexrvTransformTable(flexrvDefaultScoreSpec, flexrvDefaultMAFSpec, "REVEL",
-                                   maxMAF = 0.01)$names
+  # N = 1000: the models' in-sample count, which drops MAC25..MAC500 (LEDGER #142)
+  names112 <- flexrvTransformTable(flexrvDefaultScoreSpec, flexrvDefaultMAFSpec, "REVEL",
+                                   maxMAF = 0.01, N = 1000)$names
+  expect_identical(length(names112), 112L)
   for (f in names(flexrv_goldens)) {
     d <- golden2(f)
     expect_identical(colnames(d)[1:5], c("Region", "Group", "max_MAF", "Weight", "Pvalue_Burden"))
@@ -440,11 +443,11 @@ test_that("FlexRV goldens: 192 sets per gene in the normative order, one Cauchy 
     expect_identical(cau$Region, c("GENE1", "GENE2"))
     for (g in c("GENE1", "GENE2")) {
       rg <- r[r$Region == g, ]
-      expect_identical(rg$Weight, names192, label = paste(f, g))
+      expect_identical(rg$Weight, names112, label = paste(f, g))
       expect_true(all(rg$Group == "lof;missense" & rg$max_MAF == "0.01"))
       p <- num(rg$Pvalue_Burden)
       expect_true(all(is.finite(p) & p > 0 & p <= 1))
-      # the pooled row is the CCT over the 192 rows, from their printed digits
+      # the pooled row is the CCT over the 112 rows, from their printed digits
       expect_lt(rel_err(num(cau$Pvalue_Burden[cau$Region == g]), CCT(p)), 1e-5)
       # the ultra-rare counts say which run this is: collapse on (10) or off (0)
       expect_true(all(num(rg$Number_ultra_rare) >= (if (flexrv_goldens[[f]] > 0) 1 else 0)))
@@ -453,7 +456,7 @@ test_that("FlexRV goldens: 192 sets per gene in the normative order, one Cauchy 
   }
 })
 
-test_that("FlexRV goldens: a MAC threshold above every MAC is unw, and the axis is otherwise live", {
+test_that("FlexRV goldens: no MAC threshold above every MAC is composed, and the axis is otherwise live", {
   skip_if_no_goldens()
   strip <- function(d) {
     d$Weight <- NULL
@@ -461,10 +464,13 @@ test_that("FlexRV goldens: a MAC threshold above every MAC is unw, and the axis 
     d
   }
   # measured 2026-09-09 when the goldens were made: the number of DISTINCT
-  # (Pvalue_Burden, BETA_Burden, SE_Burden) triples per gene among the 192
-  # rows. Not 192, because MAC25..MAC500 repeat unw (6 of 12 MAF transforms
-  # coincide) and, with the collapse on, the four low MAC sets differ only
-  # through the pseudo-marker. A change here is a change in which sets the
+  # (Pvalue_Burden, BETA_Burden, SE_Burden) triples per gene among the rows.
+  # It was 111 of 192 because MAC25..MAC500 repeated unw (6 of 12 MAF
+  # transforms coincided) and, with the collapse on, the four low MAC sets
+  # differ only through the pseudo-marker; LEDGER #142 (2026-09-13) dropped
+  # those rungs before composition, so it is 111 of 112 now -- the same
+  # distinct set, which is the point: removing exact duplicates changes what
+  # is EMITTED, not what the fixture can tell apart. A change here is a change in which sets the
   # fixture can tell apart, which is exactly what a coverage claim rests on.
   # GENE2's count moved 102 -> 104 with the LEDGER #118 fix: two sets whose
   # per-set MAC now lands in a different variance-ratio band from the cell's
@@ -486,12 +492,12 @@ test_that("FlexRV goldens: a MAC threshold above every MAC is unw, and the axis 
     r <- d[d$Group != "Cauchy", ]
     for (g in c("GENE1", "GENE2")) {
       rg <- r[r$Region == g, ]
+      # LEDGER #142: the rungs at or above 2*N*maxMAF = 20 are never composed
+      expect_false(any(grepl("_MAC(25|50|100|200|500)$", rg$Weight)), label = paste(f, g))
+      expect_identical(nrow(rg), 112L, label = paste(f, g))
       for (sc in c("unw", "lof", "cbrt0.2", "sbeta20")) {
         base <- strip(rg[rg$Weight == paste0("REVEL_", sc, "_unw"), ])
-        for (t in c(25, 50, 100, 200, 500)) {
-          expect_identical(strip(rg[rg$Weight == paste0("REVEL_", sc, "_MAC", t), ]), base,
-                           label = paste(f, g, sc, t))
-        }
+        expect_identical(nrow(base), 1L, label = paste(f, g, sc))
         expect_false(identical(strip(rg[rg$Weight == paste0("REVEL_", sc, "_MAC10"), ]), base))
         expect_false(identical(strip(rg[rg$Weight == paste0("REVEL_", sc, "_mafbeta2@0.01"), ]),
                                base))

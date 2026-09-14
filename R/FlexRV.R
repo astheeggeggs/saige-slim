@@ -95,11 +95,46 @@ parseFlexRVTransformSpec <- function(spec, axis = c("score", "maf")) {
 # are <scoreName>_<scoreSuffix>_<mafSuffix>; when maxMAF is not the paper's
 # 0.001 the mafbeta suffixes carry '@<maxMAF>', because those transforms
 # rescale to the inclusion boundary and the OUTPUT must say so.
-flexrvTransformTable <- function(scoreSpec, mafSpec, scoreName, maxMAF = 0.001) {
+#
+# LEDGER #142 (decided 2026-09-13, option b): given the in-sample N, the MAC
+# rungs that would weight EVERY marker 1 (a duplicate of `unw`) are dropped
+# BEFORE the table is built; a rung that selects nothing (all zeros) is kept.
+# Region ingest admits a marker only if its folded MAF is at or below maxMAF,
+# so every admitted MAC is at most 2*N*maxMAF, and a rung t at or above that
+# bound gives every marker weight 1 -- the `unw` MAF transform under another
+# name, evaluated again and counted again in the pooled row. At the paper's N
+# (~424k, maxMAF 0.001, bound ~847) no default rung is degenerate and the
+# table is the full 16 x 12; at or below N = 250,000 rungs go one by one (t
+# is degenerate for every N <= t / (2 * maxMAF), equality included). The ladder's values stay
+# absolute (docs/design/flexrv-plan.md); what is dropped is only what cannot
+# differ from `unw` at this N. The comparison is `>=` in doubles: the kernel
+# is `MAC <= t` and a hard-call MAC is an integer, so a rung equal to the
+# bound is degenerate too and no float edge can admit a marker above it.
+# `dropped` names the rungs that went, for the caller's warning; N = NULL
+# (the unit tests, the name builders) keeps the full ladder.
+flexrvTransformTable <- function(scoreSpec, mafSpec, scoreName, maxMAF = 0.001, N = NULL) {
   sc <- parseFlexRVTransformSpec(scoreSpec, "score")
   mf <- parseFlexRVTransformSpec(mafSpec, "maf")
   if (!isTRUE(maxMAF > 0 & maxMAF <= 0.5)) {
     stop("--flexRV_maxMAF must be in (0, 0.5]\n")
+  }
+  dropped <- character(0)
+  bound <- NA_real_
+  if (!is.null(N)) {
+    if (!is.numeric(N) || length(N) != 1 || !is.finite(N) || N < 1) {
+      stop("flexrvTransformTable: N must be the in-sample sample count (got ",
+           deparse(N), ")\n")
+    }
+    bound <- 2 * N * maxMAF
+    degenerate <- mf$kind == flexrvMafKinds[["mac"]] & mf$param >= bound
+    dropped <- mf$suffix[degenerate]
+    if (all(degenerate)) {
+      stop("--flexRV_MAFTransforms='", mafSpec, "': every MAF transform is a MAC rung at or ",
+           "above 2 * N * maxMAF = ", bound, " (N = ", N, ", --flexRV_maxMAF=", maxMAF,
+           "), which no admitted marker can exceed, so every set would be the unweighted ",
+           "one and nothing is left to test. Add 'unw' or a rung below ", bound, "\n")
+    }
+    mf <- mf[!degenerate, , drop = FALSE]
   }
   mfSuffix <- mf$suffix
   if (maxMAF != 0.001) {
@@ -122,7 +157,10 @@ flexrvTransformTable <- function(scoreSpec, mafSpec, scoreName, maxMAF = 0.001) 
     nScore = nS,
     nMAF = nM,
     usesLof = any(sc$kind == flexrvScoreKinds[["lof"]]),
-    maxMAF = maxMAF
+    maxMAF = maxMAF,
+    N = N,
+    bound = bound,
+    dropped = dropped
   )
 }
 

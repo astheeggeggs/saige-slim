@@ -15,7 +15,8 @@
 # polymorphic markers with MAC 1..20 and GENE2 18 with MAC 1..13; at the
 # default collapse cutoff (10) the real markers are rs4/rs17/rs31/rs33 (GENE1)
 # and rs60/rs70/rs91 (GENE2), everything else is ultra-rare. Consequences:
-#   - MAC25..MAC500 are all-ones on both genes, i.e. duplicates of unw;
+#   - MAC25..MAC500 sit at or above the ingest bound 2*N*maxMAF = 20 and are
+#     DROPPED before composition (LEDGER #142): a default run tests 112 sets, not 192;
 #   - MAC1/3/5/10 select markers that are ALL collapsed at cutoff 10, so those
 #     sets test the pseudo-marker alone (design doc, "What enters the test");
 #   - with --MACCutoff_to_CollapseUltraRare=0 the whole MAC ladder is live on
@@ -84,7 +85,7 @@ fx_ok <- function(res) {
   fx_cli_ok(res$status)
 }
 
-# The default 192-set binary BURDEN run (golden P58's command).
+# The default binary BURDEN run (golden P58's command; 112 sets at N = 1,000).
 fx_burden_bin <- function() {
   fx_run(c(FX_G, FX_BIN, FX_SG, FX_COMMON, FX_FLEX, FX_BURDEN), "bin")
 }
@@ -189,6 +190,10 @@ fx_weight_groupfile <- function(mac, setNames, weightFun,
 # route written from the paper's dbeta forms, not from the C++ closed forms.
 fx_external_groupfile <- function(mac, scoreSpec = SAIGE::flexrvDefaultScoreSpec,
                                   mafSpec = SAIGE::flexrvDefaultMAFSpec, maxMAF = 0.01) {
+  # deliberately WITHOUT N: the external route carries every set of the spec
+  # as a custom weight line (192 by default), including the MAC rungs the
+  # internal run drops at N = 1,000 (LEDGER #142) -- those lines are the second
+  # computation that the dropped sets were exactly unw (fx_expect_int_eq_ext)
   tt <- SAIGE::flexrvTransformTable(scoreSpec, mafSpec, "REVEL", maxMAF = maxMAF)
   path <- fx_weight_groupfile(mac, tt$names, function(s, isLof, maf, m) {
     SAIGE::flexrvWeightsR(tt$table, s, isLof, maf, m, maxMAF)
@@ -246,28 +251,58 @@ fx_skato <- function(extra = character(0), tag = "skato-p60") {
            "--flexRV_MAFTransforms=unw;mafbeta:2", "--is_fastTest=FALSE", extra), tag)
 }
 fx_default_names <- function() {
+  # the 112 sets a default run composes at N = 1,000 (LEDGER #142)
   SAIGE::flexrvTransformTable(SAIGE::flexrvDefaultScoreSpec, SAIGE::flexrvDefaultMAFSpec,
-                              "REVEL", maxMAF = 0.01)$names
+                              "REVEL", maxMAF = 0.01, N = 1000)$names
 }
 fx_fixture_lines <- function() {
   ext <- get("saige_extdata", envir = parent.frame())
   readLines(file.path(ext, "input", "group_new_snpid_flexrv.txt"))
 }
 
-# The whole-table reconciliation: an internal 192-set run against its external
+# The whole-table reconciliation: an internal default-set run (112 at this N)
+# against its external
 # weight-line twin, rows at the printed precision, accounting exact, the
 # Cauchy row, and a positive control that the comparison tells sets apart.
 fx_expect_int_eq_ext <- function(int, ext, label) {
   a <- fx_rows(int)
   b <- fx_rows(ext)
-  testthat::expect_identical(nrow(a), 384L, label = label)
-  testthat::expect_identical(a$Weight, b$Weight, label = label)
+  # the internal run composes 112 sets at N = 1,000 (LEDGER #142 drops
+  # MAC25..MAC500); the external file carries all 192 as custom sets. The 112
+  # shared names must agree row for row, and the 80 external rows the internal
+  # run never composed must be their score transform's unw row -- the second
+  # computation that what was dropped was a duplicate and nothing else.
+  testthat::expect_identical(nrow(a), 224L, label = label)
+  testthat::expect_identical(nrow(b), 384L, label = label)
   testthat::expect_identical(a$Weight, rep(fx_default_names(), 2), label = label)
-  fx_expect_rows_equal(a, b, tol = 1e-5, label = label)
-  fx_expect_accounting_identical(a, b, label = label)
-  testthat::expect_equal(as.numeric(fx_cauchy(int)$Pvalue_Burden),
-                         as.numeric(fx_cauchy(ext)$Pvalue_Burden), tolerance = 1e-5,
-                         label = paste(label, "Cauchy"))
+  b2 <- b[b$Weight %in% a$Weight, , drop = FALSE]
+  rownames(b2) <- NULL
+  testthat::expect_identical(a$Weight, b2$Weight, label = label)
+  fx_expect_rows_equal(a, b2, tol = 1e-5, label = label)
+  fx_expect_accounting_identical(a, b2, label = label)
+  # the internal pooled row is the CCT over the 112 shared rows (the external
+  # run pools all 192 of its own, so its Cauchy row is a different statistic)
+  for (g in c("GENE1", "GENE2")) {
+    testthat::expect_equal(as.numeric(fx_cauchy(int)$Pvalue_Burden[fx_cauchy(int)$Region == g]),
+                           get_CCT_pvalue(as.numeric(b2$Pvalue_Burden[b2$Region == g])),
+                           tolerance = 1e-5, label = paste(label, "Cauchy", g))
+  }
+  strip <- function(d) {
+    d$Weight <- NULL
+    rownames(d) <- NULL
+    d
+  }
+  dropped <- setdiff(unique(b$Weight), unique(a$Weight))
+  testthat::expect_identical(length(dropped), 80L, label = label)
+  # every dropped name is one of the five rungs (so the substitution below
+  # never leaves a name unchanged and compares a row with itself)
+  testthat::expect_true(all(grepl("_MAC(25|50|100|200|500)$", dropped)), label = label)
+  for (w in dropped) {
+    unw <- sub("_MAC(25|50|100|200|500)$", "_unw", w)
+    testthat::expect_false(identical(unw, w), label = w)
+    testthat::expect_identical(strip(b[b$Weight == w, ]), strip(b[b$Weight == unw, ]),
+                               label = paste(label, w))
+  }
   # unw_unw against the steepest score transform, and against the MAC10 mask
   p <- function(d, w) as.numeric(d$Pvalue_Burden[d$Weight == w])
   testthat::expect_false(isTRUE(all.equal(p(a, "REVEL_unw_unw"), p(b, "REVEL_sbeta20_unw"),

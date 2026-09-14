@@ -228,7 +228,8 @@ the other was not. It scans only the CURRENT-state surfaces (`CLAUDE.md`,
 are correct about their own date and are never scanned. `docdrift.py selftest`
 is the control that no rule has quietly stopped matching, and every rule is
 drilled against `4c2ca05a^`, where the tool reports 43 hits (10 before the six
-#136 rules of 2026-09-13, 42 before the #139 rule). Add a rule only
+#136 rules of 2026-09-13, 42 before the #139 rule; the #142 rule's sentence
+postdates that commit and adds none). Add a rule only
 after a claim has actually been written wrongly; a line that must quote a false
 claim on purpose carries the marker the tool names.
 
@@ -364,7 +365,8 @@ the K=1 weight line -- one statistic computed two ways). Tests:
 ## FlexRV (2026-09-09; F0-F4 landed, F5 measurement open)
 
 FlexRV (Schwartzentruber et al., bioRxiv 2025.11.04.686320) is 16 score
-transforms x 12 MAF transforms = 192 fixed weight vectors per gene, a burden
+transforms x 12 MAF transforms = up to 192 fixed weight vectors per gene
+(fewer at small N, LEDGER #142 below), a burden
 test each, Cauchy-combined into `p_FlexRV`. On this branch it is a fourth
 weight-set kind of the Phase 5 engine, `SET_TRANSFORM`, expanded inside C++
 from one `GENE score:NAME v1 v2 ...` group-file line (after `anno`, before any
@@ -387,8 +389,15 @@ and names the beta sets `mafbeta<b>@M`. Every set's row is written
 (`--flexRV_output_sets` was decided but is NOT implemented). Three traps:
 - **The bundled fixture's in-sample N is 1,000** (the models', not the fam's
   10,000), so max MAF 0.01 is MAC <= 20 and is the only cell with real markers
-  at the default collapse cutoff; the goldens P58-P61 pin it, and there
-  `MAC25`..`MAC500` are duplicates of `unw` (`helper-step2-flexrv.R`).
+  at the default collapse cutoff; the goldens P58-P61 pin it. **A MAC rung at
+  or above `2*N*maxMAF` is dropped before the sets are composed** (LEDGER
+  #142, decided 2026-09-13: it would weight every admitted marker 1 and
+  duplicate `unw`, evaluated and pooled again under another name), so on this
+  fixture `MAC25`..`MAC500` are never emitted and a default run tests 112
+  sets (16 x 7), not 192; at N = 50,000 and the paper's max MAF the rungs
+  100, 200 and 500 go (144 sets). The run says so in a warning naming the
+  bound and the rungs. The ladder's values stay absolute; only what cannot
+  differ at this N is dropped, and at the paper's N (~424k) nothing is.
 - **`MAC<=1,3,5,10` sit at or below the default collapse cutoff**, so those
   sets test the `max()` pseudo-marker alone; `--MACCutoff_to_CollapseUltraRare=0`
   is the paper's unbinned quantitative run (P59).

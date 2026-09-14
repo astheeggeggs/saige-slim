@@ -327,7 +327,8 @@ from that set (#117).
 
 One `score` line per region, immediately after `anno`, carrying a
 per-marker pathogenicity score in `[0, 1]`. No weight lines: FlexRV expands the
-score into 16 x 12 = 192 weight sets inside C++.
+score into 16 x 12 = 192 weight sets inside C++ (fewer where a `mac` rung sits at
+or above `2 * N * max MAF` and is dropped, LEDGER #142).
 
 ```
 GENE1 var         rs1 rs2 rs3

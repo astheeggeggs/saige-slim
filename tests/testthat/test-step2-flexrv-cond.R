@@ -52,7 +52,7 @@ test_that("--condition: internal transform sets == the external weight-line rout
 
 test_that("--condition leaves the unconditional columns exactly as the unconditional run wrote", {
   # one path, one knob: the conditional run's shared columns are the
-  # unconditional 192-set run's rows for the same 16 sets (P2-vs-P3 shape)
+  # unconditional default-set run's rows (112 at N = 1,000) for the same 16 sets (P2-vs-P3 shape)
   fx_skip("standard")
   int <- fx_run(c(FX_G, FX_BIN, FX_SG, FX_COMMON, FX_FLEX, FX_BURDEN, "--flexRV_MAFTransforms=unw",
                   FX_COND), "cond-int")

@@ -38,7 +38,7 @@ test_that("--flexRV_lofAnno=lof,missense makes the lof mask all ones: lof_* rows
     d
   }
   mafs <- unique(sub("^REVEL_unw_", "", grep("^REVEL_unw_", rows$Weight, value = TRUE)))
-  expect_identical(length(mafs), 12L)
+  expect_identical(length(mafs), 7L)   # 12 minus the five rungs LEDGER #142 drops at N = 1,000
   for (mf in mafs) {
     expect_identical(strip(rows[rows$Weight == paste0("REVEL_lof_", mf), ]),
                      strip(rows[rows$Weight == paste0("REVEL_unw_", mf), ]), label = mf)
@@ -52,7 +52,7 @@ test_that("--flexRV_lofAnno=lof,missense makes the lof mask all ones: lof_* rows
                          strip(b[b$Weight == "REVEL_unw_unw", ])))
 })
 
-test_that("--markers_per_chunk_in_groupTest=10 arrives and is byte-inert on the 192-set BURDEN", {
+test_that("--markers_per_chunk_in_groupTest=10 arrives and is byte-inert on the default BURDEN", {
   # GENE1 has 50 markers, so 10 per chunk is five chunks plus the ultra-rare
   # one; the per-marker transform weight and the per-set collapse are both
   # chunk-local, so the bytes cannot move (finding E0)

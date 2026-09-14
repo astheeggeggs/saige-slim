@@ -383,7 +383,7 @@ One deliberate limitation: conditioning-marker weights are a **single** vector
 across all weight sets (`--weights_for_condition`, else `beta(1, 25)`). Per-set
 conditioning weights are not implemented.
 
-### FlexRV: 192 weight sets from one pathogenicity score
+### FlexRV: up to 192 weight sets from one pathogenicity score
 
 FlexRV (Schwartzentruber et al., bioRxiv 2025.11.04.686320) is a fourth kind of
 weight set, expanded inside SAIGE rather than written into the group file: 16
@@ -417,7 +417,11 @@ R2 step2_SPAtests.R ... --groupFile=group.txt --flexRV_score=REVEL \
 - Sets are named `<score>_<scoreTransform>_<MAFTransform>` and every set's row
   is written, after any custom sets, in the multi-weight schema above. A max MAF
   other than 0.001 rescales the `mafbeta` transforms to the new boundary and
-  names them `mafbeta<b>@<maxMAF>`; the MAC ladder does not rescale.
+  names them `mafbeta<b>@<maxMAF>`; the MAC ladder does not rescale, and any
+  `mac` rung at or above `2 * N * maxMAF` (no admitted marker can have a larger
+  MAC, so it would duplicate `unw`) is dropped before the sets are composed
+  and named in a warning (LEDGER #142; at N = 50,000 and the default max MAF
+  the rungs 100, 200 and 500 go and 144 sets are tested).
 - The transform sets take the custom-set semantics: weighted ultra-rare
   collapse, `--weights.beta` inert, and `--condition` requires
   `--weights_for_condition`. With the default collapse, `mac:1,3,5,10` test only

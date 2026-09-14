@@ -242,6 +242,26 @@ per-cell Cauchy-over-sets rows are a follow-up decision, not in scope.
     M = 0.01 admits MAC up to 10,000). M is encoded in the set name
     (`PAI3D_sbeta5_mafbeta2@0.005`) so the OUTPUT is self-describing -- a stdout
     warning does not survive into a golden, a column label does.
+  - **A MAC rung at or above `2*N*M` is dropped before the sets are composed
+    (LEDGER #142, decided 2026-09-13).** Ingest admits a marker only if its
+    folded MAF is at or below M, so every admitted MAC is at most `2*N*M`, and
+    a rung at or above that bound gives every marker weight 1: it is `unw`
+    under another name, evaluated again and counted again in the pooled row.
+    At the paper's N (~424k, M = 0.001, bound ~847) no default rung is
+    degenerate and the table is the full 16 x 12; at N = 50,000 the rungs
+    100/200/500 go (144 sets), at N = 1,000 with M = 0.01 the rungs 25..500
+    (112 sets). Measured on the sim50k study before deciding
+    (`harness/sim/flexrv_study/pool_rules.R`): the null ECDF and the power are
+    unchanged under every candidate rule and the per-gene `p_FlexRV` moves by
+    up to 5x in either direction, so the choice was one of DEFINITION; this
+    rule equals the shipped arithmetic bit for bit wherever no rung is
+    degenerate and makes `p_FlexRV` independent of N through duplication. The
+    ladder's VALUES are still absolute and still not rescaled; the drop is
+    computed from N and the flags before a marker is read
+    (`flexrvTransformTable(..., N = )`), and the run prints a warning naming
+    N, the bound and the rungs dropped. The rejected alternatives -- dropping
+    value-identical rows per region, or a weighted CCT -- are on the ledger
+    row and in `docs/state/handoff-2026-09-13-night-135-139-142.md`.
   - **`--flexRV_lofAnno` takes a list**, separators `,` `:` `;`
     interchangeable (one flat dimension, unlike `--annotation_in_groupTest`
     where `,` separates groups and `:`/`;` join within one). Matching is exact
@@ -299,7 +319,9 @@ per-cell Cauchy-over-sets rows are a follow-up decision, not in scope.
   collapses), and the 0.01 cell (MAC <= 20) holds 21 polymorphic markers in
   GENE1 (MAC 1..20) and 18 in GENE2 (MAC 1..13), of which rs4/rs17/rs31/rs33
   and rs60/rs70/rs91 survive the cutoff as real markers. So at 0.01:
-  `MAC25`..`MAC500` are all-ones (six duplicates of `unw`), `MAC1/3/5/10`
+  `MAC25`..`MAC500` would be all-ones (five rungs that duplicate `unw`, which
+  with `unw` itself makes six of twelve transforms coincide) and are dropped
+  before composition since LEDGER #142 (2026-09-13), `MAC1/3/5/10`
   select only collapsed markers at cutoff 10 and are fully live at cutoff 0,
   and `mafbeta@0.01` is live on every marker. A FlexRV golden on the paper's
   0.001 would gate nothing (the "a golden that reproduces P1 gates nothing"

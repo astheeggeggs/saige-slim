@@ -1098,7 +1098,8 @@ SAIGE.Region <- function(mu,
   # (docs/design/flexrv-design.md). The LoF mask keys on annotation labels,
   # which are matched exactly (SAIGE has no annotation vocabulary); a label
   # that matches nothing anywhere in the file is an error here, because the
-  # mask would otherwise silently zero 12 of the 192 sets.
+  # mask would otherwise silently zero a whole score transform's sets (12 of
+  # 192, or 7 of 112 at N = 1,000 once LEDGER #142 has dropped the rungs).
   flexTable <- matrix(0, nrow = 0, ncol = 4)
   flexNames <- character(0)
   flexLofAnno <- character(0)
@@ -1114,8 +1115,26 @@ SAIGE.Region <- function(mu,
            scoreName, "'\n")
     }
     flexMaxMAF <- flexRV$maxMAF
+    # LEDGER #142: the in-sample N decides which MAC rungs can differ from
+    # unw (every admitted MAC is at most 2 * N * maxMAF, so a rung at or above
+    # that bound weights every marker 1); those rungs are dropped here, before
+    # composition, and disclosed below. `n` is length(mu[[1]]) above, the same count mainRegionInCPP is
+    # handed, so the R-side bound and the C++ ingest bound read one N; a
+    # manifest's models share ONE sample set on the region path.
     flexTT <- flexrvTransformTable(flexRV$scoreTransforms, flexRV$MAFTransforms,
-                                   scoreName, maxMAF = flexMaxMAF)
+                                   scoreName, maxMAF = flexMaxMAF, N = n)
+    if (length(flexTT$dropped) > 0) {
+      warning("FlexRV: at N = ", n, " and --flexRV_maxMAF=", flexMaxMAF,
+              " every admitted marker has MAC <= ", flexTT$bound, ", so the MAC ",
+              if (length(flexTT$dropped) == 1) "rung " else "rungs ",
+              paste(sub("^MAC", "", flexTT$dropped), collapse = ", "),
+              " would weight every marker 1 and duplicate 'unw'; ",
+              if (length(flexTT$dropped) == 1) "it is" else "they are",
+              " dropped before the sets are composed (LEDGER #142): ",
+              nrow(flexTT$table), " sets (", flexTT$nScore, " score x ", flexTT$nMAF,
+              " MAF), not ", flexTT$nScore * (flexTT$nMAF + length(flexTT$dropped)), "\n",
+              call. = FALSE, immediate. = TRUE)
+    }
     flexTable <- flexTT$table
     flexNames <- flexTT$names
     nTransformSets <- nrow(flexTable)
@@ -1137,7 +1156,9 @@ SAIGE.Region <- function(mu,
       warning("--flexRV_maxMAF=", flexMaxMAF, " is not the paper's 0.001: the mafbeta ",
               "transforms rescale to (1 - MAF/", flexMaxMAF, ")^(b-1) and are named ",
               "'mafbeta<b>@", flexMaxMAF, "'; the MAC ladder is absolute and does not ",
-              "rescale, so it may cover only the rare end of the tested range\n",
+              "rescale: at large N it may cover only the rare end of the tested range, ",
+              "and any rung at or above 2 * N * maxMAF is dropped and named in the ",
+              "FlexRV warning above (LEDGER #142)\n",
               call. = FALSE, immediate. = TRUE)
     }
     cat("FlexRV: ", nTransformSets, " transform sets (", flexTT$nScore, " score x ",
@@ -1819,7 +1840,8 @@ SAIGE.Region <- function(mu,
         }
         if (nTransformSets > 0 && length(SCORE) > 1) {
           # a property of the input, warned about rather than acted on: every
-          # score transform of a constant column coincides (192 sets -> 12),
+          # score transform of a constant column coincides (every set of a
+          # score transform: 192 -> 12, or 112 -> 7 at N = 1,000),
           # and 0/1 are fixed points of every transform (16 -> at most 3)
           us <- unique(SCORE)
           if (length(us) == 1) {

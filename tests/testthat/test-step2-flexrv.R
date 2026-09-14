@@ -11,9 +11,11 @@
 
 fx_names <- function(scoreSpec = SAIGE::flexrvDefaultScoreSpec,
                      mafSpec = SAIGE::flexrvDefaultMAFSpec) {
-  SAIGE::flexrvTransformTable(scoreSpec, mafSpec, "REVEL", maxMAF = 0.01)$names
+  # N = 1000: the sets a run composes at the models' in-sample count, i.e.
+  # without the MAC rungs at or above 2*N*maxMAF = 20 (LEDGER #142)
+  SAIGE::flexrvTransformTable(scoreSpec, mafSpec, "REVEL", maxMAF = 0.01, N = 1000)$names
 }
-test_that("the default run writes 192 sets per gene, in the normative order, plus one Cauchy row", {
+test_that("the default run writes 112 sets per gene, in the normative order, plus one Cauchy row", {
   r <- fx_burden_bin()
   fx_ok(r)
   d <- r$region
@@ -21,29 +23,31 @@ test_that("the default run writes 192 sets per gene, in the normative order, plu
   rows <- fx_rows(r)
   for (g in c("GENE1", "GENE2")) {
     w <- rows$Weight[rows$Region == g]
-    expect_identical(length(w), 192L, label = g)
+    expect_identical(length(w), 112L, label = g)
     expect_identical(w, fx_names(), label = g)
     expect_true(all(rows$Group[rows$Region == g] == "lof;missense"))
     expect_true(all(rows$max_MAF[rows$Region == g] == "0.01"))
   }
   expect_identical(nrow(fx_cauchy(r)), 2L)
-  expect_true(fx_log_has(r, paste0("FlexRV: 192 transform sets (16 score x 12 MAF) from score ",
+  expect_true(fx_log_has(r, paste0("FlexRV: 112 transform sets (16 score x 7 MAF) from score ",
                                    "'REVEL' at max MAF 0.01")))
   # the memory line, printed once
   expect_identical(sum(grepl("dense per-cell working memory is at least", r$log, fixed = TRUE)),
                    1L)
-  expect_true(fx_log_has(r, paste0("192 transform sets over 1 (annotation x max_MAF) cell(s) = ",
-                                   "192 weighted cells")))
+  expect_true(fx_log_has(r, paste0("112 transform sets over 1 (annotation x max_MAF) cell(s) = ",
+                                   "112 weighted cells")))
   # lever 5 (2026-09-12): identical BURDEN cells are evaluated once. The
-  # tally is printed once, adds up, and serves at least one cell on this
-  # fixture (MAC25..MAC500 duplicate unw; helper-step2-flexrv.R). served is
-  # a measurement: the bound is asserted, not the number.
+  # tally is printed once and adds up. served is a measurement: since LEDGER
+  # #142 dropped the rungs that duplicated unw, no twin is guaranteed on this
+  # fixture (one is served on the box that made the goldens), so only the
+  # accounting is asserted.
   tally <- grep("^BURDEN cells: ", r$log, value = TRUE)
   expect_identical(length(tally), 1L)
   nums <- as.integer(regmatches(tally, gregexpr("[0-9]+", tally))[[1]])
-  expect_identical(nums[1], 384L)
+  expect_identical(nums[1], 224L)
   expect_identical(nums[2] + nums[3], nums[1])
-  expect_gte(nums[3], 1L)
+  # the twin bound: the one printed-equal pair left (GENE2 lof_MAC5 / lof_MAC10)
+  expect_lte(nums[3], 1L)
 })
 
 test_that("the pooled Cauchy row is the CCT over the gene's set rows (p_FlexRV)", {
@@ -59,10 +63,12 @@ test_that("the pooled Cauchy row is the CCT over the gene's set rows (p_FlexRV)"
   }
 })
 
-test_that("a MAC threshold above every marker's MAC is the unweighted set, row for row", {
-  # 2N = 2,000 and max MAF 0.01: no marker in the cell has MAC > 20, so
-  # MAC25..MAC500 select everything, exactly as unw does. Same code path,
-  # same inputs, so the rows are identical apart from the label.
+test_that("a MAC threshold above every MAC is never composed; the ladder below it is live", {
+  # 2N = 2,000 and max MAF 0.01: no admitted marker has MAC > 20, so
+  # MAC25..MAC500 would select everything, exactly as unw does. Until LEDGER
+  # #142 (2026-09-13) those rows were emitted, byte-identical to their score
+  # transform's unw row, and pooled; now they are dropped before composition
+  # (test-step2-flexrv-rungs.R has the count and the warning).
   r <- fx_burden_bin()
   rows <- fx_rows(r)
   strip <- function(d) {
@@ -70,13 +76,11 @@ test_that("a MAC threshold above every marker's MAC is the unweighted set, row f
     rownames(d) <- NULL
     d
   }
+  expect_false(any(grepl("_MAC(25|50|100|200|500)$", rows$Weight)))
   for (sc in c("unw", "lof", "cbrt0.5", "sbeta20")) {
     base <- strip(rows[rows$Weight == paste0("REVEL_", sc, "_unw"), ])
-    for (t in c(25, 50, 100, 200, 500)) {
-      expect_identical(strip(rows[rows$Weight == paste0("REVEL_", sc, "_MAC", t), ]), base,
-                       label = paste(sc, t))
-    }
-    # and the ladder is NOT trivially degenerate: MAC10 differs from unw
+    expect_identical(nrow(base), 2L, label = sc)
+    # the ladder is NOT trivially degenerate: MAC10 (below the bound) differs from unw
     expect_false(identical(strip(rows[rows$Weight == paste0("REVEL_", sc, "_MAC10"), ]), base))
   }
 })
@@ -154,7 +158,7 @@ test_that("a set with no qualifying marker is omitted, and the Cauchy pool is ov
   cau <- fx_cauchy(r)
   for (g in c("GENE1", "GENE2")) {
     w <- rows$Weight[rows$Region == g]
-    expect_identical(length(w), 176L, label = g)
+    expect_identical(length(w), 96L, label = g)
     expect_false(any(grepl("_MAC1$", w)))
     expect_identical(w, grep("_MAC1$", fx_names(), value = TRUE, invert = TRUE))
     p <- as.numeric(rows$Pvalue_Burden[rows$Region == g])
@@ -206,7 +210,7 @@ test_that("SKAT-O on a reduced spec: schema, rows, and unw_unw against the legac
   expect_true(fx_log_has(r, "SKAT failures: 0 cells returned NA"))
 })
 
-test_that("--nThreads=4 is byte-identical to one thread on the 192-set BURDEN run, and says so", {
+test_that("--nThreads=4 is byte-identical to one thread on the default BURDEN run, and says so", {
   a <- fx_burden_bin()
   b <- fx_run(c(FX_G, FX_BIN, FX_SG, FX_COMMON, FX_FLEX, FX_BURDEN, "--nThreads=4"), "threads4")
   fx_ok(b)

@@ -18,7 +18,8 @@
 # model the two lines do not share a unit. Reviewed 2026-09-12 and left as is:
 # each line is self-consistent, this one is the more conservative of the two,
 # and re-basing it on tests would move a printed count that a test asserts
-# (test-step2-flexrv.R pins asked == 384 = 2 genes x 192 sets at P = 1).
+# (test-step2-flexrv.R pins asked == 224 = 2 genes x 112 sets at P = 1, since
+# LEDGER #142 drops the five MAC rungs at or above 2*N*maxMAF at N = 1,000).
 
 #' @noRd
 burdenMemoReset <- function() {

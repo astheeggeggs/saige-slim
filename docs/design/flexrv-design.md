@@ -513,13 +513,19 @@ the bundled models hold 1,000 samples and step 2 subsets to them. Measured
 with `plink2 --freq counts --keep`: at max MAF 0.01 (MAC <= 20) GENE1 has 21
 polymorphic markers (MAC 1..20) and GENE2 18 (MAC 1..13); at the default
 collapse cutoff the real markers are rs4/rs17/rs31/rs33 and rs60/rs70/rs91.
-So the goldens pin `--flexRV_maxMAF=0.01`, where `MAC25`..`MAC500` are
-duplicates of `unw` (six of twelve MAF transforms coincide), `MAC1/3/5/10`
-select only collapsed markers at cutoff 10 and are fully live at cutoff 0, and
+So the goldens pin `--flexRV_maxMAF=0.01`, where `MAC25`..`MAC500` sit at or
+above the bound `2*N*maxMAF` = 20 and are dropped before composition (LEDGER
+#142, 2026-09-13; five rungs that would duplicate `unw`, which with `unw`
+itself makes six of twelve MAF transforms coincide), so a default run tests
+112 sets; `MAC1/3/5/10` select
+only collapsed markers at cutoff 10 and are fully live at cutoff 0, and
 `mafbeta@0.01` is live on every marker. Distinct (p, beta, se) triples among
-the 192 rows: 100/102 per gene with the collapse on (P58), 111/111 with it off
-(P59); `test-invariants-goldens.R` pins those counts as the fixture's
-resolving power.
+the 112 rows: 111/111 per gene with the collapse on (P58) and off (P59) --
+the same distinct set the 192 rows had (100/102 and 111/111 before LEDGER
+#129 made the collapse-on counts 111/111), because dropping exact duplicates
+changes what is emitted, not what the fixture can tell apart;
+`test-invariants-goldens.R` pins those counts as the fixture's resolving
+power.
 
 **2. A zero weight inside a binary SKAT-O cell returns NA (LEDGER #117).**
 Found through the reduced-spec SKAT-O golden: `mac:5` gives every real marker
@@ -610,14 +616,17 @@ external weight-line route (16 score transforms written at 17 digits as custom
 sets, rows equal at 1e-10 with the allele accounting byte-equal),
 `unw_unw` against the legacy all-ones run, `lof_unw` against a LoF-only run
 (quantitative, cutoff 0), the `MAC25`..`MAC500` rows against `unw` row for
-row, the omitted-row Cauchy pool against a recomputed CCT, `--weights.beta`
+row (since LEDGER #142: their absence, and the count dropped), the omitted-row Cauchy pool against a recomputed CCT, `--weights.beta`
 and `--nThreads=4` as byte-inert, and every guard's message. The goldens were
 each generated twice into separate trees and `cmp`-identical before being
 committed; the pgen mirror is byte-identical to its PLINK twin.
 
 **End-to-end suite (2026-09-09, late; four more files over the same
-helper).** `test-step2-flexrv-reconcile.R`: all 192 sets against 192
-external weight lines, binary with the collapse on (in-sample MAC from P1's
+helper).** `test-step2-flexrv-reconcile.R`: all sets against their
+external weight lines (since LEDGER #142 the 112 composed sets against their
+112 of the 192 external lines, the other 80 external rows asserted equal to
+their `unw` row as the second computation that the dropped rungs were
+duplicates), binary with the collapse on (in-sample MAC from P1's
 golden) and quantitative with it off (MAC from the run's own
 `.singleAssoc.txt`, the two MAC sources checked against each other); the MAC
 ladder against `--maxMAC_in_groupTest` cells (equal wherever both burdens

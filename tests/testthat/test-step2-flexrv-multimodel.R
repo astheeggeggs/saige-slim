@@ -7,19 +7,22 @@
 # compared. Scaffolding (FXM_MODELS, fxm_check) in helper-step2-flexrv.R.
 # Tier: standard.
 
-test_that("two models, 192-set BURDEN with single-in-group: each model's files reproduce its run", {
+test_that("two models, default BURDEN with single-in-group: each model's files reproduce its run", {
   fx_skip("standard")
   skip_if_no_goldens()
   man <- fxm_check(c(FX_FLEX, FX_BURDEN, "--is_single_in_groupTest=TRUE"), "burden")
   # the expansion (the R line) and the memory floor (the C++ line) are each
   # printed once for the pass, not once per model
-  expect_identical(sum(grepl("FlexRV: 192 transform sets (16 score x 12 MAF)", man$log,
+  expect_identical(sum(grepl("FlexRV: 112 transform sets (16 score x 7 MAF)", man$log,
+                             fixed = TRUE)), 1L)
+  # ... and so is the LEDGER #142 drop warning (once per pass, not per model)
+  expect_identical(sum(grepl("dropped before the sets are composed (LEDGER #142)", man$log,
                              fixed = TRUE)), 1L)
   expect_identical(sum(grepl("dense per-cell working memory is at least", man$log,
                              fixed = TRUE)), 1L)
   for (nm in names(FXM_MODELS)) {
     d <- fx_read(paste0(man$path, "_", nm))
-    expect_identical(sum(d$Group != "Cauchy"), 384L, label = nm)
+    expect_identical(sum(d$Group != "Cauchy"), 224L, label = nm)
     expect_identical(sum(d$Group == "Cauchy"), 2L, label = nm)
   }
 })

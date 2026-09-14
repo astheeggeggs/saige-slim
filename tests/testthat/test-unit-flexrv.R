@@ -208,3 +208,44 @@ test_that("parseFlexRVLofAnno treats ',', ':' and ';' alike", {
   expect_identical(parseFlexRVLofAnno(NULL), character(0))
   expect_error(parseFlexRVLofAnno(",;"), "at least one")
 })
+
+# LEDGER #142 (decided 2026-09-13, option b): given the in-sample N, the MAC
+# rungs at or above 2*N*maxMAF -- which no admitted marker can exceed, so they
+# would weight every marker 1 and duplicate unw -- are dropped before the
+# table is built and reported in `dropped`. N = NULL keeps the full ladder.
+test_that("LEDGER #142: N drops the MAC rungs at or above 2*N*maxMAF and reports them", {
+  full <- flexrvTransformTable(flexrvDefaultScoreSpec, flexrvDefaultMAFSpec, "S", maxMAF = 0.01)
+  tt <- flexrvTransformTable(flexrvDefaultScoreSpec, flexrvDefaultMAFSpec, "S", maxMAF = 0.01,
+                             N = 1000)
+  expect_equal(tt$bound, 20)
+  expect_identical(tt$dropped, c("MAC25", "MAC50", "MAC100", "MAC200", "MAC500"))
+  expect_identical(dim(tt$table), c(112L, 4L))
+  expect_identical(tt$nScore, 16L)
+  expect_identical(tt$nMAF, 7L)
+  expect_false(any(grepl("_MAC(25|50|100|200|500)$", tt$names)))
+  # the surviving rows are the full table's rows, in the full table's order
+  keep <- !grepl("_MAC(25|50|100|200|500)$", full$names)
+  expect_identical(tt$names, full$names[keep])
+  expect_identical(tt$table, full$table[keep, , drop = FALSE])
+  # a rung EQUAL to the bound is degenerate too: the kernel is MAC <= t
+  t2 <- flexrvTransformTable("unw", "unw;mac:19,20,21", "S", maxMAF = 0.01, N = 1000)
+  expect_identical(t2$dropped, c("MAC20", "MAC21"))
+  expect_identical(t2$names, c("S_unw_unw", "S_unw_MAC19"))
+  # the paper's N: nothing goes and the table is the full 16 x 12
+  t3 <- flexrvTransformTable(flexrvDefaultScoreSpec, flexrvDefaultMAFSpec, "S", N = 423614)
+  expect_identical(t3$dropped, character(0))
+  expect_identical(dim(t3$table), c(192L, 4L))
+  # N = 50,000 at the paper's max MAF: the top three rungs go
+  t4 <- flexrvTransformTable(flexrvDefaultScoreSpec, flexrvDefaultMAFSpec, "S", N = 50000)
+  expect_identical(t4$dropped, c("MAC100", "MAC200", "MAC500"))
+  expect_identical(dim(t4$table), c(144L, 4L))
+  # N = NULL: the full ladder, nothing reported
+  expect_identical(full$dropped, character(0))
+  expect_true(is.na(full$bound))
+  expect_identical(dim(full$table), c(192L, 4L))
+  # every MAF transform degenerate: refused by name
+  expect_error(flexrvTransformTable("unw", "mac:100,500", "S", maxMAF = 0.01, N = 1000),
+               "nothing is left to test")
+  expect_error(flexrvTransformTable("unw", "unw", "S", maxMAF = 0.01, N = -1),
+               "in-sample sample count")
+})

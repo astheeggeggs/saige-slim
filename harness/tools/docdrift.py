@@ -245,6 +245,18 @@ RULES = [
         canary="is_rewrite_XnonPAR_forMales=TRUE and minInfo and minMAF won't be applied to "
                "all X chromosome variants",
     ),
+    # LEDGER #142 (decided and fixed 2026-09-14): the fixture fact "MAC25..MAC500
+    # are duplicates of unw" was true on every FlexRV golden until the rungs at
+    # or above 2*N*maxMAF stopped being composed; it had five unscanned twins.
+    dict(
+        id="142-mac-rungs-duplicate-unw",
+        pattern=r"MAC25\s*\.\.\s*MAC500\s+are\s+(then\s+)?duplicates\s+of\s+unw",
+        why="LEDGER #142: a mac rung at or above 2*N*maxMAF is dropped before the sets are "
+            "composed and never emitted; the FlexRV goldens hold 112 sets per gene",
+        evidence="harness/goldens/step2/plink_group_flexrv_burden.txt: 112 non-Cauchy rows per "
+                 "gene and no _MAC(25|50|100|200|500) name; R/FlexRV.R flexrvTransformTable(N = )",
+        canary="the goldens P58-P61 pin it, and there `MAC25`..`MAC500` are duplicates of `unw`",
+    ),
 ]
 
 BENIGN = (

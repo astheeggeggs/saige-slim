@@ -3,6 +3,9 @@
 # builders). Three second ways:
 #
 #  1. the whole 192-set table written out as 192 `weight:NAME` lines and run
+#     as custom sets; the internal run composes 112 of them at N = 1,000 (LEDGER
+#     #142 drops the rungs at or above 2*N*maxMAF) and the other 80 external
+#     rows are asserted equal to their unw row -- the dropped sets were duplicates
 #     as custom sets, twice: binary with the ultra-rare collapse on (MAC from
 #     P1's golden) and quantitative with it off (MAC from the run's OWN
 #     .singleAssoc.txt) -- two MAC sources, two collapse regimes, every MAF
@@ -22,7 +25,7 @@
 # Cross-path comparisons are at 1e-5 (the printed precision); the accounting
 # columns exactly. Tier: standard.
 
-test_that("all 192 sets == 192 external weight lines: binary, collapse on, MAC from P1's golden", {
+test_that("112 internal sets == their 112 of 192 external lines: binary, collapse on", {
   fx_skip("standard")
   skip_if_no_goldens()
   int <- fx_burden_bin()
@@ -36,7 +39,7 @@ test_that("all 192 sets == 192 external weight lines: binary, collapse on, MAC f
   expect_true(all(as.numeric(fx_rows(int)$Number_ultra_rare) > 0))
 })
 
-test_that("all 192 sets == 192 external lines: quantitative, collapse off, MAC from the run", {
+test_that("112 internal sets == their 112 of 192 external lines: quantitative, collapse off", {
   fx_skip("standard")
   skip_if_no_goldens()
   q <- fx_quant_single()

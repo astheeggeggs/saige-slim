@@ -193,12 +193,12 @@ FLEXRV_COMMON <- c("--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
                    "--flexRV_score=REVEL", "--flexRV_maxMAF=0.01",
                    "--annotation_in_groupTest=lof:missense")
 
-test_that("step2 FlexRV 192-set BURDEN (binary, collapse on) matches golden", {
+test_that("step2 FlexRV default-set BURDEN (binary, collapse on) matches golden", {
   run_step2_case("plink_group_flexrv_burden.txt",
     c(PLINK_ARGS(), GRP_MODEL, SG_ARGS, FLEXRV_COMMON, "--r.corr=1", "--is_fastTest=FALSE"))
 })
 
-test_that("step2 FlexRV 192-set BURDEN (quantitative, no collapse) matches golden", {
+test_that("step2 FlexRV default-set BURDEN (quantitative, no collapse) matches golden", {
   run_step2_case("plink_group_flexrv_burden_quant.txt",
     c(PLINK_ARGS(), quant_model(), FLEXRV_COMMON, "--MACCutoff_to_CollapseUltraRare=0",
       "--r.corr=1", "--is_fastTest=FALSE"))
@@ -224,7 +224,7 @@ test_that("step2 FlexRV reduced-spec SKAT-O (2 x 2 sets) matches golden", {
     extra_outputs = ".singleAssoc.txt")
 })
 
-test_that("step2 FlexRV 192-set BURDEN through the pgen reader matches golden", {
+test_that("step2 FlexRV default-set BURDEN through the pgen reader matches golden", {
   run_step2_case("pgen_group_flexrv_burden.txt",
     c("--pgenFile=./input/genotype_100markers.pgen",
       "--pvarFile=./input/genotype_100markers.pvar",

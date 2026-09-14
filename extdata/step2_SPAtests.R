@@ -564,7 +564,9 @@ option_list <- list(
       "FlexRV (Schwartzentruber et al. 2025): the name of the group file's ",
       "'score:NAME' line, a per-marker pathogenicity score in [0, 1]. When ",
       "given, the FlexRV weight sets (--flexRV_scoreTransforms x ",
-      "--flexRV_MAFTransforms, 192 by default) are expanded from it inside ",
+      "--flexRV_MAFTransforms, 192 by default, fewer where a mac rung sits at or ",
+      "above 2 * N * flexRV_maxMAF and would weight every marker 1, a duplicate ",
+      "of unw) are expanded from it inside ",
       "SAIGE and tested as weight sets of the group test; the region's Cauchy ",
       "row over them is p_FlexRV. A FlexRV run tests exactly ONE annotation ",
       "group and ONE max MAF (--flexRV_maxMAF, which replaces ",
@@ -593,6 +595,12 @@ option_list <- list(
       "With the ultra-rare collapse on (--MACCutoff_to_CollapseUltraRare=10) ",
       "the mac:1,3,5,10 sets test only the collapsed pseudo-marker; ",
       "--MACCutoff_to_CollapseUltraRare=0 is the paper's unbinned burden. ",
+      "A rung at or above 2 * N * flexRV_maxMAF (N the in-sample sample ",
+      "count; no admitted marker can have a larger MAC) would weight every ",
+      "marker 1 and duplicate unw, so it is dropped before the sets are ",
+      "composed and named in a warning: at N = 50,000 and the default max MAF ",
+      "the rungs 100, 200 and 500 go and 144 sets are tested; a spec whose MAF ",
+      "transforms are all such rungs is refused. ",
       "[default=the paper's 12]"
     )
   ),
@@ -614,8 +622,9 @@ option_list <- list(
       "The single max MAF of a FlexRV run (the paper's MAF < 0.1% filter). ",
       "Replaces --maxMAF_in_groupTest; giving both with different values is an ",
       "error. A value other than 0.001 rescales the mafbeta transforms to the ",
-      "new boundary (named mafbeta<b>@<maxMAF>) and leaves the MAC ladder ",
-      "alone. [default=0.001]"
+      "new boundary (named mafbeta<b>@<maxMAF>) and leaves the MAC ladder's ",
+      "values alone; it does set the bound 2 * N * flexRV_maxMAF at or above ",
+      "which a mac rung is dropped (see --flexRV_MAFTransforms). [default=0.001]"
     )
   ),
   make_option(
