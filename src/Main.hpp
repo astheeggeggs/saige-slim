@@ -3,7 +3,7 @@
 
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
-#include "SAIGE_test.hpp"   // SAIGE::TestContext, carried by Unified_getMarkerPval
+#include "SAIGE_test.hpp"   // SAIGE::TestContext
 #include "MarkerLoop.hpp"   // Marker::MarkerResult, the step-2 single-variant output slot
 
 
@@ -67,37 +67,6 @@ bool Unified_getOneMarker(std::string & t_genoType,   // "PLINK"
 			       arma::vec & t_GVec,
 			       bool t_isImputation);
 
-void Unified_getMarkerPval(
-                           arma::vec & t_GVec,
-                           bool t_isOnlyOutputNonZero,
-                           arma::uvec & t_indexForNonZero_vec,
-                           arma::uvec & t_indexForZero_vec,
-                           double& t_Beta,
-                           double& t_seBeta,
-                           std::string& t_pval,
-                           std::string& t_pval_noSPA,
-                           double& t_Tstat,
-			   double& t_gy,
-                           double& t_varT,
-                           double t_altFreq,
-                           bool & t_isSPAConverge,
-                           arma::vec & t_gtilde,
-                           bool & is_gtilde,
-			   bool  is_region,
-			   arma::vec & t_P2Vec,
-			   bool t_isCondition, 
-			   double& t_Beta_c,
-                           double& t_seBeta_c,
-                           std::string& t_pval_c,
-                           std::string& t_pval_noSPA_c,
-                           double& t_Tstat_c,
-                           double& t_varT_c,
-			   arma::rowvec & t_G1tilde_P_G2tilde_Vec,
-			    bool & t_isFirth,
-			   bool & t_isFirthConverge,
-			   bool t_isER,
-			  bool t_flip,
-			  const SAIGE::TestContext & t_ctx);
 
 
 Rcpp::List mainRegionInCPP(
@@ -260,9 +229,6 @@ void copy_singleInGroup();
 int writeOutfile_singleInGroup(bool t_isMoreOutput,
                         bool t_isImputation,
                         bool t_isCondition,
-                        bool t_isFirth,
-                         int mFirth,
-                         int mFirthConverge,
                         std::string t_traitType,
                         std::vector<std::string> & chrVec,
                         std::vector<std::string> & posVec,

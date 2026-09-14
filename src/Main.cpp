@@ -34,7 +34,6 @@
 #include "CCT.hpp"
 
 #include <Rcpp.h>
-#include "getMem.hpp"
 
 #include <boost/math/distributions/beta.hpp>
 
@@ -918,9 +917,7 @@ static int prepareOneMarker(Geno::GenoReader & t_reader,
 //
 // getMarkerPval is const and never assigns t_GVec or the index vectors (that is
 // what S3/S12 bought), so every model in a group tests THE SAME prepared buffer
-// without copying it. The Unified_getMarkerPval wrapper is not used here: all it
-// added was a stop on t_isOnlyOutputNonZero, which is a literal false at all
-// three call sites.
+// without copying it.
 static void testOneModel(const SAIGE::SAIGEClass & t_model,
                          bool t_isMoreOutput,
                          bool t_isSingleVarianceRatio,
@@ -1742,48 +1739,9 @@ uint32_t Unified_getSampleSizeinAnalysis(std::string & t_genoType){
 
 
 
-// a unified function to get marker-level p-value
-void Unified_getMarkerPval(
-                           arma::vec & t_GVec,
-                           bool t_isOnlyOutputNonZero,
-			   arma::uvec & t_indexForNonZero_vec,
-			   arma::uvec & t_indexForZero_vec,
-                           double& t_Beta, 
-                           double& t_seBeta, 
-                           std::string& t_pval,
-			   std::string& t_pval_noSPA,
-                           double& t_Tstat,
-			   double& t_gy,
-                           double& t_varT,
-                           double t_altFreq, 
-			   bool & t_isSPAConverge,
-			   arma::vec & t_gtilde,
-			   bool & is_gtilde,
-			   bool  is_region,
-                           arma::vec & t_P2Vec,
-			   bool t_isCondition,
-                           double& t_Beta_c, 
-                           double& t_seBeta_c, 
-                           std::string& t_pval_c,
-			   std::string& t_pval_noSPA_c,
-                           double& t_Tstat_c,
-                           double& t_varT_c,
-			   arma::rowvec & t_G1tilde_P_G2tilde_Vec, 
-			   bool & t_isFirth,
-			   bool & t_isFirthConverge, 
-			   bool t_isER,
-			   bool t_flip,
-			   const SAIGE::TestContext & t_ctx )
-{
-    if(t_isOnlyOutputNonZero == true)
-      Rcpp::stop("When using SAIGE method to calculate marker-level p-values, 't_isOnlyOutputNonZero' should be false.");
-
-
-    g_model->getMarkerPval(t_GVec, t_indexForNonZero_vec, t_indexForZero_vec, t_Beta, t_seBeta, t_pval, t_pval_noSPA, t_altFreq, t_Tstat, t_gy, t_varT, t_isSPAConverge, t_gtilde, is_gtilde, is_region, t_P2Vec, t_isCondition, t_Beta_c, t_seBeta_c, t_pval_c, t_pval_noSPA_c, t_Tstat_c, t_varT_c, t_G1tilde_P_G2tilde_Vec, t_isFirth, t_isFirthConverge, t_isER, t_flip, t_ctx); //SAIGE_new.cpp
-    
-    //t_indexForNonZero_vec.clear();
-  
-}
+// Unified_getMarkerPval (a 30-parameter wrapper over g_models[0]->getMarkerPval
+// with no caller) was deleted 2026-09-14 (dead-surface sweep C2). Every test
+// site calls model.getMarkerPval on ITS model directly.
 
 //////// ---------- Main functions to set objects for different genotype format --------- ////////////
 
@@ -2490,9 +2448,12 @@ Rcpp::List mainRegionInCPP(
   NumRare_GroupVec.zeros();
   arma::vec NumUltraRare_GroupVec(q_anno_maf_weight);
   NumUltraRare_GroupVec.zeros();
-  arma::vec gtildeVec;
-  double MACgroup, MACcasegroup, MACcontrolgroup, AF_case, AF_ctrl, N_case_hom, N_ctrl_het, N_case_het, N_ctrl_hom;
-  uint32_t N; 
+  // Dead-surface sweep 2026-09-14 (C3): the function-scope gtildeVec,
+  // MACgroup/MACcasegroup/MACcontrolgroup/AF_case/AF_ctrl, N_case_hom/
+  // N_ctrl_het/N_case_het/N_ctrl_hom and N that were declared here were never
+  // assigned at this scope; every reader below has its own local or field.
+  // LEDGER #130's fix note records N_case_hom being derived from the identically
+  // dead function-scope N_case once. Do not re-import them on an upstream merge.
 
   //single-variant assoc output
   arma::uvec indicatorVec(q, arma::fill::zeros);       // 0: does not pass QC, 1: non-URV, 2: URV
@@ -2650,25 +2611,18 @@ Rcpp::List mainRegionInCPP(
   std::vector<unsigned int> mPassCVVec;
     
   // conduct marker-level analysis
-  std::string pval, pval_noSPA,  pval_c, pval_noSPA_c;
-  double Beta, seBeta, Tstat, varT, gy;
-  double Beta_c, seBeta_c, Tstat_c, varT_c;
-  bool isSPAConverge, is_gtilde, is_Firth, is_FirthConverge;
-  arma::vec P1Vec(t_n), P2Vec(t_n);
-  arma::vec GVec(t_n);
-  arma::vec GZeroVec(t_n);
-  std::vector<uint> indexZeroVec;
-  std::vector<uint> indexNonZeroVec;
-  // Hoisted out of the marker and ultra-rare loops below: conv_to fully
-  // overwrites them at each use, so reuse is value-neutral.
-  arma::uvec indexZeroVec_arma, indexNonZeroVec_arma;
+  // Dead-surface sweep 2026-09-14 (C3): the per-marker result scalars (pval,
+  // Beta, Tstat, ... and their _c twins), isSPAConverge/is_gtilde/is_Firth/
+  // is_FirthConverge, the four t_n-length vectors P1Vec/P2Vec/GVec/GZeroVec
+  // and the index vectors used to be declared at this scope. Every inner loop
+  // declares its own shadowing copies; is_Firth and is_FirthConverge were
+  // READ here uninitialised and passed to a writer that never looked at them.
+  // Do not re-import them on an upstream merge.
 
-  // variance ratio. Every site below selects its own into a local TestContext,
-  // so all that is decided here is single vs categorical; the
-  // assignSingleVarianceRatio call that used to sit in the else branch wrote a
-  // model member that no read in this function could reach -- each of the three
-  // sites reassigns before its own read -- and it went with the member (S12).
-  bool hasVarRatio = true;
+  // variance ratio: every site below selects its own into a local TestContext
+  // and its own `hasVarRatio` (e72e4186 gave the three threaded prepares their
+  // own after TSAN caught them sharing this frame's; the frame-scope bool was
+  // deleted 2026-09-14, C3, so nothing can share it again).
   // initiate chunk information
   unsigned int nchunks = 0; //number of chunks
   unsigned int ichunk = 0; //ith chunk
@@ -2839,8 +2793,7 @@ Rcpp::List mainRegionInCPP(
       if(doSingleTests){ //perform single-variant assoc tests
         bool is_gtilde, is_Firth, is_FirthConverge;
         ProfileScope rpTest(rp.enabled ? &rp.test : nullptr, &rp.nTest);
-        // model.getMarkerPval rather than the Unified_ wrapper (which
-        // dispatches to g_models[0]); the worker's KernelWorkspace goes in.
+        // the worker's KernelWorkspace goes in.
         if(MAC <=  g_cfg.MACCutoffforER && W[km].traitType == "binary"){
           model.getMarkerPval(sc.GVec, sc.indexNonZeroVec_arma, sc.indexZeroVec_arma, prm.Beta, prm.seBeta, prm.pval, prm.pval_noSPA, altFreq, prm.Tstat, prm.gy, prm.varT, prm.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, prm.Beta_c, prm.seBeta_c, prm.pval_c, prm.pval_noSPA_c, prm.Tstat_c, prm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx, &sc.ws);
         }else{
@@ -4558,8 +4511,6 @@ if(t_regionTestType == "BURDEN"){
 
 
  int numofUR = q_anno_maf_weight;
- int numofUR0;
- int mFirth = 0;
 if(t_isSingleinGroupTest){
  for(unsigned int km = 0; km < P; km++){
  RegionModelWork & w = W[km];
@@ -4567,12 +4518,9 @@ if(t_isSingleinGroupTest){
  // OutList.push_back(pvalVec_val, "pvalVec");
  w.OutList.push_back(w.pvalVec, "pvalVec");
 if(w.iswriteOutput){
-  numofUR0 = writeOutfile_singleInGroup(t_isMoreOutput,
+  writeOutfile_singleInGroup(t_isMoreOutput,
       t_isImputation,
       isCondition,
-      is_Firth,
-      mFirth,
-      is_FirthConverge,
       w.traitType,
       chrVec,
       posVec,
@@ -4612,12 +4560,9 @@ if(w.iswriteOutput){
         // written by THAT run, and a region it clears is copied over by R
         // (copy_singleInGroup). LEDGER #57 traced the temp file's lifetime.
   rw.singleInGroupTemp.open(rw.prefixSingleInGroupTemp.c_str(), std::ofstream::out);
-  numofUR0 = writeOutfile_singleInGroup(t_isMoreOutput,
+  writeOutfile_singleInGroup(t_isMoreOutput,
       t_isImputation,
       isCondition,
-      is_Firth,
-      mFirth,
-      is_FirthConverge,
       w.traitType,
       chrVec,
       posVec,
@@ -4858,18 +4803,16 @@ void assign_conditionMarkers_factors(
   arma::vec gtildeVec;
 
   if(MAC <=  g_cfg.MACCutoffforER && model.m_traitType == "binary"){
-     // model.getMarkerPval rather than the Unified_ wrapper: the wrapper
-     // dispatches to g_models[0], which is the wrong model whenever this is
-     // called for the second or later entry of a manifest. Argument order
+     // Called on ITS model (the second or later entry of a manifest is not
+     // g_models[0]). Argument order
      // follows SAIGEClass::getMarkerPval (altFreq before Tstat), which is the
      // one place it differs from the wrapper's.
      model.getMarkerPval(
                     GVec,
                     indexNonZeroVec_arma, indexZeroVec_arma, Beta, seBeta, pval, pval_noSPA, altFreq, Tstat, gy, varT, isSPAConverge, gtildeVec, is_gtilde, true, P2Vec, isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx);
   }else{
-     // model.getMarkerPval rather than the Unified_ wrapper: the wrapper
-     // dispatches to g_models[0], which is the wrong model whenever this is
-     // called for the second or later entry of a manifest. Argument order
+     // Called on ITS model (the second or later entry of a manifest is not
+     // g_models[0]). Argument order
      // follows SAIGEClass::getMarkerPval (altFreq before Tstat), which is the
      // one place it differs from the wrapper's.
      model.getMarkerPval(
@@ -5645,9 +5588,6 @@ void writeOutfile_BURDEN(std::string regionName,
 int writeOutfile_singleInGroup(bool t_isMoreOutput,
                         bool t_isImputation,
                         bool t_isCondition,
-                        bool t_isFirth,
-                         int mFirth,
-                         int mFirthConverge,
                         std::string t_traitType,
                         std::vector<std::string> & chrVec,
                         std::vector<std::string> & posVec,
