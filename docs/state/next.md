@@ -82,6 +82,24 @@ via `SAIGE_EXTRA_CXXFLAGS`; `parentheses` was tried and dropped the same day
 and at `SAIGE_fitGLMM_fast.cpp:1179`, a `|`-around-comparisons site clang does
 not flag -- note for a future row or a same-parse parenthesisation). The one source change is parentheses making
 the existing parse of `m_is_Firth_beta & (pval <= m_pCutoffforFirth)` explicit.
+**Phase E (the deduplications) LANDED 2026-09-14**, six commits, one gate
+each, no golden moved in any (predicted before each gate); the region TSAN
+clean and plant arms were run ONCE over the whole phase after E6 (E1, E4 and
+E5 all touch the region prepares' frames). E1 `contextForMAC` +
+`isSingleVarianceRatio` + `isERCandidate`, `hasVarRatio` demoted to a local,
+and a `null`-less ratio file refused by name; E2 one `SingleVariantSchema`,
+one header writer, one row writer over `MarkerResult`; E3 `formatPvalOrLog` /
+`formatLogP`; E4 `struct WeightSet` and ONE emission loop (byte-identity on
+`x * 1.0 == x` and a per-kind SELECTED count source); E5 `CellResult` by
+inheritance and one `writeBackCell`; E6 `checkGenoInput` returns its resolved
+paths, the covariate GLM is fitted only where read, the region `.index`
+writer is `writeOutputFileIndex`. **Not taken, by decision:** `finishScoreTest`
+(the three guards are not one predicate), the `ReadModel` merge (value-pinning
+tests for the subset-only branches must come first), `getNeff`'s LOCO block
+(LEDGER #149 is the owner's row), `Marker::MarkerResult` into `CellResult`
+(different defaults the writer keys on). Phase F (`Main.hpp`) and G (the god
+functions) remain; G is explicitly deferred.
+
 **LEDGER #152** records the four enumeration-guarded uninitialised reads
 (two live, two in the dead exports) and, since CI run 34838510204, the six
 more GCC's `-Wmaybe-uninitialized` names in `SAIGE_test.cpp` -- read them one
