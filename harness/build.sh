@@ -92,3 +92,42 @@ if [ "$INCREMENTAL" = 1 ]; then
 else
   echo "clean install OK ($(git rev-parse --short HEAD))"
 fi
+
+# --- the warning ratchet (2026-09-14, audit Phase D) --------------------------
+# src/Makevars carried -w, which cancelled every diagnostic including the
+# -Wall R passes by default, and nothing read a compiler warning anywhere. The
+# goldens are a byte oracle over one fixture and cannot see an uninitialised
+# read on a path the fixture never takes; the compiler can. So: count the
+# src-anchored warnings (generated RcppExports.cpp excluded -- its
+# cast-function-type-mismatch noise is Rcpp's, not ours) and refuse a build
+# that has MORE than harness/warnings-baseline.txt records. Fewer is progress
+# and is reported so the baseline can be lowered. Clean builds only: an
+# incremental build compiles a subset and its count means nothing. Local clang
+# only: the spellings and counts differ under CI's GCC, which is why CI sets
+# SAIGE_WARNINGS_RATCHET=0 and promotes error CLASSES instead (see
+# .github/workflows/tests.yml and src/Makevars).
+BASELINE="harness/warnings-baseline.txt"
+warn_hist() {  # src-anchored warnings from the build log, "N -Wcategory" lines
+  grep 'warning:' harness/work/build.log     | grep -E '^[A-Za-z_0-9]+\.(cpp|hpp|h):' | grep -v '^RcppExports\.cpp'     | sed -E 's/.*\[(-W[^]]+)\].*/\1/' | sort | uniq -c | sort -rn | sed 's/^ *//' || true
+}
+if [ "${SAIGE_WARNINGS_RATCHET:-1}" = 1 ] && [ "$INCREMENTAL" != 1 ]; then
+  count=$(warn_hist | awk '{s += $1} END {print s + 0}')
+  if [ ! -f "$BASELINE" ]; then
+    echo "build.sh: no $BASELINE; writing one at $count warnings (commit it)"
+    { echo "$count"; echo "# src-anchored compiler warnings at the last accepted build, RcppExports.cpp"; echo "# excluded; first line is the ratchet. Histogram for humans:"; warn_hist | sed 's/^/# /'; } > "$BASELINE"
+  else
+    base=$(head -1 "$BASELINE")
+    if [ "$count" -gt "$base" ]; then
+      echo "build.sh: WARNING RATCHET FAILED -- $count src-anchored warnings, baseline $base." >&2
+      echo "  New diagnostics (histogram now vs baseline):" >&2
+      warn_hist | sed 's/^/    now:  /' >&2
+      grep '^# [0-9]' "$BASELINE" | sed 's/^# /    was:  /' >&2
+      echo "  Fix the new warning, or if it is deliberate raise $BASELINE in the same commit and say why." >&2
+      exit 1
+    elif [ "$count" -lt "$base" ]; then
+      echo "warnings: $count src-anchored (baseline $base) -- fewer; lower the first line of $BASELINE to $count"
+    else
+      echo "warnings: $count src-anchored, at the baseline"
+    fi
+  fi
+fi

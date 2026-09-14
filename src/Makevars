@@ -1,10 +1,17 @@
-PKG_CPPFLAGS = -D SQLITE_ENABLE_COLUMN_METADATA -fpic -w -pedantic -DARMA_64BIT_WORD=1 -D__STDC_FORMAT_MACROS -DARMA_NO_DEBUG
+PKG_CPPFLAGS = -D SQLITE_ENABLE_COLUMN_METADATA -fpic -pedantic -Wall -Wextra -Wno-unused-parameter -Wno-cast-function-type-mismatch -DARMA_64BIT_WORD=1 -D__STDC_FORMAT_MACROS -DARMA_NO_DEBUG
 
 CXX_STD = CXX14
 
 PKG_LIBS = $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) -lsuperlu -llapack
 
 PKG_CPPFLAGS += -I../.pixi/envs/default/include -I../plink-ng/2.0/include
+# -w was here until 2026-09-14 (audit Phase D): it silenced the -pedantic beside
+# it AND the -Wall R passes by default, so nothing ever read a diagnostic.
+# harness/build.sh now counts the src-anchored warnings against
+# harness/warnings-baseline.txt (a ratchet; local clang only). CI promotes a
+# few bug-shaped categories to errors through this variable -- a count ratchet
+# is not portable across compilers, an error class is.
+PKG_CPPFLAGS += $(SAIGE_EXTRA_CXXFLAGS)
 PKG_LIBS += -L.. -lplink2_includes
 
 OBJECTS = RcppExports.o FlexRV.o GenoReaderRegistry.o SAIGE_fitGLMM_fast.o PLINK.o PGEN.o SAIGE_test.o SPA_binary.o SPA.o UTIL.o Main.o CCT.o Binary_HyperGeo.o Binary_ComputeExact.o Binary_global.o Binary_resampling.o ER_binary_func.o

@@ -924,7 +924,12 @@ if(!t_isER){
       t_seBeta = 0;
     }
 
-    if(m_is_Firth_beta & pval <= m_pCutoffforFirth){
+    // `&` (not `&&`) and the parentheses are deliberate: <= binds tighter than
+    // & so this is what the expression always parsed as; the parentheses only
+    // make it explicit for -Wparentheses (Phase D, 2026-09-14). Do not change
+    // the operator: both operands are evaluated today and that is the
+    // preserved behaviour.
+    if(m_is_Firth_beta & (pval <= m_pCutoffforFirth)){
 	t_isFirth = true;
 	t_qval_Firth = t_qval_ER;
     }

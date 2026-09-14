@@ -71,8 +71,20 @@ repaired (C5); `R/Firth.R`, `ReadGroupFile`, `check_close`,
 owner's call); the `t_genoType` parameter removal; the `annoMAFIndicatorMat`
 collapse in `region_postprocess` (it would ADD an assignment on the
 `is_rerun && !is_single_in_groupTest` path, so it is not provably inert); the
-"may ride along" R functions (`pcg`, `bigGRMPar*`, `writeOutputFile`). Phase D
-(turn the compiler back on) is next and needs one gate.
+"may ride along" R functions (`pcg`, `bigGRMPar*`, `writeOutputFile`).
+
+**Phase D (turn the compiler back on) LANDED 2026-09-14**: `-w` out,
+`-Wall -Wextra -Wno-unused-parameter -Wno-cast-function-type-mismatch` in,
+`harness/build.sh` ratchets the src-anchored count against
+`harness/warnings-baseline.txt`, CI promotes `uninitialized`/`return-type`/
+`parentheses` to errors via `SAIGE_EXTRA_CXXFLAGS` (**unverified until the
+next push** -- if GCC's `-Wuninitialized` fires on #152's sites, drop the flag
+in the workflow, not the code). The one source change is parentheses making
+the existing parse of `m_is_Firth_beta & (pval <= m_pCutoffforFirth)` explicit.
+**LEDGER #152** records the four enumeration-guarded uninitialised reads
+(two live, two in the dead exports). It adds a gate and deletes no
+complexity. Next: Phase E (the deduplications), one push, several commits,
+E1 additionally needs the region TSAN clean + plant arms.
 
 **The "also outstanding" doc items in the handoff's preamble were already
 closed** when checked on 2026-09-14: `R/SAIGE_Test_main.R:114` and

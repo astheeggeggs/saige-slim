@@ -1,0 +1,11 @@
+106
+# src-anchored compiler warnings at the last accepted build, RcppExports.cpp
+# excluded; first line is the ratchet. Histogram for humans:
+# 40 -Wunused-variable
+# 35 -Wsign-compare
+# 16 -Wdeprecated-declarations
+# 6 -Wsometimes-uninitialized
+# 4 -Wunused-but-set-variable
+# 3 -Wbitwise-instead-of-logical
+# 1 -Wunused-local-typedef
+# 1 -Wreorder-ctor

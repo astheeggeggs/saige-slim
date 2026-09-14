@@ -162,6 +162,17 @@ Standing facts that have each cost at least one session. One line of why each.
   restyled R files must come back clean; the legacy `R/` sources are NOT
   retroactively restyled. Restyling is gated like any change (goldens
   byte-identical; CLI option blocks value-identical old vs new).
+- **Compiler warnings are a ratchet, not noise (2026-09-14).** `src/Makevars`
+  carried `-w` for the branch's whole life, which also cancelled the `-Wall` R
+  passes by default; `harness/build.sh` now counts the src-anchored warnings
+  of a CLEAN build (generated `RcppExports.cpp` excluded) against the first
+  line of `harness/warnings-baseline.txt` and refuses a build with more. Fewer
+  is reported so the baseline can be lowered in the same commit. Local clang
+  only: CI (`SAIGE_WARNINGS_RATCHET=0`) promotes error CLASSES through
+  `SAIGE_EXTRA_CXXFLAGS` instead, because a count is not portable across
+  compilers. Do not "fix" `SAIGE_test.cpp`'s `m_is_Firth_beta & (pval <= ...)`
+  to `&&`: the parentheses are the existing parse made explicit, the operator
+  is deliberate. The four `-Wsometimes-uninitialized` sites are LEDGER #152.
 - **After ANY header (`.hpp`) change, delete `src/*.o` before `R CMD INSTALL`.**
   R's make has no header dependency tracking; stale dependents' objects after a
   class-layout change give intermittent memory corruption. `harness/build.sh`
