@@ -1,6 +1,57 @@
-# What is worth doing next (2026-09-03, updated 2026-09-13 night; read docs/state/handoff-2026-09-13-night-135-139-142.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-14; read docs/state/handoff-2026-09-14-codebase-audit.md first)
 
-**Current handoff: `docs/state/handoff-2026-09-13-night-135-139-142.md`** --
+**Current handoff: `docs/state/handoff-2026-09-14-codebase-audit.md`** --
+a whole-codebase structural quality audit at `9deab7c9`. 96 findings raised,
+each faced by two independent skeptics (one attacking the facts, one attacking
+bug-for-bug preservation and golden movement); **62 survived, 34 refuted**, all
+verifier corrections applied. It is NOT a bug hunt: where it found a latent
+defect the deliverable is a LEDGER row. **Read it end to end before acting on
+any section** -- its section 8 is a do-not-re-raise list, and five refutations
+were refused because this repo had already decided them.
+
+**The audit's five structural facts**, which is what the 62 findings actually
+are:
+1. **One rule, written N times, fixed once** -- the branch's most expensive
+   recurring defect, the documented cause of #44->#66, #118->#134->#135, #91
+   and #37, and live-unrepaired today in the binary conditional region kernel
+   (`R/SAIGE_SPATest_Region_Func.R:433-448`, a textual twin of the #104-repaired
+   function 18 lines below it).
+2. **The R<->C++ boundary has no contract** -- `src/Main.hpp` is 303 lines with
+   one includer and **eight declarations that disagree with their definitions
+   today**; a differing parameter list is a new overload, so the drift is
+   structurally uncatchable.
+3. **~3,000 lines of dead surface**, most already inventoried by this repo's own
+   2026-09-08 audit and parked -- plus a slice that audit's method could not see
+   (it scanned functions, never parameters, never post-`stop()` tails, never a
+   translation unit absent from `OBJECTS`).
+4. **Two god functions larger than upstream's** after this branch extracted 675
+   lines from one of them. Every new feature has landed inside those frames.
+5. **Three controls that do not control** -- and this is why 1-4 persist.
+
+**Nothing from the audit has been implemented.** No code changed, no row
+written, no gate run. The execution queue is in the handoff; the first two
+phases need no gate at all:
+- **Phase A** (~14 lines of shell, no gate): `harness/tsan.sh` aborts after the
+  first arm that dies under `plant` -- the mode where dying is expected, and the
+  positive control for every `clean` result on this branch; `harness/prepush.sh`
+  logs `concurrent=1` for a run that was serial.
+- **Phase B** (`ledger.py lint` only): nine latent-defect rows.
+
+**THE NEXT SESSION'S FIRST DECISION.** Phase B flips the ledger from **0 open to
+9 open**, the headline state CLAUDE.md and this file both quote. Recommendation:
+write the rows in their own commit, separate from everything else, so the state
+change is separately reversible. Do not fold it into other work.
+
+**Also outstanding, unrelated to the audit:** three documentation items from the
+earlier review of the #142 diff, verified still present at `9deab7c9`.
+`R/SAIGE_Test_main.R:114` and its generated twin `man/SPAGMMATtest.Rd:210` still
+say "the 16 x 12 = 192 FlexRV weight sets" unconditionally while the CLI-help
+twin was corrected -- one twin fixed, the other not, verbatim the copy-chain
+failure mode CLAUDE.md names and `docdrift.py` has no rule for. Details at the
+end of the handoff's preamble.
+
+
+**Previous handoff: `docs/state/handoff-2026-09-13-night-135-139-142.md`** --
 #135 and #139 fixed (goldens P66, P67/P68), the ONE open row #142 laid out
 as a decision with its evidence and a recommendation, the corrected scratch
 install recipe, and the pre-push sequencing trap. The evening handoff

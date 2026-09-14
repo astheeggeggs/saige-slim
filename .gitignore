@@ -31,3 +31,6 @@ harness/bench/profiles/
 # Not committed: docs/design/flexrv-design.md pins its 16x12 table verbatim with
 # every closed form derived and every ambiguity resolved, and SUPERSEDES it.
 flexrv.pdf
+
+# python bytecode from harness/tools
+__pycache__/
