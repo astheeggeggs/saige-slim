@@ -159,6 +159,41 @@ SAIGEClass::SAIGEClass(
 
 
 // http://thecoatlessprofessor.com/programming/set_rs_seed_in_rcpp_sequential_case/
+// E3 (2026-09-14): the printed spelling of every step-2 p-value, written ONCE.
+// It used to be pasted at six sites (LEDGER #42 was one defect fixed at three
+// of them, #44 at three more), and the log-p branch -- an underflowed p printed
+// as "%.1fE%d" from log p with the 9.95 carry -- is reached by no golden, so a
+// missed edit at one of six would have moved no golden and failed no test.
+// The arithmetic is the old lines verbatim, in the same order.
+static std::string formatLogP(double logp){
+  char buf[100];
+  double log10p = logp/(log(10));
+  int exponent = floor(log10p);
+  double fraction = pow(10.0, log10p - exponent);
+  if (fraction >= 9.95) {
+    fraction = 1;
+    exponent++;
+  }
+  sprintf(buf, "%.1fE%d", fraction, exponent);
+  return std::string(buf);
+}
+// The four score-test sites: a non-zero p prints "%.6E"; a p that underflowed
+// to 0 is re-derived as log p from the chi-square statistic, printed by
+// formatLogP, and handed back IN PLACE as the log with t_islog = true.
+static std::string formatPvalOrLog(double & t_pval, double t_stat, bool & t_islog){
+  if (t_pval != 0){
+    char buf[100];
+    sprintf(buf, "%.6E", t_pval);
+    t_islog = false;
+    return std::string(buf);
+  }
+  double logp = R::pchisq(t_stat,1,false,true);
+  std::string out = formatLogP(logp);
+  t_pval = logp;
+  t_islog = true;
+  return out;
+}
+
 void SAIGEClass::set_seed(unsigned int seed){
   Rcpp::Environment base_env("package:base");
   Rcpp::Function set_seed_r = base_env["set.seed"];
@@ -295,27 +330,7 @@ void SAIGEClass::scoreTest(arma::vec & t_GVec,
 	  stat = 0.0;
       }	      
     }
-    char pValueBuf[100];
- 
-  //if(!std::isnan(stat)){
-    if (t_pval != 0){
-        sprintf(pValueBuf, "%.6E", t_pval);
-	t_islogp = false;
-    }else{	    
-        double logp = R::pchisq(stat,1,false,true);
-        double log10p = logp/(log(10));
-        int exponent = floor(log10p);
-        double fraction = pow(10.0, log10p - exponent);
-        if (fraction >= 9.95) {
-          fraction = 1;
-           exponent++;
-        }
-        sprintf(pValueBuf, "%.1fE%d", fraction, exponent);
-	t_pval = logp;
-	t_islogp = true;
-    }
-    std::string buffAsStdStr = pValueBuf;
-    t_pval_str = buffAsStdStr;
+    t_pval_str = formatPvalOrLog(t_pval, stat, t_islogp);
     // LEDGER #44 FIXED. These two used to be computed unconditionally, even
     // under the guard above that already forces t_pval = 1 because the
     // covariate-adjusted variance has collapsed. At var1 == 0 exactly that gave
@@ -406,38 +421,8 @@ void SAIGEClass::scoreTestFast(arma::vec & t_GVec,
 	  stat = 0.0;
       }
     }
-    char pValueBuf[100];
-    if (t_pval != 0){
-        sprintf(pValueBuf, "%.6E", t_pval);
-	t_islogp = false;
-    }else {
-	double logp = R::pchisq(stat,1,false,true);
-        double log10p = logp/(log(10));
-        int exponent = floor(log10p);
-        double fraction = pow(10.0, log10p - exponent);
-        if (fraction >= 9.95) {
-          fraction = 1;
-           exponent++;
-         }
-        sprintf(pValueBuf, "%.1fE%d", fraction, exponent);
-	t_pval = logp;
-	t_islogp = true;
-    }
-    std::string buffAsStdStr = pValueBuf;
-    t_pval_str = buffAsStdStr;
-    // LEDGER #44 FIXED. These two used to be computed unconditionally, even
-    // under the guard above that already forces t_pval = 1 because the
-    // covariate-adjusted variance has collapsed. At var1 == 0 exactly that gave
-    // BETA = -inf, stat = inf and SE = inf/inf = nan; at var1 ~ 1e-14 a finite
-    // but meaningless BETA with an SE of order 1e6. The p-value was right in
-    // both cases -- only the effect sizes were junk -- so the fix is to say so
-    // rather than to print a number nobody should read.
-    //
-    // NA_REAL, not a bare NaN, and the writer prints it as the literal "NA":
-    // the spelling of a NaN is PLATFORM-DEPENDENT (glibc writes a sign-bit-set
-    // NaN as "-nan" where macOS writes "nan"), which is what made these rows
-    // non-byte-portable and cost two red CI runs. A row that says NA says the
-    // same thing everywhere.
+    t_pval_str = formatPvalOrLog(t_pval, stat, t_islogp);
+    // LEDGER #44 FIXED -- rationale at scoreTest() above (E3: one copy, not three).
     if(var1 <= std::numeric_limits<double>::min() || collapsed){
       t_Beta = NA_REAL;
       t_seBeta = NA_REAL;
@@ -519,40 +504,8 @@ void SAIGEClass::scoreTestFast_noadjCov(arma::vec & t_GVec,
           stat = 0.0;
       }
     }
-    char pValueBuf[100];
-
-  //if(!std::isnan(stat)){
-    if (t_pval != 0){
-        sprintf(pValueBuf, "%.6E", t_pval);
-        t_islogp = false;
-    }else{
-        double logp = R::pchisq(stat,1,false,true);
-        double log10p = logp/(log(10));
-        int exponent = floor(log10p);
-        double fraction = pow(10.0, log10p - exponent);
-        if (fraction >= 9.95) {
-          fraction = 1;
-           exponent++;
-        }
-        sprintf(pValueBuf, "%.1fE%d", fraction, exponent);
-        t_pval = logp;
-        t_islogp = true;
-    }
-    std::string buffAsStdStr = pValueBuf;
-    t_pval_str = buffAsStdStr;
-    // LEDGER #44 FIXED. These two used to be computed unconditionally, even
-    // under the guard above that already forces t_pval = 1 because the
-    // covariate-adjusted variance has collapsed. At var1 == 0 exactly that gave
-    // BETA = -inf, stat = inf and SE = inf/inf = nan; at var1 ~ 1e-14 a finite
-    // but meaningless BETA with an SE of order 1e6. The p-value was right in
-    // both cases -- only the effect sizes were junk -- so the fix is to say so
-    // rather than to print a number nobody should read.
-    //
-    // NA_REAL, not a bare NaN, and the writer prints it as the literal "NA":
-    // the spelling of a NaN is PLATFORM-DEPENDENT (glibc writes a sign-bit-set
-    // NaN as "-nan" where macOS writes "nan"), which is what made these rows
-    // non-byte-portable and cost two red CI runs. A row that says NA says the
-    // same thing everywhere.
+    t_pval_str = formatPvalOrLog(t_pval, stat, t_islogp);
+    // LEDGER #44 FIXED -- rationale at scoreTest() above (E3: one copy, not three).
     if(var1 <= std::numeric_limits<double>::min() || collapsed){
       t_Beta = NA_REAL;
       t_seBeta = NA_REAL;
@@ -847,14 +800,7 @@ if(!t_isER){
 		if(!ispvallog){
 		  sprintf(pValueBuf_SPA, "%.6E", t_SPApval);
 		}else{
-        	  double t_SPApval_log10 = t_SPApval/(log(10));
-        	  int exponent = floor(t_SPApval_log10);
-        	  double fraction = pow(10.0, t_SPApval_log10 - exponent);
-        	  if (fraction >= 9.95) {
-          	    fraction = 1;
-           	    exponent++;
-         	  }
-        	  sprintf(pValueBuf_SPA, "%.1fE%d", fraction, exponent);
+		  snprintf(pValueBuf_SPA, sizeof(pValueBuf_SPA), "%s", formatLogP(t_SPApval).c_str());
 		}
 		std::string buffAsStdStr_SPA = pValueBuf_SPA;
 	        t_pval = buffAsStdStr_SPA;
@@ -1015,26 +961,7 @@ if(!t_isER){
        }	       
      }
 
-    char pValueBuf_c[100];
-
-    if (pval_noSPA_c != 0){
-        sprintf(pValueBuf_c, "%.6E", pval_noSPA_c);
-        ispvallog = false;
-    }else {
-	double logp_c = R::pchisq(stat_c,1,false,true);	
-	double log10p_c = logp_c/(log(10));
-	int exponent_c = floor(log10p_c);
-        double fraction_c = pow(10.0, log10p_c - exponent_c);
-        if (fraction_c >= 9.95) {
-          fraction_c = 1;
-           exponent_c++;
-         }
-        sprintf(pValueBuf_c, "%.1fE%d", fraction_c, exponent_c);
-	ispvallog = true;
-	pval_noSPA_c = logp_c;
-    }
-    std::string buffAsStdStr_c = pValueBuf_c;
-    t_pval_noSPA_c = buffAsStdStr_c;
+    t_pval_noSPA_c = formatPvalOrLog(pval_noSPA_c, stat_c, ispvallog);
     // LEDGER #66 FIXED, second half: these two used to be computed
     // unconditionally, PAST the guard above that has already forced
     // pval_noSPA_c = 1 and stat_c = 0 -- so the guard-fires row was published
@@ -1130,14 +1057,7 @@ if(!t_isER){
                   //every conditional SPA p-value 2x anti-conservative.
                   sprintf(pValueBuf_SPA_c, "%.6E", SPApval_c);
                 }else{
-                  double SPApval_c_log10 = SPApval_c/(log(10));
-                  int exponent = floor(SPApval_c_log10);
-                  double fraction = pow(10.0, SPApval_c_log10 - exponent);
-                  if (fraction >= 9.95) {
-                    fraction = 1;
-                    exponent++;
-                  }
-                  sprintf(pValueBuf_SPA_c, "%.1fE%d", fraction, exponent);
+                  snprintf(pValueBuf_SPA_c, sizeof(pValueBuf_SPA_c), "%s", formatLogP(SPApval_c).c_str());
                 }
                 std::string buffAsStdStr_SPA_c = pValueBuf_SPA_c;
                 t_pval_c = buffAsStdStr_SPA_c;
