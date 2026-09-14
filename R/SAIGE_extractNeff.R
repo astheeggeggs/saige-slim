@@ -345,18 +345,19 @@ getNeff <- function(plinkFile = "",
   }
   if (noEstFixedEff) {
     print("noEstFixedEff=TRUE, so fixed effects coefficnets won't be estimated.")
-    if (traitType == "binary") {
-      modwitcov <- glm(formula.null,
-        data = dataMerge_sort,
-        family = binomial
-      )
-      covoffset <- modwitcov$linear.predictors
-      dataMerge_sort$covoffset <- covoffset
-    } else {
-      modwitcov <- lm(formula.null, data = dataMerge_sort)
-      dataMerge_sort[, which(colnames(dataMerge_sort) ==
-        phenoCol)] <- modwitcov$residuals
-    }
+    # LEDGER #148 FIXED: the quantitative arm used to residualise the phenotype
+    # on an lm and assign no offset, while its fit0 below reads
+    # `offset = covoffset` -- so the run died on the unassigned name. Both
+    # arms now build the offset the same way (one glm, family by trait,
+    # offset = its linear predictor), fitNULLGLMM's shape. Nglmm cannot see
+    # the choice: both arms solve 1' Sigma^-1 1 at the fixed tau = (0, 1) and
+    # read fit0 only for its length (test-characterization-ledger148.R).
+    modwitcov <- glm(formula.null,
+      data = dataMerge_sort,
+      family = if (traitType == "binary") binomial else gaussian(link = "identity")
+    )
+    covoffset <- modwitcov$linear.predictors
+    dataMerge_sort$covoffset <- covoffset
     formula_nocov <- paste0(phenoCol, "~ 1")
     formula.null <- as.formula(formula_nocov)
     hasCovariate <- FALSE
