@@ -19,7 +19,13 @@ the owner: `Nglmm` reads `fit0` only for its length). **LEDGER #153 OPENED**
 from that drill: `getNeff` prints `Nglmm` ~1e16 for N = 1,000 on both traits
 because `tauVec_ss = c(0, 1)` makes the solved system the GRM alone; upstream
 verbatim, owner's decision on the intended `tau`. #150 is untouched: its code
-stays by decision and the surfaces were already corrected.
+stays by decision and the surfaces were already corrected. **Later still
+(night): #145, #144, #146(a), #152 and #149 FIXED** (`0c2239d8`, `1a2a6fd7`..
+see `git log`; one gate each, no golden moved, predicted each time), and
+**LEDGER #154 OPENED** (a teardown segfault after `Analysis done!` on a
+4-thread SKAT-O run under load 13-21; 0/8 in isolation, outputs byte-identical;
+recorded, re-run gate counts). The ledger is at `ledger.py open` = the
+decisions only: #146(b), #150, #151, #153, #154. Warning baseline 92.
 
 **Previous handoff: `docs/state/handoff-2026-09-14-flexrv-p2.md`** -- the
 FlexRV power fixture p2 (phenotypes only, on the 50k genotypes; causal signal
