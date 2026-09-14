@@ -51,8 +51,28 @@ phases need no gate at all:
 
 **The ledger went from 0 open to 9 open on 2026-09-14** (Phase B, its own
 commit). Every open row is a decision or a fix for the owner; none was made in
-passing. Phase C onwards (the dead-surface sweep, ~3,000 lines) has NOT
-started and needs the owner's go-ahead, a full gate and a clean build.
+passing.
+
+**Phase C (the dead-surface sweep) LANDED 2026-09-14**, five commits (C2 and C3
+share `Main.cpp` and went in together), one clean build, one both-modes gate,
+no golden moved (predicted before the gate). Deleted: `Binary_ComputeExactMC.*`
+(the uncompiled orphan), `Binary_ComputeExactSKATO.cpp`, `Binary_Permu_SKAT.*`,
+`SKATO_Exact`/`SKAT_Permu`/`GetProb` and the `SL_*` leftovers (C1);
+`Unified_getMarkerPval` and its steer-away comments (C2); the 37 function-scope
+declarations of `mainRegionInCPP` incl. the two indeterminate-bool reads, the
+frame-scope `hasVarRatio`, and the three unread writer parameters (C3);
+`prepSPAContext`/`spaContextReady`, `gNA`/`muNA` from the three internal SPA
+kernels (C4); `getMem.*` and `UTIL::imputeGeno` with the shifted anchors
+repaired (C5); `R/Firth.R`, `ReadGroupFile`, `check_close`,
+`Get_Variance_Ratio`'s post-`stop()` tail and two unread formals, the
+`resultDF` return field, the `printComb(3)` call (C6). `OBJECTS` is 17.
+**Not taken, by decision or scope:** the three `[[Rcpp::export]]`ed
+`Unified_*`/`closeGenoFile` (public API under `exportPattern`, the #114 class --
+owner's call); the `t_genoType` parameter removal; the `annoMAFIndicatorMat`
+collapse in `region_postprocess` (it would ADD an assignment on the
+`is_rerun && !is_single_in_groupTest` path, so it is not provably inert); the
+"may ride along" R functions (`pcg`, `bigGRMPar*`, `writeOutputFile`). Phase D
+(turn the compiler back on) is next and needs one gate.
 
 **The "also outstanding" doc items in the handoff's preamble were already
 closed** when checked on 2026-09-14: `R/SAIGE_Test_main.R:114` and
@@ -1436,6 +1456,19 @@ functions while its own roxygen justifies keeping it "for the unit tests of the
 three pieces" -- measured FALSE: the tests reference `skatoCollect`,
 `skatoEvaluate` and `skatoServe` 3, 4 and 5 times and the composition zero. A
 comment is not a caller.
+
+**Amended 2026-09-14.** The method above could not see four things, and its
+"all 17 are in `SAIGE_fitGLMM_fast.cpp`" conclusion was wrong when written: the
+rule "exactly one occurrence of the name in `src/`" can never match an
+`[[Rcpp::export]]` (its name also appears in `Main.hpp` and twice in
+`RcppExports.cpp`), so `Unified_getSampleSizeinGeno`,
+`Unified_getSampleSizeinAnalysis`, `Unified_getOneMarker` and `closeGenoFile`
+(callerless since the fork import) belong in that bucket; and it scanned
+functions only -- never parameters, never post-`stop()` tails, never
+C++-internal symbols, never a translation unit absent from `OBJECTS`. The
+2026-09-14 sweep (Phase C above) executed the disposition recorded here plus
+that unseen slice; the wrapper-only exports and the `_LOCO` dead clones are
+still parked.
 
 ## DECISION (2026-09-08): incompatible flag combinations should be REFUSED
 
