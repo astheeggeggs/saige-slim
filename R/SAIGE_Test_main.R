@@ -541,13 +541,17 @@ SPAGMMATtest <- function(bedFile = "",
           )
         }
       } else {
-        # LEDGER #139: the old line said minInfo and minMAF "won't be applied",
-        # which was false -- both ARE applied, at the values set on the next two
-        # lines, and minMAF = 1/(2N) is one of the gates a chrX marker can fail.
-        cat("is_rewrite_XnonPAR_forMales=TRUE: for this run minInfo is set to 0 and ",
-            "minMAF to 1/(2N) = ", 1 / (2 * length(obj.model$sampleID)),
-            " (the flag replaces --minInfo and --minMAF, it does not disable them)\n",
-            sep = "")
+        # LEDGER #150 (OPEN): upstream's block below assigns minInfo <- 0 and
+        # minMAF <- 1/(2N) here, but setAssocTest_GlobalVarsInCPP pushed
+        # min_MAF/min_Info to C++ ~200 lines above and nothing reads these two
+        # locals, so the override has never applied in either fork. The #139
+        # wording of this line said the flag "won't apply" the gates and its
+        # correction said the flag "replaces" them; both false (measured:
+        # --minMAF=0.02 with the flag tests 20 of 48 chrX markers). Kept
+        # bug-for-bug; only the sentence is true now.
+        cat("is_rewrite_XnonPAR_forMales=TRUE: --minInfo and --minMAF apply to the ",
+            "X chromosome markers at the values given for this run; the flag does not ",
+            "change them (LEDGER #150)\n", sep = "")
         minInfo <- 0
         minMAF <- 1 / (2 * length(obj.model$sampleID))
 

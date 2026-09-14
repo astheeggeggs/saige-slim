@@ -39,20 +39,30 @@ phases need no gate at all:
   `SAIGE_PREPUSH_CONCURRENT=1` arrives with one mode, and the dirty-tree
   report is one function. Before this, every plant result on this branch
   ended at the first timed-out or crashed arm with no t=4/t=8 run.
-- **Phase B** (`ledger.py lint` only): nine latent-defect rows.
+- **Phase B -- DONE 2026-09-14**: LEDGER #143-#151 written (`ledger.py open`).
+  #143 was INSTRUMENTED first: on golden P3 the conditional kernel's
+  `r = 0.4733`, not 1, so the pre-#104 twin is a LIVE divergence on the
+  `_cond` columns, not a coverage statement (numbers on the row). #147, #148
+  and #150 were drilled (non-numeric gate dies unnamed in Rcpp; quantitative
+  getNeff with `--noEstFixedEff=TRUE` dies on `covoffset`; `--minMAF=0.02`
+  with the chrX flag tests 20 of 48, so the "replaces minMAF with 1/(2N)"
+  sentence of #139 was false and its six surfaces are corrected -- the ONE
+  `R/` change in that commit is that stdout sentence). Nothing fixed.
 
-**THE NEXT SESSION'S FIRST DECISION.** Phase B flips the ledger from **0 open to
-9 open**, the headline state CLAUDE.md and this file both quote. Recommendation:
-write the rows in their own commit, separate from everything else, so the state
-change is separately reversible. Do not fold it into other work.
+**The ledger went from 0 open to 9 open on 2026-09-14** (Phase B, its own
+commit). Every open row is a decision or a fix for the owner; none was made in
+passing. Phase C onwards (the dead-surface sweep, ~3,000 lines) has NOT
+started and needs the owner's go-ahead, a full gate and a clean build.
 
-**Also outstanding, unrelated to the audit:** three documentation items from the
-earlier review of the #142 diff, verified still present at `9deab7c9`.
-`R/SAIGE_Test_main.R:114` and its generated twin `man/SPAGMMATtest.Rd:210` still
-say "the 16 x 12 = 192 FlexRV weight sets" unconditionally while the CLI-help
-twin was corrected -- one twin fixed, the other not, verbatim the copy-chain
-failure mode CLAUDE.md names and `docdrift.py` has no rule for. Details at the
-end of the handoff's preamble.
+**The "also outstanding" doc items in the handoff's preamble were already
+closed** when checked on 2026-09-14: `R/SAIGE_Test_main.R:114` and
+`man/SPAGMMATtest.Rd:210` carry the conditional "192 by default, fewer where a
+mac rung ..." wording (`git log -S` puts the fix inside `9deab7c9` itself, so
+the handoff's "verified still present at 9deab7c9" was written against an
+earlier tree), and `docs/design/flexrv-design.md:607`'s "192-set run" describes
+the external-weight-line test route, which deliberately keeps all 192 lines
+(#142's STATUS). No docdrift rule was added: the sentence has no live copy and
+nothing at `4c2ca05a^` matches it, so a rule would drill against nothing.
 
 
 **Previous handoff: `docs/state/handoff-2026-09-13-night-135-139-142.md`** --

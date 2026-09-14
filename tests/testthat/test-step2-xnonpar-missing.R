@@ -79,9 +79,13 @@ test_that("LEDGER #139: chrX doubling with missing calls -- both readers agree, 
   expect_equal(xm_num(p$rows$AC_Allele2), xm_num(p$rows$AF_Allele2) * 2000, tolerance = 1e-3)
   # and the doubling was live: males carry alleles, so X counts exceed autosomal ones
   expect_gt(sum(xm_num(p$rows$AC_Allele2) > xm_num(a$AC_Allele2)), 30)
-  # the corrected stdout line (the old one said minMAF "won't be applied")
-  expect_true(any(grepl("minMAF to 1/(2N) = 5e-04", p$log, fixed = TRUE)))
+  # the corrected stdout line (LEDGER #150): neither the #139 sentence ("won't
+  # be applied") nor its first correction ("replaces --minInfo and --minMAF",
+  # "minMAF to 1/(2N)") may come back -- the flag changes neither gate
+  expect_true(any(grepl("--minInfo and --minMAF apply to the X chromosome markers at the values given",
+                        p$log, fixed = TRUE)))
   expect_false(any(grepl("won't be applied", p$log, fixed = TRUE)))
+  expect_false(any(grepl("minMAF to 1/(2N)", p$log, fixed = TRUE)))
 })
 
 test_that("LEDGER #139: conditioning on a chrX marker with missing calls -- both readers agree", {

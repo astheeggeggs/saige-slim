@@ -237,13 +237,29 @@ RULES = [
     dict(
         id="139-xnonpar-minmaf-not-applied",
         pattern=r"minInfo and minMAF won.t be applied",
-        why="false: R/SAIGE_Test_main.R sets minInfo <- 0 and minMAF <- 1/(2N) two lines "
-            "later and both gates run on every chrX marker; minMAF is one of the gates "
-            "that dropped the #139 markers",
-        evidence="grep -n 'minMAF <- 1 / (2' R/SAIGE_Test_main.R; "
+        why="false: the flag changes neither gate. --minMAF and --minInfo apply to chrX "
+            "markers at the values given (LEDGER #150: the minInfo <- 0 / minMAF <- 1/(2N) "
+            "assignments are dead locals, min_MAF was pushed to C++ ~200 lines earlier). "
+            "This rule's own why once said 'both are applied at the values the flag sets', "
+            "which was the #139 correction and was false the other way",
+        evidence="measured 2026-09-14 on the _missing_chrX fixture with the flag: --minMAF=0 "
+                 "tests 48 markers, --minMAF=0.02 tests 20 (the 20 with folded AF >= 0.02); "
                  "tests/testthat/test-step2-xnonpar-missing.R asserts the corrected line",
         canary="is_rewrite_XnonPAR_forMales=TRUE and minInfo and minMAF won't be applied to "
                "all X chromosome variants",
+    ),
+    # LEDGER #150 (2026-09-14): the #139 correction of that line said the flag
+    # REPLACES the two gates with 0 and 1/(2N); the assignments are dead locals.
+    dict(
+        id="150-xnonpar-minmaf-replaced",
+        pattern=r"minMAF to 1/\(2N\)|the flag replaces --minInfo and --minMAF",
+        why="false: the minInfo <- 0 and minMAF <- 1/(2N) assignments in the chrX block are "
+            "never read (min_MAF/min_Info were pushed to C++ at setAssocTest_GlobalVarsInCPP "
+            "before them); the user's --minMAF applies to chrX markers as given",
+        evidence="measured 2026-09-14: chrX fixture with the flag, --minMAF=0.02 tests 20 of "
+                 "48 markers; R/SAIGE_Test_main.R:466 calls the assignments dead locals",
+        canary="for this run minInfo is set to 0 and minMAF to 1/(2N) = 5e-04 (the flag "
+               "replaces --minInfo and --minMAF, it does not disable them)",
     ),
     # LEDGER #142 (decided and fixed 2026-09-14): the fixture fact "MAC25..MAC500
     # are duplicates of unw" was true on every FlexRV golden until the rungs at
