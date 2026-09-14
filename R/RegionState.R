@@ -179,7 +179,8 @@ composeWeightSets <- function(weights_beta_mat, is_no_weight_in_groupTest, is_we
     cat("No weights are used in the group test\n")
   }
   if (includeNoWeightsSet) {
-    cat("is_no_weight_in_groupTest = TRUE: an all-ones 'No_Weights' weight set is appended to the group test\n")
+    cat("is_no_weight_in_groupTest = TRUE: an all-ones 'No_Weights' weight set is appended",
+        " to the group test\n")
   }
   # LEDGER #138 FIXED: a FlexRV run tests ONE cell with its own transform sets
   # and its pooled row is p_FlexRV, the Cauchy combination over exactly those.
@@ -216,7 +217,8 @@ composeWeightSets <- function(weights_beta_mat, is_no_weight_in_groupTest, is_we
       stop(
         "Duplicate weight set name '",
         composedNames[duplicated(composedNames)][1],
-        "' in the composed weight-set list (group-file sets, then weights.beta pairs, then No_Weights). Please rename the group-file weight set or drop the duplicate pair.\n"
+        "' in the composed weight-set list (group-file sets, then weights.beta pairs, ",
+        "then No_Weights). Please rename the group-file weight set or drop the duplicate pair.\n"
       )
     }
     cat(

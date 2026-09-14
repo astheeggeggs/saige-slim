@@ -980,15 +980,19 @@ SAIGE.Region <- function(mu,
     }
   }
 
-  indexChunk <- outList$indexChunk
-  Start <- outList$Start
-  End <- outList$End
+  # Phase G1 slice 5: the cross-region accumulator layer lives in ONE
+  # environment, so the closures below write scan$x rather than `<<-` over
+  # seven enclosing names (and no list-returning stage forces a rebind).
+  scan <- new.env(parent = emptyenv())
+  scan$indexChunk <- outList$indexChunk
+  scan$Start <- outList$Start
+  scan$End <- outList$End
 
-  cat("Start ", Start, "\n")
-  cat("End ", End, "\n")
+  cat("Start ", scan$Start, "\n")
+  cat("End ", scan$End, "\n")
 
 
-  if (End) {
+  if (scan$End) {
     message <- paste0(
       "The analysis has been completed in earlier analysis. Results are saved in '",
       paste(OutputFiles, collapse = "', '"),
@@ -999,7 +1003,7 @@ SAIGE.Region <- function(mu,
   }
 
   isappend <- FALSE
-  if (!Start) {
+  if (!scan$Start) {
     isappend <- TRUE
     # LEDGER #140 FIXED: S9 (#47) carried to the region path. The interrupted
     # run may have left rows on disk past the last chunk the index recorded
@@ -1011,11 +1015,11 @@ SAIGE.Region <- function(mu,
     # target is the end of chunk indexChunk. truncateOutputToIndex is in
     # Util.R; an index without counts (an older version) warns and appends.
     for (k in seq_len(nModels)) {
-      truncateOutputToIndex(OutputFiles[k], outChecks[[k]]$chunkBytes[as.character(indexChunk)])
+      truncateOutputToIndex(OutputFiles[k], outChecks[[k]]$chunkBytes[as.character(scan$indexChunk)])
       singleOut <- paste0(OutputFiles[k], ".singleAssoc.txt")
       if (file.exists(singleOut)) {
         truncateOutputToIndex(singleOut,
-                              outChecks[[k]]$chunkSingleBytes[as.character(indexChunk)])
+                              outChecks[[k]]$chunkSingleBytes[as.character(scan$indexChunk)])
       }
     }
   }
@@ -1261,10 +1265,10 @@ SAIGE.Region <- function(mu,
 
   gf <- file(groupFile, "r")
 
-  cat("indexChunk is ", indexChunk, "\n")
+  cat("indexChunk is ", scan$indexChunk, "\n")
 
-  skipline <- indexChunk * nline_per_gene
-  if (indexChunk > 0 & indexChunk < nRegions) {
+  skipline <- scan$indexChunk * nline_per_gene
+  if (scan$indexChunk > 0 & scan$indexChunk < nRegions) {
     for (k in 1:skipline) {
       marker_group_line_temp <- readLines(gf, n = 1)
       rm(marker_group_line_temp)
@@ -1287,18 +1291,17 @@ SAIGE.Region <- function(mu,
   mth <- 0
 
   numberRegionsInChunk <- 0
-  cat("indexChunk ", indexChunk, "\n")
+  cat("indexChunk ", scan$indexChunk, "\n")
   cat("nRegions ", nRegions, "\n")
-  pval.Region.all <- vector("list", nModels)   # per model
-  OutList.all <- NULL
-  Output_MarkerList.all <- NULL                  # model-independent content, written to every model's file
-  cth_chunk_to_output <- 1
+  scan$pval.Region.all <- vector("list", nModels)   # per model
+  scan$Output_MarkerList.all <- NULL                  # model-independent content, written to every model's file
+  scan$cth_chunk_to_output <- 1
   # LEDGER #144 FIXED: seeded FALSE regardless of a restart, so the first
   # resumed chunk with marker-list rows took the fresh-write branch and
   # truncated .markerList.txt to the resumed regions. Seeded from isappend
   # like the results-file flag beside it (LEDGER #59).
-  iswriteMarkerList <- rep(isappend, nModels)
-  iswriteRegion <- rep(isappend, nModels)
+  scan$iswriteMarkerList <- rep(isappend, nModels)
+  scan$iswriteRegion <- rep(isappend, nModels)
   # LEDGER #116 FIXED: the SKAT-O path writes its header when the run STARTS,
   # from the schema in R/RegionSchema.R, so a run in which no cell qualifies
   # leaves a parseable, visibly empty file rather than a 0-byte one at exit 0.
@@ -1310,10 +1313,10 @@ SAIGE.Region <- function(mu,
     for (k in seq_len(nModels)) {
       cat(regionHeaderLine(traitTypes[k], isCondition, isMultiWeightSchema),
           file = OutputFiles[k])
-      iswriteRegion[k] <- TRUE
+      scan$iswriteRegion[k] <- TRUE
     }
   }
-  i <- indexChunk + 1
+  i <- scan$indexChunk + 1
   nEachChunk <- 1 # LEDGER #25 FIXED: was numberRegionsInChunk, still 0 here
 
   # All three mainRegionInCPP call sites passed an identical argument list;
@@ -1408,8 +1411,8 @@ SAIGE.Region <- function(mu,
   # Serial (--nThreads=1) and BURDEN runs take A, C, D region by region with
   # one region_postprocess drive each: the same stages, no batch, no pool.
   useSkatoBatch <- regionTestType != "BURDEN" && canParallelSkato(nThreadsSKATO)
-  skatoBatch <- list()
-  skatoBatchBytes <- 0
+  scan$skatoBatch <- list()
+  scan$skatoBatchBytes <- 0
   skatoBatchBudget <- skatoBatchBudgetBytes()
 
   # region_postprocess's argument list for model k of region S.
@@ -1586,21 +1589,21 @@ SAIGE.Region <- function(mu,
           "Rare_Variants",
           "Ultra_Rare_Variants"
         )
-        Output_MarkerList.all <<- rbind(Output_MarkerList.all, Output_MarkerList)
+        scan$Output_MarkerList.all <- rbind(scan$Output_MarkerList.all, Output_MarkerList)
       }
     } else {
-      Output_MarkerList.all <<- NULL
+      scan$Output_MarkerList.all <- NULL
     }
 
     # LEDGER #81 FIXED: i was advanced past this region when it was read,
     # so the index recorded one past the last region and the completion
     # line was never written (End compared i with nRegions).
-    indexChunk <<- S$i - 1
+    scan$indexChunk <- S$i - 1
     # ... and on a RESTART the first chunk written must APPEND, not truncate:
     # Start drove append = FALSE from cth_chunk_to_output alone, which is 1
     # on a restart too (unreachable before #25, so never seen).
-    Start <<- (cth_chunk_to_output == 1) && !isappend
-    End <<- (indexChunk == nRegions)
+    scan$Start <- (scan$cth_chunk_to_output == 1) && !isappend
+    scan$End <- (scan$indexChunk == nRegions)
     if (regionTestType != "BURDEN") {
       for (k in seq_len(nModels)) {
         # `[k] <<- list(...)`, not `[[k]] <<-`: rbind(NULL, NULL) is NULL, and
@@ -1609,7 +1612,7 @@ SAIGE.Region <- function(mu,
         # dies with "subscript out of bounds". Latent until LEDGER #126 gave the
         # SKAT-O path a way to produce a region with no rows at all -- the same
         # trap `takePost` above is commented for, met a second time.
-        pval.Region.all[k] <<- list(rbind(pval.Region.all[[k]], S$pvalRegionK[[k]]))
+        scan$pval.Region.all[k] <- list(rbind(scan$pval.Region.all[[k]], S$pvalRegionK[[k]]))
       }
     }
     invisible(NULL)
@@ -1625,25 +1628,25 @@ SAIGE.Region <- function(mu,
       out <- do.call(c, do.call(c, x))
       if (is.null(out)) list() else out
     }
-    jobs <- flatten(lapply(skatoBatch, `[[`, "jobs"))
+    jobs <- flatten(lapply(scan$skatoBatch, `[[`, "jobs"))
     # Printed per batch so a test can assert the batching actually happened
     # (a knob that never arrived would otherwise pass as green, LEDGER #30),
     # with the distinct count so the same holds for the identical-cell memo.
     dd <- skatoDedupe(jobs)
-    cat("SKAT-O batch: ", length(jobs), " cell(s) from ", length(skatoBatch),
+    cat("SKAT-O batch: ", length(jobs), " cell(s) from ", length(scan$skatoBatch),
         " region(s) to the pool (", length(dd$uniq), " distinct)\n", sep = "")
     answers <- skatoEvaluate(cl, jobs, dd)
     pos <- 0L
-    for (b in seq_along(skatoBatch)) {
-      S <- skatoBatch[[b]]
+    for (b in seq_along(scan$skatoBatch)) {
+      S <- scan$skatoBatch[[b]]
       for (k in seq_len(nModels)) {
         nk <- length(S$jobs[[k]])
         S <- takePost(S, k, skatoServe(postArgs(S, k, FALSE), answers[pos + seq_len(nk)]))
         pos <- pos + nk
       }
-      skatoBatch[[b]] <<- regionEscalate(S)
+      scan$skatoBatch[[b]] <- regionEscalate(S)
     }
-    jobs <- flatten(lapply(skatoBatch, `[[`, "jobs2"))
+    jobs <- flatten(lapply(scan$skatoBatch, `[[`, "jobs2"))
     dd <- skatoDedupe(jobs)
     if (length(jobs) > 0) {
       cat("SKAT-O batch: ", length(jobs), " escalated cell(s) to the pool (",
@@ -1651,8 +1654,8 @@ SAIGE.Region <- function(mu,
     }
     answers <- skatoEvaluate(cl, jobs, dd)
     pos <- 0L
-    for (b in seq_along(skatoBatch)) {
-      S <- skatoBatch[[b]]
+    for (b in seq_along(scan$skatoBatch)) {
+      S <- scan$skatoBatch[[b]]
       for (j in seq_along(S$esc)) {
         nk <- length(S$jobs2[[j]])
         S <- takePost(S, S$esc[j], skatoServe(postArgs(S, S$esc[j], TRUE), answers[pos + seq_len(nk)]))
@@ -1660,8 +1663,8 @@ SAIGE.Region <- function(mu,
       }
       regionFinish(S)
     }
-    skatoBatch <<- list()
-    skatoBatchBytes <<- 0
+    scan$skatoBatch <- list()
+    scan$skatoBatchBytes <- 0
     invisible(NULL)
   }
   while (i <= nRegions) {
@@ -1744,8 +1747,8 @@ SAIGE.Region <- function(mu,
 
         if (useSkatoBatch) {
           S$jobs <- lapply(seq_len(nModels), function(k) skatoCollect(postArgs(S, k, FALSE)))
-          skatoBatch[[length(skatoBatch) + 1L]] <- S
-          skatoBatchBytes <- skatoBatchBytes + as.numeric(utils::object.size(S$outLists))
+          scan$skatoBatch[[length(scan$skatoBatch) + 1L]] <- S
+          scan$skatoBatchBytes <- scan$skatoBatchBytes + as.numeric(utils::object.size(S$outLists))
         } else {
           for (k in seq_len(nModels)) {
             S <- takePost(S, k, do.call(
@@ -1761,8 +1764,8 @@ SAIGE.Region <- function(mu,
         # if(!is.null(region)){
         cat(regionName, " is empty.\n")
       }
-      if (useSkatoBatch && length(skatoBatch) > 0 &&
-          (mth == numberRegionsInChunk || skatoBatchBytes > skatoBatchBudget)) {
+      if (useSkatoBatch && length(scan$skatoBatch) > 0 &&
+          (mth == numberRegionsInChunk || scan$skatoBatchBytes > skatoBatchBudget)) {
         flushSkatoBatch()
       }
 
@@ -1782,13 +1785,13 @@ SAIGE.Region <- function(mu,
         if (regionTestType != "BURDEN") {
           # LEDGER #116: the rows about to be written must carry exactly the
           # schema whose header the run wrote at start (R/RegionSchema.R)
-          regionAssertSchema(pval.Region.all[[k]], traitTypes[k], isCondition, isMultiWeightSchema)
+          regionAssertSchema(scan$pval.Region.all[[k]], traitTypes[k], isCondition, isMultiWeightSchema)
           # The truncate-vs-append decision is untouched; only the HEADER moves,
           # to the first chunk that actually HAS rows (LEDGER #59).
-          if (Start) {
-            if (!is.null(pval.Region.all[[k]])) {
+          if (scan$Start) {
+            if (!is.null(scan$pval.Region.all[[k]])) {
               fwrite(
-                pval.Region.all[[k]],
+                scan$pval.Region.all[[k]],
                 OutputFiles[k],
                 quote = FALSE,
                 sep = "\t",
@@ -1797,30 +1800,30 @@ SAIGE.Region <- function(mu,
                 row.names = FALSE,
                 na = "NA"
               )
-              iswriteRegion[k] <- TRUE
+              scan$iswriteRegion[k] <- TRUE
             }
           } else {
-            if (!is.null(pval.Region.all[[k]])) {
+            if (!is.null(scan$pval.Region.all[[k]])) {
               fwrite(
-                pval.Region.all[[k]],
+                scan$pval.Region.all[[k]],
                 OutputFiles[k],
                 quote = FALSE,
                 sep = "\t",
                 append = TRUE,
-                col.names = !iswriteRegion[k],
+                col.names = !scan$iswriteRegion[k],
                 row.names = FALSE,
                 na = "NA"
               )
-              iswriteRegion[k] <- TRUE
+              scan$iswriteRegion[k] <- TRUE
             }
           }
         }
         if (is_output_markerList_in_groupTest) {
           markerListFile <- paste0(OutputFiles[k], ".markerList.txt")
-          if (Start) {
-            if (!is.null(Output_MarkerList.all)) {
+          if (scan$Start) {
+            if (!is.null(scan$Output_MarkerList.all)) {
               fwrite(
-                Output_MarkerList.all,
+                scan$Output_MarkerList.all,
                 markerListFile,
                 quote = FALSE,
                 sep = "\t",
@@ -1829,13 +1832,13 @@ SAIGE.Region <- function(mu,
                 row.names = FALSE,
                 na = "NA"
               )
-              iswriteMarkerList[k] <- TRUE
+              scan$iswriteMarkerList[k] <- TRUE
             }
           } else {
-            if (!is.null(Output_MarkerList.all)) {
-              if (iswriteMarkerList[k]) {
+            if (!is.null(scan$Output_MarkerList.all)) {
+              if (scan$iswriteMarkerList[k]) {
                 fwrite(
-                  Output_MarkerList.all,
+                  scan$Output_MarkerList.all,
                   markerListFile,
                   quote = FALSE,
                   sep = "\t",
@@ -1846,7 +1849,7 @@ SAIGE.Region <- function(mu,
                 )
               } else {
                 fwrite(
-                  Output_MarkerList.all,
+                  scan$Output_MarkerList.all,
                   markerListFile,
                   quote = FALSE,
                   sep = "\t",
@@ -1856,7 +1859,7 @@ SAIGE.Region <- function(mu,
                   na = "NA"
                 )
               }
-              iswriteMarkerList[k] <- TRUE
+              scan$iswriteMarkerList[k] <- TRUE
             }
           }
         }
@@ -1870,15 +1873,14 @@ SAIGE.Region <- function(mu,
         regionBytes <- if (file.exists(OutputFiles[k])) file.size(OutputFiles[k]) else NA_real_
         singleOut <- paste0(OutputFiles[k], ".singleAssoc.txt")
         singleBytes <- if (file.exists(singleOut)) file.size(singleOut) else NA_real_
-        writeOutputFileIndex(OutputFileIndexes[k], "Region", nEachChunk, indexChunk,
-                             Start, End, outputBytes = regionBytes, singleBytes = singleBytes)
+        writeOutputFileIndex(OutputFileIndexes[k], "Region", nEachChunk, scan$indexChunk,
+                             scan$Start, scan$End, outputBytes = regionBytes, singleBytes = singleBytes)
         } # for k (models)
         # }#if(FALSE)
 
-        pval.Region.all <- vector("list", nModels)
-        OutList.all <- NULL
-        Output_MarkerList.all <- NULL
-        cth_chunk_to_output <- cth_chunk_to_output + 1
+        scan$pval.Region.all <- vector("list", nModels)
+        scan$Output_MarkerList.all <- NULL
+        scan$cth_chunk_to_output <- scan$cth_chunk_to_output + 1
         # (per-iteration gc() removed in Phase 4: it dominated the profile; R collects on demand)
       }
     } else {
