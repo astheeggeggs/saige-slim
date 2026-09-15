@@ -63,26 +63,10 @@ WRAPPERS = [
 # the sources say is STALE and fails the run, because it then allows a
 # divergence nobody has looked at.
 ALLOWED = {
-    # The four the 2026-09-14 hand sweep found (the row's WHERE).
-    ("extdata/step2_SPAtests.R", "X_PARregion"):
-        (151, "", "60001-2699520,154931044-155270560"),
-    ("extdata/step2_SPAtests.R", "maxMAF_in_groupTest"):
-        (151, [0.0001, 0.001, 0.01], [0.01]),
-    ("extdata/step1_fitNULLGLMM.R", "isCovariateOffset"):
-        (151, True, False),
-    # The eight this tool found on its first run (2026-09-15, row STATUS).
-    ("extdata/step1_fitNULLGLMM.R", "sampleIDColinphenoFile"):
-        (151, "IID", ""),
-    ("extdata/step1_fitNULLGLMM.R", "outputPrefix"):
-        (151, "~/", ""),
-    ("extdata/createSparseGRM.R", "nThreads"):
-        (151, 16, 1),
-    ("extdata/createSparseGRM.R", "outputPrefix"):
-        (151, "~/", ""),
-    ("extdata/extractNglmm.R", "sampleIDColinphenoFile"):
-        (151, "IID", ""),
-    ("extdata/extractNglmm.R", "outputPrefix"):
-        (151, "~/", ""),
+    # Empty since 2026-09-15: the twelve divergences the row and this tool
+    # found were each decided by the owner (LEDGER #151 STATUS). A new entry
+    # needs a ledger row; the format is
+    #   ("extdata/<wrapper>.R", "<flag>"): (<row>, <CLI value>, <formal value>),
 }
 
 
@@ -488,7 +472,7 @@ fn <- function(a = 1, # comment with ) paren
         print("optiondrift selftest FAILED: the real sources do not match ALLOWED")
         return 1
     print(f"optiondrift selftest OK: planted divergence caught, planted agreements "
-          f"(1L/1, comma-string/c(), 1e-05/1e-5) pass, {len(ALLOWED)} allowed entries live")
+          f"(1L/1, comma-string/c(), 1e-05/1e-5) pass, {len(ALLOWED)} allowed entries")
     return 0
 
 

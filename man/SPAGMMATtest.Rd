@@ -42,12 +42,12 @@ SPAGMMATtest(
   dosage_zerod_cutoff = 0.2,
   dosage_zerod_MAC_cutoff = 10,
   is_output_moreDetails = FALSE,
-  X_PARregion = "60001-2699520,154931044-155270560",
+  X_PARregion = "",
   is_rewrite_XnonPAR_forMales = FALSE,
   sampleFile_male = "",
   MACCutoff_to_CollapseUltraRare = 10,
   annotation_in_groupTest = c("lof", "missense;lof", "missense;lof;synonymous"),
-  maxMAF_in_groupTest = c(0.01),
+  maxMAF_in_groupTest = c(1e-04, 0.001, 0.01),
   maxMAC_in_groupTest = c(0),
   minGroupMAC_in_BurdenTest = 1,
   is_Firth_beta = FALSE,
@@ -158,7 +158,7 @@ is_imputed_data = TRUE. By default, 10}
 
 \item{is_output_moreDetails}{logical. Whether to output heterozygous and homozygous carrier counts in cases and controls. Binary traits only: the columns N_case_hom, N_case_het, N_ctrl_hom, N_ctrl_het are appended to the single-variant output (and to the single-in-group output of a group run); on a quantitative trait the flag adds no column. By default, FALSE}
 
-\item{X_PARregion}{character. ranges of (pseudoautosomal) PAR region on chromosome X, which are separated by comma and in the format start-end (a hyphen; a colon is rejected). By default: '60001-2699520,154931044-155260560' in the UCSC build hg19. For males, there are two X alleles in the PAR region, so PAR regions are treated the same as autosomes. In the NON-PAR regions (outside the specified PAR regions on chromosome X), for males, there is only one X allele. If is_rewrite_XnonPAR_forMales=TRUE, genotypes/dosages of all variants in the NON-PAR regions on chromosome X will be multiplied by 2 (Not activated).}
+\item{X_PARregion}{character. Ranges of the pseudoautosomal (PAR) regions on chromosome X, separated by comma, each start-end (a hyphen; a colon is rejected). Read only when is_rewrite_XnonPAR_forMales=TRUE. By default "" (unset), in which case the GRCh38 PAR is used -- '10001-2781479,155701383-156030895' (GRC, chrX PAR1 and PAR2) -- and the run prints a warning saying so; pass the build's own coordinates for any other assembly (GRCh37: '60001-2699520,154931044-155260560'). In the PAR males carry two X alleles and the markers are treated as autosomal; outside it male genotypes/dosages are multiplied by 2.}
 
 \item{is_rewrite_XnonPAR_forMales}{logical. Whether to rewrite gentoypes or dosages of variants in the NON-PAR regions on chromosome X for males (multiply by 2). By default, FALSE. Only variants whose chromosome is X (X, x, 23, chrX, chr23) are rewritten; other chromosomes in the same file are left alone (LEDGER #69).}
 

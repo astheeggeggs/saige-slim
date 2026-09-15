@@ -64,8 +64,8 @@ option_list <- list(
   make_option(
     "--nThreads",
     type = "integer",
-    default = 16L,
-    help = "Number of threads (CPUs) to use"
+    default = 1L,
+    help = "Number of threads (CPUs) to use [default=1]"
   ),
   make_option(
     "--memoryChunk",
@@ -76,8 +76,11 @@ option_list <- list(
   make_option(
     "--outputPrefix",
     type = "character",
-    default = "~/",
-    help = "path and prefix to the output files [default='~/']"
+    default = "",
+    help = paste0(
+      "path and prefix to the output files. Give a path on a mounted volume ",
+      "in a container; ~ resolves to the container's own home [default='']"
+    )
   ),
   make_option(
     "--numRandomMarkerforSparseKin",

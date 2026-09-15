@@ -53,6 +53,10 @@ parse_weights_beta <- function(weights.beta) {
 # One "<start>-<end>" token of X_PARregion as c(start, end). LEDGER #38 FIXED:
 # a token that is not of that form used to be recycled by rbind into a row (a
 # lone "5" became c(5, 5)) and handed to C++ as a PAR boundary with no warning.
+# GRC chrX PAR1 and PAR2 for GRCh38.p14 (https://www.ncbi.nlm.nih.gov/grc/human),
+# the default when --X_PARregion is not given (LEDGER #151).
+X_PARregion_GRCh38 <- "10001-2781479,155701383-156030895"
+
 parse_X_PARregion_token <- function(token) {
   bounds <- suppressWarnings(as.numeric(unlist(strsplit(token, split = "-"))))
   if (length(bounds) != 2 || anyNA(bounds) || bounds[1] > bounds[2]) {
@@ -124,7 +128,7 @@ parse_X_PARregion_token <- function(token) {
 #'   hat values, no QR; ~2x faster per Firth fit) or "qr" (the QR-based hat values of
 #'   SAIGE 1.x). Same estimator; the two agree to <= 8e-13 relative, which does not reach
 #'   the printed digits. Only for binary traits with is_Firth_beta = TRUE.
-#' @param X_PARregion character. ranges of (pseudoautosomal) PAR region on chromosome X, which are separated by comma and in the format start-end (a hyphen; a colon is rejected). By default: '60001-2699520,154931044-155260560' in the UCSC build hg19. For males, there are two X alleles in the PAR region, so PAR regions are treated the same as autosomes. In the NON-PAR regions (outside the specified PAR regions on chromosome X), for males, there is only one X allele. If is_rewrite_XnonPAR_forMales=TRUE, genotypes/dosages of all variants in the NON-PAR regions on chromosome X will be multiplied by 2 (Not activated).
+#' @param X_PARregion character. Ranges of the pseudoautosomal (PAR) regions on chromosome X, separated by comma, each start-end (a hyphen; a colon is rejected). Read only when is_rewrite_XnonPAR_forMales=TRUE. By default "" (unset), in which case the GRCh38 PAR is used -- '10001-2781479,155701383-156030895' (GRC, chrX PAR1 and PAR2) -- and the run prints a warning saying so; pass the build's own coordinates for any other assembly (GRCh37: '60001-2699520,154931044-155260560'). In the PAR males carry two X alleles and the markers are treated as autosomal; outside it male genotypes/dosages are multiplied by 2.
 #' @param is_rewrite_XnonPAR_forMales logical. Whether to rewrite gentoypes or dosages of variants in the NON-PAR regions on chromosome X for males (multiply by 2). By default, FALSE. Only variants whose chromosome is X (X, x, 23, chrX, chr23) are rewritten; other chromosomes in the same file are left alone (LEDGER #69).
 #' @param sampleFile_male character. Path to the file containing one column for IDs of MALE samples, with NO header. Order does not matter
 #' @param nThreads integer. Number of threads for the single-variant marker scan. The C++ marker loop is threaded in place, so there is one process, one copy of the null model and one output file; the result is byte-identical to a one-thread run, which is the gate in tests/testthat/test-step2-threads-inprocess.R. Restarting an interrupted run works exactly as it does serially. For a GROUP test it drives three things, all byte-identical to one thread: the C++ region marker loop and the per-cell tests of the ultra-rare pass and the BURDEN emitter (both since 2026-09-06), and the SKAT-O post-processing, which Rprof puts at 45\% of a group run at N = 50,000. At 4 threads on N = 50,000: SKAT-O 1.69x, BURDEN ~1.84x (binary) / ~1.71x (quantitative) -- see harness/bench/NOTES.md. The SKAT-O pool is a fork pool and so is Unix only; on other platforms the post-processing stays serial while the C++ loops still thread. A genotype reader that cannot be cloned (PLINK when the .bed could not be memory mapped) falls back to one thread with a warning. PGEN threads too, since S8. By default, 1
@@ -183,12 +187,12 @@ SPAGMMATtest <- function(bedFile = "",
                          dosage_zerod_cutoff = 0.2,
                          dosage_zerod_MAC_cutoff = 10,
                          is_output_moreDetails = FALSE, # new
-                         X_PARregion = "60001-2699520,154931044-155270560",
+                         X_PARregion = "", # LEDGER #151: "" means GRCh38 with a warning (was an hg19 value with PAR2 off by 10,000)
                          is_rewrite_XnonPAR_forMales = FALSE,
                          sampleFile_male = "",
                          MACCutoff_to_CollapseUltraRare = 10,
                          annotation_in_groupTest = c("lof", "missense;lof", "missense;lof;synonymous"), # new
-                         maxMAF_in_groupTest = c(0.01),
+                         maxMAF_in_groupTest = c(0.0001, 0.001, 0.01), # LEDGER #151: was c(0.01); the CLI has always passed three
                          maxMAC_in_groupTest = c(0),
                          minGroupMAC_in_BurdenTest = 1,
                          is_Firth_beta = FALSE,
@@ -557,6 +561,21 @@ SPAGMMATtest <- function(bedFile = "",
 
         setAssocTest_GlobalVarsInCPP_indexInModel_male(indexInModel_male - 1)
       }
+    }
+    # LEDGER #151 (decided 2026-09-15): "" on either route means "not given",
+    # and the answer is the GRCh38 PAR with a warning that cannot be missed.
+    # It used to be an hg19 value on the API and "" on the CLI, where "" fell
+    # into the else branch below and silently doubled males across the PAR.
+    if (is.null(X_PARregion) || !nzchar(X_PARregion[1])) {
+      X_PARregion <- X_PARregion_GRCh38
+      msg <- paste0(
+        "--X_PARregion was not given: using the GRCh38 pseudoautosomal regions ",
+        X_PARregion_GRCh38, " (chrX PAR1, PAR2). If the genotypes are on another ",
+        "build, pass that build's PAR coordinates (GRCh37: 60001-2699520,154931044-155260560); ",
+        "male genotypes outside these ranges are multiplied by 2"
+      )
+      cat("\n", strrep("!", 78), "\nWARNING: ", msg, "\n", strrep("!", 78), "\n\n", sep = "")
+      warning(msg, call. = FALSE)
     }
     X_PARregion_list <- unlist(strsplit(X_PARregion, split = ","))
     X_PARregion_mat <- NULL

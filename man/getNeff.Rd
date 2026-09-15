@@ -19,7 +19,7 @@ getNeff(
   invNormalize = FALSE,
   covarColList = NULL,
   qCovarCol = NULL,
-  sampleIDColinphenoFile = "",
+  sampleIDColinphenoFile = "IID",
   tol = 0.02,
   maxiter = 20,
   tolPCG = 1e-05,
@@ -98,7 +98,7 @@ specified, 'plink2File'.psam will be used}
 
 \item{qCovarCol}{vector of characters. Categorical covariates to be used in the glm model; each must also be in covarColList (LEDGER #100: honoured since 2026-09-05, as in fitNULLGLMM)}
 
-\item{sampleIDColinphenoFile}{character. Column name for the sample IDs in the phenotype file e.g. "IID".}
+\item{sampleIDColinphenoFile}{character. Column name for the sample IDs in the phenotype file. By default "IID"; a column that does not exist stops the run.}
 
 \item{tol}{numeric. The tolerance for fitting the null GLMMM to converge. By default, 0.02.}
 

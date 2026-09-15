@@ -120,7 +120,7 @@ Legend: **L** live · **P** partly live · **R** refused · **I** inert · `+` t
 | `nThreads` `~` | 1 | in-process threads: marker loop; region marker loop + per-cell tests + SKAT-O fork pool | L (byte-identical) |
 | `markers_per_chunk` | 10000 | markers per C++ call / flush / `.index` line | **P** (no result bytes; ignored on group runs) |
 | `sampleFile_male` | "" | male IDs for the X doubling | **P** (dead unless the flag below) |
-| `X_PARregion` | **""** (API: hg19 windows) | positions exempt from the doubling | **P** (dead unless below; see §6) |
+| `X_PARregion` | "" on both routes = GRCh38 PAR with a warning (LEDGER #151, 2026-09-15) | positions exempt from the doubling | **P** |
 | `is_rewrite_XnonPAR_forMales` `~` | FALSE | double male genotypes on non-PAR chrX (chrX-only since #69) | L |
 
 ---
@@ -167,7 +167,7 @@ Legend: **L** live · **P** partly live · **R** refused · **I** inert · `+` t
 | `LOCO` `~` | **NULL** → `!useSparseGRMtoFitNULL` | per-chromosome refits | L |
 | `isLowMemLOCO` | FALSE | `_chr<j>.rda` files + `_noLOCO.rda` instead of one `.rda` | L |
 | `sexCol` / `FemaleCode` / `MaleCode` / `FemaleOnly` / `MaleOnly` | "" / 1 / 0 / F / F | sex-specific fit; suffixes every output name | L |
-| `outputPrefix` `~` / `outputPrefix_varRatio` / `IsOverwriteVarianceRatioFile` | "~/" / "" / FALSE | output stems; permit clobbering the VR file | L |
+| `outputPrefix` / `outputPrefix_varRatio` / `IsOverwriteVarianceRatioFile` | "" / "" / FALSE | output stems; permit clobbering the VR file | L |
 
 ### Step 0
 
@@ -177,7 +177,7 @@ Legend: **L** live · **P** partly live · **R** refused · **I** inert · `+` t
 | `plink2File` `+` / `pgenFile` `+` / `pvarFile` `+` / `psamFile` `+` | "" | PGEN input; dosages hard-called with a counted warning | L |
 | `nThreads` `~` | **16** | TBB pool size (pinned unconditionally, #7) | **P** |
 | `memoryChunk` | 2 | nothing | **I** |
-| `outputPrefix` | "~/" | stem of both output files | L |
+| `outputPrefix` | "" | stem of both output files | L |
 | `numRandomMarkerforSparseKin` | 2000 | markers in the cheap kinship **screen** (a power knob) | L |
 | `relatednessCutoff` | 0.125 | applied twice — to the screen and to the full-marker value | L |
 | `isDiagofKinSetAsOne` | FALSE | diagonal values (count is always N) | L |
@@ -250,7 +250,7 @@ Step 0 reads only the **line count** from `bimFile`/`pvarFile`; IDs, chromosomes
 
 ## 6. TRAPS
 
-1. `--X_PARregion`'s CLI default is `""`, not the hg19 windows the help advertises — so a plain CLI `--is_rewrite_XnonPAR_forMales` run doubles males across the **whole** X, PAR included, and silently resets `minInfo=0` and `minMAF=1/(2N)` for the entire run.
+1. FIXED 2026-09-15 (LEDGER #151): `--X_PARregion` unset on either route now fills in the GRCh38 PAR and prints a banner plus an R warning, so a plain `--is_rewrite_XnonPAR_forMales` run no longer doubles males across the PAR. (The `minInfo`/`minMAF` reset this line used to claim never applied: LEDGER #150.)
 2. `--minGroupMAC_in_BurdenTest` is either inert (1, by construction) or dangerous: any value >1 can abort a SKAT-O run in `regionFinish`'s `rbind` when a region has ≥2 refused cells (#128, open; died at region 4 of 1,614 on sim50k at gate 5).
 3. `--maxMAC_in_groupTest` converts to MAF with the **model's** in-sample N — 1,000 on the bundled fixture, not the fam's 10,000, so the implied MAF is 10× a fam-based reading.
 4. `--dosage_zerod_cutoff=0.2` overrides `--impute_method=mean` on every marker with MAC ≤ 10, so `mean` and `minor` agree there unless the cutoff is 0 (#109).

@@ -21,7 +21,7 @@
 #' @param invNormalize logical. Whether to perform the inverse normalization for the phentoype or not. e.g. TRUE or FALSE. By default, FALSE
 #' @param covarColList vector of characters. Covariates to be used in the null GLM model e.g c("Sex", "Age")
 #' @param qCovarCol vector of characters. Categorical covariates to be used in the glm model; each must also be in covarColList (LEDGER #100: honoured since 2026-09-05, as in fitNULLGLMM)
-#' @param sampleIDColinphenoFile character. Column name for the sample IDs in the phenotype file e.g. "IID".
+#' @param sampleIDColinphenoFile character. Column name for the sample IDs in the phenotype file. By default "IID"; a column that does not exist stops the run.
 #' @param tol numeric. The tolerance for fitting the null GLMMM to converge. By default, 0.02.
 #' @param maxiter integer. The maximum number of iterations used to fit the null GLMMM. By default, 20.
 #' @param tolPCG numeric. The tolerance for PCG to converge. By default, 1e-5.
@@ -78,7 +78,7 @@ getNeff <- function(plinkFile = "",
                     invNormalize = FALSE,
                     covarColList = NULL,
                     qCovarCol = NULL,
-                    sampleIDColinphenoFile = "",
+                    sampleIDColinphenoFile = "IID", # LEDGER #151: was ""; the CLI has always passed "IID"
                     tol = 0.02,
                     maxiter = 20,
                     tolPCG = 1e-5,

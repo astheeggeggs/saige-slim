@@ -45,7 +45,14 @@ ap_kernel_state <- function(trait) {
     "  useSparseGRMtoFitNULL = TRUE,",
     '  phenoFile = "./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt",',
     '  covarColList = c("x1", "x2", "a9", "a10"), qCovarCol = c("a9", "a10"),',
-    '  sampleIDColinphenoFile = "IID", IsOverwriteVarianceRatioFile = TRUE, outputPrefix = pre)',
+    # isCovariateOffset = FALSE is the configuration the margins below were
+    # measured on (2026-09-10). LEDGER #151 (2026-09-15) moved the API default
+    # to TRUE, the CLI's value; with the covariates as an offset X loses those
+    # columns and the quantitative fixture's right-vs-wrong margins fall to
+    # 4.7e-5 / 5.6e-5 / 9.97e-5, under the 1e-4 "differs" bar (the kernel-vs-
+    # right checks at 1e-6 still passed). Named, so a default cannot move it.
+    '  sampleIDColinphenoFile = "IID", IsOverwriteVarianceRatioFile = TRUE, outputPrefix = pre,',
+    "  isCovariateOffset = FALSE)",
     'spec <- if (trait == "binary") list(phenoCol = "y_binary", traitType = "binary") else',
     '  list(phenoCol = "y_quantitative", traitType = "quantitative", invNormalize = TRUE)',
     'do.call(fitNULLGLMM, c(common, spec)); load(paste0(pre, ".rda"))',

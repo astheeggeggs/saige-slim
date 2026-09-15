@@ -291,8 +291,11 @@ option_list <- list(
   make_option(
     "--outputPrefix",
     type = "character",
-    default = "~/",
-    help = "Required. Path and prefix of the output files [default='~/']"
+    default = "",
+    help = paste0(
+      "Required. Path and prefix of the output files. Give a path on a mounted volume ",
+      "in a container; ~ resolves to the container's own home [default='']"
+    )
   ),
   make_option(
     "--outputPrefix_varRatio",
@@ -492,7 +495,10 @@ option_list <- list(
     "--isCovariateOffset",
     type = "logical",
     default = TRUE,
-    help = "Optional. Whether to estimate fixed effect coeffciets. [default, 'TRUE']"
+    help = paste0(
+      "Optional. TRUE: covariate effects are estimated once by a fixed-effects GLM ",
+      "and entered as an offset; FALSE: re-estimated inside the mixed model [default=TRUE]"
+    )
   ),
   make_option(
     "--SampleIDIncludeFile",

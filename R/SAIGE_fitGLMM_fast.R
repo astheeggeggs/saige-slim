@@ -675,7 +675,7 @@ solveSpMatrixUsingArma <- function(sparseGRMtest) {
 #' @param invNormalize logical. Whether to perform the inverse normalization for the phentoype or not. e.g. TRUE or FALSE. By default, FALSE
 #' @param covarColList vector of characters. Covariates to be used in the null model. e.g c("Sex", "Age")
 #' @param qCovarCol vector of characters. Categorical covariates to be used in the null model. All categorical covariates listed in qCovarCol must be also in covarColList,  e,g c("Sex").
-#' @param sampleIDColinphenoFile character. Column name for the sample IDs in the phenotype file e.g. "IID".
+#' @param sampleIDColinphenoFile character. Column name for the sample IDs in the phenotype file. By default "IID"; a column that does not exist stops the run.
 #' @param tol numeric. The tolerance for fitting the null model to converge. By default, 0.02.
 #' @param tolCoef numeric. The tolerance of the inner (alpha, b) pass of a binary fit at each
 #'   variance-component iterate (LEDGER #125: it was tied to tol, which left the REML score
@@ -720,7 +720,7 @@ solveSpMatrixUsingArma <- function(sparseGRMtest) {
 #' @param FemaleCode character. Values in the column for sex (sexCol) in the phenotype file are used for females. By default, '1'
 #' @param MaleCode character. Values in the column for sex (sexCol) in the phenotype file are used for males. By default, '0'
 #' @param sexCol character. Coloumn name for sex in the phenotype file, e.g Sex. By default, ''
-#' @param isCovariateOffset logical. Whether to estimate fixed effect coeffciets. By default, FALSE.
+#' @param isCovariateOffset logical. TRUE (the default on both the CLI and this function): the covariate effects are estimated once by a fixed-effects GLM and entered into the mixed-model fit as an offset. FALSE: they are re-estimated inside the mixed model.
 #' @return a file ended with .rda that contains the glmm model information, a file ended with .varianceRatio.txt that contains the variance ratio values, and a file ended with #markers.SPAOut.txt that contains the SPAGMMAT tests results for the markers used for estimating the variance ratio.
 #' @export
 #' @param seed integer. Random seed for the run; also decouples variance-ratio marker selection from model-fitting convergence. By default, 1 (LEDGER #8)
@@ -749,7 +749,7 @@ fitNULLGLMM <- function(plinkFile = "",
                         invNormalize = FALSE,
                         covarColList = NULL,
                         qCovarCol = NULL,
-                        sampleIDColinphenoFile = "",
+                        sampleIDColinphenoFile = "IID", # LEDGER #151: was ""; the CLI has always passed "IID"
                         tol = 0.02,
                         tolCoef = 1e-5,
                         maxiter = 20,
@@ -791,7 +791,7 @@ fitNULLGLMM <- function(plinkFile = "",
                         MaleCode = 0,
                         MaleOnly = FALSE,
                         SampleIDIncludeFile = "",
-                        isCovariateOffset = FALSE,
+                        isCovariateOffset = TRUE, # LEDGER #151: was FALSE; the CLI has always passed TRUE
                         skipVarianceRatioEstimation = FALSE,
                         nrun = 30,
                         # FALSE keeps the loaded genotype store for the next

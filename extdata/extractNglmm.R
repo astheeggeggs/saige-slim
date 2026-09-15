@@ -179,8 +179,11 @@ option_list <- list(
   make_option(
     "--outputPrefix",
     type = "character",
-    default = "~/",
-    help = "Path and prefix of the output files [default='~/']"
+    default = "",
+    help = paste0(
+      "Path and prefix of the output files. Give a path on a mounted volume ",
+      "in a container; ~ resolves to the container's own home [default='']"
+    )
   ),
   make_option(
     "--outputPrefix_varRatio",

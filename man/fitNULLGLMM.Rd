@@ -20,7 +20,7 @@ fitNULLGLMM(
   invNormalize = FALSE,
   covarColList = NULL,
   qCovarCol = NULL,
-  sampleIDColinphenoFile = "",
+  sampleIDColinphenoFile = "IID",
   tol = 0.02,
   tolCoef = 1e-05,
   maxiter = 20,
@@ -62,7 +62,7 @@ fitNULLGLMM(
   MaleCode = 0,
   MaleOnly = FALSE,
   SampleIDIncludeFile = "",
-  isCovariateOffset = FALSE,
+  isCovariateOffset = TRUE,
   skipVarianceRatioEstimation = FALSE,
   nrun = 30,
   releaseGenoAtEnd = TRUE
@@ -103,7 +103,7 @@ specified, 'plink2File'.psam will be used}
 
 \item{qCovarCol}{vector of characters. Categorical covariates to be used in the null model. All categorical covariates listed in qCovarCol must be also in covarColList,  e,g c("Sex").}
 
-\item{sampleIDColinphenoFile}{character. Column name for the sample IDs in the phenotype file e.g. "IID".}
+\item{sampleIDColinphenoFile}{character. Column name for the sample IDs in the phenotype file. By default "IID"; a column that does not exist stops the run.}
 
 \item{tol}{numeric. The tolerance for fitting the null model to converge. By default, 0.02.}
 
@@ -194,7 +194,7 @@ TRUE otherwise}
 
 \item{SampleIDIncludeFile}{character. Path to a file with one column of IDs of the samples to include in the null model fit}
 
-\item{isCovariateOffset}{logical. Whether to estimate fixed effect coeffciets. By default, FALSE.}
+\item{isCovariateOffset}{logical. TRUE (the default on both the CLI and this function): the covariate effects are estimated once by a fixed-effects GLM and entered into the mixed-model fit as an offset. FALSE: they are re-estimated inside the mixed model.}
 
 \item{skipVarianceRatioEstimation}{logical. Whether to skip variance ratio estimation. By default, FALSE}
 
