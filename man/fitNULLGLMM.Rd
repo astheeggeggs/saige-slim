@@ -42,7 +42,7 @@ fitNULLGLMM(
   sparseGRMFile = "",
   sparseGRMSampleIDFile = "",
   numRandomMarkerforSparseKin = 1000,
-  relatednessCutoff = 0.125,
+  relatednessCutoff = 0,
   isCateVarianceRatio = FALSE,
   cateVarRatioIndexVec = NULL,
   cateVarRatioMinMACVecExclude = c(10, 20.5),
@@ -154,7 +154,7 @@ TRUE otherwise}
 
 \item{numRandomMarkerforSparseKin}{integer. number of randomly selected markers (MAF >= 0.01) to be used to identify related samples that are included in the sparse GRM. By default, 2000}
 
-\item{relatednessCutoff}{float. The threshold for coefficient of relatedness to treat two samples as unrelated in the sparse GRM.}
+\item{relatednessCutoff}{float. Applied on LOAD of a sparse GRM (drop0 with this tolerance): entries at or below it are zeroed. By default 0, so the GRM is used exactly as step 0 wrote it; the pairs to keep are decided once, by step 0's own relatednessCutoff.}
 
 \item{isCateVarianceRatio}{logical. Whether to estimate the variance ratio separately for each MAC category, corresponding to cateVarRatioMinMACVecExclude and cateVarRatioMaxMACVecInclude. Combines freely with LOCO (nothing forces LOCO=FALSE; the earlier claim that it did was false). By default, FALSE}
 

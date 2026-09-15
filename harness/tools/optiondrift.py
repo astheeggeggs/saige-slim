@@ -70,17 +70,11 @@ ALLOWED = {
         (151, [0.0001, 0.001, 0.01], [0.01]),
     ("extdata/step1_fitNULLGLMM.R", "isCovariateOffset"):
         (151, True, False),
-    ("extdata/extractNglmm.R", "numRandomMarkerforSparseKin"):
-        (151, 2000, 1000),
     # The eight this tool found on its first run (2026-09-15, row STATUS).
-    ("extdata/step1_fitNULLGLMM.R", "relatednessCutoff"):
-        (151, 0, 0.125),
     ("extdata/step1_fitNULLGLMM.R", "sampleIDColinphenoFile"):
         (151, "IID", ""),
     ("extdata/step1_fitNULLGLMM.R", "outputPrefix"):
         (151, "~/", ""),
-    ("extdata/createSparseGRM.R", "numRandomMarkerforSparseKin"):
-        (151, 2000, 1000),
     ("extdata/createSparseGRM.R", "nThreads"):
         (151, 16, 1),
     ("extdata/createSparseGRM.R", "outputPrefix"):

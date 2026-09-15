@@ -14,7 +14,7 @@ createSparseGRM(
   pvarFile = "",
   psamFile = "",
   outputPrefix = "",
-  numRandomMarkerforSparseKin = 1000,
+  numRandomMarkerforSparseKin = 2000,
   relatednessCutoff = 0.125,
   memoryChunk = 2,
   isDiagofKinSetAsOne = FALSE,
@@ -49,7 +49,7 @@ calculating the sparse GRM}
 
 \item{outputPrefix}{character. Path to the output files with prefix}
 
-\item{numRandomMarkerforSparseKin}{integer. number of randomly selected markers (MAF >= 0.01) to be used to identify related samples for sparse GRM. By default, 1000}
+\item{numRandomMarkerforSparseKin}{integer. number of randomly selected markers (MAF >= 0.01) to be used to identify related samples for sparse GRM. By default, 2000}
 
 \item{relatednessCutoff}{float. The threshold to treat two samples as unrelated if IsSparseKin is TRUE. By default, 0.125}
 

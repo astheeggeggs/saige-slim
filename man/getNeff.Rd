@@ -39,7 +39,7 @@ getNeff(
   IsSparseKin = FALSE,
   sparseGRMFile = NULL,
   sparseGRMSampleIDFile = NULL,
-  numRandomMarkerforSparseKin = 1000,
+  numRandomMarkerforSparseKin = 2000,
   relatednessCutoff = 0.125,
   isCateVarianceRatio = FALSE,
   cateVarRatioIndexVec = NULL,

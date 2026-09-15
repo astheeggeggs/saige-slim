@@ -703,7 +703,7 @@ solveSpMatrixUsingArma <- function(sparseGRMtest) {
 #' @param sparseGRMFile character. Path to the pre-calculated sparse GRM file. By default, ""
 #' @param sparseGRMSampleIDFile character. Path to the sample ID file for the pre-calculated sparse GRM. No header is included. The order of sample IDs is corresponding to the order of samples in the sparse GRM. By default, ""
 #' @param numRandomMarkerforSparseKin integer. number of randomly selected markers (MAF >= 0.01) to be used to identify related samples that are included in the sparse GRM. By default, 2000
-#' @param relatednessCutoff float. The threshold for coefficient of relatedness to treat two samples as unrelated in the sparse GRM.
+#' @param relatednessCutoff float. Applied on LOAD of a sparse GRM (drop0 with this tolerance): entries at or below it are zeroed. By default 0, so the GRM is used exactly as step 0 wrote it; the pairs to keep are decided once, by step 0's own relatednessCutoff.
 #' @param cateVarRatioIndexVec vector of integer 0 or 1. The length of cateVarRatioIndexVec is the number of MAC categories for variance ratio estimation. 1 indicates variance ratio in the MAC category is to be estimated, otherwise 0. By default, NULL. If NULL, variance ratios corresponding to all specified MAC categories will be estimated. This argument is only activated when isCateVarianceRatio=TRUE
 #' @param cateVarRatioMinMACVecExclude vector of float. Exclusive lower bound of MAC for MAC categories; its minimum is also the MAC floor for markers entering the variance-ratio pool (mac >= min). The length equals to the number of MAC categories for variance ratio estimation. By default, c(10,20.5), the same as step 2 and as both CLI drivers. This argument is only activated when isCateVarianceRatio=TRUE
 #' @param cateVarRatioMaxMACVecInclude vector of float. Higher bound of MAC for MAC categories. The length equals to the number of MAC categories for variance ratio estimation minus 1. By default, c(20.5). This argument is only activated when isCateVarianceRatio=TRUE
@@ -771,7 +771,7 @@ fitNULLGLMM <- function(plinkFile = "",
                         sparseGRMFile = "",
                         sparseGRMSampleIDFile = "",
                         numRandomMarkerforSparseKin = 1000,
-                        relatednessCutoff = 0.125,
+                        relatednessCutoff = 0, # LEDGER #151: was 0.125; the CLI has always passed 0
                         isCateVarianceRatio = FALSE,
                         cateVarRatioIndexVec = NULL,
                         cateVarRatioMinMACVecExclude = c(10, 20.5),

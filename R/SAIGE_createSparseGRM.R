@@ -14,7 +14,7 @@
 #' @param psamFile character. Path to plink2 file (psam) to be used for
 #'   calculating the sparse GRM
 #' @param outputPrefix character. Path to the output files with prefix
-#' @param numRandomMarkerforSparseKin integer. number of randomly selected markers (MAF >= 0.01) to be used to identify related samples for sparse GRM. By default, 1000
+#' @param numRandomMarkerforSparseKin integer. number of randomly selected markers (MAF >= 0.01) to be used to identify related samples for sparse GRM. By default, 2000
 #' @param relatednessCutoff float. The threshold to treat two samples as unrelated if IsSparseKin is TRUE. By default, 0.125
 #' @param memoryChunk integer or float. The size (Gb) for each memory chunk. By default, 2
 #' @param isDiagofKinSetAsOne  logical. Whether to set the diagnal elements in GRM to be 1. By default, FALSE
@@ -34,7 +34,7 @@ createSparseGRM <- function(bedFile = "",
                             pvarFile = "",
                             psamFile = "",
                             outputPrefix = "",
-                            numRandomMarkerforSparseKin = 1000,
+                            numRandomMarkerforSparseKin = 2000, # LEDGER #151: was 1000; the CLI has always passed 2000
                             relatednessCutoff = 0.125,
                             memoryChunk = 2,
                             isDiagofKinSetAsOne = FALSE,
