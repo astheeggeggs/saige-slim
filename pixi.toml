@@ -40,3 +40,32 @@ plink2 = "*"
 
 [target.osx-64.dependencies]
 plink2 = "*"
+
+# The RUNTIME environment: what the INSTALLED package and the four CLI
+# scripts need and nothing else -- no compilers, no devtools/testthat, no
+# plink2, no Boost (headers, build-time only). docker/Dockerfile's runtime
+# stage copies exactly this tree; the build stage still uses `default`
+# (src/Makevars hardcodes its include and lib paths). Keep the R pin equal
+# in both: an .so built against one R and loaded by another is undefined.
+[feature.runtime.dependencies]
+openblas = "*"
+r-base = "*"
+r-rcpp = "*"
+r-rcpparmadillo = "*"
+r-rcppparallel = "*"
+r-matrix = "*"
+"r-data.table" = "*"
+r-optparse = "*"
+r-rhpcblasctl = "*"
+r-skat = "*"
+superlu = "*"
+tbb = "*"
+libdeflate = "*"
+zlib = "*"
+zstd = "*"
+
+[environments]
+default = { solve-group = "main" }
+# no-default-feature: without it an environment ALSO carries the default
+# feature, and the first image measured 2.0 GB of devtools/testthat/plink2.
+runtime = { features = ["runtime"], solve-group = "main", no-default-feature = true }

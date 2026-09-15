@@ -1,0 +1,87 @@
+# Release image for the strip branch: on a vX.Y.Z tag, build docker/Dockerfile
+# (a two-stage build whose runtime stage carries only R, the packages SAIGE
+# imports, the installed package and the four CLI scripts), smoke-test it,
+# and push it to GHCR as :X.Y.Z and :latest.
+#
+# The tag must equal DESCRIPTION's Version; a mismatch fails the job before
+# anything is built, so an image can never claim a version the package does
+# not carry.
+name: release
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag must match DESCRIPTION Version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          ver="$(sed -n 's/^Version: *//p' DESCRIPTION)"
+          echo "tag=$tag DESCRIPTION=$ver"
+          test "$tag" = "$ver"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          load: true
+          tags: ${{ env.IMAGE }}:${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test (the four scripts answer, image size reported)
+        run: |
+          img="$IMAGE:${GITHUB_REF_NAME}"
+          docker image inspect "$img" --format 'size={{.Size}} bytes'
+          for s in createSparseGRM.R step1_fitNULLGLMM.R step2_SPAtests.R extractNglmm.R; do
+            docker run --rm "$img" "$s" --help > /dev/null
+          done
+          # a real step-2 run on the bundled 100-marker fixture, compared to
+          # its golden numerically (the goldens are macOS bytes)
+          docker run --rm -v "$PWD:/repo" -w /repo/extdata "$img" step2_SPAtests.R \
+            --bedFile=./input/genotype_100markers.bed --bimFile=./input/genotype_100markers.bim \
+            --famFile=./input/genotype_100markers.fam --AlleleOrder=alt-first \
+            --GMMATmodelFile=/repo/harness/goldens/step1/binary_sparseGRM_a.rda \
+            --varianceRatioFile=/repo/harness/goldens/step1/binary_sparseGRM_a.varianceRatio.txt \
+            --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE --is_output_moreDetails=TRUE \
+            --SAIGEOutputFile=/tmp/smoke.txt > /tmp/smoke.log 2>&1
+          grep -q "Analysis done" /tmp/smoke.log
+          # golden P1: same command; the header and row count must match, and
+          # the values at 1e-5 relative (the goldens are macOS bytes)
+          python3 - /tmp/smoke.txt harness/goldens/step2/plink_marker_binary.txt <<'EOF'
+          import sys, math
+          a = [l.rstrip("\n").split("\t") for l in open(sys.argv[1])]
+          b = [l.rstrip("\n").split("\t") for l in open(sys.argv[2])]
+          assert a[0] == b[0] and len(a) == len(b), (len(a), len(b))
+          worst = 0.0
+          for ra, rb in zip(a[1:], b[1:]):
+              for x, y in zip(ra, rb):
+                  try:
+                      fx, fy = float(x), float(y)
+                  except ValueError:
+                      assert x == y, (x, y); continue
+                  if fx == fy or (math.isnan(fx) and math.isnan(fy)): continue
+                  worst = max(worst, abs(fx - fy) / max(abs(fy), 1e-300))
+          print("rows", len(a) - 1, "worst relative diff", worst)
+          assert worst < 1e-5, worst
+          EOF
+      - name: Push
+        run: |
+          img="$IMAGE:${GITHUB_REF_NAME}"
+          docker tag "$img" "$IMAGE:${GITHUB_REF_NAME#v}"
+          docker tag "$img" "$IMAGE:latest"
+          docker push "$IMAGE:${GITHUB_REF_NAME#v}"
+          docker push "$IMAGE:latest"

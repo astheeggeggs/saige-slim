@@ -91,7 +91,10 @@ mkdir -p harness/work
 # symbol and CI run 34837530220 failed with the real compiler error never
 # shown (the log is not uploaded from a runner). "error:" with the colon is
 # the compiler's and linker's spelling; "Error" R's.
-pixi run R CMD INSTALL . > harness/work/build.log 2>&1 || {
+# SAIGE_R_LIBRARY: install into that library instead of the default env's
+# (docker/Dockerfile installs into the RUNTIME environment's R library so the
+# runtime stage can take the tree whole). Empty = the default, unchanged.
+pixi run R CMD INSTALL ${SAIGE_R_LIBRARY:+--library="$SAIGE_R_LIBRARY"} . > harness/work/build.log 2>&1 || {
   echo "INSTALL FAILED -- diagnostics from harness/work/build.log:"
   grep -nE "error:|^Error|ERROR:|undefined reference|Undefined symbols" harness/work/build.log | head -40
   echo "--- last 15 lines:"; tail -15 harness/work/build.log

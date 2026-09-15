@@ -151,3 +151,25 @@ draw). `test-characterization-ledger155.R` holds a port in a helper process
 and forces the run onto it with `R_PARALLEL_PORT`; the control is that the
 first bind fails in the log. No golden moves (the first attempt is
 upstream's call, verbatim).
+
+## Night: the release image
+
+`docker/Dockerfile` is two stages: `build` (the `default` pixi environment,
+pgenlib, `R CMD INSTALL` into the `runtime` environment's library via
+`SAIGE_R_LIBRARY`, then the toolchain conda's r-base drags in is pruned
+THERE, because a layer never shrinks) and `runtime` (`ubuntu:24.04` + that
+tree at the SAME path, since a conda environment is not relocatable, +
+pgenlib's shared object at the path SAIGE.so records, + the four scripts
+with their `pixi run` shebang rewritten to `Rscript`). `.dockerignore` keeps
+`.pixi`, `harness/` (except `build.sh`), tests, docs and the example data
+out. `pixi.lock` is committed so the build does not solve. Measured: 2.87 GB
+with the default feature leaking into `runtime` (pixi includes it unless
+`no-default-feature = true`), 1.94 GB with the prune in the wrong stage,
+595 MB now; the image's step-2 run on the 100-marker fixture is
+BYTE-IDENTICAL to golden P1 (macOS bytes, all 23 columns).
+`.github/workflows/release.yml` builds on a `vX.Y.Z` tag equal to
+`DESCRIPTION`'s Version, checks the P1 run at 1e-5 relative, and pushes
+`ghcr.io/astheeggeggs/saige-slim:X.Y.Z` and `:latest`. Not yet exercised on a
+runner: the first tag is the test. Also that day: the host disk hit 926 MB
+free and corrupted Docker's store; the VM disk was deleted and rebuilt
+(64 GB back), which is why the image was built from an empty daemon.

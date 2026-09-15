@@ -1,0 +1,23 @@
+# The runtime image carries the installed package and three scripts, nothing
+# else. Everything the build stage needs is listed in docker/Dockerfile's
+# COPY lines; this file keeps the context small and keeps local state out.
+.pixi/
+pixi.lock.bak
+plink-ng/
+harness/*
+!harness/build.sh
+tests/
+docs/
+man/
+extdata/input/
+extdata/output/
+extdata/*.sh
+extdata/*.md
+.git/
+.github/
+.githooks/
+*.o
+*.so
+*.log
+LEDGER.md
+CLAUDE.md

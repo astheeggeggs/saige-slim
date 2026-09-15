@@ -14,7 +14,6 @@ src/backup/*
 extdata/input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly.raw
 *.swp
 plink-ng/
-pixi.lock
 harness/work/
 harness/goldens/logs/
 # Bench run ARTEFACTS (step-2 result tables, fitted models, index files). Ten

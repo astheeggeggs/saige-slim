@@ -29,7 +29,7 @@ jobs:
       - uses: prefix-dev/setup-pixi@v0.8.1
         with:
           pixi-version: v0.51.0
-          cache: false # pixi.lock is deliberately not committed (see .gitignore)
+          cache: true # pixi.lock is committed since 2026-09-15 (release images need it)
       - name: Install environment
         run: |
           pixi install

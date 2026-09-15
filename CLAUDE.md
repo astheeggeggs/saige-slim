@@ -188,6 +188,18 @@ bash harness/build.sh --incremental   # keeps src/*.o (167s -> 57s); REFUSES if 
 git config core.hooksPath .githooks   # once per clone: arms the pre-push gate
 ```
 
+**`pixi.lock` is committed (2026-09-15)**: `pixi install` reproduces the
+pinned environment; changing `pixi.toml` regenerates the lock and the diff
+lands in the same commit; moving a version is a deliberate `pixi update`
+with its own gate. **`make docker`** builds `docker/Dockerfile`, a two-stage
+image whose runtime stage is the `runtime` pixi environment
+(`[feature.runtime]`, `no-default-feature`, 109 packages) with the
+compilers pruned, the installed package and the four scripts: 595 MB,
+reproduces golden P1 byte-identical on Linux. A `vX.Y.Z` tag equal to
+`DESCRIPTION`'s Version runs `.github/workflows/release.yml`, which builds,
+smoke-tests against P1 and pushes `ghcr.io/astheeggeggs/saige-slim:X.Y.Z`
+(`docker/readme.md`).
+
 Works natively on macOS and linux. `src/Makevars` hardcodes
 `-I../.pixi/envs/default/include`, so the in-tree `.pixi/` env is required.
 `make` at the repo root runs the Docker build.
