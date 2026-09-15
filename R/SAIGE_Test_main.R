@@ -467,7 +467,7 @@ SPAGMMATtest <- function(bedFile = "",
   # this is the same sequence of calls the inline block made, in the same order
   # -- only the male-X block below has moved after it, and that block reads
   # nothing the preparation writes (its two setters are C++ globals the marker
-  # loop reads, and its minMAF/minInfo assignments are dead locals).
+  # loop reads; its minMAF/minInfo dead locals were deleted, LEDGER #150).
   prepared <- lapply(seq_len(nModels), function(k) {
     prepareNullModel(
       modelSpecs[[k]], k, chrom, LOCO, is_Firth_beta, subSampleFile,
@@ -508,9 +508,9 @@ SPAGMMATtest <- function(bedFile = "",
     )
   }
 
-  if (obj.model$traitType != "binary") {
-    max_MAC_use_ER <- 0
-  }
+  # LEDGER #150 (FIXED 2026-09-15): `max_MAC_use_ER <- 0` for non-binary
+  # traits stood here; max_MAC_use_ER was pushed to C++ ~150 lines above and
+  # every ER site conjoins traitType == "binary", so the local was dead.
 
   if (!LOCO) {
     # 	LOCO = FALSE
@@ -545,19 +545,15 @@ SPAGMMATtest <- function(bedFile = "",
           )
         }
       } else {
-        # LEDGER #150 (OPEN): upstream's block below assigns minInfo <- 0 and
-        # minMAF <- 1/(2N) here, but setAssocTest_GlobalVarsInCPP pushed
-        # min_MAF/min_Info to C++ ~200 lines above and nothing reads these two
-        # locals, so the override has never applied in either fork. The #139
-        # wording of this line said the flag "won't apply" the gates and its
-        # correction said the flag "replaces" them; both false (measured:
-        # --minMAF=0.02 with the flag tests 20 of 48 chrX markers). Kept
-        # bug-for-bug; only the sentence is true now.
+        # LEDGER #150 (FIXED 2026-09-15, owner's decision): upstream assigned
+        # minInfo <- 0 and minMAF <- 1/(2N) here, but setAssocTest_GlobalVarsInCPP
+        # pushed min_MAF/min_Info to C++ ~200 lines above and nothing read the
+        # two locals, so the override never applied in either fork (measured:
+        # --minMAF=0.02 with the flag tests 20 of 48 chrX markers). The dead
+        # lines are deleted; the sentence below is what the code does.
         cat("is_rewrite_XnonPAR_forMales=TRUE: --minInfo and --minMAF apply to the ",
             "X chromosome markers at the values given for this run; the flag does not ",
             "change them (LEDGER #150)\n", sep = "")
-        minInfo <- 0
-        minMAF <- 1 / (2 * length(obj.model$sampleID))
 
         setAssocTest_GlobalVarsInCPP_indexInModel_male(indexInModel_male - 1)
       }

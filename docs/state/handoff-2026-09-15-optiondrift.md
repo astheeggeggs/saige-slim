@@ -115,3 +115,11 @@ one untested difference.
 
 **Open:** #150 (owner: delete the four dead chrX assignments or keep them)
 and #154.
+
+## Night: #150 FIXED -- the ledger is down to #154
+
+Owner's decision: delete. `minInfo <- 0`, `minMAF <- 1/(2N)` (male-X
+block) and `max_MAC_use_ER <- 0` (non-binary) were dead locals, pushed to
+C++ before they were assigned and read by nothing; each is now a comment
+naming the row, the corrected stdout sentence stays. Gate FAIL 0, no golden
+moved, `test-step2-xnonpar-missing.R` unchanged. `ledger.py open` = #154.

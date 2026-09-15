@@ -13,8 +13,9 @@ the sparse GRM and always solves on it (402.4175 = the closed form). **#146(b) F
 falls under the empty-cell rule, the owner's framing: same as the annotation
 not being present). **#154 drilled**: 24 concurrent 4-thread P3 runs at load
 12-23 all clean and byte-identical, TSAN region races=0 at t=1/4/8 -- stays
-as the re-run rule. Open: #150 (delete the four dead chrX assignments, or
-keep: owner's call) and #154.
+as the re-run rule. **#150 FIXED** (owner: delete): the four dead chrX/ER assignments are gone,
+each replaced by a comment naming the row. **Open: #154 only**, the re-run
+rule; the ledger's execution queue is empty.
 
 **Previous handoff: `docs/state/handoff-2026-09-14-phase-g.md`** -- Phase G
 DONE as the audit prescribed: G1's five slices of `SAIGE.Region` (new
