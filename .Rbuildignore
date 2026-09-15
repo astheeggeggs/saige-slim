@@ -1,1 +1,14 @@
 thirdParty/cget
+^_pkgdown\.yml$
+^docs$
+^vignettes/articles$
+^harness$
+^\.github$
+^\.githooks$
+^pixi\.(toml|lock)$
+^\.pixi$
+^plink-ng$
+^LEDGER\.md$
+^CLAUDE\.md$
+^Makefile$
+^docker$

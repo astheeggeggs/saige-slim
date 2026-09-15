@@ -1,0 +1,68 @@
+# Documentation for the strip branch: regenerate man/ from the roxygen,
+# build the pkgdown site (reference pages + the generated CLI-options
+# article + the two hand-written pages), refuse the push if man/ was not
+# regenerated, and deploy docs/site to GitHub Pages.
+#
+# The build needs the INSTALLED package (the CLI article calls formals()),
+# so the pixi + plink-ng + harness/build.sh steps mirror tests.yml.
+#
+# Deployment is gated: on 2026-09-15 the API refused to enable Pages on this
+# repository ("Your current plan does not support GitHub Pages for this
+# repository" -- a private repo on the free plan). Until that changes the
+# `build` job still guards man/ and keeps the site as a workflow artifact
+# (`site`, 7 days); to deploy, enable Pages (Settings > Pages > Source:
+# GitHub Actions) and set the repository variable PAGES_ENABLED=true.
+name: docs
+on:
+  push:
+    branches: [strip]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.51.0
+          cache: true
+      - name: Cache plink-ng build
+        uses: actions/cache@v4
+        with:
+          path: |
+            .pixi/envs/default/lib/libplink2_includes.a
+            plink-ng/2.0/include
+          key: plink-ng-v2.0.0-a.6.16-${{ runner.os }}
+      - name: Build and install SAIGE
+        run: bash harness/build.sh
+      - name: Build docs
+        run: pixi run bash harness/docs.sh
+      - name: man/ must match the roxygen
+        run: git diff --exit-code man/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: docs/site
+          retention-days: 7
+      - if: vars.PAGES_ENABLED == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/site
+  deploy:
+    needs: build
+    if: vars.PAGES_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

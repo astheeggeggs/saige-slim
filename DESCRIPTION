@@ -10,7 +10,8 @@ License: GPL (>= 2)
 Imports: Rcpp (>= 1.0.7), RcppParallel, Matrix, data.table, parallel, RcppArmadillo (>= 0.10.7.5)
 LinkingTo: Rcpp, RcppArmadillo (>= 0.10.7.5), RcppParallel, data.table,
         Matrix, methods, BH, optparse, SKAT, RhpcBLASctl
-Suggests: testthat
+URL: https://astheeggeggs.github.io/saige-slim, https://github.com/astheeggeggs/saige-slim
+Suggests: testthat, knitr, rmarkdown, roxygen2, pkgdown, jsonlite, rprojroot
 Depends: R (>= 3.5.0)
 SystemRequirements: GNU make
 NeedsCompilation: yes

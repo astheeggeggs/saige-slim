@@ -1,0 +1,91 @@
+---
+title: "CLI options: every flag, its default, and the R argument it sets"
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, results = "asis")
+```
+
+This page is generated when the site is built. Its data is the map that
+`harness/tools/optiondrift.py` (LEDGER #151) checks before every test tier:
+each `make_option()` of the four wrappers under `extdata/`, the exported R
+function's formal it is forwarded to, and both defaults compared as values.
+A row whose status is not `ok` is one of:
+
+- `skip`: a default that is not a literal on one side (the two FlexRV
+  transform specs are named constants), so it is not compared.
+- `cli_only`: a flag the wrapper consumes itself and does not forward.
+- `formal_only`: an argument of the R function the CLI does not expose.
+- `allowed`: a divergence the owner has decided and a ledger row records.
+- `drift`: an undecided divergence. The test tiers refuse to run with one,
+  so a published page never shows it.
+
+Which options are live, partly live, refused or inert is a hand-traced
+question the generator cannot answer; that column is on
+[the status page](cli_status.html), and the surprising flag combinations
+are on [flag surprises](flag_surprises.html).
+
+```{r load}
+tool <- file.path(rprojroot::find_root(rprojroot::has_file("DESCRIPTION")),
+                  "harness", "tools", "optiondrift.py")
+raw <- system2("python3", c(tool, "--json"), stdout = TRUE)
+doc <- jsonlite::fromJSON(paste(raw, collapse = "\n"), simplifyVector = FALSE)
+esc <- function(x) {
+  x <- gsub("|", "\\|", x, fixed = TRUE)
+  gsub("\n", " ", x, fixed = TRUE)
+}
+code <- function(x) ifelse(is.na(x) | x == "", "", paste0("`", esc(x), "`"))
+cell <- function(v) if (is.null(v)) NA_character_ else as.character(v)
+counts <- vapply(doc$wrappers, function(w) w$n_options, numeric(1))
+cat(sprintf("**%d options across %d wrappers** (%s).\n\n", sum(counts),
+            length(counts), paste(sprintf("%s %d", vapply(doc$wrappers,
+            function(w) basename(w$wrapper), ""), counts), collapse = ", ")))
+```
+
+```{r tables}
+for (w in doc$wrappers) {
+  cat(sprintf("## `%s` -> `%s()`\n\n", basename(w$wrapper), w$`function`))
+  cat(sprintf("Function source `%s`; reference page: [%s](../reference/%s.html).\n\n",
+              w$source, w$`function`, w$`function`))
+  recs <- w$records
+  df <- data.frame(
+    flag = vapply(recs, function(r) cell(r$flag), ""),
+    type = vapply(recs, function(r) cell(r$type), ""),
+    cli_default = vapply(recs, function(r) cell(r$cli_default), ""),
+    argument = vapply(recs, function(r) cell(r$formal), ""),
+    r_default = vapply(recs, function(r) cell(r$r_default), ""),
+    status = vapply(recs, function(r) cell(r$status), ""),
+    help = vapply(recs, function(r) cell(r$help), ""),
+    stringsAsFactors = FALSE
+  )
+  out <- data.frame(
+    Flag = ifelse(is.na(df$flag), "", paste0("`--", df$flag, "`")),
+    Type = ifelse(is.na(df$type), "", df$type),
+    `CLI default` = code(df$cli_default),
+    `R argument` = code(df$argument),
+    `R default` = code(df$r_default),
+    Status = df$status,
+    Help = ifelse(is.na(df$help), "", esc(df$help)),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+  print(knitr::kable(out, format = "markdown"))
+  cat("\n\n")
+  off <- df$status[!df$status %in% c("ok", "skip", "cli_only", "formal_only")]
+  if (length(off)) {
+    cat(sprintf("**%d row(s) not `ok`: %s.**\n\n", length(off),
+                paste(sort(unique(off)), collapse = ", ")))
+  }
+}
+```
+
+## How the map is made
+
+`optiondrift.py` paren-matches the `make_option(` blocks, the function's
+`<- function(` signature and the wrapper's call site (`formal = opt$flag`,
+`opt[["flag"]]`, or a local whose assignment mentions exactly one
+`opt$flag`). Defaults are parsed as R literals and compared as values:
+`1L` equals `1`, `1e-05` equals `1e-5`, a comma string equals `c(...)`,
+and three coercions the readers perform are honoured (`""`/`NULL`, the
+sex codes as strings or numbers, `"FALSE"`/`FALSE` for `--invNormalize`).
+For step 1 the wrapper calls `fitNULLGLMM_multi`, whose `...` forwards to
+`fitNULLGLMM`; both signatures are read and the multi's own win.

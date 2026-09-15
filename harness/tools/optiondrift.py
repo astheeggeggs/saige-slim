@@ -9,6 +9,12 @@
                             still describes a live divergence
   optiondrift.py --all      also print the agreeing pairs and the unforwarded
                             formals (informational)
+  optiondrift.py --json     the same map as one JSON document (every flag with
+                            its type, help, both defaults and status; every
+                            unforwarded formal) -- what the pkgdown article
+                            vignettes/articles/cli_options.Rmd renders, so
+                            the CLI reference is this tool's map and cannot
+                            drift from it
 
 Why (LEDGER #151, #115): the four `extdata/*.R` wrappers declare a default per
 `make_option()`, the exported function declares another in its formals, and
@@ -274,15 +280,40 @@ def cli_value(default, formal_value):
 
 # ------------------------------------------------------------ extraction
 
-def make_options(text):
+def string_text(expr):
+    """A help= expression as prose: a string literal, or paste0()/paste()
+    of literals joined; anything else is returned as its source text."""
+    e = expr.strip()
+    v = parse_literal(e)
+    if isinstance(v, str):
+        return v
+    m = re.match(r"^paste0?\((.*)\)$", e, re.S)
+    if m:
+        sep = "" if e.startswith("paste0") else " "
+        pieces = []
+        for p in split_args(m.group(1)):
+            k, pv = kv(p)
+            if k == "sep":
+                sv = parse_literal(pv)
+                sep = sv if isinstance(sv, str) else sep
+                continue
+            lit = parse_literal(pv)
+            pieces.append(lit if isinstance(lit, str) else pv)
+        return sep.join(pieces)
+    return e
+
+
+def make_options(text, meta=None):
     """Every make_option( block -> {flag: default_expr}; a block whose
-    `default` is absent gets None, as optparse gives it."""
+    `default` is absent gets None, as optparse gives it. When `meta` is a
+    dict it is filled with {flag: {"type": ..., "help": ...}} for --json."""
     text = strip_comments(text)
     out = {}
     for m in re.finditer(r"\bmake_option\s*\(", text):
         close = match_paren(text, m.end() - 1)
         args = split_args(text[m.end():close])
         flag, default, seen_default = None, "NULL", False
+        otype, help_text = None, ""
         for i, a in enumerate(args):
             k, v = kv(a)
             if k is None and i == 0 or k == "opt_str":
@@ -292,9 +323,16 @@ def make_options(text):
                 flag = next((n[2:] for n in names if n.startswith("--")), None)
             elif k == "default":
                 default, seen_default = v, True
+            elif k == "type":
+                t = parse_literal(v)
+                otype = t if isinstance(t, str) else v
+            elif k == "help":
+                help_text = string_text(v)
         if flag is None:
             raise ValueError(f"make_option without a --flag: {args[0]!r}")
         out[flag] = default if seen_default else "NULL"
+        if meta is not None:
+            meta[flag] = {"type": otype, "help": help_text}
     return out
 
 
@@ -386,9 +424,9 @@ def compare(wrapper, cli, forms, cmap):
     return div, agree, unparsed, unforwarded
 
 
-def load(wrapper, sources, callfn):
+def load(wrapper, sources, callfn, meta=None):
     wtext = open(os.path.join(REPO, wrapper)).read()
-    cli = make_options(wtext)
+    cli = make_options(wtext, meta)
     forms = {}
     for src, fn in reversed(sources):  # first-listed wins on overlap
         forms.update(formals(open(os.path.join(REPO, src)).read(), fn))
@@ -429,6 +467,87 @@ def check(show_all=False):
         print(f"STALE ALLOWED (#{ALLOWED[key][0]}) {key[0]} --{key[1]}: no longer diverges; "
               f"delete the entry")
         rc = 1
+    return rc
+
+
+# ------------------------------------------------------------------ json
+
+def r_source(v):
+    """A parsed value back as R-ish text for a table cell."""
+    if isinstance(v, Unparsed):
+        return v.text
+    if v is None:
+        return "NULL"
+    if v is True:
+        return "TRUE"
+    if v is False:
+        return "FALSE"
+    if v == NA:
+        return "NA"
+    if isinstance(v, list):
+        return "c(" + ", ".join(r_source(x) for x in v) + ")"
+    if isinstance(v, float):
+        return repr(int(v)) if v == int(v) and abs(v) < 1e15 else repr(v)
+    return '"' + str(v) + '"'
+
+
+def emit_json():
+    """One record per (wrapper, flag) plus one per unforwarded formal.
+    `status`: ok (defaults agree), allowed (a divergence on the ALLOWED
+    list, with its ledger row), drift (an unlisted divergence -- the plain
+    run fails on it), skip (a default that is not a literal), cli_only (a
+    flag the wrapper does not forward to the function), formal_only (a
+    formal the CLI does not expose). Exit code as the plain run's."""
+    import json
+    doc = {"wrappers": []}
+    rc = 0
+    for wrapper, sources, callfn in WRAPPERS:
+        meta = {}
+        cli, forms, cmap = load(wrapper, sources, callfn, meta)
+        div, agree, unparsed, unforwarded = compare(wrapper, cli, forms, cmap)
+        flag_to_formal = {flag: formal for formal, flag in cmap.items()}
+        by_flag = {}
+        for flag, formal, cv, fv in agree:
+            by_flag[flag] = ("ok", None, r_source(cv), r_source(fv))
+        for flag, formal, cv, fv in div:
+            row = ALLOWED.get((wrapper, flag), (None,))[0]
+            st = "allowed" if row is not None else "drift"
+            if st == "drift":
+                rc = 1
+            by_flag[flag] = (st, row, r_source(cv), r_source(fv))
+        for flag, formal, expr in unparsed:
+            fexpr = forms.get(formal)
+            by_flag[flag] = ("skip", None, cli[flag].strip(),
+                             fexpr.strip() if fexpr else None)
+        records = []
+        for flag in cli:  # wrapper order
+            formal = flag_to_formal.get(flag)
+            if flag in by_flag:
+                st, row, cv, fv = by_flag[flag]
+            elif formal is not None:
+                # forwarded to a bare formal (no default to compare)
+                st, row, cv, fv = "ok", None, r_source(cli_value(cli[flag], None)), None
+            else:
+                st, row, cv, fv = "cli_only", None, r_source(cli_value(cli[flag], None)), None
+            records.append({
+                "flag": flag, "type": meta[flag]["type"], "help": meta[flag]["help"],
+                "cli_default": cv, "formal": formal, "r_default": fv,
+                "status": st, "ledger": row,
+            })
+        for formal in unforwarded:
+            fexpr = forms[formal]
+            fv = parse_literal(fexpr) if fexpr is not None else None
+            records.append({
+                "flag": None, "type": None, "help": "", "cli_default": None,
+                "formal": formal,
+                "r_default": r_source(fv) if fexpr is not None else None,
+                "status": "formal_only", "ledger": None,
+            })
+        doc["wrappers"].append({
+            "wrapper": wrapper, "function": sources[0][1], "source": sources[0][0],
+            "n_options": len(cli), "records": records,
+        })
+    print(json.dumps(doc, indent=1))
     return rc
 
 
@@ -479,6 +598,8 @@ fn <- function(a = 1, # comment with ) paren
 def main(argv):
     if argv and argv[0] == "selftest":
         return selftest()
+    if "--json" in argv:
+        return emit_json()
     return check(show_all="--all" in argv)
 
 

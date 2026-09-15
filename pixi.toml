@@ -20,6 +20,16 @@ r = "*"
 r-bh = "*"
 r-cpp11 = "*"
 r-devtools = "*"
+# Documentation tooling (harness/docs.sh, .github/workflows/docs.yml). All
+# five already arrive transitively through r-devtools; pinned so a devtools
+# change cannot silently drop one. Not in `runtime`: the release image
+# carries no documentation tooling.
+r-jsonlite = "*"
+r-knitr = "*"
+r-pkgdown = "*"
+r-rmarkdown = "*"
+r-roxygen2 = "*"
+r-rprojroot = "*"
 r-rcpparmadillo = "*"
 r-rcppparallel = "*"
 "r-data.table" = "*"

@@ -1,0 +1,34 @@
+# pkgdown site for the strip branch. Built by harness/docs.sh (locally) and
+# .github/workflows/docs.yml (GitHub Pages on astheeggeggs/saige-slim).
+# The reference pages come from man/, which roxygen2 generates from the
+# `#'` blocks in R/; the CLI-options article is generated at build time
+# from harness/tools/optiondrift.py --json, so it is the same flag-to-formal
+# map that gates every test tier and cannot drift from it.
+url: https://astheeggeggs.github.io/saige-slim/
+# docs/ holds the hand-written pages; the site goes beside them (gitignored)
+destination: docs/site
+template:
+  bootstrap: 5
+navbar:
+  structure:
+    left: [reference, articles]
+    right: [github]
+reference:
+- title: Entry points
+  desc: One R function per CLI script under extdata/.
+  contents:
+  - createSparseGRM
+  - fitNULLGLMM
+  - SPAGMMATtest
+- title: Utilities
+  contents:
+  - fitNULLGLMM_multi
+  - getNeff
+  - CCT
+articles:
+- title: Command line
+  navbar: ~
+  contents:
+  - articles/cli_options
+  - articles/cli_status
+  - articles/flag_surprises

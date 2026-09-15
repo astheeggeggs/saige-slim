@@ -10,7 +10,7 @@ something false. Spot-checked by hand afterwards: `--X_PARregion`,
 
 # SAIGE `strip` — implemented CLI options
 
-**Shape.** 139 distinct options across three wrappers: **step 0** `createSparseGRM.R` 16, **step 1** `step1_fitNULLGLMM.R` 58, **step 2** `step2_SPAtests.R` 65. Step 0 builds the sparse GRM (`.mtx` + `.sampleIDs.txt`, both named from `outputPrefix`/`relatednessCutoff`/`numRandomMarkerforSparseKin`). Step 1 fits the null GLMM and estimates variance ratios (one or several phenotypes per process). Step 2 tests markers, or regions when `--groupFile` is given — the single branch point at `R/SAIGE_Test_main.R:367` that decides whether ~25 of step 2's options do anything at all. PLINK bed/bim/fam and PGEN pgen/pvar/psam are the only genotype inputs at every step.
+**Shape.** 179 distinct options across four wrappers: **step 0** `createSparseGRM.R` 16, **step 1** `step1_fitNULLGLMM.R` 58, **step 2** `step2_SPAtests.R` 65, and `extractNglmm.R` 40 (added after this inventory; its options are tabulated by the generated CLI-options page but their live/inert status has NOT been hand-traced here). Step 0 builds the sparse GRM (`.mtx` + `.sampleIDs.txt`, both named from `outputPrefix`/`relatednessCutoff`/`numRandomMarkerforSparseKin`). Step 1 fits the null GLMM and estimates variance ratios (one or several phenotypes per process). Step 2 tests markers, or regions when `--groupFile` is given — the single branch point at `R/SAIGE_Test_main.R:367` that decides whether ~25 of step 2's options do anything at all. PLINK bed/bim/fam and PGEN pgen/pvar/psam are the only genotype inputs at every step.
 
 Legend: **L** live · **P** partly live · **R** refused · **I** inert · `+` this branch's option · `~` upstream's option, meaning changed here.
 

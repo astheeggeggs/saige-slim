@@ -257,6 +257,25 @@ postdates that commit and adds none). Add a rule only
 after a claim has actually been written wrongly; a line that must quote a false
 claim on purpose carries the marker the tool names.
 
+**Documentation is generated, and `man/` is gated (2026-09-15).** `bash
+harness/docs.sh` (from the pixi env: `pixi run bash harness/docs.sh`)
+regenerates `man/` from the roxygen with `roxygenise(roclets = "rd",
+load_code = load_installed)` -- the rd roclet only, because `NAMESPACE` is
+hand-written; `load_installed` because pkgload would recompile `src/` in-tree
+-- and builds the pkgdown site into `docs/site/` (gitignored; `_pkgdown.yml`
+sets `destination`, since pkgdown's default is `docs/`, which holds the
+hand-written pages). `.github/workflows/docs.yml` does the same on every push
+to `slim`, runs `git diff --exit-code man/` (a roxygen edit that was not
+regenerated fails the push), and deploys to GitHub Pages. The CLI-options
+article `vignettes/articles/cli_options.Rmd` is rendered at build time from
+`optiondrift.py --json`, so the published flag table IS the map the test
+tiers gate on. Three pkgdown facts that each cost a build: article topics
+are named `articles/<file>`, a name with a hyphen is parsed as subtraction
+(use underscores), and plain `.md` files are not articles (the two
+`docs/*.md` pages are wrapped as `.Rmd` copies by the script). A roxygen
+edit is docs-only for the gate, but run `harness/docs.sh` before pushing or
+CI is red on the `man/` step.
+
 Characterization tests pin ledger bugs, asserting what the code does TODAY
 including malformed messages and unreachable guards. When one "fails" after a
 fix, invert it and update the ledger row in the same commit.

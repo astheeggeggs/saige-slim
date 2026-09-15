@@ -1,5 +1,15 @@
 # What is worth doing next (2026-09-03, updated 2026-09-15; read docs/state/handoff-2026-09-15-optiondrift.md first)
 
+**Docs (2026-09-15): the pkgdown site and the `man/` guard landed** (`harness/docs.sh`,
+`.github/workflows/docs.yml`, `_pkgdown.yml`, `vignettes/articles/cli_options.Rmd`
+from `optiondrift.py --json`). Open, owner's call: (a) the ~15 `R/` files with no
+roxygen at all (`R/Util.R`, `R/readInGLMM.R`, `R/MarkerScan.R`, `R/FlexRV.R`, ...)
+-- the site documents only the six topics `man/` has; (b) `NAMESPACE`'s
+`exportPattern` exports all 163 Rcpp wrappers undocumented; an explicit export
+list would hide them but changes what `SAIGE::` resolves in the tests, so it is
+a gated change, not a docs one; (c) `extractNglmm.R`'s 40 options are tabulated
+but their live/inert status is not hand-traced in `docs/cli-options-and-group-file.md`.
+
 **Current handoff: `docs/state/handoff-2026-09-15-optiondrift.md`** -- LEDGER
 #151's guard exists: `harness/tools/optiondrift.py` compares every CLI
 wrapper default against the exported formal by VALUE, runs before every

@@ -33,3 +33,9 @@ flexrv.pdf
 
 # python bytecode from harness/tools
 __pycache__/
+
+# pkgdown output and the build-time copies harness/docs.sh makes of the two
+# hand-written docs/*.md pages (pkgdown reads articles from vignettes/articles)
+docs/site/
+vignettes/articles/cli_status.Rmd
+vignettes/articles/flag_surprises.Rmd
