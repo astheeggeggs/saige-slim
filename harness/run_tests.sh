@@ -52,6 +52,12 @@ python3 "$REPO/harness/tools/ledger.py" lint || exit 1
 python3 "$REPO/harness/tools/docdrift.py" selftest || exit 1
 python3 "$REPO/harness/tools/docdrift.py" || exit 1
 
+# And the CLI wrappers' defaults must not drift from the exported formals
+# without a ledger row saying so: a hand sweep found four (LEDGER #151), the
+# tool's first run found eight more. `selftest` plants a divergence and checks
+# it is caught, then checks every allowed entry still describes a live one.
+python3 "$REPO/harness/tools/optiondrift.py" selftest || exit 1
+
 # package/load_package are REQUIRED for the parallel path: test_dir defaults to
 # load_package="none", which hands each callr worker an empty package name and
 # fails with "attempt to use zero-length variable name" before any test runs.

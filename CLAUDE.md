@@ -120,8 +120,8 @@ Standing facts that have each cost at least one session. One line of why each.
   full both-modes run was spent that day on a diff that could not possibly move
   a golden. A golden moves only if the INSTALLED PACKAGE's behaviour moves, so:
   - **docs-only** (`docs/`, `*.md`, comments): no tier. Run `ledger.py lint`
-    and `docdrift.py` -- they are what a docs change can break, and both are
-    seconds.
+    and `docdrift.py` (and `optiondrift.py` if an `extdata/*.R` wrapper
+    changed) -- they are what a docs change can break, and all are seconds.
   - **TSAN-annotation-only** (`SAIGE_TSAN_HAPPENS_*`): cannot move a golden,
     the macros are `((void)0)` unless `harness/tsan.sh` defines
     `SAIGE_TSAN_ANNOTATIONS`. Run the thing it actually affects --
@@ -204,7 +204,8 @@ PGEN fixtures (`linux-64`/`osx-64` only, hence the per-platform split in
 
 `bash harness/run_tests.sh [fast|standard|full]` -- testthat under
 `tests/testthat/`, sourcing the pinned env itself; `ledger.py lint` and
-`docdrift.py` run first.
+`docdrift.py` and `optiondrift.py` (LEDGER #151: the CLI wrappers' defaults against
+the exported formals, with an allowed-divergence list keyed to ledger rows) run first.
 - **fast** (~20s): unit tests over the R seams, R-vs-C++ CCT reconciliation,
   pure kernels pinned to closed forms (`test-unit-spa.R`, `test-unit-firth.R`),
   data-invariant checks over the goldens, and the suite's own comparator

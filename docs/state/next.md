@@ -1,6 +1,16 @@
-# What is worth doing next (2026-09-03, updated 2026-09-14 night; read docs/state/handoff-2026-09-14-phase-g.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-15; read docs/state/handoff-2026-09-15-optiondrift.md first)
 
-**Current handoff: `docs/state/handoff-2026-09-14-phase-g.md`** -- Phase G
+**Current handoff: `docs/state/handoff-2026-09-15-optiondrift.md`** -- LEDGER
+#151's guard exists: `harness/tools/optiondrift.py` compares every CLI
+wrapper default against the exported formal by VALUE, runs before every
+tier, and fails on any divergence not on its ALLOWED list (keyed to a ledger
+row, with both values, so an entry goes stale loudly). Its first run found
+eight divergences beyond the four the hand sweep had, two live in the
+arithmetic (step-1 `--relatednessCutoff` 0 vs 0.125, step-0
+`--numRandomMarkerforSparseKin` 2000 vs 1000); all twelve are recorded on
+#151 and remain the owner's per-divergence call. No `src/`/`R/` change.
+
+**Previous handoff: `docs/state/handoff-2026-09-14-phase-g.md`** -- Phase G
 DONE as the audit prescribed: G1's five slices of `SAIGE.Region` (new
 `R/RegionState.R`: `regionStateFor`, `regionTestPlan`, `regionDoneMessage`,
 `composeWeightSets`, and the accumulator environment `scan`, no `<<-` left)
