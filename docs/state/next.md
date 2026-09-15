@@ -15,7 +15,10 @@ not being present). **#154 drilled**: 24 concurrent 4-thread P3 runs at load
 12-23 all clean and byte-identical, TSAN region races=0 at t=1/4/8 -- stays
 as the re-run rule. **#150 FIXED** (owner: delete): the four dead chrX/ER assignments are gone,
 each replaced by a comment naming the row. **Open: #154 only**, the re-run
-rule; the ledger's execution queue is empty.
+rule, now with its mechanism candidate on the row (oneTBB workers alive at
+exit, documented; 0/232 reproductions). **#155 found by that drill and FIXED**:
+the SKAT-O pool's cluster port could collide between concurrent processes;
+it retries. The ledger's execution queue is empty.
 
 **Previous handoff: `docs/state/handoff-2026-09-14-phase-g.md`** -- Phase G
 DONE as the audit prescribed: G1's five slices of `SAIGE.Region` (new

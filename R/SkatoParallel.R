@@ -63,7 +63,28 @@ startSkatoCluster <- function(nThreads) {
   # typical cell. PSOCK measured marginally faster here but needs the package
   # loaded and every object shipped, so fork is the simpler contract. It is
   # also why this is Unix-only; see the caller's guard.
-  skato_env$cl <- parallel::makeForkCluster(as.integer(nThreads))
+  # LEDGER #155: makeForkCluster listens on ONE port chosen at package load
+  # (11000-11999, from the RNG and the clock), and two SAIGE processes on one
+  # box can choose the same one: `creation of server socket failed: port
+  # 11930 cannot be opened`, seen once in 200 concurrent runs (eight at a
+  # time, the gate's shape). So a failure to bind is retried on a port
+  # derived from this process's pid and the attempt number -- no RNG draw, so
+  # the R random stream downstream is untouched.
+  cl <- NULL
+  for (attempt in seq_len(10L)) {
+    port <- if (attempt == 1L) NULL else
+      11000L + as.integer((as.numeric(Sys.getpid()) * 7919 + attempt * 104729) %% 1000)
+    cl <- tryCatch(
+      if (is.null(port)) parallel::makeForkCluster(as.integer(nThreads)) else
+        parallel::makeForkCluster(as.integer(nThreads), port = port),
+      error = function(e) e)
+    if (!inherits(cl, "error")) break
+    cat("SKAT-O worker pool: ", conditionMessage(cl), " -- retrying on port ",
+        11000L + as.integer((as.numeric(Sys.getpid()) * 7919 + (attempt + 1L) * 104729) %% 1000),
+        " (attempt ", attempt + 1L, " of 10; LEDGER #155)\n", sep = "")
+  }
+  if (inherits(cl, "error")) stop(cl)
+  skato_env$cl <- cl
   skato_env$n <- as.integer(nThreads)
   # Printed exactly once, and only once the pool is actually built -- i.e. only
   # when a region really did take the parallel path. A test that asserts

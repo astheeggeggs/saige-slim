@@ -123,3 +123,31 @@ block) and `max_MAC_use_ER <- 0` (non-binary) were dead locals, pushed to
 C++ before they were assigned and read by nothing; each is now a comment
 naming the row, the corrected stdout sentence stays. Gate FAIL 0, no golden
 moved, `test-step2-xnonpar-missing.R` unchanged. `ledger.py open` = #154.
+
+## Later: #154 chased to a documented candidate; #155 found and FIXED on the way
+
+**#154.** The `cleanup(kill = SIGKILL, detach = TRUE, shutdown = TRUE)`
+frame is `parallel`'s exit finalizer `clean_pids`, registered at load and
+run at EVERY R exit; `mc_cleanup` (R 4.4.3 `fork.c`) has no null
+dereference, and the SKAT-O pool's nodes are forked estranged, so its
+child list is empty and the finalizer has nothing to do. The main thread
+was simply there when another thread faulted. Live candidate: oneTBB
+2021.18 through RcppParallel 5.1.11.2, which installs no finalizer for it,
+and oneTBB's spec says a process does not wait for its worker threads to
+clean up at exit -- a documented window for a fault at address 0 after
+every file is written. The remedy oneTBB provides (`task_scheduler_handle`
++ `finalize()`) has its own reported abort (oneTBB #1040), and a fix
+nothing can reproduce cannot be verified, so nothing is changed. Evidence:
+24 + 200 concurrent 4-thread P3 runs at load up to 60, 0 x 139; TSAN region
+races=0 at 1/4/8. Stays OPEN as the re-run rule.
+
+**#155.** The stress drill's one non-zero exit was a different defect:
+`makeForkCluster` listens on one port fixed at package load from the RNG
+and the clock (11000-11999), so two SAIGE processes on one box can collide
+(~2.8 % per batch of eight, the gate's shape) and the second dies in
+`startSkatoCluster` before any test. `startSkatoCluster` now retries a
+failed bind up to ten times on a port derived from pid and attempt (no RNG
+draw). `test-characterization-ledger155.R` holds a port in a helper process
+and forces the run onto it with `R_PARALLEL_PORT`; the control is that the
+first bind fails in the log. No golden moves (the first attempt is
+upstream's call, verbatim).
