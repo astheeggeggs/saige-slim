@@ -12,8 +12,12 @@
 # only because the code tolerated that size disagreement. C++ now asserts
 # `q_weight == t_weightNames.size()` once the sets are composed and the two
 # fallbacks are gone, so the same input is a loud error naming the counts.
-# Half (b), making C++ honour R's layout on an all-zero matrix, is a
-# behaviour change on a reachable input and stays open for the owner.
+# Half (b), FIXED 2026-09-15 (owner's decision): an all-zero matrix composes
+# its K sets like any other, so every GENE1 cell is empty under the region
+# path's existing rule (no row for a cell with nothing to test -- the same
+# thing a gene whose annotation is absent gets), GENE1's pooled row is NA
+# with no inputs, and GENE2 is untouched. The stop of half (a) stays as an
+# invariant that can no longer fire on this input.
 #
 # Fixture derived at run time: the K = 2 multi-weight group file with GENE1's
 # two weight lines zeroed (GENE2 untouched, so the run reaches GENE1 with a
@@ -36,13 +40,13 @@ l146_zero_fixture <- function(dir) {
   path
 }
 
-test_that("an all-zero K=2 region is a loud error, not a column-shifted file (LEDGER #146)", {
+test_that("an all-zero K=2 region is empty, not a stop and not a column shift (LEDGER #146)", {
   skip_unless_level("standard")
   dir <- tempfile("step2_l146_")
   dir.create(dir, recursive = TRUE)
   grp <- l146_zero_fixture(dir)
   out <- file.path(dir, "burden.txt")
-  args <- c(
+  common <- c(
     "--bedFile=./input/genotype_100markers.bed",
     "--bimFile=./input/genotype_100markers.bim",
     "--famFile=./input/genotype_100markers.fam",
@@ -53,23 +57,37 @@ test_that("an all-zero K=2 region is a loud error, not a column-shifted file (LE
     "--sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx",
     paste0("--sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_",
            "randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt"),
-    paste0("--groupFile=", grp),
     "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
     "--maxMAF_in_groupTest=0.0001,0.001,0.01",
-    "--r.corr=1", "--is_fastTest=TRUE",
-    paste0("--SAIGEOutputFile=", out)
+    "--r.corr=1", "--is_fastTest=TRUE"
   )
-  st <- l146_cli("step2_SPAtests.R", args)
+  st <- l146_cli("step2_SPAtests.R", c(common, paste0("--groupFile=", grp),
+                                       paste0("--SAIGEOutputFile=", out)))
   lg <- readLines(attr(st, "log"), warn = FALSE)
-  # the inverted characterization: before the fix this exited 0 and the
-  # header (built for 2 sets, with a Weight column) had one more field than
-  # GENE1's rows (written for 1 implicit set, without it)
-  expect_false(identical(as.integer(st), 0L))
-  expect_true(any(grepl("LEDGER #146", lg, fixed = TRUE)))
-  expect_true(any(grepl("2 weight set(s)", lg, fixed = TRUE)))
-  if (file.exists(out)) {
-    rows <- readLines(out, warn = FALSE)
-    nf <- lengths(strsplit(rows, "\t", fixed = TRUE))
-    expect_true(all(nf == nf[1]))
-  }
+  # inverted 2026-09-15: before (b) this stopped naming "2 weight set(s)"
+  expect_identical(as.integer(st), 0L)
+  expect_false(any(grepl("LEDGER #146", lg, fixed = TRUE)))
+  tab <- read.delim(out, stringsAsFactors = FALSE, check.names = FALSE)
+  # every row has the header's field count (the (a) defect was a column shift)
+  nf <- lengths(strsplit(readLines(out, warn = FALSE), "\t", fixed = TRUE))
+  expect_true(all(nf == nf[1]))
+  # GENE1: no set rows (every cell empty), one pooled row with nothing in it
+  g1 <- tab[tab$Region == "GENE1", ]
+  expect_identical(nrow(g1), 1L)
+  expect_identical(g1$Group, "Cauchy")
+  expect_true(is.na(g1$Pvalue_Burden))
+  # GENE2: byte-identical rows to the untouched K = 2 fixture's run
+  ref <- file.path(dir, "burden_ref.txt")
+  st2 <- l146_cli("step2_SPAtests.R", c(common,
+    "--groupFile=./input/group_new_snpid_multiWeights.txt", paste0("--SAIGEOutputFile=", ref)))
+  expect_identical(as.integer(st2), 0L)
+  g2 <- grep("^GENE2\t", readLines(out, warn = FALSE), value = TRUE)
+  g2_ref <- grep("^GENE2\t", readLines(ref, warn = FALSE), value = TRUE)
+  expect_true(length(g2) > 1L)
+  expect_identical(g2, g2_ref)
+  # the disclosure: the pooled sidecar says GENE1 combined nothing
+  pooled <- paste0(out, ".pooledTests.txt")
+  expect_true(file.exists(pooled))
+  pt <- read.delim(pooled, stringsAsFactors = FALSE, check.names = FALSE)
+  expect_true("GENE1" %in% pt$Region)
 })

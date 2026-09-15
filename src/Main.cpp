@@ -2371,7 +2371,17 @@ Rcpp::List mainRegionInCPP(
   // *_noweights accumulators stay jm-indexed (weight-independent). The same
   // formula is documented at the R call site (run_mainRegionInCPP).
   boost::math::beta_distribution<> beta_dist(g_cfg.weights_beta[0], g_cfg.weights_beta[1]);
-  bool hasCustomWeights = (!(t_weight.is_zero()) && t_weight.n_rows == q0);
+  // LEDGER #146(b), decided 2026-09-15: an all-zero custom weight matrix is
+  // NOT "no custom weights". It composes its K sets like any other matrix;
+  // every cell of a zero-weight set then has no non-zero weighted genotype
+  // and falls under the empty-cell rule below (no row, like a bin with no
+  // markers), and the region's pooled row has no inputs (NA, #127). That is
+  // what one zero column among non-zero ones already did, and what a
+  // discrete weighting scheme means by a gene that scores 0 everywhere. The
+  // old `!is_zero()` predicate dropped to ONE implicit beta set here while R
+  // had built the header for K, which #146(a) turned from a column-shifted
+  // file into a stop; now R and C++ cannot disagree on K.
+  bool hasCustomWeights = (t_weight.n_rows == q0);
   unsigned int q_weight_custom = hasCustomWeights ? t_weight.n_cols : 0;
   // FlexRV (F3): Kt transform sets, one per row of the transform table,
   // composed right after the custom sets. A transform set behaves like a

@@ -90,3 +90,28 @@ from the same `.mtx`, 402.4175 both. Gate: see the commit.
 
 **Open now:** #146(b) (recommend the stop stands), #150 (code stays by
 decision), #154 (unreproduced teardown segfault).
+
+## Evening: #146(b) FIXED, #154 drilled
+
+**#146(b).** The owner's framing settled it: a discrete weighting scheme
+legitimately scores some genes 0 everywhere, and that is the same as the
+annotation not being present. Measured first: with ONE of GENE1's two weight
+lines zeroed, that set's six GENE1 cells already vanished silently -- the
+BURDEN emitter's rule that a cell with no non-zero weighted genotype is
+neither refused nor tested, the same rule a bin with no markers gets. So the
+all-zero matrix now composes its K sets like any other (`hasCustomWeights`
+is `n_rows == q0` alone), every GENE1 cell is empty under that rule, the
+pooled row is NA with no inputs and the sidecar names the gene; GENE2 is
+byte-identical to the untouched fixture's run. Test inverted; gate FAIL 0,
+no golden moved, as predicted. Still undisclosed, upstream's convention on
+the whole region path: empty cells of any cause print nothing.
+
+**#154.** Load recreated (24 concurrent 4-thread P3 runs beside a TSAN
+build, load 12-23): 24 x exit 0, all 48 output files byte-identical. TSAN
+region clean arm: races=0 at t=1/4/8, bytes identical to serial. 0/32 and a
+clean detector is not a mechanism; the row stays as the re-run rule, with
+the gate's own shape (eight testthat workers forking SKAT-O pools) as the
+one untested difference.
+
+**Open:** #150 (owner: delete the four dead chrX assignments or keep them)
+and #154.

@@ -9,8 +9,12 @@ eight divergences beyond the four the hand sweep had; **all twelve were
 decided by the owner the same day (#151 DECIDED, ALLOWED list empty)**, and
 **#153 is FIXED**: the 1e16 Nglmm was a non-converged PCG on the dense GRM
 because the sparse file was given without the flag; `getNeff` now requires
-the sparse GRM and always solves on it (402.4175 = the closed form). Open:
-#146(b), #150, #154 -- all decisions or unreproduced.
+the sparse GRM and always solves on it (402.4175 = the closed form). **#146(b) FIXED** the same day (an all-zero weight matrix composes its sets and
+falls under the empty-cell rule, the owner's framing: same as the annotation
+not being present). **#154 drilled**: 24 concurrent 4-thread P3 runs at load
+12-23 all clean and byte-identical, TSAN region races=0 at t=1/4/8 -- stays
+as the re-run rule. Open: #150 (delete the four dead chrX assignments, or
+keep: owner's call) and #154.
 
 **Previous handoff: `docs/state/handoff-2026-09-14-phase-g.md`** -- Phase G
 DONE as the audit prescribed: G1's five slices of `SAIGE.Region` (new
