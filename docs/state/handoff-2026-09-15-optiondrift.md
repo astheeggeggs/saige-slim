@@ -54,3 +54,39 @@ stop stands), #150 (code stays, surfaces corrected), #151 (twelve
 per-divergence calls, now with a guard so the count cannot grow unnoticed),
 #153 (`getNeff`'s `tau = (0, 1)`), #154 (one teardown segfault under load,
 0/8 in isolation).
+
+## Later the same day: #151 DECIDED, #153 FIXED
+
+**#151.** All twelve divergences settled by the owner, one route per value,
+three commits (`4cdf670b`, `81e3202f` and the tool's `d1d7237c`); the
+ALLOWED list is empty. The live ones: step-1 `relatednessCutoff` formal 0
+(in step 1 it is only `drop0(tol)` on a loaded `.mtx`, so it can prune step
+0's pairs and never add one); `numRandomMarkerforSparseKin` formals 2000
+(SE of an unrelated pair's kinship ~ 1/sqrt(M): the 0.125 cutoff is 3.9 SE
+out at 1000, 5.6 at 2000; the owner runs 5000); `maxMAF_in_groupTest`
+three cells; `isCovariateOffset` TRUE (help now says what it does);
+`sampleIDColinphenoFile` `IID`; `outputPrefix` `""` (no stop: in a container
+the only legitimate location is a mounted volume the user names, and `~/`
+is the container's own home); step-0 `nThreads` 1; `X_PARregion` `""` on
+both routes = GRCh38 PAR `10001-2781479,155701383-156030895` (GRC page,
+checked) filled in with a banner and `warning()` only when the male rewrite
+is on. One test moved: `test-step1-ai-projection.R` fitted through the API
+without naming `isCovariateOffset`, and the new default shrank its
+quantitative right-vs-wrong margins under the 1e-4 bar (kernel checks still
+passed); it names FALSE now. That is the shape to expect from the default
+changes: an API caller that relied on a default now gets the CLI's value.
+
+**#153.** Not the formula. `tau = (0, 1)` makes Nglmm `1' K^-1 1`, the
+effective number of unrelated samples, 402.4 for the fixture's 100 families
+of 10. The 1e16 was a NON-CONVERGED PCG's partial sum printed as the answer:
+the sparse GRM file was passed but not `--useSparseGRMtoFitNULL=TRUE`, so it
+was never loaded and the solve ran on the dense marker GRM with no residual
+term, where the inverse is set by near-zero eigenvalues (rank <= min(N, M)).
+Upstream's `cmd_extractNeff.sh` always passed the flag. Fix: `getNeff`
+requires the sparse GRM and always uses it; the dense path is refused, not
+guarded, because no setting makes it well posed without changing the
+question. Two-way check in the test: printed `Nglmm` vs `sum(solve(K, 1))`
+from the same `.mtx`, 402.4175 both. Gate: see the commit.
+
+**Open now:** #146(b) (recommend the stop stands), #150 (code stays by
+decision), #154 (unreproduced teardown segfault).

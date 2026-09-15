@@ -5,10 +5,12 @@
 wrapper default against the exported formal by VALUE, runs before every
 tier, and fails on any divergence not on its ALLOWED list (keyed to a ledger
 row, with both values, so an entry goes stale loudly). Its first run found
-eight divergences beyond the four the hand sweep had, two live in the
-arithmetic (step-1 `--relatednessCutoff` 0 vs 0.125, step-0
-`--numRandomMarkerforSparseKin` 2000 vs 1000); all twelve are recorded on
-#151 and remain the owner's per-divergence call. No `src/`/`R/` change.
+eight divergences beyond the four the hand sweep had; **all twelve were
+decided by the owner the same day (#151 DECIDED, ALLOWED list empty)**, and
+**#153 is FIXED**: the 1e16 Nglmm was a non-converged PCG on the dense GRM
+because the sparse file was given without the flag; `getNeff` now requires
+the sparse GRM and always solves on it (402.4175 = the closed form). Open:
+#146(b), #150, #154 -- all decisions or unreproduced.
 
 **Previous handoff: `docs/state/handoff-2026-09-14-phase-g.md`** -- Phase G
 DONE as the audit prescribed: G1's five slices of `SAIGE.Region` (new

@@ -39,7 +39,7 @@
 #' @param outputPrefix_varRatio character. Path to the output variance ratio file with prefix. variace ratios will be output to outputPrefix_varRatio.varianceRatio.txt. If outputPrefix_varRatio is not specified, outputPrefix_varRatio will be the same as the outputPrefix
 #' @param IsOverwriteVarianceRatioFile logical. Whether to overwrite the variance ratio file if the file exists. By default, FALSE
 #' @param IsSparseKin logical. Whether to exploit the sparsity of GRM to estimate the variance ratio. By default, TRUE
-#' @param sparseGRMFile character. Path to the pre-calculated sparse GRM file. If not specified and IsSparseKin=TRUE, sparse GRM will be computed
+#' @param sparseGRMFile character. REQUIRED: path to the sparse GRM (.mtx) from createSparseGRM. Nglmm is 1' K^-1 1 on this matrix; there is no dense alternative (LEDGER #153).
 #' @param sparseGRMSampleIDFile character. Path to the sample ID file for the pre-calculated sparse GRM. No header is included. The order of sample IDs is corresponding to the order of samples in the sparse GRM.
 #' @param numRandomMarkerforSparseKin integer. number of randomly selected markers (MAF >= 0.01) to be used to identify related samples that are included in the sparse GRM. By default, 2000
 #' @param relatednessCutoff float. The threshold for coefficient of relatedness to treat two samples as unrelated if IsSparseKin is TRUE. By default, 0.125
@@ -50,7 +50,7 @@
 #' @param isDiagofKinSetAsOne logical. Whether to set the diagnal elements in GRM to be 1. By default, FALSE
 #' @param useSparseSigmaforInitTau logical. Whether to use sparse GRM to estimate the initial values for fitting the null GLMM. By default, FALSE
 #' @param useSparseSigmaConditionerforPCG logical. Whether to use sparse GRM to construct a conditoner for PCG. By default, FALSE. Current this option is deactivated.
-#' @param useSparseGRMtoFitNULL logical. Whether to use sparse GRM to fit the null GLMM. By default, FALSE
+#' @param useSparseGRMtoFitNULL logical. Always TRUE inside getNeff (the sparse GRM is the only matrix Nglmm is solved on); kept for call compatibility, FALSE prints a line and is overridden.
 #' @param minCovariateCount integer. If binary covariates have a count less than this, they will be excluded from the model to avoid convergence issues. By default, -1 (no covariates will be excluded)
 #' @param minMAFforGRM numeric. Minimum MAF for markers (in the Plink file) used for construcing the sparse GRM. By default, 0.01
 #' @param includeNonautoMarkersforVarRatio logical. Whether to allow for non-autosomal markers for variance ratio. By default, FALSE
@@ -137,6 +137,32 @@ getNeff <- function(plinkFile = "",
   psamFile <- genoIn$psamFile
 
 
+  # LEDGER #153 (FIXED 2026-09-15): Nglmm is 1' K^-1 1 on the SPARSE GRM, the
+  # effective number of unrelated samples, and nothing else is well posed. On
+  # the dense marker GRM K has rank <= min(N, M) and no residual term, so the
+  # inverse is set by its near-zero eigenvalues: the PCG hit maxiterPCG and
+  # its partial sum was printed as Nglmm (9.67e15 for N = 1,000 where the
+  # sparse solve gives 402.4175, equal to solve(K, 1) summed in R). So a
+  # sparse GRM is required, and it is used whether or not the caller also
+  # said --useSparseGRMtoFitNULL=TRUE, which upstream's cmd_extractNeff.sh
+  # always passed and the strip branch's drills did not.
+  if (is.null(sparseGRMFile) || !nzchar(sparseGRMFile[1]) ||
+    is.null(sparseGRMSampleIDFile) || !nzchar(sparseGRMSampleIDFile[1])) {
+    stop(
+      "getNeff needs --sparseGRMFile and --sparseGRMSampleIDFile (LEDGER #153): ",
+      "the effective sample size is 1' K^-1 1 on the sparse GRM, and on the dense ",
+      "marker GRM that inverse is ill-posed (the PCG does not converge and the ",
+      "printed number is meaningless). Make one with createSparseGRM.R\n"
+    )
+  }
+  if (!useSparseGRMtoFitNULL) {
+    cat(
+      "getNeff always solves on the sparse GRM: --useSparseGRMtoFitNULL=TRUE is ",
+      "implied (LEDGER #153)\n", sep = ""
+    )
+    useSparseGRMtoFitNULL <- TRUE
+  }
+
   setminMAFforGRM(minMAFforGRM)
   if (minMAFforGRM > 0) {
     cat(
@@ -162,8 +188,13 @@ getNeff <- function(plinkFile = "",
     }
     useSparseSigmaforInitTau <- FALSE
     useSparseSigmaConditionerforPCG <- FALSE
+    if (LOCO) {
+      # LEDGER #153: every getNeff run reaches this block now, so LOCO can
+      # never apply here -- Nglmm = 1' K^-1 1 does not depend on a chromosome.
+      cat("LOCO is not applied in getNeff: Nglmm is 1' K^-1 1 on the sparse GRM ",
+          "and does not depend on the chromosome (LEDGER #153)\n", sep = "")
+    }
     LOCO <- FALSE
-    # cat("Leave-one-chromosome-out is not applied\n")
   }
   useSparseSigmaConditionerforPCG <- FALSE
   if (useSparseSigmaConditionerforPCG) {

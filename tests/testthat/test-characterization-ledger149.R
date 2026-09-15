@@ -18,6 +18,10 @@
 # `--LOCO` has no CLI flag in extractNglmm.R, so this goes through the R API
 # in a child process (getNeff drives the one-dataset-per-process C++ state).
 # Tier: standard (one getNeff run, ~30 s).
+#
+# 2026-09-15, LEDGER #153: getNeff always solves on the sparse GRM, whose
+# branch sets LOCO <- FALSE, so the windows are no longer printed by getNeff
+# at all; the test below pins that, and the helper is covered by step 1.
 
 l149_extdata <- function() get("saige_extdata")
 
@@ -47,29 +51,17 @@ l149_vec <- function(lg, name) {
   as.numeric(strsplit(trimws(sub(paste0("^", name, ": "), "", ln)), "\\s+")[[1]])
 }
 
-test_that("getNeff's LOCO windows span the QC'd markers, not the raw bim (LEDGER #149)", {
+test_that("getNeff with LOCO = TRUE drops LOCO and says why (LEDGER #149 -> #153)", {
   skip_unless_level("standard")
+  # Since LEDGER #153 (2026-09-15) every getNeff run solves on the sparse GRM,
+  # and that branch has always set LOCO <- FALSE, so the QC'd-window block
+  # this test was written for is unreachable from getNeff: no window vector is
+  # printed. The helper it calls, updateChrStartEndIndexVec, is fitNULLGLMM's
+  # and stays covered there (test-step1-lowmem-loco.R, test-step2-loco.R).
   r <- l149_run()
   expect_identical(r$status, 0L)
-  starts <- l149_vec(r$log, "chromosomeStartIndexVec")
-  ends <- l149_vec(r$log, "chromosomeEndIndexVec")
-  expect_length(starts, 22L)
-  expect_length(ends, 22L)
-  ok <- !is.na(starts) & !is.na(ends)
-  span <- sum(ends[ok] - starts[ok] + 1)
-  qc_line <- grep("markers with MAF >= 0.01 and missing rate <= 0", r$log, value = TRUE)
-  expect_length(qc_line, 1L)
-  n_qc <- as.numeric(sub("^\\s*(\\d+) markers.*$", "\\1", qc_line))
-  bim <- file.path(l149_extdata(), "input",
-                   "nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr.bim")
-  n_raw <- length(readLines(bim))
-  # the fixture really has QC to apply
-  expect_lt(n_qc, n_raw)
-  # the inverted characterization: before the fix span == n_raw (128,868)
-  expect_identical(span, n_qc)
-  expect_false(span == n_raw)
-  # the windows are the QC'd store's: contiguous, ordered, starting at 0
-  expect_identical(starts[ok][1], 0)
-  expect_true(all(diff(starts[ok]) > 0))
-  expect_identical(starts[ok][-1], ends[ok][-sum(ok)] + 1)
+  expect_true(any(grepl("LOCO is not applied in getNeff", r$log, fixed = TRUE)))
+  expect_false(any(grepl("^chromosomeStartIndexVec: ", r$log)))
+  expect_false(any(grepl("^chromosomeEndIndexVec: ", r$log)))
+  expect_length(grep("^Nglmm ", r$log), 1L)
 })

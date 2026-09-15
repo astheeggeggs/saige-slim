@@ -205,8 +205,8 @@ option_list <- list(
     type = "character",
     default = NULL,
     help = paste0(
-      "Path to the pre-calculated sparse GRM file. If not specified and  ",
-      "IsSparseKin=TRUE, sparse GRM will be computed [default=NULL]"
+      "Required. Path to the sparse GRM (.mtx) from createSparseGRM.R; Nglmm is ",
+      "1' K^-1 1 on it and the run stops without one (LEDGER #153) [default=NULL]"
     )
   ),
   make_option(
@@ -262,7 +262,10 @@ option_list <- list(
     "--useSparseGRMtoFitNULL",
     type = "logical",
     default = FALSE,
-    help = "Whether to use sparse GRM to fit the null model [default='FALSE']."
+    help = paste0(
+      "Always TRUE in extractNglmm.R: the sparse GRM is the only matrix Nglmm is ",
+      "solved on; FALSE is overridden with a printed line [default='FALSE']."
+    )
   ),
   make_option(
     "--minMAFforGRM",

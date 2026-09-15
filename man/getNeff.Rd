@@ -134,7 +134,7 @@ specified, 'plink2File'.psam will be used}
 
 \item{IsSparseKin}{logical. Whether to exploit the sparsity of GRM to estimate the variance ratio. By default, TRUE}
 
-\item{sparseGRMFile}{character. Path to the pre-calculated sparse GRM file. If not specified and IsSparseKin=TRUE, sparse GRM will be computed}
+\item{sparseGRMFile}{character. REQUIRED: path to the sparse GRM (.mtx) from createSparseGRM. Nglmm is 1' K^-1 1 on this matrix; there is no dense alternative (LEDGER #153).}
 
 \item{sparseGRMSampleIDFile}{character. Path to the sample ID file for the pre-calculated sparse GRM. No header is included. The order of sample IDs is corresponding to the order of samples in the sparse GRM.}
 
@@ -162,7 +162,7 @@ specified, 'plink2File'.psam will be used}
 
 \item{minMAFforGRM}{numeric. Minimum MAF for markers (in the Plink file) used for construcing the sparse GRM. By default, 0.01}
 
-\item{useSparseGRMtoFitNULL}{logical. Whether to use sparse GRM to fit the null GLMM. By default, FALSE}
+\item{useSparseGRMtoFitNULL}{logical. Always TRUE inside getNeff (the sparse GRM is the only matrix Nglmm is solved on); kept for call compatibility, FALSE prints a line and is overridden.}
 
 \item{includeNonautoMarkersforVarRatio}{logical. Whether to allow for non-autosomal markers for variance ratio. By default, FALSE}
 
