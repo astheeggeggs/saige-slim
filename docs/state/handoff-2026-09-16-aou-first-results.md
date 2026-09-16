@@ -269,3 +269,187 @@ measurement and argues against pursuing it.
   Stouffer it cannot. **Still to check: that BETA signs never disagree between the
   arms**, since Stouffer needs the direction. Note Firth never touches
   `BETA_Burden`/`SE_Burden` under `r.corr == 0` in any case.
+
+---
+
+# CORRECTIONS AND ADDITIONS, later the same day
+
+Everything above stands except where noted here. **Read this section before
+quoting any timing from the one above.**
+
+## C1. Every timing above is unreplicated AND unpinned
+
+`submit()` used `--min-cores 1 --min-ram 6`. Those are FLOORS, and dsub resolves
+them by building the **smallest matching CUSTOM machine type** -- so each task
+got a dsub-chosen **1-vCPU** custom machine, on whatever host generation Batch
+had. Between-generation single-thread differences of 20-40% are ordinary, and
+GCP network bandwidth scales at ~2 Gbps per vCPU, so a 1-vCPU machine is also
+capped at ~2 Gbps.
+
+There was also **no replication**: every arm is n = 1.
+
+So the section-1 speed table (slim 2.15-2.32x faster than upstream) and the
+section-3 cost model are both single-replicate, cross-machine comparisons. The
+2.2x is large enough to survive that; the smaller differences are not.
+
+**`submit()` now pins `--machine-type n2-standard-2`** (2 vCPU, 8 GB) and records
+it in the registry. `--machine-type` and `--min-cores`/`--min-ram` are MUTUALLY
+EXCLUSIVE in dsub -- passing both is rejected. **That pinning is a dividing
+line: nothing measured before it is comparable with anything measured after**,
+because both the CPU and the NIC ceiling changed. Runs predating it lack the
+`machine_type` key in the registry, which is the marker.
+
+## C2. The cost model is NOT established
+
+Section 3 fits `1096 = A + 18B`, `912 = A + 12B` to `A ~ 544 s`, `B ~ 30.7 s`,
+and concludes per-cell cost is uniform. **A third point refutes the fit.**
+
+`masktest-5nounion` (5 masks x 3 bins = 15 cells, the all-variants union mask
+dropped) came in at **1072 s** -- a 24 s saving where the model predicted 92 s.
+Taken literally that makes union cells 14.9 ms and `pLoF;damaging_missense`
+cells 99.4 ms, i.e. the mask with the LARGEST kernels is the cheap one. Not
+credible as a mechanism.
+
+**24 s is 2.2% of 1096 s, and this project's replicate spread is 4-6%.** So the
+saving is indistinguishable from zero and the 99.4 ms is an artefact of
+attributing all 184 s to the other mask. The two-parameter fit had two
+observations, hence no residual and no validation; my claim that it was
+"consistent with which cells were removed" was circular.
+
+**What survives**: 12 cells is ~17% faster than 18 cells (one paired
+observation), and therefore **the union mask is at most 16.8% of runtime** --
+against the ~80% its `sum(q^3)` share implied. That bound holds regardless.
+
+**Outstanding**: two noise-floor replicates of the identical 18-cell config, on
+pinned machines. Until those exist, no timing difference below ~5% is readable.
+
+## C3. q_eff measured, and LEDGER #156 is closed by it
+
+`q_eff = Number_rare + 1`: **median 3, p90 21, p99 62, max 482, none above
+1,000** over 9,515 cells. The `sum(q^3)` shares barely moved after the
+correction (union 81.3% vs 82.6%), so the RANKING survived while the MAGNITUDES
+collapsed -- which is precisely why the cubic term never drove the cost. A
+median 3x3 eigendecomposition is free.
+
+This is on LEDGER #156, which is now argued against on measurement: the fast
+path's crossover is q ~ 2,000-4,000 and at q = 500 its eigensolve is 0.64x, so
+`isFast` would slow every cell of this workload. **Do not spend a machine on
+that simulation study.**
+
+## C4. The group file is 68.6% non-coding, and those markers are never read
+
+Annotation tally over 388,543 `anno` entries (var/anno line lengths agree for
+every gene, so the alignment is sound):
+
+| annotation | entries | share |
+|---|---|---|
+| `non_coding` | 266,647 | 68.63% |
+| `other_missense` | 61,920 | 15.94% |
+| `synonymous` | 39,943 | 10.28% |
+| `damaging_missense` | 14,749 | 3.80% |
+| `pLoF` | 5,284 | 1.36% |
+
+`non_coding` is not in `--annotation_in_groupTest`, and
+`R/SAIGE_SPATest_Region.R:2210-2231` removes markers matching no requested
+annotation (`rowSums(annoIndicatorMat) == 0`) from `SNP` **and from
+`genoIndex`** -- the vector the C++ reader fetches by. So they are dropped in R
+**before any decode**.
+
+Two consequences:
+- **`.singleAssoc.txt` is restricted to the requested annotation classes.**
+  Non-coding variants never appear in it. (Answers a question asked directly.)
+- They cost nothing in decode or testing, **but they are still in the `.bed`,
+  which dsub localizes in full.**
+
+## C5. The coding subset: 39% of markers, and it validates NUMERICALLY
+
+119,863 unique coding variant IDs of 307,558 in the bim (39.0%). At 79,956
+samples a bed record is 19,989 bytes, so: full **5.73 GiB**, coding subset
+**2.3 GiB**, coding PGEN **13 MB** (+4.1 MB pvar, 859 KB psam). PGEN's ~180x
+against the subset bed is the sparse difflist encoding meeting a spectrum where
+~90% of variants are ultra-rare -- a `.bed` spends 19,989 bytes per variant
+saying "almost nobody carries this".
+
+**Two traps, both hit:**
+
+1. **plink2 rewrites chromosome codes.** `--make-bed`/`--make-pgen` emitted `20`
+   where the input had `chr20`. The wrapper's chromosome check caught it and the
+   run died in 108 s. **Without that check `--chrom=chr20` would have matched
+   nothing and SAIGE would have completed successfully having tested ZERO
+   markers** -- a header-only output, a fast "speedup", and no error.
+   `--output-chr chrM` preserves the prefix (the flag is named for what
+   chromosome 26 is called, and that choice implies the whole convention).
+   **When subsetting chrX, match the original's spelling**: the PAR handling
+   recognises `X`, `x`, `23`, `chrX`, `chr23`.
+2. **Slim's PGEN CLI is `--pgenFile` / `--pvarFile` / `--psamFile`**, three
+   separate flags mirroring bed/bim/fam -- NOT upstream's `--pgenPrefix`, which
+   fails with `long flag "pgenPrefix" is invalid`. Slim also ignores
+   `--AlleleOrder` for PGEN (a pvar is always REF/ALT-ordered), where upstream
+   1.4.2 REFUSES pgen without `--AlleleOrder=ref-first`.
+
+**Validation: byte-identity was the WRONG GATE and I should not have registered
+it.** CLAUDE.md says never to assert bit-identity between two different code
+paths and to compare statistics at ~1e-12 relative; a different bim with
+different marker indices IS a different path. Measured over the 9,515 shared
+cells: **18,193 numeric differences, 18,189 below 1e-10, worst 2.2e-7**. No
+label, count or `MAC` column moved, which rules out an allele flip or a changed
+marker set (either would give order-one differences).
+
+**The 4 outliers are LEDGER #106.** One is `SE_Burden`, a closed form
+(`1/sqrt(sum(Phi))`), so a 1.8e-7 move in it means `sum(Phi)` itself moved by
+~3.6e-7 -- a million times a rounding difference. #106's PCG stops on an
+ABSOLUTE residual (`sumr2 > tolPCG`, 0.02, no `||b||` normalisation), so the
+iteration count depends on the input's SCALE and a marginal cell can take one
+iteration in one run and two in the other. A perturbation that changes nothing
+mathematically flips it.
+
+**So: `SAIGE`'s region output is not a continuous function of its inputs at the
+1e-7 level.** Worth knowing before someone spends a day on "why doesn't this
+rerun match".
+
+## C6. Overhead outside the script is 13-26% of wall clock
+
+`(end - start) - TOTAL_SECONDS` from `dstat --full` = VM boot + image pull +
+localization + delocalization: **183 s for a solo task, 340-411 s when six ran
+concurrently** (upstream's consistently 30-60 s higher, consistent with a larger
+image). Every one of those was a 1-vCPU custom machine.
+
+**I asserted this was bandwidth contention without establishing it.** Three
+candidates remain unseparated: VM provisioning (six at once), image pull
+contention, and the network path. The solo overhead implies only ~31 MB/s
+overall, against 91.8 MiB/s measured from the notebook -- which suggests boot
+and image pull, not transfer, are the bulk of it.
+
+**`cod-bed` vs `cod-pgen` separates them**: same image, same machine, same boot,
+2.3 GB vs 18 MB localized. Equal overhead means provisioning dominates and input
+size is nearly irrelevant -- in which case the lever is fewer/longer tasks, not
+smaller inputs.
+
+A correction on method: **only the OVERHEAD comparison needs matched
+concurrency.** `SAIGE_SECONDS` is measured inside the container after
+localization, on a VM that shares nothing, so CPU-bound arms can run in
+parallel. Serialising them was over-cautious.
+
+## C7. First pinned result
+
+`cod-bed` (coding subset, `n2-standard-2`): **SAIGE_SECONDS 981, PEAK_RSS_MB
+3607**, against the 1,096 s / 3,946 MB baseline. **Not attributable** -- the
+machine and the input changed together. The noise-floor replicates are what
+separate them.
+
+## C8. Decisions and open items changed by the above
+
+- **Grid stays 18 cells in one run** (architecture, unchanged).
+- **The all-variants union mask is retained** -- the owner needs it for the All
+  by All QC (Lu et al. 2026, Supplementary Fig. 21), whose gene-level lambda_GC
+  filters key on `N_variants` and CAF from one (mask, bin) cell. The cost
+  argument for trimming it had already collapsed (<= 16.8%, and ~6% under the
+  refuted model).
+- **Machine pinning, replication, and cost-per-unit** (not wall time) are now
+  prerequisites for the threads / multi-trait / batching work, not part of it.
+- **Multi-trait step 2** (`--GMMATmodel_varianceRatio_multiTraits_File`) is the
+  highest-value untested lever: it shares the genotype read and decode across
+  models, which is the half nothing else touches, and each model's output stays
+  byte-identical to its own single-model run. The region path requires identical
+  step-1 sample ID vectors across models -- **the owner confirms the upcoming
+  trait set satisfies this.**
