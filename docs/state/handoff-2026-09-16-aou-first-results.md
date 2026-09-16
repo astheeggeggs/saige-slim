@@ -453,3 +453,98 @@ separate them.
   byte-identical to its own single-model run. The region path requires identical
   step-1 sample ID vectors across models -- **the owner confirms the upcoming
   trait set satisfies this.**
+
+---
+
+# SECOND CORRECTION, same evening: C1 was wrong about pinning, and the noise floor is ~20%
+
+**C1 above says `submit()` "now pins `--machine-type n2-standard-2`" and calls
+that a dividing line. It was not pinning anything.** The signature gained the
+parameter but the conditional splice never reached `args`, which still carried
+`--min-cores`/`--min-ram`. So **every run in this document -- including the ones
+C1 calls pinned (`cod-bed`, `cod-pgen`, `rep-18a/b`, `no1pct`, `firth-off`,
+`firth-on`, `mask4-pinned`) -- ran on a dsub-chosen 1-vCPU CUSTOM machine.**
+There is no dividing line yet. `mask4-pinned` is misnamed and its name should
+not be trusted; the `machine_type` column in the registry records the PARAMETER,
+not what was passed, so it is unreliable for everything up to this evening.
+
+## The noise floor is ~20%, not 3.18%
+
+`cod-bed` **981 s** and `cod-bed2` **1172 s** are the IDENTICAL configuration on
+the IDENTICAL files: **19.5% apart.** Full-bed 18-cell runs across the day span
+1096 / 1238 / 1263 / 1278 -- a 16.6% range on the same work.
+
+**The 3.18% from `rep-18a`/`rep-18b` was luck.** Two adjacent replicates do not
+estimate a spread; they estimate one difference. Quoting it as a floor was the
+same error as the two-point cost fit -- a model with no residual and no
+validation.
+
+**So only differences larger than ~20% are readable from single runs.**
+
+| finding | size | survives |
+|---|---|---|
+| slim vs upstream 1.4.2 | 2.2x | YES |
+| PGEN memory, 1634 vs ~3800 MB | 2.3x | YES |
+| 12 cells vs 18 cells, 925 vs 1219 mean | 24% | marginally |
+| `--is_fastTest` on a group run, +17% | 17% | NO on timing -- but the argument for dropping it is the BYTE-IDENTICAL output, which is exact and unaffected |
+| PGEN CPU penalty, ~12% | 12% | NO |
+| coding subset faster, ~12% | 12% | NO |
+| Firth cost, 1163 vs 1137 | 2.3% | NO -- predicted in advance as likely unmeasurable, and it was |
+
+## The one clean result: per-cell cost is UNIFORM
+
+Three 12-cell runs, two entirely different compositions:
+
+```
+masktest-4simple   912 s    4 masks x 3 bins
+mask4-pinned       927 s    4 masks x 3 bins  (repeat)
+no1pct             937 s    6 masks x 2 bins  -- drops the 0.01 bin, the widest cells
+```
+
+A **2.7% spread** across grids that share no cells with each other except by
+coincidence, in a population whose noise floor is ~20%. So **cell COUNT drives
+cost and cell SIZE does not** -- which retires the whole q / q^2 / q^3 line of
+enquiry, and is consistent with per-cell cost being fixed R-side SKAT-O
+machinery (one `integrate()` over the rho grid per cell) rather than arithmetic
+that scales with the kernel.
+
+## Also measured
+
+- **PGEN is far more reproducible than bed**: `cod-pgen` 1207 and `cod-pgen2`
+  1197 (0.8% apart) with peak RSS identical to the megabyte, against bed's
+  19.5%. Consistent with bed's variance coming from mmap page residency, which
+  is machine- and memory-pressure-sensitive in a way sparse PGEN reads are not.
+  Reproducibility is an argument for PGEN independent of speed or size.
+- **Firth is fully characterised on real data and is safe to disable** under the
+  owner's Stouffer scheme: region file **identical** (`0.00e+00` over every
+  column), `.singleAssoc.txt` p-values **identical** (0 of 14,066 differ), BETA
+  moved on 817 markers (5.8%), and **zero sign disagreements**. Since Stouffer
+  reads only the signed Z, a mixture of Firth-on and Firth-off contributors
+  across BRaVa is harmless -- which retires the consistency hazard raised
+  earlier.
+- **`no1pct` verified as a genuine 12-cell run** (`MAXMAF = 0.0001,0.001` in the
+  echo, two distinct `max_MAF` values, 6,879 rows), so the cell-count comparison
+  is real and not a mislabelled duplicate.
+
+## What follows
+
+Chasing 10-20% effects with single runs is futile at this variance. Either
+accept only large effects, or move to a paired design with several replicates
+per arm and interleaved ordering -- which is what `harness/bench_threads.sh`
+already does in this repo, for exactly this reason.
+
+The decisions that matter are nonetheless supported, and none of them rests on a
+timing difference below the floor: **slim over 1.4.2** (2.2x, and the p-value
+comparison attributed), **`--is_fastTest` off for group runs** (byte-identity,
+exact), **Firth off under Stouffer** (exact p and sign invariance), **the grid
+at 18 cells** (architecture), and **PGEN** (identical output, 2.3x less memory,
+far more reproducible; its ~12% CPU cost is below the floor and so is not
+established either way).
+
+**In flight at the time of writing**: `mt-dup3` (multi-trait with the same model
+three times -- an UPPER bound on multi-trait's benefit, because three identical
+models also collapse into the SKAT-O memo, which real distinct phenotypes would
+not) and `par3-bed` (three processes on one node -- a LOWER bound, sharing only
+the localization). Real multi-trait lies between. The `SKAT-O cells: N asked
+for, M evaluated, K served` line on `mt-dup3` quantifies how loose the upper
+bound is.
