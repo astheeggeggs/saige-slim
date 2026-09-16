@@ -548,3 +548,130 @@ not) and `par3-bed` (three processes on one node -- a LOWER bound, sharing only
 the localization). Real multi-trait lies between. The `SKAT-O cells: N asked
 for, M evaluated, K served` line on `mt-dup3` quantifies how loose the upper
 bound is.
+
+---
+
+# MULTI-TRAIT AND PROCESS PACKING (the evening's runs)
+
+Two arms, designed to bracket real multi-trait without needing three phenotypes
+on a common sample set:
+
+- **`par3-bed`** -- three copies of the SAME single-model run as three processes
+  in one container. Shares only the task overhead (one localization), so a
+  **LOWER** bound on multi-trait's benefit.
+- **`mt-dup3`** -- one process, `--GMMATmodel_varianceRatio_multiTraits_File`
+  listing the SAME model three times under names `a,b,c`. Shares the genotype
+  read and decode, so an **UPPER** bound -- and, in principle, also collapses
+  into the SKAT-O memo, which real distinct phenotypes would not.
+
+Both on `n2-standard-4` (16 GB) -- and these are the FIRST runs where
+`--machine-type` actually reached `args`, so the first that are what they say.
+
+## The memo was nearly silent, so the upper bound is TIGHT
+
+`mt-dup3` printed `SKAT-O cells: 21915 asked for, 21420 evaluated, 495 served`
+-- **2.3% served, not the ~67% predicted** for three identical models. So the
+memo is NOT doing the work, and `mt-dup3`'s time is close to what real
+multi-trait with distinct phenotypes would give rather than an optimistic
+ceiling. That was the run's most useful output: it converts a loose bound into
+a near-estimate.
+
+Why the memo barely fires on identical models is not explained here and was not
+chased.
+
+## Results
+
+| | `par3-bed` (3 processes) | `mt-dup3` (3 models, 1 process) |
+|---|---|---|
+| time | 1340 s | 2723 s |
+| vs 3 separate runs (~3657 s CPU) | 4020 CPU-s (slightly MORE) | **2723 CPU-s, 25% LESS** |
+| peak RSS, concurrent | 9730 MB (3243 per process) | 4975 MB |
+| peak HWM, sum per process | 11887 MB (3962 each) | 5625 MB |
+| output | three files identical, `01a4b431...` | three files identical, same hash |
+
+**Two memory facts that matter more than the times:**
+
+- **The concurrent peak is 18% below the sum of per-process peaks** (9730 vs
+  11887). The copies do not peak together, so packing is governed by 3.24 GB
+  per process, not 3.96 GB. This distinction exists only because the wrapper
+  was changed this afternoon to sample summed `VmRSS` alongside per-process
+  `VmHWM`.
+- **Each extra model costs ~554 MB**: 3867 MB for one model, 4975 MB for three.
+  So base ~3313 MB on bed, and the per-model slope is what sets how wide a
+  multi-trait pass can go.
+
+## Parallel beats multi-trait on cost -- but they COMPOSE, and that is the answer
+
+Multi-trait saves work but uses ONE core, so it loses on cost per trait:
+
+```
+multi-trait  n2-standard-2, 2 cores paid, 1 used, 2723 s -> 1815 core-s / trait
+3 processes  n2-standard-4, 4 cores paid, 4 used, ~1340 s -> 1340 core-s / trait
+             (as run it used only 3 of 4 cores, which was worse than separate
+              tasks: fill every core or the idle one eats the saving)
+```
+
+Combined -- four processes, each carrying a 3-trait pass, twelve traits on one
+node:
+
+```
+4 x 2723 s on 4 cores = 10,892 core-s for 12 traits = 908 core-s / trait
+vs twelve separate tasks incl. overhead                ~1519 core-s / trait
+```
+
+**~40% cheaper, and ONE task instead of twelve.**
+
+## And this is where PGEN finally pays
+
+Four bed processes at 4975 MB is 19.9 GB -- does NOT fit on `n2-standard-4`.
+With PGEN's lower base (1634 MB for one model, so ~1080 MB base at the same
+554 MB per-model slope) four 3-trait processes is **11 GB**, comfortable in 16.
+
+So PGEN's memory advantage, which bought NOTHING in the single-process regime
+(CPU binds first at 4 GB/vCPU), is exactly what makes the combined shape
+feasible. Its ~12% CPU penalty is below the noise floor and is the price.
+
+`[ASSUMPTION: the 554 MB per-model slope measured on bed carries over to PGEN.
+Plausible -- the increment should be per-sample model vectors, not genotype
+machinery -- but UNVERIFIED. Measure it before committing.]`
+
+## Reproducibility: four fragile cells, and only four
+
+Established by accident while checking the above:
+
+- `slim-BMI`, `rep-18a` and `rep-18b` are **byte-identical** (`f3315f02...`) --
+  three runs, three machines. The region path IS reproducible run to run.
+- `par3-bed` and `mt-dup3` are byte-identical to each other (`01a4b431...`) and
+  differ from that reference in **exactly 4 cells at 2.20e-07**.
+- The SAME 4-cell / 2.20e-07 signature appeared in three unrelated comparisons:
+  full-bed vs coding-subset bed, coding bed vs coding PGEN, and now across
+  machine populations.
+
+**So this dataset has exactly four cells sitting on LEDGER #106's iteration-count
+boundary, and any perturbation tips them -- a different bed layout, a different
+reader, a different CPU. The other 9,511 of 9,515 are bit-stable across all of
+it.** The likely cross-machine mechanism is OpenBLAS runtime kernel dispatch
+differing by microarchitecture, which #106 amplifies into printed digits; that
+is a hypothesis, not a measurement.
+
+**This does NOT undermine today's identity results.** The fastTest pair and the
+Firth pair both returned `0.00e+00` and were within-machine comparisons. It is
+the same rule CLAUDE.md already states for the goldens -- byte-exactness is a
+claim about one platform -- now with a measured blast radius of 4 cells in
+9,515.
+
+## Recommended production shape
+
+PGEN input, coding subset, one task per chromosome, several single-threaded
+processes per node, each carrying several traits in one multi-trait pass. Every
+fixed cost -- VM boot, image pull, localization, R startup, GRM load, genotype
+decode -- paid once per node rather than once per trait-chromosome.
+
+Threads stay unused: bounded at ~1.5x, they cost memory (the SKAT-O pool forks),
+and filling cores with independent work scales linearly. Reach for them only if
+memory ever forces one process per node, in which case the idle cores are
+already paid for.
+
+**Two measurements before committing**: the per-model memory slope on PGEN, and
+whether the 25% holds with DISTINCT phenotypes rather than three copies. The
+near-silent memo says it should, but that is an inference.
