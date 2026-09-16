@@ -117,6 +117,7 @@ struct RegionPrepModel : CellResult {
 
 struct RegionPrep {
   bool readFailed = false;
+  bool readSparse = false;  // 2026-09-16: read in carrier space (a PGEN difference list)
   bool passQC = false;
   bool isRare = false;
   bool tested = false;      // test outputs below and blockP1/P2 column k are valid

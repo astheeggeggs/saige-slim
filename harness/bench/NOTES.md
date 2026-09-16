@@ -2159,3 +2159,13 @@ quantitative 30.9 -> **3.0** user-s (10.4x), binary with Firth 43.5 -> **15.7**
 a difference list; the patched quantitative scan is startup plus ~3 us per
 marker. The binary gap is the saddlepoint's O(N) on the |Z| > 2 tail (and
 Firth's O(N x iterations) when on).
+
+**The region path, same evening.** `prepareAndTest` reads sparsely first,
+prepares over the listed samples, scatters the dense vector only for a marker
+tested singly, and computes the binary case/control tallies over the carriers
+by rank (the ultra-rare pass's `paritySumRanked` identities, per marker); the
+per-marker `zeros()` and the zero-index copy are gone, and the PGEN dense loop
+no longer pushes a discarded non-zero list. sim50k pgen, y_binary, 1 thread,
+2 interleaved reps, byte-identical: BURDEN 53.7 -> **34.5** user-s (1.56x),
+SKAT-O 219.5 -> **194.5** (1.13x). What is left of SKAT-O is R-side Davies and
+the per-marker `gtilde` the P1/P2 matrices need.

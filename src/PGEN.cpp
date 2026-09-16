@@ -583,7 +583,13 @@ void PgenClass::expandFromReadBuffer(double& t_altFreq, double& t_altCounts,
             t_altCounts += numAltReads;
         }
 
-        if(numAltReads > 0) {
+        // 2026-09-16: only when the caller asked for the packed non-zero form.
+        // Both step-2 call sites pass false and then have imputeGenoAndFlip
+        // rebuild this vector from scratch (it clears it first), so the
+        // push_back per non-zero sample -- up to N of them on a common
+        // variant -- was pure waste; PlinkClass::getOneMarker dropped its twin
+        // in Phase 4.
+        if(t_isOnlyOutputNonZero && numAltReads > 0) {
             t_indexForNonZero.push_back(i);
         }
         if(t_isOnlyOutputNonZero){

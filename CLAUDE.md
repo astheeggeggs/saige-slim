@@ -619,7 +619,9 @@ declarations sit at the top of `src/Main.cpp`.
   with the dense path's arithmetic (`imputeSparseAndFlip`, `src/UTIL.cpp`,
   states each identity), and the carriers are scattered into the worker's
   all-zero `GVec` for the test and cleared after. `PlinkReader` has no such
-  form and reads densely as before. The run prints `Sparse reads: K of M
+  form and reads densely as before. The REGION path does the same since the
+  same evening (`prepareAndTest`: scatter only for a singly-tested marker;
+  case/control tallies by rank), BURDEN 1.56x / SKAT-O 1.13x on sim50k. The run prints `Sparse reads: K of M
   ...` per chunk; `SAIGE_PGEN_SPARSE=0` is the kill switch. Measured on
   sim50k: quantitative scan 1.87x, binary 1.21x, every golden byte-identical
   (`docs/state/handoff-2026-09-16-pgen-sparse-read.md`). The zero-genotype

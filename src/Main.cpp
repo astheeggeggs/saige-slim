@@ -523,6 +523,7 @@ static bool markerProfileRequested()
 struct RegionProfile {
   bool enabled = false;
   long long calls = 0;
+  long long nSparse = 0;   // 2026-09-16: markers read in carrier space, tallied on the main thread
   double prepare = 0.0, rareArm = 0.0, test = 0.0, urCollapse = 0.0, flush = 0.0;
   double urPass = 0.0, urTest = 0.0, varmat = 0.0, emit = 0.0, emitTest = 0.0, total = 0.0;
   long long nPrepare = 0, nRareArm = 0, nTest = 0, nUrCollapse = 0, nFlush = 0;
@@ -779,6 +780,34 @@ static void complementIndices(const arma::uword* t_nz, std::size_t t_nnz,
   for(arma::uword i = 0; i < t_n; i++){
     if(k < t_nnz && t_nz[k] == i){ k++; }else{ out[o++] = i; }
   }
+}
+
+// 2026-09-16: the carrier-space prepare's case/control reductions over ONE
+// marker's list (t_nz increasing, t_v parallel), by rank -- the identities
+// CarrierStore::paritySumRanked / countRanked state for a cell's carriers,
+// here for a marker's: accu(v.elem(idx)) over a SORTED idx gathers by rank,
+// so the two-accumulator split is by rank parity, and a predicate false at 0
+// counts carriers only.
+static double paritySumRankedList(const arma::uvec & t_nz, const arma::vec & t_v,
+                                  const std::vector<int32_t> & t_rank)
+{
+  double a1 = 0.0, a2 = 0.0;
+  for(arma::uword e = 0; e < t_nz.n_elem; e++){
+    const int32_t r = t_rank[t_nz[e]];
+    if(r < 0){ continue; }
+    if(r & 1){ a2 += t_v[e]; }else{ a1 += t_v[e]; }
+  }
+  return a1 + a2;
+}
+template<class F>
+static arma::uword countRankedList(const arma::uvec & t_nz, const arma::vec & t_v,
+                                   const std::vector<int32_t> & t_rank, F t_pred)
+{
+  arma::uword n = 0;
+  for(arma::uword e = 0; e < t_nz.n_elem; e++){
+    if(t_rank[t_nz[e]] >= 0 && t_pred(t_v[e])){ n++; }
+  }
+  return n;
 }
 
 static bool regionProfileRequested()
@@ -2759,6 +2788,18 @@ Rcpp::List mainRegionInCPP(
     w.modelIndex = t_modelIdx[k];
     w.traitType = models[k]->m_traitType;
     w.isSingleVarianceRatio = models[k]->isSingleVarianceRatio();
+    // binary models: sample -> its position in m_case_indices / m_ctrl_indices
+    // (both sorted, from arma::find), -1 otherwise. Hoisted here on 2026-09-16
+    // from below the block driver, because the carrier-space prepare reads
+    // them per marker; the ultra-rare pass reads the same vectors.
+    if(w.traitType == "binary"){
+      const arma::uvec & ci = models[k]->m_case_indices;
+      const arma::uvec & ki = models[k]->m_ctrl_indices;
+      w.caseRank.assign(t_n, -1);
+      w.ctrlRank.assign(t_n, -1);
+      for(arma::uword kk = 0; kk < ci.n_elem; kk++){ w.caseRank[ci[kk]] = (int32_t)kk; }
+      for(arma::uword kk = 0; kk < ki.n_elem; kk++){ w.ctrlRank[ki[kk]] = (int32_t)kk; }
+    }
     // the same constructors as the single-model locals had, fill values included
     w.Beta_cVec = std::vector<double>(q, arma::datum::nan);
     w.seBeta_cVec = std::vector<double>(q, arma::datum::nan);
@@ -2885,30 +2926,78 @@ Rcpp::List mainRegionInCPP(
     bool flip = false;
 
     ProfileScope rpPrep(rp.enabled ? &rp.prepare : nullptr, &rp.nPrepare);
+    // 2026-09-16: the previous marker's carriers are cleared at the end of
+    // this lambda; if a test threw in between -- the ER arm's NeedsMainThread
+    // does exactly that -- they are still in GVec. Same guard as the marker
+    // path's prepareOneMarker.
+    if(sc.sparseScattered){
+      const arma::uvec & nzPrev = sc.indexNonZeroVec_arma;
+      for(arma::uword e = 0; e < nzPrev.n_elem; e++){ sc.GVec[nzPrev[e]] = 0.0; }
+      sc.sparseScattered = false;
+    }
     sc.GVec.resize(t_n);
-    sc.GVec.zeros();
+    // (the per-marker zeros() that used to sit here is gone: a dense read
+    // overwrites every entry, and a sparse read scatters into a vector the
+    // gvecDense / sparseScattered discipline keeps all-zero)
 
     std::string t_genoIndex_str = t_genoIndex.at(i);
     char* end;
     uint64_t gIndex = std::strtoull( t_genoIndex_str.c_str(), &end,10 );
 
-    bool isReadMarker = getOneMarkerThrough(reader, t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
-                                          true,   // t_isOutputIndexForMissing
-                                          sc.indexForMissing,
-                                          false,  // t_isOnlyOutputNonZero
-                                          sc.indexNonZeroVec,
-                                          sc.GVec,
-                                          t_isImputation);
-    if(!isReadMarker){
-      pr.readFailed = true;
-      return;
+    // 2026-09-16: carrier space first -- the marker path's prepareSparseMarker,
+    // second site. A difference list never touches N here: the counts, the
+    // impute/flip, the QC gate, the weights and pr.nz / pr.gnz (all phase 2
+    // needs) come from the listed samples; the dense vector is written only
+    // when this marker is tested singly, and cleared after the models.
+    bool sparseRead = false;
+    bool haveDense = false;
+    if(!g_cfg.is_rewrite_XnonPAR_forMales && !t_isImputation){
+      Geno::MarkerMeta smeta;
+      Geno::SparseRead sr = reader.getOneMarkerSparse(gIndex, smeta, sc.sparse, sc.indexForMissing, sc.GVec);
+      if(sr != Geno::SparseRead::Unsupported){
+        sparseRead = (sr == Geno::SparseRead::Sparse);
+        haveDense = !sparseRead;
+        if(haveDense){ sc.gvecDense = true; }
+        chr = smeta.chr; ref = smeta.ref; alt = smeta.alt; marker = smeta.id; pd = smeta.pos;
+        altFreq = smeta.altFreq; altCounts = smeta.altCounts;
+        missingRate = smeta.missingRate; imputeInfo = smeta.imputeInfo;
+      }
     }
+    if(!sparseRead && !haveDense){
+      bool isReadMarker = getOneMarkerThrough(reader, t_genoType, gIndex, ref, alt, marker, pd, chr, altFreq, altCounts, missingRate, imputeInfo,
+                                            true,   // t_isOutputIndexForMissing
+                                            sc.indexForMissing,
+                                            false,  // t_isOnlyOutputNonZero
+                                            sc.indexNonZeroVec,
+                                            sc.GVec,
+                                            t_isImputation);
+      if(!isReadMarker){
+        pr.readFailed = true;
+        return;
+      }
+      sc.gvecDense = true;
+    }
+    pr.readSparse = sparseRead;
     pr.chr = chr; pr.pos = std::to_string(pd); pr.ref = ref; pr.alt = alt; pr.marker = marker;
     pr.info = chr+":"+std::to_string(pd)+":"+ref+":"+alt;
 
     double MAF = std::min(altFreq, 1 - altFreq);
     double MAC = MAF * 2 * t_n * (1 - missingRate);   // checked on 08-10-2021
-    flip = imputeGenoAndFlip(sc.GVec, altFreq, altCounts, sc.indexForMissing, g_cfg.impute_method, g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC, sc.indexZeroVec, sc.indexNonZeroVec);
+    if(sparseRead){
+      const Geno::SparseMarker & sm = sc.sparse;
+      sc.indexForMissing.clear();
+      for(std::size_t e = 0; e < sm.idx.size(); e++){
+        if(sm.code[e] == 3){ sc.indexForMissing.push_back(sm.idx[e]); }
+      }
+      flip = imputeSparseAndFlip((uint32_t)t_n, sm.commonCode, sm.idx, sm.code, altFreq, altCounts,
+                                 (uint32_t)sc.indexForMissing.size(), g_cfg.impute_method,
+                                 g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC,
+                                 sc.indexNonZeroVec, sc.sparseVal);
+    }else{
+      // the zero-genotype index is not built (2026-09-16): its size is n - nnz
+      // at the test and the ER branch builds the complement itself
+      flip = imputeGenoAndFlip(sc.GVec, altFreq, altCounts, sc.indexForMissing, g_cfg.impute_method, g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC, sc.indexZeroVec, sc.indexNonZeroVec, false);
+    }
     MAF = std::min(altFreq, 1 - altFreq);
     MAC = std::min(altCounts, t_n *2 - altCounts);
     pr.altFreq = altFreq; pr.missingRate = missingRate; pr.altCounts = altCounts;
@@ -2936,7 +3025,11 @@ Rcpp::List mainRegionInCPP(
 
     sc.indexNonZeroVec_arma = arma::conv_to<arma::uvec>::from(sc.indexNonZeroVec);
     pr.nz = sc.indexNonZeroVec_arma;
-    pr.gnz = sc.GVec.elem(pr.nz);
+    if(sparseRead){
+      pr.gnz = arma::conv_to<arma::vec>::from(sc.sparseVal);   // == GVec.elem(nz): the same values in the same order
+    }else{
+      pr.gnz = sc.GVec.elem(pr.nz);
+    }
     rpPrep.stop();
 
     if(!(MAC > g_cfg.region_minMAC_cutoff)){
@@ -2944,8 +3037,13 @@ Rcpp::List mainRegionInCPP(
     }
     pr.isRare = true;
     ProfileScope rpRare(rp.enabled ? &rp.rareArm : nullptr, &rp.nRareArm);
-    if(doSingleTests){
-      sc.indexZeroVec_arma = arma::conv_to<arma::uvec>::from(sc.indexZeroVec);
+    sc.indexZeroVec_arma.set_size(0);
+    if(sparseRead && doSingleTests){
+      // the single tests read the dense vector: scatter the carriers into the
+      // all-zero scratch (the case/control tallies below read pr.nz / pr.gnz)
+      if(sc.gvecDense){ sc.GVec.zeros(); sc.gvecDense = false; }
+      for(arma::uword e = 0; e < pr.nz.n_elem; e++){ sc.GVec[pr.nz[e]] = pr.gnz[e]; }
+      sc.sparseScattered = true;
     }
     // step 4: every model in the call tests the one prepared buffer.
     // getMarkerPval is const and never writes t_GVec or the index vectors
@@ -2993,14 +3091,46 @@ Rcpp::List mainRegionInCPP(
       }//if(doSingleTests)
 
       arma::vec dosage_case, dosage_ctrl;
-      if(W[km].traitType == "binary"){
+      if(W[km].traitType == "binary" && sparseRead){
+        // 2026-09-16: the same tallies over the carriers only, by rank
+        // (paritySumRankedList / countRankedList above): accu of the gathered
+        // vector, its mean over the group size, and the hom/het predicates,
+        // which are false at 0.
+        const RegionModelWork & w = W[km];
+        const double sumCase = paritySumRankedList(pr.nz, pr.gnz, w.caseRank);
+        const double sumCtrl = paritySumRankedList(pr.nz, pr.gnz, w.ctrlRank);
+        prm.MACcasegroup = sumCase;
+        prm.MACcontrolgroup = sumCtrl;
+        if(doSingleTests){
+          double AF_case = (sumCase / (double)model.m_case_indices.n_elem) /2;
+          double AF_ctrl = (sumCtrl / (double)model.m_ctrl_indices.n_elem) /2;
+          if(flip){
+            AF_case = 1-AF_case;
+            AF_ctrl = 1-AF_ctrl;
+          }
+          prm.AF_case = AF_case;
+          prm.AF_ctrl = AF_ctrl;
+          prm.N_case = model.m_case_indices.n_elem;
+          prm.N_ctrl = model.m_ctrl_indices.n_elem;
+          if(t_isMoreOutput){
+            prm.N_case_hom = countRankedList(pr.nz, pr.gnz, w.caseRank, [](double x){ return x <= 2 && x >= 1.5; });
+            prm.N_case_het = countRankedList(pr.nz, pr.gnz, w.caseRank, [](double x){ return x < 1.5 && x >= 0.5; });
+            prm.N_ctrl_hom = countRankedList(pr.nz, pr.gnz, w.ctrlRank, [](double x){ return x <= 2 && x >= 1.5; });
+            prm.N_ctrl_het = countRankedList(pr.nz, pr.gnz, w.ctrlRank, [](double x){ return x < 1.5 && x >= 0.5; });
+            if(flip){
+                  prm.N_case_hom = prm.N_case - prm.N_case_het -  prm.N_case_hom;
+                  prm.N_ctrl_hom = prm.N_ctrl - prm.N_ctrl_het - prm.N_ctrl_hom;
+            }
+          }
+        }
+      }else if(W[km].traitType == "binary"){
         dosage_case = sc.GVec.elem(model.m_case_indices);
         dosage_ctrl = sc.GVec.elem(model.m_ctrl_indices);
         prm.MACcasegroup = arma::accu(dosage_case);
         prm.MACcontrolgroup = arma::accu(dosage_ctrl);
       }
 
-      if(doSingleTests){
+      if(doSingleTests && !sparseRead){
         if(W[km].traitType == "binary"){
           double AF_case = arma::mean(dosage_case) /2;
           double AF_ctrl = arma::mean(dosage_ctrl) /2;
@@ -3031,6 +3161,11 @@ Rcpp::List mainRegionInCPP(
         }
       } //if(doSingleTests)
     } // for km (models)
+    // 2026-09-16: restore the all-zero scratch a carrier-space read relies on
+    if(sc.sparseScattered){
+      for(arma::uword e = 0; e < pr.nz.n_elem; e++){ sc.GVec[pr.nz[e]] = 0.0; }
+      sc.sparseScattered = false;
+    }
   };
 
   // E5: ONE write-back of a cell's result fields into the model's parallel
@@ -3063,6 +3198,7 @@ Rcpp::List mainRegionInCPP(
   auto accumulate = [&](unsigned int i, unsigned int k)
   {
     const RegionPrep & pr = preps[k];
+    if(pr.readSparse){ rp.nSparse++; }   // main thread; printed on the profile line
     // the marker fields, for every marker that was read (QC or not)
     chrVec.at(i) = pr.chr;
     posVec.at(i) = pr.pos;
@@ -3401,14 +3537,7 @@ if(i2 > 0){
   std::vector<arma::mat> XVs(P), XXVX_invs(P);
   for(unsigned int km = 0; km < P; km++){
     W[km].model->extract_XV_XXVX_inv(XVs[km], XXVX_invs[km]);
-    if(W[km].traitType == "binary"){
-      const arma::uvec & ci = W[km].model->m_case_indices;
-      const arma::uvec & ki = W[km].model->m_ctrl_indices;
-      W[km].caseRank.assign(t_n, -1);
-      W[km].ctrlRank.assign(t_n, -1);
-      for(arma::uword k = 0; k < ci.n_elem; k++){ W[km].caseRank[ci[k]] = (int32_t)k; }
-      for(arma::uword k = 0; k < ki.n_elem; k++){ W[km].ctrlRank[ki[k]] = (int32_t)k; }
-    }
+    // (caseRank / ctrlRank are built with W above since 2026-09-16)
   }
   // The records persist across regions (a function static, like the P1/P2
   // scratch) and hold NO N-length data (2026-09-12): the collapsed vector is
@@ -4637,7 +4766,7 @@ OutList.push_back(W[km].iswriteOutput, "iswriteOutput");
     rp.calls += 1;
     // one cumulative line per call; the last one in a log is the run's total
     std::cout << "REGION PROFILE cum (SAIGE_PROFILE_REGION set):"
-              << " calls=" << rp.calls
+              << " calls=" << rp.calls << " sparse=" << rp.nSparse
               << " markers=" << rp.nPrepare
               << " tested=" << rp.nTest
               << " urCollapsed=" << rp.nUrCollapse

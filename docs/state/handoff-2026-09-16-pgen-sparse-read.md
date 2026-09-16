@@ -229,3 +229,65 @@ where the unpatched scan was 31-44 s; at biobank N the O(N) terms grow 8x
 while the O(carriers) terms do not, so the ratios should be larger there,
 and NOT measured. Region tests are a different path with a different bound
 (above).
+
+## Step 2 (same evening): the region path, and the PGEN dense loop
+
+Landed on top of `baa9ab24` after its CI went green (tests 35155291952,
+docs 35155291933, both success).
+
+**The region path reads in carrier space too.** `prepareAndTest` in
+`mainRegionInCPP` asks the reader for the record sparsely first (the marker
+path's sequence, second site). A difference list is prepared over its
+listed samples: the counts, `imputeSparseAndFlip`, the QC gate, the weights
+and `pr.nz` / `pr.gnz` (which is all phase 2 -- the accumulate into
+`CarrierStore` -- ever needed of the dense vector). The dense vector is
+scattered into the worker's all-zero scratch ONLY when the marker is rare
+enough to be tested singly (`doSingleTests`), and cleared after the models
+and, idempotently, at the top of the next prepare -- which matters here,
+because the ER arm's `NeedsMainThread` exception leaves the worker's
+scratch mid-marker. The per-marker `GVec.zeros()` the dense path paid is
+gone (a dense read overwrites every entry). The case/control tallies a
+binary model computes for EVERY rare marker -- `accu` of the gathered case
+and control vectors, their means, and the hom/het counts under
+`--is_output_moreDetails` -- are computed over the carriers by rank
+(`paritySumRankedList` / `countRankedList`, the identities
+`CarrierStore::paritySumRanked` / `countRanked` state for a cell's carriers),
+with `caseRank` / `ctrlRank` hoisted above the block driver. The
+zero-genotype index is no longer built on this path either.
+
+**The PGEN dense loop** (`expandFromReadBuffer`) no longer pushes every
+non-zero sample into a list the caller discards; the push is kept only for
+`t_isOnlyOutputNonZero`, as `PlinkClass::getOneMarker` has done since Phase 4.
+
+**Reported:** the region profile line (`SAIGE_PROFILE_REGION=1`, serial arm
+only) carries `sparse=K`, tallied on the main thread in `accumulate()`.
+`tests/testthat/test-step2-region-sparse.R` (6 tests, 39 expectations):
+goldens P14 (SKAT-O fastTest) and P18 (BURDEN, no single tests, so nothing is
+ever scattered) reproduced; sparse == dense (kill switch) byte for byte on
+single-in-group with `--is_output_moreDetails=TRUE` (the rank tallies), on
+the missing-genotype fixture under mean imputation, on the quantitative
+model, and 4 region threads == 1 == the golden (the count is read from the
+serial run, since the profile is serial-only by construction).
+
+**Measured (sim50k pgen, y_binary, 1 thread, 2 interleaved reps, base
+library = unpatched HEAD, whose region code equals `baa9ab24`'s):**
+
+| arm | unpatched user-s | sparse user-s | ratio |
+|---|---|---|---|
+| BURDEN (`--r.corr=1`, single-in-group) | 54.0 / 53.4 | 34.0 / 35.0 | **1.56x** |
+| SKAT-O (fastTest, single-in-group) | 222.5 / 216.4 | 194.8 / 194.2 | **1.13x** |
+
+Region file and `.singleAssoc.txt` byte-identical base vs new in both arms.
+The profile had bounded these at 1.5x / 1.09x from the prepare bucket alone;
+the extra comes from the dropped per-marker `zeros()`, the index copies and
+the dense loop's push. What is left of SKAT-O is the R-side Davies
+integration (~45% of the run) and the per-marker `gtilde` the P1/P2
+matrices need, which is O(N) by nature.
+
+Gate: standard tier at `both` on the final build: see the line appended
+below by the run itself.
+
+Step-2 gate, on the final build (region change, PGEN dense loop, the fixed
+test file): `bash harness/run_tests.sh standard` at `SAIGE_COMPARE_MODE=both`,
+`R_LIBS=SAIGE-sparse-lib/new`: **FAIL 0 | WARN 2 | SKIP 4 | PASS 5776, 488 s**;
+ledger lint OK, docdrift OK (0 hits), warnings ratchet 92 = baseline.
