@@ -44,7 +44,8 @@ bool imputeGenoAndFlip(arma::vec& t_GVec,
 		       double t_dosage_zerod_MAC_cutoff, 
 		       double & t_MAC,
 		       std::vector<uint> & t_indexZero,
-		       std::vector<uint> & t_indexNonZero)   
+		       std::vector<uint> & t_indexNonZero,
+		       bool t_buildIndexZero)
 {
   bool flip = false;
   t_indexNonZero.clear();
@@ -102,14 +103,104 @@ switch(string_to_case.at(t_impute_method)) {
      }	     
   //}
 
+ // 2026-09-16: the marker path passes t_buildIndexZero = false. Its only
+ // consumers of the zero-genotype index were its SIZE (m_n minus the non-zero
+ // count, an identity the test now uses directly) and the ER exact test, which
+ // builds the complement itself when handed an empty one -- so the N push_backs
+ // and the N-word copy that followed them were paid on every marker for
+ // nothing. The region and conditional paths still build it.
  for(unsigned int i = 0; i < dosagesSize; i++){
- 	if(t_GVec(i) == 0){   
- 		t_indexZero.push_back(i);
-	}else{
-		t_indexNonZero.push_back(i);
-	}	
+   if(t_GVec(i) == 0){
+     if(t_buildIndexZero) t_indexZero.push_back(i);
+   }else{
+     t_indexNonZero.push_back(i);
+   }
  }
 
+  return flip;
+}
+
+
+// The identities this rests on, each against the dense body above:
+//  * the flip is decided on the pre-impute altFreq, and a difference list's
+//    common code of 2 ALWAYS flips (hom-ALT holds at least 3N/4 of the samples
+//    so altFreq >= 3/4) while a common code of 0 NEVER does (at most N/4
+//    listed, so altFreq <= 1/3): after the fold every unlisted sample is an
+//    exact 0. The caller admits no other common code (GenoReader.hpp).
+//  * `2 - t_GVec` on the dense vector is 2.0 - code on each listed entry;
+//    a missing entry is NaN there and imputeG here, both then overwritten /
+//    set to imputeG, which is computed from the FLIPPED altFreq as the dense
+//    body does.
+//  * `.clean(cutoff)` zeroes |x| <= cutoff; an unlisted 0 is unchanged by it.
+//  * arma::sum is arrayops::accumulate: two accumulators split by index
+//    parity, added at the end (drilled 2026-09-12 for CarrierStore). The
+//    unlisted zeros add nothing to either, so summing the listed values into
+//    the accumulator their sample index selects, in increasing index order, is
+//    the same sequence of additions.
+//  * the non-zero index is built in increasing sample order, as the dense scan.
+bool imputeSparseAndFlip(uint32_t t_n,
+                         uint32_t t_commonCode,
+                         const std::vector<uint32_t> & t_idx,
+                         const std::vector<uint8_t> & t_code,
+                         double & t_altFreq,
+                         double & t_altCount,
+                         uint32_t t_nMissing,
+                         std::string t_impute_method,
+                         double t_dosage_zerod_cutoff,
+                         double t_dosage_zerod_MAC_cutoff,
+                         double & t_MAC,
+                         std::vector<uint> & t_indexNonZero,
+                         std::vector<double> & t_valNonZero)
+{
+  if(t_commonCode != 0 && t_commonCode != 2){
+    Rcpp::stop("imputeSparseAndFlip: common genotype code " + std::to_string(t_commonCode) +
+               " is not 0 or 2; the reader must have expanded this record (GenoReader.hpp)");
+  }
+  bool flip = false;
+  t_indexNonZero.clear();
+  t_valNonZero.clear();
+  const uint dosagesSize = t_n;
+  const int nMissing = (int)t_nMissing;
+  double imputeG = 0;
+  if(t_altFreq > 0.5){
+    flip = true;
+    t_altFreq = 1 - t_altFreq;
+  }
+  if(nMissing > 0){
+    switch(string_to_case.at(t_impute_method)) {
+      case 1: imputeG = std::round(2 * t_altFreq); break;
+      case 2: imputeG = 2 * t_altFreq; break;
+      case 3: imputeG = 0; break;
+    }
+    t_MAC = t_MAC + imputeG * nMissing;
+  }
+  const bool doClean = (t_dosage_zerod_cutoff > 0) && (t_MAC <= t_dosage_zerod_MAC_cutoff);
+  double acc1 = 0, acc2 = 0;
+  const std::size_t k = t_idx.size();
+  for(std::size_t e = 0; e < k; e++){
+    const uint8_t c = t_code[e];
+    double v;
+    if(c == 3){
+      v = imputeG;
+    }else{
+      v = flip ? (2 - (double)c) : (double)c;
+    }
+    if(doClean && std::abs(v) <= t_dosage_zerod_cutoff){
+      v = 0;
+    }
+    if(v != 0){
+      const uint i = t_idx[e];
+      t_indexNonZero.push_back(i);
+      t_valNonZero.push_back(v);
+      if((i % 2) == 0){ acc1 += v; }else{ acc2 += v; }
+    }
+  }
+  t_altCount = acc1 + acc2;
+  t_altFreq = t_altCount / (2*dosagesSize);
+  if(flip){
+    t_altFreq = 1 - t_altFreq;
+    t_altCount = 2*dosagesSize - t_altCount;
+  }
   return flip;
 }
 

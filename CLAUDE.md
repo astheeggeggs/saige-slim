@@ -612,6 +612,19 @@ declarations sit at the top of `src/Main.cpp`.
   handle (~130 bytes per sample each). `PgenReader::isForkSafe()` is `false`
   as a live hazard (a `FILE*` it fseeks). The `.bed` `pread` fallback runs only
   when mmap fails; force it with `SAIGE_PLINK_NO_MMAP=1` (it refuses to clone).
+  **Since 2026-09-16 the marker path asks the reader for a record in CARRIER
+  SPACE first** (`GenoReader::getOneMarkerSparse`): `PgenReader` returns the
+  difference list pgenlib stored (`PgrGetDifflistOrGenovec`, cap
+  `2 * (N/8)`), `prepareSparseMarker` prepares it over the listed samples
+  with the dense path's arithmetic (`imputeSparseAndFlip`, `src/UTIL.cpp`,
+  states each identity), and the carriers are scattered into the worker's
+  all-zero `GVec` for the test and cleared after. `PlinkReader` has no such
+  form and reads densely as before. The run prints `Sparse reads: K of M
+  ...` per chunk; `SAIGE_PGEN_SPARSE=0` is the kill switch. Measured on
+  sim50k: quantitative scan 1.87x, binary 1.21x, every golden byte-identical
+  (`docs/state/handoff-2026-09-16-pgen-sparse-read.md`). The zero-genotype
+  index is no longer materialised on the marker path for either reader: its
+  size is `m_n - nnz` at the test and the ER branch builds the complement.
 - `R/SAIGE_fitGLMM_fast.R::fitNULLGLMM` is ONE body for both traits (the
   glm family and the fitter are chosen by trait; the four lines that differ
   in arithmetic are marked "by trait"). **A binary fit's inner (alpha, b)

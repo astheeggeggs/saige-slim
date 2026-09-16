@@ -683,7 +683,12 @@ if(!t_ctx.useSparseGRM && t_ctx.noadjCov){
   //arma::uvec iIndexVec = arma::find(t_GVec != 0);
  
   
-  unsigned int iIndexComVecSize = iIndexComVec.n_elem;
+  // 2026-09-16: the SIZE of the zero-genotype set is m_n minus the non-zero
+  // count on every caller (the two index vectors partition the samples: the
+  // marker path via imputeGenoAndFlip / imputeSparseAndFlip, the region path
+  // via complementIndices), so the marker path stopped materialising the
+  // vector and passes an empty one. This is that identity, not a new count.
+  unsigned int iIndexComVecSize = (unsigned int)(m_n - (int)iIndex.n_elem);
   unsigned int iIndexSize = iIndex.n_elem;
   // Sized lazily. These two are only read on the SPA branches below, which
   // together take ~5% of binary markers and no quantitative one; sizing them
@@ -866,7 +871,24 @@ if(!t_isER){
     std::cout << "m_n_case " << m_n_case << std::endl;
         iIndex.print("iIndex");
 */	
-    double pval_ER =  SKATExactBin_Work(Z_er, res_er, pi1_er, m_n_case, iIndex, iIndexComVec, resout_er, 2e+6, 1e+4, 1e-6, 1);
+    // 2026-09-16: the one consumer of the zero-genotype INDICES. The marker
+    // path hands an empty vector (see iIndexComVecSize above), so this branch
+    // -- main-thread only and reached for MAC <= max_MAC_for_ER markers --
+    // builds the complement itself, in the increasing order every caller
+    // built it in. A caller that still materialises it is used as is.
+    arma::uvec iIndexComLocal;
+    arma::uvec * iIndexComPtr = &iIndexComVec;
+    if(iIndexComVec.n_elem == 0 && iIndex.n_elem < (arma::uword)m_n){
+      iIndexComLocal.set_size((arma::uword)m_n - iIndex.n_elem);
+      arma::uword* out = iIndexComLocal.memptr();
+      const arma::uword* nz = iIndex.memptr();
+      std::size_t kk = 0, o = 0;
+      for(arma::uword i = 0; i < (arma::uword)m_n; i++){
+        if(kk < iIndex.n_elem && nz[kk] == i){ kk++; }else{ out[o++] = i; }
+      }
+      iIndexComPtr = &iIndexComLocal;
+    }
+    double pval_ER =  SKATExactBin_Work(Z_er, res_er, pi1_er, m_n_case, iIndex, *iIndexComPtr, resout_er, 2e+6, 1e+4, 1e-6, 1);
     char pValueBuf_ER[100];
     sprintf(pValueBuf_ER, "%.6E", pval_ER);
     std::string buffAsStdStr_ER = pValueBuf_ER;

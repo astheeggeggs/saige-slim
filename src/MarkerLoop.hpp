@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include "SAIGE_test.hpp"
+#include "GenoReader.hpp"
 
 // S4: the step-2 marker loop's per-marker state, split into what belongs to the
 // MARKER (one slot per index, written once, read by the writer) and what belongs
@@ -68,6 +69,12 @@ struct MarkerResult {
   // two Firth counters were the only cross-marker accumulators in the body.
   bool isFirth = false;
   bool isFirthConverge = false;
+  // 2026-09-16: the marker was read in carrier space (a PGEN difference list,
+  // prepareSparseMarker). Tallied per chunk by the main thread like the Firth
+  // counters and printed, so a run REPORTS which path it took -- a knob that
+  // fails to arrive would otherwise pass every byte gate as green (the LEDGER
+  // #30 shape).
+  bool readSparse = false;
 
   // S6 control fields. None of these reach the output file; they carry, back to
   // the main thread, the three things a worker cannot act on itself.
@@ -115,6 +122,18 @@ struct MarkerScratch {
   arma::vec urScratch;
   arma::vec urNwScratch;
   arma::vec sumScratch;
+
+  // The carrier-space read (2026-09-16). `sparse` is what the reader handed
+  // back, `sparseVal` the post-impute value of each entry of indexNonZeroVec.
+  // GVec is used two ways now: a dense read overwrites all of it (gvecDense
+  // = true afterwards), a sparse read scatters its carriers into an ALL-ZERO
+  // GVec and testOneMarker clears exactly those entries after the models
+  // (sparseScattered). The first sparse read after a dense one -- or the very
+  // first, since the constructor leaves GVec uninitialised -- zeroes it whole.
+  Geno::SparseMarker sparse;
+  std::vector<double> sparseVal;
+  bool gvecDense = true;
+  bool sparseScattered = false;
 
   MarkerScratch(int t_n, int t_numMarkerCond)
     : GVec(t_n), gtildeVec(t_n), G1tilde_P_G2tilde_Vec(t_numMarkerCond),

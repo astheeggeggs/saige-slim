@@ -29,6 +29,27 @@ struct MarkerMeta {
   double altFreq = 0, altCounts = 0, missingRate = 0, imputeInfo = 1;
 };
 
+// A marker in carrier space (2026-09-16). Every ANALYSIS sample not listed in
+// idx holds commonCode; the listed ones hold code[e]. Codes are the genotype
+// codes 0 (hom REF), 1 (het), 2 (hom ALT), 3 (missing) -- NOT dosages -- and
+// idx is strictly increasing in analysis-sample order, which is the order the
+// dense read visits samples in and the order every index vector downstream is
+// built in. A reader hands one of these back only for a record its FILE stores
+// sparsely (a PGEN difference list); it never converts a dense record.
+struct SparseMarker {
+  uint32_t commonCode = 0;
+  std::vector<uint32_t> idx;
+  std::vector<uint8_t> code;
+};
+
+// What getOneMarkerSparse did. Unsupported: the reader (or this record) has no
+// carrier-space form, nothing was written, read as before. Dense: the record
+// was expanded and t_GVec / t_meta / t_indexForMissing hold exactly what
+// getOneMarker(isOutputIndexForMissing = true, isOnlyOutputNonZero = false)
+// would have written. Sparse: t_meta holds the counts over the analysis
+// samples and the SparseMarker holds the record; t_GVec is untouched.
+enum class SparseRead { Unsupported, Dense, Sparse };
+
 class GenoReader {
 public:
   virtual ~GenoReader() = default;
@@ -55,6 +76,19 @@ public:
   // bit for bit -- the caller's QC decision is made from them.
   virtual bool countOneMarker(uint64_t /*t_gIndex*/, MarkerMeta& /*t_meta*/,
                               uint32_t& /*t_numMissing*/) { return false; }
+
+  // The carrier-space read (2026-09-16, see SparseMarker above). Optional: the
+  // default is Unsupported and the caller reads densely. A reader that returns
+  // Sparse MUST fill t_meta with the counts the dense read would have produced
+  // (altFreq, altCounts, missingRate, imputeInfo -- same integers, same
+  // expressions), and MUST return Dense rather than Sparse for any record
+  // whose common code is not 0 or 2: the caller's carrier-space arithmetic
+  // rests on the common genotype being 0 after the fold (src/UTIL.cpp,
+  // imputeSparseAndFlip).
+  virtual SparseRead getOneMarkerSparse(uint64_t /*t_gIndex*/, MarkerMeta& /*t_meta*/,
+                                        SparseMarker& /*t_sparse*/,
+                                        std::vector<uint>& /*t_indexForMissing*/,
+                                        arma::vec& /*t_GVec*/) { return SparseRead::Unsupported; }
 
   virtual void close() = 0;
 

@@ -852,6 +852,101 @@ struct MarkerPrep {
 // Returns -1 on a short read (the caller stops the scan, which is what the
 // loop's `break` used to do), 0 when a QC gate dropped the marker (the rows keep
 // their untested defaults, so pval stays "NA"), 1 when the marker is ready.
+// 2026-09-16: the carrier-space half of prepareOneMarker, reached only when
+// the reader returned a difference list (a PGEN record the WRITER stored
+// sparsely; src/PGEN.cpp getOneMarkerSparse never converts a dense record).
+// Everything the dense half computes over N is computed here over the k
+// listed samples plus the common genotype, with the same arithmetic in the
+// same order (imputeSparseAndFlip, src/UTIL.cpp, states each identity), so the
+// rows and the test see the numbers the dense half would have produced. The
+// dense scratch GVec is all-zero between markers on this path: the carriers
+// are scattered into it here and cleared again by testOneMarker after the
+// models, so every dense consumer (Firth, the non-fast SPA, the PCG) still
+// reads a complete N-vector.
+static int prepareSparseMarker(const Geno::MarkerMeta & t_meta,
+                               int t_n,
+                               Marker::MarkerScratch & t_scratch,
+                               const std::vector<Marker::MarkerResult*> & t_rows,
+                               MarkerPrep & t_prep)
+{
+  const Geno::SparseMarker & sm = t_scratch.sparse;
+  const int n = t_n;
+  double altFreq = t_meta.altFreq;
+  double altCounts = t_meta.altCounts;
+  const double missingRate = t_meta.missingRate;
+  const double imputeInfo = t_meta.imputeInfo;
+  const std::string pds = std::to_string(t_meta.pos);
+
+  for(std::size_t r = 0; r < t_rows.size(); r++){
+    Marker::MarkerResult & t_res = *t_rows[r];
+    t_res.chr = t_meta.chr;
+    t_res.pos = pds;
+    t_res.ref = t_meta.ref;
+    t_res.alt = t_meta.alt;
+    t_res.marker = t_meta.id;
+    t_res.altFreq = altFreq;
+    t_res.missingRate = missingRate;
+    t_res.imputationInfo = imputeInfo;
+    t_res.readSparse = true;
+  }
+
+  // The missing samples are the listed code-3 entries (a common code of 3
+  // never reaches here), in increasing order because the list is.
+  t_scratch.indexForMissing.clear();
+  for(std::size_t e = 0; e < sm.idx.size(); e++){
+    if(sm.code[e] == 3){ t_scratch.indexForMissing.push_back(sm.idx[e]); }
+  }
+
+  // The QC gate of the dense half (its second copy; the first is the
+  // pre-screen, which decides on the same values).
+  double MAF = std::min(altFreq, 1 - altFreq);
+  double nNonMissing = (double)(n - (int)t_scratch.indexForMissing.size());
+  double MAC = std::min(altCounts, 2*nNonMissing - altCounts);
+  if((missingRate > g_cfg.missingRate_cutoff) || (MAF < g_cfg.marker_minMAF_cutoff) || (MAC < g_cfg.marker_minMAC_cutoff || imputeInfo < g_cfg.marker_minINFO_cutoff)){
+    return 0;
+  }
+
+  bool flip = imputeSparseAndFlip((uint32_t)n, sm.commonCode, sm.idx, sm.code, altFreq, altCounts,
+                                  (uint32_t)t_scratch.indexForMissing.size(), g_cfg.impute_method,
+                                  g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC,
+                                  t_scratch.indexNonZeroVec, t_scratch.sparseVal);
+  MAC = std::min(altCounts, 2*n-altCounts);
+  MAF = std::min(altFreq, 1 - altFreq);
+
+  if((MAF < g_cfg.marker_minMAF_cutoff) || (MAC < g_cfg.marker_minMAC_cutoff)){
+    t_scratch.indexNonZeroVec.clear();
+    return 0;
+  }
+
+  for(std::size_t r = 0; r < t_rows.size(); r++){
+    Marker::MarkerResult & t_res = *t_rows[r];
+    t_res.altFreq = altFreq;
+    t_res.altCounts = altCounts;
+  }
+
+  // Scatter the carriers into the all-zero dense scratch.
+  if(t_scratch.gvecDense){
+    t_scratch.GVec.zeros();
+    t_scratch.gvecDense = false;
+  }
+  for(std::size_t e = 0; e < t_scratch.indexNonZeroVec.size(); e++){
+    t_scratch.GVec[t_scratch.indexNonZeroVec[e]] = t_scratch.sparseVal[e];
+  }
+  t_scratch.sparseScattered = true;
+
+  t_scratch.indexNonZeroVec_arma = arma::conv_to<arma::uvec>::from(t_scratch.indexNonZeroVec);
+  t_scratch.indexZeroVec_arma.set_size(0);   // its size is n - nnz at the test (SAIGE_test.cpp)
+  t_scratch.indexNonZeroVec.clear();
+
+  t_prep.n = n;
+  t_prep.altFreq = altFreq;
+  t_prep.altCounts = altCounts;
+  t_prep.MAF = MAF;
+  t_prep.MAC = MAC;
+  t_prep.flip = flip;
+  return 1;
+}
+
 static int prepareOneMarker(Geno::GenoReader & t_reader,
                             const std::string & t_genoType,
                             const std::string & t_genoIndexStr,
@@ -883,6 +978,44 @@ static int prepareOneMarker(Geno::GenoReader & t_reader,
   t_scratch.indexNonZeroVec.clear();
   t_scratch.indexForMissing.clear();
 
+  // 2026-09-16: the previous marker's carriers are normally cleared by
+  // testOneMarker after its models; if a test threw between the scatter and
+  // that clear they are still in GVec, and a sparse read would scatter onto
+  // them. Clear them here too -- idempotent, O(previous carriers), a bool
+  // test on every other marker.
+  if(t_scratch.sparseScattered){
+    const arma::uvec & nzPrev = t_scratch.indexNonZeroVec_arma;
+    for(arma::uword e = 0; e < nzPrev.n_elem; e++){
+      t_scratch.GVec[nzPrev[e]] = 0.0;
+    }
+    t_scratch.sparseScattered = false;
+  }
+
+  // 2026-09-16: ask the reader for the record in carrier space first. A
+  // difference list goes to prepareSparseMarker and never touches N; a reader
+  // that expanded the record instead has done the dense read already (Dense),
+  // and one with no such form (PLINK) falls through to the read below. Skipped
+  // when the male X non-PAR rewrite is on, which works on the dense vector
+  // after the read, and on dosage input, which the sparse form does not carry.
+  bool haveDense = false;
+  if(!g_cfg.is_rewrite_XnonPAR_forMales && !t_isImputation){
+    Geno::MarkerMeta smeta;
+    Geno::SparseRead sr = t_reader.getOneMarkerSparse(gIndex, smeta, t_scratch.sparse,
+                                                      t_scratch.indexForMissing, t_scratch.GVec);
+    if(sr == Geno::SparseRead::Sparse){
+      return prepareSparseMarker(smeta, n, t_scratch, t_rows, t_prep);
+    }
+    if(sr == Geno::SparseRead::Dense){
+      haveDense = true;
+      t_scratch.gvecDense = true;
+      ref = smeta.ref; alt = smeta.alt; marker = smeta.id;
+      pd = smeta.pos; chr = smeta.chr;
+      altFreq = smeta.altFreq; altCounts = smeta.altCounts;
+      missingRate = smeta.missingRate; imputeInfo = smeta.imputeInfo;
+    }
+  }
+
+  if(!haveDense){
   // Item 3 (2026-09-05): QC gate 1 from the code tallies, before any genotype is
   // expanded. The reader hands back exactly the quantities the full read would
   // (same bytes, same integer counts, same arithmetic), so the decision below
@@ -926,6 +1059,8 @@ static int prepareOneMarker(Geno::GenoReader & t_reader,
   if(!isReadMarker){
     return -1;
   }
+  t_scratch.gvecDense = true;
+  }
 
   std::string pds = std::to_string(pd);
   // The CHR:POS:REF:ALT `info` string the loop used to build here was written
@@ -968,7 +1103,7 @@ static int prepareOneMarker(Geno::GenoReader & t_reader,
   t_scratch.indexZeroVec.clear();
   t_scratch.indexNonZeroVec.clear();
 
-  flip = imputeGenoAndFlip(t_scratch.GVec, altFreq, altCounts, t_scratch.indexForMissing, g_cfg.impute_method, g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC, t_scratch.indexZeroVec, t_scratch.indexNonZeroVec);
+  flip = imputeGenoAndFlip(t_scratch.GVec, altFreq, altCounts, t_scratch.indexForMissing, g_cfg.impute_method, g_cfg.dosage_zerod_cutoff, g_cfg.dosage_zerod_MAC_cutoff, MAC, t_scratch.indexZeroVec, t_scratch.indexNonZeroVec, false);
   MAC = std::min(altCounts, 2*n-altCounts);
   MAF = std::min(altFreq, 1 - altFreq);
 
@@ -982,7 +1117,10 @@ static int prepareOneMarker(Geno::GenoReader & t_reader,
     t_res.altCounts = altCounts;
   }
 
-  t_scratch.indexZeroVec_arma = arma::conv_to<arma::uvec>::from(t_scratch.indexZeroVec);
+  // 2026-09-16: the zero-genotype index is no longer materialised on this
+  // path (imputeGenoAndFlip was told not to build it); its size is n - nnz at
+  // the test and the ER branch builds the complement itself (SAIGE_test.cpp).
+  t_scratch.indexZeroVec_arma.set_size(0);
   t_scratch.indexNonZeroVec_arma = arma::conv_to<arma::uvec>::from(t_scratch.indexNonZeroVec);
 
   t_scratch.indexZeroVec.clear();
@@ -1211,6 +1349,18 @@ static bool testOneMarker(Geno::GenoReader & t_reader,
   for(std::size_t k = 0; k < t_modelIdxs.size(); k++){
     testOneModel(*g_models.at(t_modelIdxs[k]), t_isMoreOutput,
                  t_singleVR.at(t_modelIdxs[k]) != 0, prep, t_scratch, *t_rows[k]);
+  }
+
+  // 2026-09-16: restore the all-zero invariant a carrier-space read relies on
+  // (prepareSparseMarker) by clearing exactly the entries it scattered.
+  // getMarkerPval is const and never assigns t_GVec, so these are the only
+  // non-zero entries.
+  if(t_scratch.sparseScattered){
+    const arma::uvec & nz = t_scratch.indexNonZeroVec_arma;
+    for(arma::uword e = 0; e < nz.n_elem; e++){
+      t_scratch.GVec[nz[e]] = 0.0;
+    }
+    t_scratch.sparseScattered = false;
   }
 
   return true;
@@ -1668,6 +1818,20 @@ void mainMarkerInCPP(
               << " s over " << g_markerProfile.nSummary << " markers" << std::endl;
     std::cout << "  accounted total        : " << total << " s" << std::endl;
     g_markerProfile.enabled = false;
+  }
+
+  // 2026-09-16: how many markers of this chunk were read in carrier space (a
+  // PGEN difference list). Printed whenever any was, so the log says which
+  // path the run took; test-step2-pgen-sparse.R asserts the line.
+  {
+    long long nSparse = 0;
+    for(int i = 0; i < q; i++){
+      if(results[0][i].readSparse){ nSparse++; }
+    }
+    if(nSparse > 0){
+      std::cout << "Sparse reads: " << nSparse << " of " << q
+                << " markers in this chunk were read as pgen difference lists." << std::endl;
+    }
   }
 
   //output, one file per model

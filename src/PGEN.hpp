@@ -83,6 +83,10 @@ public:
     // information from the psam file
     std::unordered_map<std::string, size_t> sampleInPgen;
     std::vector<size_t> posSampleInPgen;       // model sample -> row in the pgen
+    // 2026-09-16: the inverse, row in the pgen -> model sample (-1 when the
+    // row is not in the model), so a difference list's raw sample ids map to
+    // analysis indices in O(1) each (getOneMarkerSparse).
+    std::vector<int32_t> analysisIndexOfFileSample;
     uint32_t N, N0;
 
     std::string pgenFile, psamFile, pvarFile;
@@ -94,6 +98,8 @@ public:
     uintptr_t pgrAllocCachelineCt() const { return _pgr_alloc_cacheline_ct; }
     uint32_t fileSampleCt() const { return _file_sample_ct; }
     bool isNotPlink1Bed() const { return _is_not_plink1_bed; }
+    bool hasDosage() const { return _has_dosage; }
+    bool isMultiallelic() const { return _is_multiallelic; }
 
     // PgrInit() moves shared_ff out of the PgenFileInfo for the FIRST reader,
     // so two readers must not be initialised concurrently. Reader construction
@@ -115,6 +121,8 @@ private:
     uintptr_t _pgr_alloc_cacheline_ct;
     uint32_t _file_sample_ct;
     bool _is_not_plink1_bed;
+    bool _has_dosage = false;        // a dosage track is present (header gflags)
+    bool _is_multiallelic = false;   // max_allele_ct != 2
 };
 
 // One decode handle onto a PgenShared. Copies are not made; additional handles
@@ -146,7 +154,22 @@ private:
     uintptr_t* _multivar_smaj_phasepresent_batch_buf;
     std::vector<double> readBuffer;
 
+    // 2026-09-16, the carrier-space read: the longest difference list the
+    // reader accepts (2 * (N/8), the raregeno/sample-id buffers' capacity and
+    // plink2 --glm's own cap; 0 = never), and the SAIGE_PGEN_SPARSE=0 kill
+    // switch, read once at construction.
+    uint32_t _max_difflist_len = 0;
+    bool _sparseEnabled = true;
+
     void initReader();
+    void fillMeta(uint64_t t_gIndex, std::string& t_ref, std::string& t_alt,
+                  std::string& t_marker, uint32_t& t_pd, std::string& t_chr) const;
+    void expandFromReadBuffer(double& t_altFreq, double& t_altCounts,
+                              double& t_missingRate, double& t_imputeInfo,
+                              bool t_isOutputIndexForMissing, std::vector<uint>& t_indexForMissing,
+                              bool t_isOnlyOutputNonZero, std::vector<uint>& t_indexForNonZero,
+                              arma::vec& OneMarkerG1);
+    bool sparseSupported() const;
 public:
 
     PgenClass(std::string pgenFile,
@@ -187,6 +210,31 @@ public:
         bool& t_isOnlyOutputNonZero,
         std::vector<uint>& t_indexForNonZero,
         arma::vec& OneMarkerG1);
+
+    // The carrier-space read (2026-09-16; GenoReader.hpp SparseMarker states
+    // the contract). Returns 0 when this file has no difference lists to
+    // offer (plink1-compatible mode, a dosage track, multiallelic sites, the
+    // kill switch), 1 when the record was stored densely -- or with a common
+    // code other than 0/2 -- and has been expanded into the getOneMarker
+    // outputs (t_GVec, t_indexForMissing, the counts) by the SAME loop
+    // getOneMarker runs, and 2 when t_commonCode / t_idx / t_code hold the
+    // record and the counts describe the analysis samples.
+    int getOneMarkerSparse(
+        uint64_t t_gIndex,
+        std::string& t_ref,
+        std::string& t_alt,
+        std::string& t_marker,
+        uint32_t& t_pd,
+        std::string& t_chr,
+        double& t_altFreq,
+        double& t_altCounts,
+        double& t_missingRate,
+        double& t_imputeInfo,
+        uint32_t& t_commonCode,
+        std::vector<uint32_t>& t_idx,
+        std::vector<uint8_t>& t_code,
+        std::vector<uint>& t_indexForMissing,
+        arma::vec& t_GVec);
 
     uint32_t getN0() const { return m_shared->N0; }
     uint32_t getN() const { return m_shared->N; }

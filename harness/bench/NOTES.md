@@ -2100,3 +2100,62 @@ byte-identical in both compare modes.
   the nonzeros, and a plain left-to-right sum differing on 88%. The first
   version of that control was vacuous (20-bit mantissas, every partial sum
   exact, 0/2000 differences) and was replaced before it counted.
+
+## The carrier-space PGEN read (2026-09-16)
+
+The question was whether PGEN could be FASTER than .bed here, not just
+smaller. Before: both readers expanded every variant to a dense N-vector, so
+they tied (128,868-marker fixture, same install, 4 interleaved reps: bed 7.12
+user-s, pgen 7.30; AoU chr20 coding subset: bed 981/1172 s, pgen 1207/1197 s).
+`SAIGE_PROFILE_MARKER` on sim50k (N = 50,000, `step2_single` flags, 1 thread,
+load 3-4) put the O(N) prepare bucket -- read + decode + QC +
+`imputeGenoAndFlip` + the two index copies -- at 256-298 us per marker on
+both readers: 30-34% of a binary scan, 74-83% of a quantitative one, paid
+by every scanned marker whether QC keeps it or not. The test buckets were
+already O(carriers) on the fast path.
+
+The lever is pgenlib's `PgrGetDifflistOrGenovec`: a record the writer stored
+as a difference list comes back as (common genotype, listed samples) without
+touching N. `prepareSparseMarker` / `imputeSparseAndFlip` reproduce the dense
+arithmetic over the listed samples (the parity-split `accu` emulation from
+the CarrierStore work), the zero-genotype index is no longer materialised on
+the marker path for EITHER reader (its size is `m_n - nnz`; the ER branch
+builds the complement itself), and the carriers are scattered into the
+worker's all-zero `GVec` and cleared after the models.
+
+Paired A/B, sim50k pgen, 1 thread, arms interleaved, 2 reps each, scratch
+libraries from unpatched HEAD (`51d1a4b6`) and the patched tree:
+
+| trait | unpatched user-s | sparse user-s | ratio | elapsed |
+|---|---|---|---|---|
+| quantitative | 71.4 / 70.8 | 37.3 / 38.8 | **1.87x** | 79.3 -> 43.6 |
+| binary | 179.0 / 179.4 | 147.8 / 147.2 | **1.21x** | 195.8 -> 160.4 |
+
+Outputs byte-identical base vs new and rep vs rep; 170,520 of 210,515
+markers (81%) read as difference lists (the rest exceed the `2 * (N/8)`
+cap). Standard tier at `both`: FAIL 0 / PASS 5737 / 521 s. The binary ratio
+is the profile's prediction (test-bound); the quantitative one is about half
+its Amdahl ceiling, the remainder being per-marker fixed work and the 19% of
+markers that still expand.
+
+Region path, same fixture, pgen, y_binary, `SAIGE_PROFILE_REGION=1`: prepare
+17.6 of 53.8 s BURDEN (33%), 16.7 of 211.8 s SKAT-O (8%). Not changed;
+`docs/state/handoff-2026-09-16-pgen-sparse-read.md` ranks it first of what
+is left.
+
+By symbol (`sample`, 1 ms, 20 s of the patched quant scan, 14,760 samples in
+the loop): `expandFromReadBuffer` -- the dense loop for the 19% of records
+pgenlib stores densely -- 29%; the test 32%; `PgrGetDifflistOrGenovec` 3%;
+`imputeSparseAndFlip` 0.9%; `conv_to` 1.2%. The carrier-space arithmetic is
+free; what is left of prepare is the common variants' dense walk through a
+permuted sample map (the model's order is the phenotype file's), with an
+unconditional non-zero push_back the caller discards -- the next byte-neutral
+item, gated separately.
+
+**On a pgen filtered to MAF < 1%** (`plink2 --max-maf 0.01 --make-pgen`,
+155,546 variants, 4.9 MB), same flags, 1 thread, one run per arm, byte-identical:
+quantitative 30.9 -> **3.0** user-s (10.4x), binary with Firth 43.5 -> **15.7**
+(2.8x), binary without Firth 33.6 -> **5.5** (6.1x). Every record came back as
+a difference list; the patched quantitative scan is startup plus ~3 us per
+marker. The binary gap is the saddlepoint's O(N) on the |Z| > 2 tail (and
+Firth's O(N x iterations) when on).

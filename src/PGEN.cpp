@@ -5,6 +5,10 @@
 #include <iostream>
 #include <fstream>
 #include <cctype>
+#include <cstdlib>
+#include <cstring>
+#include <algorithm>
+#include <numeric>
 
 namespace PGEN {
 
@@ -31,6 +35,17 @@ PgenShared::PgenShared(const std::string& t_pgenFile,
     M = variantId.size();
 
     loadPgfi();
+
+    // 2026-09-16: row in the pgen -> model sample, for the carrier-space read.
+    analysisIndexOfFileSample.assign(_file_sample_ct, -1);
+    for(size_t i = 0; i < posSampleInPgen.size(); i++) {
+        const size_t row = posSampleInPgen[i];
+        if(row >= _file_sample_ct) {
+            Rcpp::stop("psam row " + std::to_string(row) + " is beyond the pgen's sample count (" +
+                       std::to_string(_file_sample_ct) + ").");
+        }
+        analysisIndexOfFileSample[row] = static_cast<int32_t>(i);
+    }
 }
 
 // All file samples, in file order. Deliberately does NOT call
@@ -60,6 +75,9 @@ PgenShared::PgenShared(const std::string& t_pgenFile,
     M = variantId.size();
 
     loadPgfi();
+
+    analysisIndexOfFileSample.resize(_file_sample_ct);
+    std::iota(analysisIndexOfFileSample.begin(), analysisIndexOfFileSample.end(), 0);
 }
 
 // Data rows in the psam: every line that is neither a '#' header nor blank.
@@ -141,6 +159,8 @@ void PgenShared::loadPgfi()
     _max_vrec_width = max_vrec_width;
     _pgr_alloc_cacheline_ct = pgr_alloc_cacheline_ct;
     _is_not_plink1_bed = (_info_ptr->vrtypes != nullptr);
+    _has_dosage = (_info_ptr->gflags & plink2::kfPgenGlobalDosagePresent) != 0;
+    _is_multiallelic = (_info_ptr->max_allele_ct != 2);
 }
 
 PgenShared::~PgenShared()
@@ -468,6 +488,13 @@ void PgenClass::initReader()
     // pgr_alloc_iter = &(pgr_alloc_iter[plink2::kPglNypTransposeBatch * plink2::kPglNypTransposeBatch / 8]);
 
     readBuffer.resize(_subset_size);
+
+    // 2026-09-16: the carrier-space read's cap. 2 * (N/8) is exactly what the
+    // raregeno buffer above was sized for (pgenlibr's sizing, kept), and what
+    // plink2 --glm accepts; pgenlib requires it below raw_sample_ct.
+    _max_difflist_len = (file_sample_ct >= 8) ? 2 * (file_sample_ct / 8) : 0;
+    const char* e = std::getenv("SAIGE_PGEN_SPARSE");
+    _sparseEnabled = !((e != nullptr) && (e[0] != '\0') && (std::strcmp(e, "0") == 0));
 }
 
 void PgenClass::Read(std::vector<double>& buf, int variant_idx, int allele_idx) {
@@ -513,44 +540,32 @@ void PgenClass::closegenofile() {
     m_shared.reset();
 }
 
-void PgenClass::getOneMarker(
-    uint64_t& t_gIndex,
-    std::string& t_ref,
-    std::string& t_alt,
-    std::string& t_marker,
-    uint32_t& t_pd,
-    std::string& t_chr,
-    double& t_altFreq,
-    double& t_altCounts,
-    double& t_missingRate,
-    double& t_imputeInfo,
-    bool& t_isOutputIndexForMissing,
-    std::vector<uint>& t_indexForMissing,
-    bool& t_isOnlyOutputNonZero,
-    std::vector<uint>& t_indexForNonZero,
-    arma::vec& OneMarkerG1)
+void PgenClass::fillMeta(uint64_t t_gIndex, std::string& t_ref, std::string& t_alt,
+                         std::string& t_marker, uint32_t& t_pd, std::string& t_chr) const
 {
-    if(!m_shared) {
-        Rcpp::stop("PgenClass::getOneMarker called after the pgen file was closed.");
-    }
     const PgenShared& sh = *m_shared;
-    uint32_t numMissing = 0;
-
-    t_indexForMissing.clear();
-    t_indexForNonZero.clear();
-
     t_chr = sh.chr[t_gIndex];
     t_pd = sh.position[t_gIndex];
     t_ref = sh.ref[t_gIndex];
     t_alt = sh.alt[t_gIndex];
     t_marker = sh.variantId[t_gIndex];
+}
 
-    // pvar is always REF/ALT-ordered (no ref-first/alt-first toggle like
-    // bim), and allele_idx = 1 reads ALT-allele dosage directly -- so, unlike
-    // PLINK's ref-first branch (LEDGER #28/#29), there is no round trip here:
-    // t_altCounts/t_altFreq are accumulated straight from the decoded counts.
-    int alleleIdx = 1;
-    Read(readBuffer, t_gIndex, alleleIdx);
+// The per-sample expansion of readBuffer (one double per FILE sample, NaN when
+// missing) into the analysis-ordered outputs. This is getOneMarker's loop,
+// moved out unchanged on 2026-09-16 so that the dense fallback of
+// getOneMarkerSparse runs the identical code.
+void PgenClass::expandFromReadBuffer(double& t_altFreq, double& t_altCounts,
+                                     double& t_missingRate, double& t_imputeInfo,
+                                     bool t_isOutputIndexForMissing, std::vector<uint>& t_indexForMissing,
+                                     bool t_isOnlyOutputNonZero, std::vector<uint>& t_indexForNonZero,
+                                     arma::vec& OneMarkerG1)
+{
+    const PgenShared& sh = *m_shared;
+    uint32_t numMissing = 0;
+
+    t_indexForMissing.clear();
+    t_indexForNonZero.clear();
 
     uint j = 0;
     t_altCounts = 0;
@@ -593,6 +608,166 @@ void PgenClass::getOneMarker(
     if(t_isOnlyOutputNonZero){
         OneMarkerG1.resize(j);
     }
+}
+
+void PgenClass::getOneMarker(
+    uint64_t& t_gIndex,
+    std::string& t_ref,
+    std::string& t_alt,
+    std::string& t_marker,
+    uint32_t& t_pd,
+    std::string& t_chr,
+    double& t_altFreq,
+    double& t_altCounts,
+    double& t_missingRate,
+    double& t_imputeInfo,
+    bool& t_isOutputIndexForMissing,
+    std::vector<uint>& t_indexForMissing,
+    bool& t_isOnlyOutputNonZero,
+    std::vector<uint>& t_indexForNonZero,
+    arma::vec& OneMarkerG1)
+{
+    if(!m_shared) {
+        Rcpp::stop("PgenClass::getOneMarker called after the pgen file was closed.");
+    }
+    fillMeta(t_gIndex, t_ref, t_alt, t_marker, t_pd, t_chr);
+
+    // pvar is always REF/ALT-ordered (no ref-first/alt-first toggle like
+    // bim), and allele_idx = 1 reads ALT-allele dosage directly -- so, unlike
+    // PLINK's ref-first branch (LEDGER #28/#29), there is no round trip here:
+    // t_altCounts/t_altFreq are accumulated straight from the decoded counts.
+    int alleleIdx = 1;
+    Read(readBuffer, t_gIndex, alleleIdx);
+
+    expandFromReadBuffer(t_altFreq, t_altCounts, t_missingRate, t_imputeInfo,
+                         t_isOutputIndexForMissing, t_indexForMissing,
+                         t_isOnlyOutputNonZero, t_indexForNonZero, OneMarkerG1);
+}
+
+// Whether this file can offer difference lists at all. A plink1-compatible
+// .pgen stores every record densely (and initReader allocated no raregeno
+// buffer for it); a dosage track is not carried by the sparse form and
+// PgrGet1D's per-allele counting is not reproduced for a multiallelic site,
+// so both fall back to the dense read for every marker.
+bool PgenClass::sparseSupported() const
+{
+    if(!m_shared || !_sparseEnabled) return false;
+    if(_raregeno_buf == nullptr || _difflist_sample_ids_buf == nullptr) return false;
+    if(_max_difflist_len == 0 || _max_difflist_len >= _subset_size) return false;
+    if(m_shared->hasDosage() || m_shared->isMultiallelic()) return false;
+    return true;
+}
+
+// The carrier-space read. PgrGetDifflistOrGenovec hands back the stored
+// difference list when the record is one and it is no longer than the cap,
+// else the dense genovec -- pgenlib never converts a dense record to a list.
+// With sample_ct == raw_sample_ct (this handle decodes every file sample and
+// maps to analysis order itself, as Read() does) the list's sample ids are
+// pgen rows, mapped through analysisIndexOfFileSample; a row outside the
+// model is dropped, and the survivors are sorted into analysis order (the
+// order the dense loop visits samples in), which is a no-op when the model's
+// samples are in file order. The counts are the dense loop's counts: an
+// integer sum of 0/1/2 over the analysis samples, so accumulating them from
+// the four genotype tallies is the same double.
+int PgenClass::getOneMarkerSparse(
+    uint64_t t_gIndex,
+    std::string& t_ref,
+    std::string& t_alt,
+    std::string& t_marker,
+    uint32_t& t_pd,
+    std::string& t_chr,
+    double& t_altFreq,
+    double& t_altCounts,
+    double& t_missingRate,
+    double& t_imputeInfo,
+    uint32_t& t_commonCode,
+    std::vector<uint32_t>& t_idx,
+    std::vector<uint8_t>& t_code,
+    std::vector<uint>& t_indexForMissing,
+    arma::vec& t_GVec)
+{
+    if(!m_shared) {
+        Rcpp::stop("PgenClass::getOneMarkerSparse called after the pgen file was closed.");
+    }
+    if(!sparseSupported()) {
+        return 0;
+    }
+    const PgenShared& sh = *m_shared;
+    if(t_gIndex >= sh.info()->raw_variant_ct) {
+        Rcpp::stop("variant_num out of range ("+std::to_string(t_gIndex + 1)+"; must be 1.."+std::to_string(sh.info()->raw_variant_ct)+")");
+    }
+    fillMeta(t_gIndex, t_ref, t_alt, t_marker, t_pd, t_chr);
+
+    uint32_t common = UINT32_MAX;
+    uint32_t len = 0;
+    plink2::PglErr reterr = plink2::PgrGetDifflistOrGenovec(
+        _subset_include_vec, _subset_index, _subset_size, _max_difflist_len,
+        static_cast<uint32_t>(t_gIndex), _state_ptr.get(), _pgv.genovec,
+        &common, _raregeno_buf, _difflist_sample_ids_buf, &len);
+    if(reterr != plink2::kPglRetSuccess) {
+        Rcpp::stop("PgrGetDifflistOrGenovec() error " + std::to_string(static_cast<int>(reterr)));
+    }
+
+    if(common == UINT32_MAX || (common != 0 && common != 2)) {
+        // Dense: expand exactly as Read() + getOneMarker do for a hard-call
+        // record (no dosage track, so dosage_ct = 0 and Dosage16ToDoubles is
+        // the plain 2-bit lookup), then the same per-sample loop.
+        if(common != UINT32_MAX) {
+            plink2::PgrDifflistToGenovecUnsafe(_raregeno_buf, _difflist_sample_ids_buf, common,
+                                               _subset_size, len, _pgv.genovec);
+        }
+        plink2::Dosage16ToDoubles(kGenoRDoublePairs, _pgv.genovec, _pgv.dosage_present,
+                                  _pgv.dosage_main, _subset_size, 0, &readBuffer[0]);
+        std::vector<uint> dummyNonZero;
+        expandFromReadBuffer(t_altFreq, t_altCounts, t_missingRate, t_imputeInfo,
+                             true, t_indexForMissing, false, dummyNonZero, t_GVec);
+        return 1;
+    }
+
+    t_idx.clear();
+    t_code.clear();
+    const std::vector<int32_t>& inv = sh.analysisIndexOfFileSample;
+    uint32_t cnt[4] = {0, 0, 0, 0};
+    bool sorted = true;
+    uint32_t last = 0;
+    for(uint32_t e = 0; e < len; e++) {
+        const uint32_t row = _difflist_sample_ids_buf[e];
+        const int32_t i = inv[row];
+        if(i < 0) continue;
+        const uint8_t c = static_cast<uint8_t>(
+            (_raregeno_buf[e / plink2::kBitsPerWordD2] >> (2 * (e % plink2::kBitsPerWordD2))) & 3);
+        if(!t_idx.empty() && static_cast<uint32_t>(i) < last) sorted = false;
+        last = static_cast<uint32_t>(i);
+        t_idx.push_back(static_cast<uint32_t>(i));
+        t_code.push_back(c);
+        cnt[c]++;
+    }
+    if(!sorted) {
+        std::vector<uint32_t> order(t_idx.size());
+        std::iota(order.begin(), order.end(), 0u);
+        std::sort(order.begin(), order.end(), [&](uint32_t x, uint32_t y){ return t_idx[x] < t_idx[y]; });
+        std::vector<uint32_t> idx2(t_idx.size());
+        std::vector<uint8_t> code2(t_code.size());
+        for(size_t o = 0; o < order.size(); o++) { idx2[o] = t_idx[order[o]]; code2[o] = t_code[order[o]]; }
+        t_idx.swap(idx2);
+        t_code.swap(code2);
+    }
+
+    const uint32_t N = sh.N;
+    const uint32_t listed = static_cast<uint32_t>(t_idx.size());
+    cnt[common] += N - listed;
+    const uint32_t numMissing = cnt[3];
+    const int count = static_cast<int>(N) - static_cast<int>(numMissing);
+    t_altCounts = static_cast<double>(cnt[1] + 2u * cnt[2]);
+    t_missingRate = (double)numMissing / (double)N;
+    t_imputeInfo = 1;
+    if(count > 0){
+        t_altFreq = t_altCounts / (double)count / 2;
+    }else{
+        t_altFreq = 0;
+    }
+    t_commonCode = common;
+    return 2;
 }
 
 }

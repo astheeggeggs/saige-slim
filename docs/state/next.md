@@ -1,4 +1,29 @@
-# What is worth doing next (2026-09-03, updated 2026-09-15; read docs/state/handoff-2026-09-15-optiondrift.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-16; read docs/state/handoff-2026-09-16-pgen-sparse-read.md first)
+
+**Current handoff: `docs/state/handoff-2026-09-16-pgen-sparse-read.md`** --
+the step-2 MARKER path reads a PGEN record in carrier space
+(`GenoReader::getOneMarkerSparse`, pgenlib's difference list, cap
+`2 * (N/8)`), prepares it over the listed samples with the dense path's
+arithmetic, and no longer materialises the zero-genotype index for either
+reader. sim50k, 1 thread: quantitative scan **1.87x**, binary **1.21x**,
+every golden byte-identical, tier FAIL 0 / PASS 5737 at `both`. Branch
+`sparse-read` in the `SAIGE-sparse` worktree, NOT merged. What the numbers
+rank next, both unmeasured beyond their bound:
+(a) **the region path** -- `mainRegionInCPP` still reads densely
+(`getOneMarkerThrough` ~2731, `imputeGenoAndFlip` ~2747) before scattering
+into `CarrierStore`; prepare is 33% of a BURDEN run and 8% of a SKAT-O run
+on the pgen reader (`SAIGE_PROFILE_REGION`, sim50k), so the bound is 1.5x /
+1.09x there. Same invariants, second call site, and the AoU work is region
+tests. (b) **the bed reader** -- a byte scan that skips the common
+4-genotype pattern would give `.bed` the same shape of gain (its prepare was
+256 / 195 us per marker); `countOneMarker`'s byte-lookup pre-screen already
+exists. Not levers: dosage PGEN (unsupported by design, dense), step 1. On a pgen
+FILTERED to MAF < 1% (every record a difference list) the single-variant
+scan is 10.4x (quant) / 6.1x (binary, Firth off) / 2.8x (binary, Firth on)
+on sim50k, byte-identical -- the remaining O(N) is the saddlepoint tail.
+(c) the PGEN dense loop's unconditional non-zero `push_back` the caller
+discards (`expandFromReadBuffer`; PLINK dropped its twin in Phase 4):
+byte-neutral, 29% of a full-spectrum quant scan is that loop.
 
 **Docs (2026-09-15): the pkgdown site and the `man/` guard landed** (`harness/docs.sh`,
 `.github/workflows/docs.yml`, `_pkgdown.yml`, `vignettes/articles/cli_options.Rmd`

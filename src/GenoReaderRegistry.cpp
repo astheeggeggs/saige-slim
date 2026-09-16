@@ -129,6 +129,20 @@ public:
     return true;
   }
 
+  // The carrier-space read (2026-09-16): PgenClass::getOneMarkerSparse's
+  // 0/1/2 mapped onto the interface's enum.
+  SparseRead getOneMarkerSparse(uint64_t t_gIndex, MarkerMeta& t_meta, SparseMarker& t_sparse,
+                                std::vector<uint>& t_indexForMissing, arma::vec& t_GVec) override {
+    const int r = impl().getOneMarkerSparse(t_gIndex, t_meta.ref, t_meta.alt, t_meta.id,
+                                            t_meta.pos, t_meta.chr,
+                                            t_meta.altFreq, t_meta.altCounts, t_meta.missingRate,
+                                            t_meta.imputeInfo,
+                                            t_sparse.commonCode, t_sparse.idx, t_sparse.code,
+                                            t_indexForMissing, t_GVec);
+    if(r == 0) return SparseRead::Unsupported;
+    return (r == 1) ? SparseRead::Dense : SparseRead::Sparse;
+  }
+
   // Releases THIS handle's decoder and its reference to the shared file info.
   // A clone keeps reading: it holds its own decoder and its own reference, and
   // the shared state dies with the last of them.
