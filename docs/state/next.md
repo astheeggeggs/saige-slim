@@ -27,15 +27,19 @@ larger; **the decision rule is a PINNED All of Us chr20 pair, carrier vs
 `SAIGE_SPA_DENSE=1`, after the `submit()` pinning bug is fixed
 (`handoff-2026-09-16-aou-first-results.md`, second correction): under ~10%
 there, drop the branch; above, merge and check whether any row moved.**
-(b) **the bed reader byte-scan** -- a scan that skips the common 4-genotype
-pattern would give `.bed` the same shape of gain (its prepare was 256 / 195
-us per marker; `countOneMarker`'s byte-lookup pre-screen exists). Independent
-of (d): it would return a difference list through the merged
-`getOneMarkerSparse` interface. **Recommended DROPPED, not decided:** on AoU,
-PGEN is 180x smaller on the coding subset, 2.3x less memory, byte-identical
-in output and reproducible to 0.8% where bed varied 19.5%, and plink2
-converts in seconds; the bed reader earns work only for users who will not
-convert. Not levers: dosage PGEN (unsupported by design, dense), step 1. The
+(b) **the bed reader byte-scan -- MEASURED AND DROPPED 2026-09-17**
+(`handoff-2026-09-17-bed-sparse-read.md`; the implementation, 9-test drill
+and green gate are archived on branch `bed-sparse`, `a476e478`, NOT on
+`strip`). Built because collaborators will not all convert to PGEN;
+measured on sim50k: bed became LEVEL with the PGEN read (36 vs 35.5 user-s,
+quant full spectrum, byte-identical) but only 1.2x over dense bed, 1.1x
+rare-only quant, 1.0x binary either way -- because bed's lane-tally
+pre-screen (Item 3, 2026-09-05) already skipped the decode of every marker
+the MAC gate drops, which dense PGEN never had, so PGEN's 10x was mostly
+recovering what bed already had. The owner dropped it as not worth a second
+code path. **Do not re-open without a measurement that contradicts that
+table.**
+Not levers: dosage PGEN (unsupported by design, dense), step 1. The
 remaining O(N) terms on the region path, in order of size: the R-side Davies
 integration (~45% of a SKAT-O run), then the per-marker `gtilde` for P1/P2.
 
