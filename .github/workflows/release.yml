@@ -51,17 +51,25 @@ jobs:
           done
           # a real step-2 run on the bundled 100-marker fixture, compared to
           # its golden numerically (the goldens are macOS bytes)
-          docker run --rm -v "$PWD:/repo" -w /repo/extdata "$img" step2_SPAtests.R \
+          #
+          # The output MUST be written into a mounted directory, not the
+          # container's own /tmp: --rm discards that filesystem, and the
+          # comparison below runs on the HOST. Writing to /tmp inside the
+          # container left the host with no file at all.
+          out="$(mktemp -d)"
+          docker run --rm -v "$PWD:/repo" -v "$out:/out" -w /repo/extdata "$img" step2_SPAtests.R \
             --bedFile=./input/genotype_100markers.bed --bimFile=./input/genotype_100markers.bim \
             --famFile=./input/genotype_100markers.fam --AlleleOrder=alt-first \
             --GMMATmodelFile=/repo/harness/goldens/step1/binary_sparseGRM_a.rda \
             --varianceRatioFile=/repo/harness/goldens/step1/binary_sparseGRM_a.varianceRatio.txt \
             --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE --is_output_moreDetails=TRUE \
-            --SAIGEOutputFile=/tmp/smoke.txt > /tmp/smoke.log 2>&1
+            --SAIGEOutputFile=/out/smoke.txt > /tmp/smoke.log 2>&1
           grep -q "Analysis done" /tmp/smoke.log
+          # fail HERE, naming the cause, rather than as a python traceback
+          test -s "$out/smoke.txt" || { echo "no smoke output at $out/smoke.txt"; exit 1; }
           # golden P1: same command; the header and row count must match, and
           # the values at 1e-5 relative (the goldens are macOS bytes)
-          python3 - /tmp/smoke.txt harness/goldens/step2/plink_marker_binary.txt <<'EOF'
+          python3 - "$out/smoke.txt" harness/goldens/step2/plink_marker_binary.txt <<'EOF'
           import sys, math
           a = [l.rstrip("\n").split("\t") for l in open(sys.argv[1])]
           b = [l.rstrip("\n").split("\t") for l in open(sys.argv[2])]
