@@ -240,6 +240,9 @@ measurement and argues against pursuing it.
 
 ## What is NOT done
 
+**SUPERSEDED -- most of this was done the same afternoon. See
+"OPEN ITEMS AS OF END OF DAY" at the foot of this document.**
+
 - **The `q_eff` distribution has never been computed.** One line; it sizes #156's
   scope on real data and is the empirical note that row is waiting for.
 - **The non-Cauchy control on the mask experiment.** The first attempt included the
@@ -675,3 +678,46 @@ already paid for.
 **Two measurements before committing**: the per-model memory slope on PGEN, and
 whether the 25% holds with DISTINCT phenotypes rather than three copies. The
 near-silent memo says it should, but that is an inference.
+
+---
+
+# OPEN ITEMS AS OF END OF DAY (supersedes the earlier "What is NOT done")
+
+Done since that list was written: `q_eff` computed (median 3, max 482 -- closed
+#156); the non-Cauchy control run (6,294 shared, 0 mismatched); PGEN conversion
+and both reader arms; the coding subset built, validated and uploaded; the
+Firth arm, with p and sign invariance established exactly; `no1pct` verified as
+a genuine 12-cell run; and the multi-trait and process-packing bounds.
+
+**Still open, in priority order:**
+
+1. **The per-model memory slope on PGEN.** The 554 MB/model figure is measured
+   on bed and ASSUMED to carry over. It decides whether four 3-trait PGEN
+   processes fit on `n2-standard-4`, which is the whole production shape.
+2. **The 25% multi-trait saving with DISTINCT phenotypes** rather than three
+   copies of one. The near-silent memo (495 of 21,915 served) says it should
+   hold, but that is an inference. Needs phenotypes sharing a step-1 sample set
+   -- the current trio does not (cell counts 10052 / 10032 / 10038 differ), the
+   upcoming set does.
+3. **Re-measure PGEN after `baa9ab24` / `c05f23fb`** -- another session landed
+   carrier-space PGEN reads in the marker and region paths on 2026-09-16, after
+   every number in this document. The ~12% PGEN CPU penalty may no longer hold.
+4. **#131's ALT-major fraction, split real vs pseudo-marker.** The figure
+   computed today (2 of ~25,500 rows above AF 0.5) includes UR pseudo-markers in
+   the denominator, so it is not yet the number the ledger row wants. Also needs
+   confirming whether `af01.popmax01` filters on MINOR or ALT allele frequency:
+   if ALT, the sites were removed before SAIGE saw them and the measurement is
+   an artefact of the pipeline rather than an answer.
+5. **The formal `compare_pvalues.R` pass** with its UNPREDICTED = 0 criterion.
+   Today's comparison was the quick Python version.
+6. **A replicated timing design** if anything below ~20% ever needs deciding:
+   several replicates per arm, interleaved ordering, machine pinned. Single
+   runs cannot resolve it.
+7. **chr1 as the extrapolation control**; **the Spot preemption rate**, which
+   comes free with the first production batch.
+
+**Not worth doing, decided on evidence:** the `isFast` simulation study (#156 --
+q never gets large enough); the truncation series as originally motivated (the
+cost model it was meant to refine is retracted, and per-cell cost is uniform);
+threading (bounded at ~1.5x, costs memory, and filling cores with independent
+work scales linearly).
