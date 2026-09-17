@@ -1,29 +1,43 @@
-# What is worth doing next (2026-09-03, updated 2026-09-16; read docs/state/handoff-2026-09-16-pgen-sparse-read.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-17; read docs/state/handoff-2026-09-16-pgen-sparse-read.md first)
 
-**Current handoff: `docs/state/handoff-2026-09-16-pgen-sparse-read.md`** --
-the step-2 MARKER path reads a PGEN record in carrier space
-(`GenoReader::getOneMarkerSparse`, pgenlib's difference list, cap
-`2 * (N/8)`), prepares it over the listed samples with the dense path's
-arithmetic, and no longer materialises the zero-genotype index for either
-reader. sim50k, 1 thread: quantitative scan **1.87x**, binary **1.21x**,
-every golden byte-identical, tier FAIL 0 / PASS 5737 at `both`. Branch
-`sparse-read` in the `SAIGE-sparse` worktree, NOT merged. What the numbers
-rank next, both unmeasured beyond their bound:
-(a) **the region path -- DONE the same evening**: `prepareAndTest` reads in
-carrier space, BURDEN 1.56x / SKAT-O 1.13x on sim50k, byte-identical
-(`test-step2-region-sparse.R`); what is left of SKAT-O is R-side Davies and
-the per-marker `gtilde` for P1/P2. (b) **the bed reader** -- a byte scan that skips the common
-4-genotype pattern would give `.bed` the same shape of gain (its prepare was
-256 / 195 us per marker); `countOneMarker`'s byte-lookup pre-screen already
-exists. Not levers: dosage PGEN (unsupported by design, dense), step 1. On a pgen
-FILTERED to MAF < 1% (every record a difference list) the single-variant
-scan is 10.4x (quant) / 6.1x (binary, Firth off) / 2.8x (binary, Firth on)
-on sim50k, byte-identical -- the remaining O(N) is the saddlepoint tail.
-(c) the PGEN dense loop's discarded non-zero `push_back` -- DONE with (a).
-(d) the binary single-variant tail: the saddlepoint on |Z| > 2 markers is
-O(N) per marker (`getadjGFast`, the dot with mu); a carrier-space form
-through a precomputed X'mu changes association order, so it moves goldens
-at the last digit -- an owner's re-baseline decision, not a free change.
+**Current handoff: `docs/state/handoff-2026-09-16-pgen-sparse-read.md`,
+its "State at the end of the session" section first** -- step 2 reads PGEN
+records in carrier space on BOTH paths, and both are MERGED on `strip`
+with CI green: the marker path (`baa9ab24`: `GenoReader::getOneMarkerSparse`,
+pgenlib's difference list, cap `2 * (N/8)`, prepared over the listed samples
+with the dense path's arithmetic; the zero-genotype index is no longer
+materialised for either reader; sim50k 1 thread quantitative **1.87x**,
+binary **1.21x**, and on a pgen FILTERED to MAF < 1% **10.4x** quant /
+**6.1x** binary Firth off / **2.8x** Firth on) and the region path
+(`c05f23fb`: `prepareAndTest`, BURDEN **1.56x** / SKAT-O **1.13x**,
+`test-step2-region-sparse.R`; the PGEN dense loop's discarded `push_back`
+went with it). Every golden byte-identical at each step. What was ranked
+after them, and where each stands (decided 2026-09-17):
+(a) region path -- DONE (above). (c) PGEN dense loop -- DONE (above).
+(d) **carrier-space saddlepoint inputs on the marker path -- BUILT, GATED,
+DEFERRED, NOT merged.** Commit `37a4d5b6` on branch `sparse-read` in the
+`SAIGE-sparse` worktree (its gate: FAIL 0 / PASS 5799 at `both`, no golden
+moved, `test-step2-spa-carrier.R` agrees with the dense arm to 1e-10; kill
+switch `SAIGE_SPA_DENSE=1`). Not byte-neutral by construction (reassociated
+sums), adds a p x N precompute per model (~70 MB at N = 424k, p = 20), and
+measured **1.11x** on the rare-only pgen, noise on the full spectrum -- the
+common markers take the dense saddlepoint it cannot touch. The one open
+question is the gain at real N, where the O(N) terms it removes are 8x
+larger; **the decision rule is a PINNED All of Us chr20 pair, carrier vs
+`SAIGE_SPA_DENSE=1`, after the `submit()` pinning bug is fixed
+(`handoff-2026-09-16-aou-first-results.md`, second correction): under ~10%
+there, drop the branch; above, merge and check whether any row moved.**
+(b) **the bed reader byte-scan** -- a scan that skips the common 4-genotype
+pattern would give `.bed` the same shape of gain (its prepare was 256 / 195
+us per marker; `countOneMarker`'s byte-lookup pre-screen exists). Independent
+of (d): it would return a difference list through the merged
+`getOneMarkerSparse` interface. **Recommended DROPPED, not decided:** on AoU,
+PGEN is 180x smaller on the coding subset, 2.3x less memory, byte-identical
+in output and reproducible to 0.8% where bed varied 19.5%, and plink2
+converts in seconds; the bed reader earns work only for users who will not
+convert. Not levers: dosage PGEN (unsupported by design, dense), step 1. The
+remaining O(N) terms on the region path, in order of size: the R-side Davies
+integration (~45% of a SKAT-O run), then the per-marker `gtilde` for P1/P2.
 
 **Docs (2026-09-15): the pkgdown site and the `man/` guard landed** (`harness/docs.sh`,
 `.github/workflows/docs.yml`, `_pkgdown.yml`, `vignettes/articles/cli_options.Rmd`
