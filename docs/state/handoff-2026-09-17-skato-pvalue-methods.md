@@ -283,18 +283,23 @@ Phi adjustment: LEDGER #159, DECIDED 2026-09-18 by the owner, leave as is,
 noted. The pinned All of Us phenotypes with few cases are where it should
 be checked next.
 
-## 10. Implementation notes for option C (decided 2026-09-18; STEP 1 LANDED the same day, step 2 not built)
+## 10. Implementation notes for option C (decided 2026-09-18; BOTH STEPS LANDED the same day)
 
-**Status.** Step 1, the outer-integral screen, is in `R/SkatoScreen.R` with
-`test-step2-skato-screen.R` (51 expectations), the two CLI options mapped in
-`optiondrift.py`, the `.skatoMethod.txt` sidecars committed as goldens, and
-17 region goldens re-baselined after two independent regenerations agreed
-byte for byte (only `Pvalue`/`Pvalue_cond` moved, 0.985-1.001, screened cells
-and their Cauchy rows). `--SKATO_tail_method` accepts only `davies`; the
-saddlepoint tier below is the remaining work and the notes stand as written.
-
-Everything a session needs to build it without re-deriving. Read #158 and
-#159 first.
+**Status.** Both steps are in `R/SkatoScreen.R`. Step 1 (the screen):
+`test-step2-skato-screen.R` (51 expectations), 17 region goldens re-baselined
+after two independent regenerations agreed byte for byte (only
+`Pvalue`/`Pvalue_cond` moved, 0.985-1.001, screened cells and their Cauchy
+rows), golden P67 pins the (0, davies) upstream path. Step 2 (the tail):
+`--SKATO_tail_method=saddlepoint` default with `--SKATO_tail_threshold` 1e-5,
+`test-step2-skato-tail.R` (39 expectations: an exact synthetic control within
+15% down to ~1e-9, every bundled cell forced through the tail within 15% of
+Davies, tail = davies a byte-for-byte no-op); no golden moves because no
+bundled cell is below 1e-5. Two implementation facts beyond the notes below:
+the direct-form outer integral must be taken PIECEWISE between the pairwise
+crossings of the rho lines (the lower envelope has kinks; QUADPACK fails
+with "extremely bad integrand behaviour" on some cells otherwise), and the
+threshold-0 branch must route to Davies explicitly (`pLiu <= 0` is never
+true). The notes below stand as written.
 
 **Where it hooks.** `get_SKAT_pvalue` in `R/SAIGE_SPATest_Region_Func.R:411`
 is the only kernel call site for the marginal AND the conditional cell

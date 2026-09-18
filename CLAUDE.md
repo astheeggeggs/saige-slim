@@ -736,11 +736,18 @@ reads) come from it, and Liu's per-rho burden value is 0.13x-4.6x Davies'.
 (`test-step2-skato-screen.R` pins it, and pins that the run REPORTS its mode).
 Provenance is the sidecar `<SAIGEOutputFile>.skatoMethod.txt`, one row per
 tested cell (`liu-screen` / `davies` / `single-rho`), committed with the
-goldens like `.pooledTests.txt`. The tail below 1e-5 -- where SKAT as shipped
-is 0.05x-7.5x off an exact reference, because its per-rho Davies at acc 1e-6
-fails and modified Liu is substituted -- is NOT fixed by the screen; that is
-`--SKATO_tail_method` (only `davies` exists) and the saddlepoint tier of
-`docs/state/handoff-2026-09-17-skato-pvalue-methods.md` section 10.
+goldens like `.pooledTests.txt`. **The tail below 1e-5 is the saddlepoint (step 2, same day)**: there SKAT as
+shipped is 0.05x-7.5x off an exact reference, because its per-rho Davies at
+an ABSOLUTE tolerance of 1e-6 fails and modified Liu is substituted;
+`--SKATO_tail_method=saddlepoint` (default) recomputes both layers with
+Kuonen's saddlepoint and takes the outer integral in its direct form,
+piecewise between the kinks of the rho envelope (QUADPACK reports "extremely
+bad integrand behaviour" otherwise), 5-12% conservative and stable on both
+traits; `--SKATO_tail_threshold` (default 1e-5, REGENIE's) says where it takes
+over, and 1 is how `test-step2-skato-tail.R` forces every bundled cell through
+it against Davies, plus an exact synthetic control. Those cells' `Pvalue_SKAT`,
+`Pvalue_Burden` and `SE_Burden` change too, as they should. No bundled cell is
+below 1e-5, so the default tail moves no golden.
 Ultra-rare few-case inflation (100 cases: 2.7x at 1e-4) is upstream of every
 kernel option and is LEDGER #159, decided: left as is.
 

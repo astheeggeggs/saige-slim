@@ -100,7 +100,7 @@ Legend: **L** live · **P** partly live · **R** refused · **I** inert · `+` t
 | `flexRV_lofAnno` | lof | which anno labels the `lof` transform keys on | L (only if `lof` in the score spec) |
 | `flexRV_maxMAF` | 0.001 | the single max-MAF cell **and** the mafbeta boundary M | L |
 
-### Test method (10)
+### Test method (11)
 
 | option | default | what it changes | |
 |---|---|---|---|
@@ -113,7 +113,8 @@ Legend: **L** live · **P** partly live · **R** refused · **I** inert · `+` t
 | `is_noadjCov` | TRUE | TRUE = raw AF-centred score + null_noXadj ratio; FALSE regresses covariates out first | **P** (ignored by group tests) |
 | `max_MAC_for_ER` | 4 | MAC ≤ this gets the exact resampling p | **P** (binary only) |
 | `SKATO_screen_threshold` `+` | 0.05 | LEDGER #158: the SKAT-O outer rho integral is evaluated in SKAT's closed-form (modified Liu) version first and reported as `Pvalue` when above this; below it SKAT's Davies integral runs verbatim. Per-rho layer (`Pvalue_SKAT`, `Pvalue_Burden`, `BETA_Burden`, `SE_Burden`) never screened. 0 = the upstream kernel byte for byte | **P** (SKAT-O `Pvalue` of screened cells only, < 10%; sidecar `.skatoMethod.txt`) |
-| `SKATO_tail_method` `+` | davies | how a cell below 1e-5 is computed; `davies` = SKAT unchanged (the saddlepoint tier is not implemented yet) | L (one value) |
+| `SKATO_tail_method` `+` | saddlepoint | LEDGER #158 step 2: a cell whose Davies omnibus is below `SKATO_tail_threshold` is recomputed in both layers with Kuonen's saddlepoint, direct-form outer integral (SKAT's own value there is 0.05x-7.5x off an exact reference; the saddlepoint is 5-12% conservative and stable). `davies` = SKAT unchanged; (0, davies) is the upstream kernel byte for byte | **P** (all three p columns and `SE_Burden` of those cells) |
+| `SKATO_tail_threshold` `+` | 1e-5 | where the tail method takes over (REGENIE's threshold); 1 forces every screened-in cell through it | **P** |
 
 ### Performance / chrX (5)
 
@@ -242,7 +243,7 @@ Step 0 reads only the **line count** from `bimFile`/`pvarFile`; IDs, chromosomes
 
 **Step 0 (4):** `--plink2File`, `--pgenFile`, `--pvarFile`, `--psamFile`.
 **Step 1 (6):** the same PGEN quartet, plus `--seed` (upstream hardcodes `set.seed(1)`, #8) and `--tolCoef` (#125).
-**Step 2 (14):** `--pgenFile` / `--pvarFile` / `--psamFile` (upstream has only `--pgenPrefix`), `--GMMATmodel_varianceRatio_multiTraits_File`, `--is_output_weight_column`, `--firth_solver`, `--pval_cutoff_for_fastTest` (as a CLI flag; the R-API parameter and its 0.05 default are upstream's), and the five `--flexRV_*`, `--SKATO_screen_threshold` / `--SKATO_tail_method` (#158, the SKAT-O outer-integral screen).
+**Step 2 (15):** `--pgenFile` / `--pvarFile` / `--psamFile` (upstream has only `--pgenPrefix`), `--GMMATmodel_varianceRatio_multiTraits_File`, `--is_output_weight_column`, `--firth_solver`, `--pval_cutoff_for_fastTest` (as a CLI flag; the R-API parameter and its 0.05 default are upstream's), and the five `--flexRV_*`, `--SKATO_screen_threshold` / `--SKATO_tail_method` / `--SKATO_tail_threshold` (#158: the SKAT-O outer-integral screen and the saddlepoint tail).
 
 **Upstream options whose capability is effectively new here:** `--phenoCol` / `--traitType` (comma lists = several fits per process, per-phenotype outputs + `.multiTraits.txt`); `--weights.beta` (semicolon pair list, one beta weight set per extra pair, #19); `--LOCO` (default NULL so the sparse-fit resolution is explicit and an explicit TRUE is refused, #112); `--is_no_weight_in_groupTest` (appends a `No_Weights` set where upstream stopped); `--rangestoIncludeFile` (non-functional upstream, #11); `--maxMAC_in_groupTest` (silently produced duplicate bins upstream, #61); `--nThreads` in step 2 (upstream forked `mclapply` and did nothing without `--idstoIncludeFile`, #30); `--is_rewrite_XnonPAR_forMales` (chrX-only, #69); `--minGroupMAC_in_BurdenTest` (default 5 → 1, both region paths, per-set MAC, #126/#118).
 

@@ -1,7 +1,7 @@
 # LEDGER #158: the SKAT-O outer-integral screen (R/SkatoScreen.R).
 #
-# Three things are pinned. (1) With the screen OFF (--SKATO_screen_threshold=0)
-# the run is the upstream kernel byte for byte: golden P2 reproduced, no
+# Three things are pinned. (1) With the screen OFF (--SKATO_screen_threshold=0
+# --SKATO_tail_method=davies) the run is the upstream kernel byte for byte: golden P2 reproduced, no
 # sidecar, and the log SAYS the screen is off. (2) With the screen ON, only
 # `Pvalue` may differ from the off run, only on cells the sidecar marks
 # "liu-screen", and by under 15%; Pvalue_SKAT, Pvalue_Burden, BETA_Burden,
@@ -16,7 +16,7 @@
 # committed golden, so it survives the goldens being re-baselined to the
 # screened values.
 
-screen_run <- function(threshold, out = tempfile(fileext = ".txt")) {
+screen_run <- function(threshold, out = tempfile(fileext = ".txt"), tail = "davies") {
   m <- file.path(saige_extdata, "output", "example_binary_sparseGRM")
   sg <- file.path(saige_extdata, "output",
     "sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx")
@@ -32,6 +32,7 @@ screen_run <- function(threshold, out = tempfile(fileext = ".txt")) {
             "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
             "--maxMAF_in_groupTest=0.0001,0.001,0.01", "--is_fastTest=TRUE",
             paste0("--SKATO_screen_threshold=", threshold),
+            paste0("--SKATO_tail_method=", tail),
             paste0("--SAIGEOutputFile=", out))
   st <- run_saige_cli("step2_SPAtests.R", args)
   list(status = as.integer(st), log = readLines(attr(st, "log"), warn = FALSE), out = out)

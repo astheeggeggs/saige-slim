@@ -51,7 +51,8 @@ SPAGMMATtest(
   maxMAC_in_groupTest = c(0),
   minGroupMAC_in_BurdenTest = 1,
   SKATO_screen_threshold = 0.05,
-  SKATO_tail_method = "davies",
+  SKATO_tail_method = "saddlepoint",
+  SKATO_tail_threshold = 1e-05,
   is_Firth_beta = FALSE,
   pCutoffforFirth = 0.01,
   firth_solver = "closed",
@@ -178,7 +179,9 @@ is_imputed_data = TRUE. By default, 10}
 
 \item{SKATO_screen_threshold}{numeric. LEDGER #158: the SKAT-O kernel's outer rho integral is first evaluated in SKAT's closed-form (modified Liu) version and, when that value is above this threshold, reported as Pvalue; below it SKAT's Davies integral runs exactly as before. The per-rho layer (Pvalue_SKAT, Pvalue_Burden, BETA_Burden, SE_Burden) is never screened. 0 disables the screen and reproduces the upstream kernel byte for byte. Measured: zero screened cells with a Davies p below threshold/10 over ~250k null cells, ~96% of the kernel's Davies time saved at 0.01, the reported Pvalue of a screened cell within 10% of Davies'. By default 0.05, which confines the Liu form to the band where its median bias is 1.00 (for a multi-biobank meta-analysis of SKAT-O p-values). A sidecar <SAIGEOutputFile>.skatoMethod.txt names the path each cell took.}
 
-\item{SKATO_tail_method}{character. How the SKAT-O p-value is computed for a cell whose Davies omnibus is below 1e-5. "davies" (the only value in this version) is SKAT's kernel unchanged; the saddlepoint tier of the handoff is not implemented yet.}
+\item{SKATO_tail_method}{character. How the SKAT-O p-value is computed for a cell whose Davies omnibus is below SKATO_tail_threshold. "saddlepoint" (default): both layers recomputed with Kuonen's saddlepoint for the weighted chi-square sums and the outer integral taken in its direct form -- because SKAT's own value there rests on per-rho Davies calls at an ABSOLUTE tolerance of 1e-6, which return noise or a Liu substitute (measured 0.05x-7.5x off an exact reference in (1e-8, 1e-6] on a binary trait, LEDGER #158), while the saddlepoint is 5-12% conservative and stable. "davies" is SKAT's kernel unchanged. With SKATO_screen_threshold = 0 and SKATO_tail_method = "davies" the kernel is upstream's byte for byte. Cells taking the tail also change Pvalue_SKAT, Pvalue_Burden and SE_Burden, as they should. The same switch, at the same threshold, is REGENIE's.}
+
+\item{SKATO_tail_threshold}{numeric. The Davies omnibus p below which SKATO_tail_method applies. By default 1e-5 (REGENIE's); 1 sends every screened-in cell through the tail method, which is how the tests compare it with Davies where both are valid.}
 
 \item{is_Firth_beta}{logical. Whether to estimate effect sizes using approx Firth, only for binary traits. By default, FALSE}
 

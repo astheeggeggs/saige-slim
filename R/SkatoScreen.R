@@ -35,20 +35,26 @@
 skato_screen_env <- new.env(parent = emptyenv())
 skato_screen_env$threshold <- 0
 skato_screen_env$tail <- "davies"
+skato_screen_env$tailThreshold <- 1e-5
 skato_screen_env$rows <- list()
-skato_screen_env$counts <- c(screened = 0L, davies = 0L, single = 0L)
+skato_screen_env$counts <- c(screened = 0L, davies = 0L, single = 0L, saddlepoint = 0L)
 
 #' Set the run-wide SKAT-O kernel settings. Called once per SPAGMMATtest
 #' region run, BEFORE the SKAT-O pool forks, so every worker inherits them.
 #' @noRd
-skatoScreenSet <- function(threshold, tailMethod) {
+skatoScreenSet <- function(threshold, tailMethod, tailThreshold = 1e-5) {
   if (!is.numeric(threshold) || length(threshold) != 1 || is.na(threshold) ||
         threshold < 0 || threshold > 1) {
     stop("SKATO_screen_threshold must be a single number in [0, 1]; 0 disables the screen")
   }
-  tailMethod <- match.arg(tailMethod, c("davies"))
+  if (!is.numeric(tailThreshold) || length(tailThreshold) != 1 || is.na(tailThreshold) ||
+        tailThreshold < 0 || tailThreshold > 1) {
+    stop("SKATO_tail_threshold must be a single number in [0, 1]")
+  }
+  tailMethod <- match.arg(tailMethod, c("saddlepoint", "davies"))
   skato_screen_env$threshold <- as.numeric(threshold)
   skato_screen_env$tail <- tailMethod
+  skato_screen_env$tailThreshold <- as.numeric(tailThreshold)
   skatoScreenReset()
   invisible(NULL)
 }
@@ -58,11 +64,13 @@ skatoScreenSet <- function(threshold, tailMethod) {
 #' @noRd
 skatoScreenReset <- function() {
   skato_screen_env$rows <- list()
-  skato_screen_env$counts <- c(screened = 0L, davies = 0L, single = 0L)
+  skato_screen_env$counts <- c(screened = 0L, davies = 0L, single = 0L, saddlepoint = 0L)
   invisible(NULL)
 }
 
-skatoScreenOn <- function() skato_screen_env$threshold > 0
+skatoScreenOn <- function() {
+  skato_screen_env$threshold > 0 || skato_screen_env$tail != "davies"
+}
 
 #' The SKAT-O kernel with the outer integral screened. Returns what
 #' SKAT:::Met_SKAT_Get_Pvalue returns (p.value, param, p.value.resampling),
@@ -130,9 +138,21 @@ skatoScreenKernel <- function(Score, Phi, r.corr) {
   IDX <- which(pval > 0)
   if (pLiu <= 0 || length(IDX) < n.r) pLiu <- min(pval) * multi
   if (pLiu == 0 && length(IDX) > 0) pLiu <- min(pval[IDX])
-  if (pLiu <= skato_screen_env$threshold) {
+  # threshold 0 = no screen: every cell takes the Davies path (and, below the
+  # tail threshold, the tail)
+  if (skato_screen_env$threshold == 0 || pLiu <= skato_screen_env$threshold) {
     res <- original()
-    attr(res, "skato_method") <- "davies"
+    method <- "davies"
+    if (skato_screen_env$tail == "saddlepoint" && !is.null(res$p.value) &&
+          is.finite(res$p.value) && res$p.value < skato_screen_env$tailThreshold) {
+      # the tail: both layers again with the saddlepoint, direct integral form
+      tail <- skatoSaddlepointTail(Qr, lambda.all, param.m, r.all, pval, param.mat)
+      if (!is.null(tail)) {
+        res <- tail
+        method <- "saddlepoint"
+      }
+    }
+    attr(res, "skato_method") <- method
     attr(res, "skato_screen_p") <- pLiu
     return(res)
   }
@@ -158,7 +178,8 @@ skatoMethodRecord <- function(region, group, maxMAF, weight, test, method, scree
   if (is.null(method)) {
     return(invisible(NULL))
   }
-  k <- switch(method, "liu-screen" = "screened", "davies" = "davies", "single")
+  k <- switch(method, "liu-screen" = "screened", "davies" = "davies",
+              "saddlepoint" = "saddlepoint", "single")
   skato_screen_env$counts[k] <- skato_screen_env$counts[k] + 1L
   skato_screen_env$rows[[length(skato_screen_env$rows) + 1L]] <- data.frame(
     Region = as.character(region),
@@ -179,18 +200,166 @@ skatoMethodRecord <- function(region, group, maxMAF, weight, test, method, scree
 #' @noRd
 skatoMethodSummary <- function(OutputFile) {
   if (!skatoScreenOn()) {
-    cat("SKAT-O screen: off (SKATO_screen_threshold = 0); the SKAT kernel ran unchanged.\n")
+    cat("SKAT-O screen: off (SKATO_screen_threshold = 0, SKATO_tail_method = davies); ",
+        "the SKAT kernel ran unchanged.\n", sep = "")
     return(invisible(NULL))
   }
   n <- skato_screen_env$counts
   path <- paste0(OutputFile, ".skatoMethod.txt")
   cat("SKAT-O screen: threshold ", skato_screen_env$threshold, ", tail ",
-      skato_screen_env$tail, "; ", n[["screened"]], " cell(s) took the Liu-form ",
-      "outer integral, ", n[["davies"]], " the Davies integral, ", n[["single"]],
-      " were single-rho. Per-cell provenance in '", path, "'.\n", sep = "")
+      skato_screen_env$tail, " below ", skato_screen_env$tailThreshold, "; ",
+      n[["screened"]], " cell(s) took the Liu-form outer integral, ", n[["davies"]],
+      " the Davies integral, ", n[["saddlepoint"]], " the saddlepoint tail, ",
+      n[["single"]], " were single-rho. Per-cell provenance in '", path, "'.\n", sep = "")
   if (length(skato_screen_env$rows) > 0) {
     tab <- do.call(rbind, skato_screen_env$rows)
     utils::write.table(tab, path, sep = "\t", quote = FALSE, row.names = FALSE)
   }
   invisible(NULL)
+}
+
+# ---------------------------------------------------------------------------
+# LEDGER #158, step 2: the tail. Below SKATO_tail_threshold, SKAT's own p-value
+# is unreliable in BOTH directions: its per-rho Davies at acc 1e-6 (an
+# ABSOLUTE tolerance) returns a value that is noise, or non-positive -- in
+# which case modified Liu, 3-7x anticonservative there, is substituted -- and
+# the outer integral inherits it. Measured against an adaptive-Davies
+# reference on the binary trait, SKAT as shipped was 0.05x-7.5x off in
+# (1e-8, 1e-6]. Kuonen's saddlepoint (Lugannani-Rice form) for a weighted sum
+# of chi-squares has bounded relative error in the far tail: 5-12%
+# conservative and stable in every band on both traits, 8-13% against Ruben's
+# exact series on synthetic spectra to 1e-23. REGENIE uses the same switch at
+# the same threshold (Davies, then Kuonen below 1e-5, after Wu et al. 2016).
+#
+# Both layers are recomputed with the saddlepoint, and the outer integral is
+# taken in the direct form P = P(chi2_1 > x*) + int_0^{x*} S(delta_min(x)) f(x)
+# dx (Wu's formula (3) shape) rather than SKAT's 1 - int, which underflows
+# below ~1e-16. x = t^2 removes the density's singularity at 0. A rho or a
+# node where the saddlepoint is undefined (the statistic at its mean) takes
+# the Davies value already computed. SKAT's post-rules apply as on every path.
+
+#' P(sum_j lambda_j chi2_1 > q) by Kuonen's saddlepoint; NA where undefined.
+#' @noRd
+skatoSaddlepointSurvival <- function(lambda, q) {
+  if (q <= 0) {
+    return(1)
+  }
+  mu <- sum(lambda)
+  lmax <- max(lambda)
+  if (abs(q - mu) < 1e-7 * mu) {
+    return(NA_real_)
+  }
+  kPrime <- function(z) sum(lambda / (1 - 2 * z * lambda)) - q
+  if (q > mu) {
+    bracket <- c(0, (1 / (2 * lmax)) * (1 - 1e-12))
+  } else {
+    lo <- -1 / lmax
+    while (kPrime(lo) > 0) lo <- lo * 2
+    bracket <- c(lo, 0)
+  }
+  zh <- tryCatch(uniroot(kPrime, bracket, tol = 1e-12, maxiter = 5000)$root,
+                 error = function(e) NA_real_)
+  if (is.na(zh)) {
+    return(NA_real_)
+  }
+  k0 <- -0.5 * sum(log(1 - 2 * zh * lambda))
+  k2 <- sum(2 * lambda^2 / (1 - 2 * zh * lambda)^2)
+  w <- sign(zh) * sqrt(2 * (zh * q - k0))
+  v <- zh * sqrt(k2)
+  if (!is.finite(w) || abs(w) < 1e-6 || !is.finite(v)) {
+    return(NA_real_)
+  }
+  pnorm(w + log(v / w) / w, lower.tail = FALSE)
+}
+
+#' The saddlepoint tier over the layers the screen already built. `pvalDavies`
+#' are SKAT's per-rho values (the fallback per rho); `param.mat` their Liu
+#' parameters (muQ, varQ, df) per rho, which the pmin -> quantile map needs.
+#' Returns a result in Met_SKAT_Get_Pvalue's shape, or NULL if the outer
+#' integral could not be evaluated (the caller then keeps SKAT's answer).
+#' @noRd
+skatoSaddlepointTail <- function(Qr, lambda.all, param.m, r.all, pvalDavies, param.mat) {
+  n.r <- length(r.all)
+  pval <- numeric(n.r)
+  for (i in seq_len(n.r)) {
+    lam <- lambda.all[[i]]
+    p <- if (length(lam) == 1) pvalDavies[i] else skatoSaddlepointSurvival(lam, Qr[i])
+    if (is.na(p) || p <= 0 || p > 1) p <- pvalDavies[i]
+    pval[i] <- p
+  }
+  pmin <- min(pval)
+  pmin.q <- numeric(n.r)
+  for (i in seq_len(n.r)) {
+    df <- param.mat[i, 3]
+    q.org <- qchisq(1 - pmin, df = df)
+    pmin.q[i] <- (q.org - df) / sqrt(2 * df) * sqrt(param.mat[i, 2]) + param.mat[i, 1]
+  }
+  sd1 <- sqrt(param.m$VarQ - param.m$VarRemain) / sqrt(param.m$VarQ)
+  daviesNode <- function(q) {
+    o <- get("SKAT_davies", asNamespace("SKAT"))(q, param.m$lambda, acc = 1e-6)
+    if (o$ifault != 0 || o$Qq <= 0 || o$Qq > 1) NA_real_ else o$Qq
+  }
+  sFun <- function(x) {
+    temp <- (pmin.q - param.m$tau %x% t(x)) / (1 - r.all)
+    tempMin <- apply(temp, 2, min)
+    vapply(tempMin, function(min1) {
+      if (min1 > sum(param.m$lambda) * 1e4) {
+        return(0)
+      }
+      q <- (min1 - param.m$MuQ) * sd1 + param.m$MuQ
+      s <- skatoSaddlepointSurvival(param.m$lambda, q)
+      if (is.na(s)) s <- daviesNode(q)
+      if (is.na(s)) stop("SKAT-O saddlepoint tail: no survival value at a node")
+      min(s, 1)
+    }, 0)
+  }
+  xstar <- max(min(pmin.q / param.m$tau), 0)
+  # delta_min(x) is the lower envelope of the eight lines
+  # (pmin.q_i - tau_i x) / (1 - r_i), so the integrand has a kink wherever the
+  # minimising rho changes. Integrate piecewise between the pairwise crossings
+  # inside (0, x*), where it is smooth; QUADPACK otherwise reports "extremely
+  # bad integrand behaviour" on some cells. In t = sqrt(x) throughout.
+  slope <- -param.m$tau / (1 - r.all)
+  icpt <- pmin.q / (1 - r.all)
+  knots <- c()
+  for (i in seq_len(n.r - 1)) {
+    for (j in (i + 1):n.r) {
+      d <- slope[i] - slope[j]
+      if (d != 0) {
+        x <- (icpt[j] - icpt[i]) / d
+        if (is.finite(x) && x > 0 && x < xstar) knots <- c(knots, x)
+      }
+    }
+  }
+  edges <- sqrt(unique(c(0, sort(knots), xstar)))
+  integrand <- function(t) sFun(t^2) * 2 * dnorm(t)
+  piecewise <- function(relTol) {
+    total <- 0
+    for (k in seq_len(length(edges) - 1)) {
+      if (edges[k + 1] <= edges[k]) next
+      re <- integrate(integrand, lower = edges[k], upper = edges[k + 1],
+                      subdivisions = 1000, rel.tol = relTol, abs.tol = 0)
+      total <- total + re$value
+    }
+    total
+  }
+  area <- tryCatch(piecewise(1e-6), error = function(e) NULL)
+  if (is.null(area)) area <- tryCatch(piecewise(1e-4), error = function(e) NULL)
+  if (is.null(area)) {
+    return(NULL)
+  }
+  pvalue <- pchisq(xstar, df = 1, lower.tail = FALSE) + area
+  if (pmin * n.r < pvalue) pvalue <- pmin * n.r
+  multi <- if (n.r < 3) 2 else 3
+  IDX <- which(pval > 0)
+  if (pvalue <= 0 || length(IDX) < n.r) pvalue <- min(pval) * multi
+  if (pvalue == 0 && length(IDX) > 0) pvalue <- min(pval[IDX])
+  param <- list(p.val.each = pval, q.val.each = Qr)
+  param$rho <- r.all
+  param$minp <- pmin
+  id_temp <- which(param$p.val.each == pmin)
+  id_temp1 <- which(param$rho >= 0.999)
+  if (length(id_temp1) > 0) param$rho[id_temp1] <- 1
+  param$rho_est <- param$rho[id_temp]
+  list(p.value = pvalue, param = param, p.value.resampling = NULL)
 }

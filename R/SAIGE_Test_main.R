@@ -94,7 +94,8 @@ parse_X_PARregion_token <- function(token) {
 #' @param is_overwrite_output logical. Whether to overwrite the output file if it exists. If FALSE, the program will continue the unfinished analysis instead of starting over from the beginining. By default, TRUE
 #' @param minGroupMAC_in_BurdenTest numeric. Minimum minor allele count of a (annotation x max_MAF x weight set) cell for its burden test to be performed. Applied on BOTH the burden-only (r.corr=1) and the SKAT-O path, which also reports Pvalue_Burden (LEDGER #126). The count is an unweighted allele count over the markers the weight set keeps (LEDGER #118). By default, 1
 #' @param SKATO_screen_threshold numeric. LEDGER #158: the SKAT-O kernel's outer rho integral is first evaluated in SKAT's closed-form (modified Liu) version and, when that value is above this threshold, reported as Pvalue; below it SKAT's Davies integral runs exactly as before. The per-rho layer (Pvalue_SKAT, Pvalue_Burden, BETA_Burden, SE_Burden) is never screened. 0 disables the screen and reproduces the upstream kernel byte for byte. Measured: zero screened cells with a Davies p below threshold/10 over ~250k null cells, ~96% of the kernel's Davies time saved at 0.01, the reported Pvalue of a screened cell within 10% of Davies'. By default 0.05, which confines the Liu form to the band where its median bias is 1.00 (for a multi-biobank meta-analysis of SKAT-O p-values). A sidecar <SAIGEOutputFile>.skatoMethod.txt names the path each cell took.
-#' @param SKATO_tail_method character. How the SKAT-O p-value is computed for a cell whose Davies omnibus is below 1e-5. "davies" (the only value in this version) is SKAT's kernel unchanged; the saddlepoint tier of the handoff is not implemented yet.
+#' @param SKATO_tail_method character. How the SKAT-O p-value is computed for a cell whose Davies omnibus is below SKATO_tail_threshold. "saddlepoint" (default): both layers recomputed with Kuonen's saddlepoint for the weighted chi-square sums and the outer integral taken in its direct form -- because SKAT's own value there rests on per-rho Davies calls at an ABSOLUTE tolerance of 1e-6, which return noise or a Liu substitute (measured 0.05x-7.5x off an exact reference in (1e-8, 1e-6] on a binary trait, LEDGER #158), while the saddlepoint is 5-12% conservative and stable. "davies" is SKAT's kernel unchanged. With SKATO_screen_threshold = 0 and SKATO_tail_method = "davies" the kernel is upstream's byte for byte. Cells taking the tail also change Pvalue_SKAT, Pvalue_Burden and SE_Burden, as they should. The same switch, at the same threshold, is REGENIE's.
+#' @param SKATO_tail_threshold numeric. The Davies omnibus p below which SKATO_tail_method applies. By default 1e-5 (REGENIE's); 1 sends every screened-in cell through the tail method, which is how the tests compare it with Davies where both are valid.
 #' @param groupFile character. Path to the file containing the group information for gene-based tests. Each gene/set has 2 + K lines in the group file (K >= 0 weight lines). The first element of each line is the gene/set name. The second element indicates whether the line contains variant IDs (var), annotations (anno), or weights. A weight line's second element is 'weight' (weight set named "WEIGHT"), or 'weight:NAME' / 'weight,NAME' to name the weight set NAME. Weight lines are optional; with none, the default weights are generated based on beta(MAF, 1, 25) (use weights.beta to change the parameters). With more than one weight line per gene/set (each named, same names and order in every gene/set), each weight line defines one weight set and results are output per (annotation, max MAF, weight set) with a Weight column labeling the set (plus Pvalue_ACATV/Pvalue_ACATO columns for SKAT-O). The variant ids must match the genotype input's marker IDs (bim column 2 for PLINK). Elements are seperated by tab or space.
 #' @param sparseGRMFile character. Path to the pre-calculated sparse GRM file that was used in Step 1
 #' @param sparseGRMSampleIDFile character. Path to the sample ID file for the pre-calculated sparse GRM. No header is included. The order of sample IDs is corresponding to sample IDs in the sparse GRM
@@ -198,7 +199,8 @@ SPAGMMATtest <- function(bedFile = "",
                          maxMAC_in_groupTest = c(0),
                          minGroupMAC_in_BurdenTest = 1,
                          SKATO_screen_threshold = 0.05,
-                         SKATO_tail_method = "davies",
+                         SKATO_tail_method = "saddlepoint",
+                         SKATO_tail_threshold = 1e-5,
                          is_Firth_beta = FALSE,
                          pCutoffforFirth = 0.01,
                          firth_solver = "closed",
@@ -434,7 +436,7 @@ SPAGMMATtest <- function(bedFile = "",
 
     # LEDGER #158: run-wide SKAT-O kernel settings, set BEFORE the SKAT-O pool
     # forks so every worker inherits them (R/SkatoScreen.R).
-    skatoScreenSet(SKATO_screen_threshold, SKATO_tail_method)
+    skatoScreenSet(SKATO_screen_threshold, SKATO_tail_method, SKATO_tail_threshold)
 
     checkArgsList_for_Region(
       MACCutoff_to_CollapseUltraRare,

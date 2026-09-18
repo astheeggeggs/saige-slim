@@ -137,11 +137,24 @@ option_list <- list(
   make_option(
     "--SKATO_tail_method",
     type = "character",
-    default = "davies",
+    default = "saddlepoint",
     help = paste0(
-      "How a SKAT-O cell whose Davies omnibus is below 1e-5 is computed. ",
-      "\"davies\" (the only value in this version) is SKAT's kernel unchanged. ",
-      "[default davies]"
+      "How a SKAT-O cell whose Davies omnibus is below --SKATO_tail_threshold is ",
+      "computed. saddlepoint (default): both layers recomputed with Kuonen's ",
+      "saddlepoint, direct-form outer integral -- SKAT's own value there rests on ",
+      "per-rho Davies calls at an absolute tolerance of 1e-6 and is unreliable in ",
+      "both directions (LEDGER #158). davies: SKAT's kernel unchanged. ",
+      "--SKATO_screen_threshold=0 with --SKATO_tail_method=davies is the upstream ",
+      "kernel byte for byte. [default saddlepoint]"
+    )
+  ),
+  make_option(
+    "--SKATO_tail_threshold",
+    type = "double",
+    default = 1e-5,
+    help = paste0(
+      "The Davies omnibus p below which --SKATO_tail_method applies (REGENIE's ",
+      "threshold). [default 1e-5]"
     )
   ),
   make_option(
@@ -873,6 +886,7 @@ fixed_params <- list(
   minGroupMAC_in_BurdenTest = opt$minGroupMAC_in_BurdenTest,
   SKATO_screen_threshold = opt[["SKATO_screen_threshold"]],
   SKATO_tail_method = opt[["SKATO_tail_method"]],
+  SKATO_tail_threshold = opt[["SKATO_tail_threshold"]],
   annotation_in_groupTest = annotation_in_groupTest,
   groupFile = opt$groupFile,
   sparseGRMFile = opt$sparseGRMFile,

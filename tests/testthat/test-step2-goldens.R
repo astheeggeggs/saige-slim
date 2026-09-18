@@ -65,15 +65,16 @@ test_that("step2 group fastTest binary matches golden", {
 })
 
 test_that("step2 group fastTest binary, SKAT-O screen OFF (P67, the upstream kernel) matches golden", {
-  # LEDGER #158: --SKATO_screen_threshold=0 is the kernel as upstream computes
-  # it; this golden equals P2's bytes as committed before the screen landed.
+  # LEDGER #158: --SKATO_screen_threshold=0 --SKATO_tail_method=davies is the
+  # kernel as upstream computes it; this golden equals P2's bytes as committed
+  # before the screen landed.
   run_step2_case("plink_group_fastTest_screenoff.txt",
     c(PLINK_ARGS(), "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
       GRP_MODEL, SG_ARGS,
       "--groupFile=./input/group_new_snpid.txt",
       "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
       "--maxMAF_in_groupTest=0.0001,0.001,0.01",
-      "--is_fastTest=TRUE", "--SKATO_screen_threshold=0"),
+      "--is_fastTest=TRUE", "--SKATO_screen_threshold=0", "--SKATO_tail_method=davies"),
     extra_outputs = c(".singleAssoc.txt", ".singleAssoc.txt_temp"))
 })
 
