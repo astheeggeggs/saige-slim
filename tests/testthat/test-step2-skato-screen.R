@@ -50,7 +50,9 @@ test_that("screen OFF is the upstream kernel byte for byte, and says so", {
   expect_cli_ok(r$status)
   expect_true(any(grepl("SKAT-O screen: off", r$log, fixed = TRUE)))
   expect_false(file.exists(paste0(r$out, ".skatoMethod.txt")))
-  expect_files_byte_identical(file.path(saige_goldens, "step2", "plink_group_fastTest_screenoff.txt"), r$out)
+  # mode-aware: byte-exact on the golden platform, parsed-table tolerance on CI
+  expect_output_matches_golden(
+    file.path(saige_goldens, "step2", "plink_group_fastTest_screenoff.txt"), r$out)
 })
 
 test_that("screen ON touches only Pvalue, only on screened cells, by under 15%, with zero misses", {

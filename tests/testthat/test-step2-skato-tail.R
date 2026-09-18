@@ -7,7 +7,7 @@
 # reported, not asserted. (2) End to end on the bundled fixture, whose cells
 # are all above 1e-5: --SKATO_tail_threshold=1 forces every screened-in cell
 # through the tail, and Pvalue, Pvalue_SKAT and Pvalue_Burden land within 15%
-# of the Davies run (golden P67) with the run reporting the mode and the
+# of the same session's Davies run with the run reporting the mode and the
 # sidecar naming every cell; --SKATO_tail_method=davies at the same threshold
 # is a no-op and reproduces P67's bytes.
 
@@ -35,8 +35,8 @@ ruben_survival <- function(lambda, q) {
   }
   pilot <- skatoSaddlepointSurvival(lambda, q)
   if (is.na(pilot)) pilot <- 0.5
-  o <- get("SKAT_davies", asNamespace("SKAT"))(q, lambda, lim = 1e8,
-                                                acc = max(min(pilot * 1e-4, 1e-6), 1e-15))
+  davies <- get("SKAT_davies", asNamespace("SKAT"))
+  o <- davies(q, lambda, lim = 1e8, acc = max(min(pilot * 1e-4, 1e-6), 1e-15))
   if (o$ifault != 0 || o$Qq <= 0) NA_real_ else o$Qq
 }
 # The SKAT-O integral with an exact inner function in both layers, direct form.
@@ -153,7 +153,11 @@ test_that("forced through the tail, every screened-in cell is saddlepoint, withi
   expect_gt(sum(sc$Method == "saddlepoint"), 0)
   nSp <- as.integer(sub(".* ([0-9]+) the saddlepoint tail.*", "\\1", line))
   expect_equal(nSp, sum(read_tab(paste0(r$out, ".skatoMethod.txt"))$Method == "saddlepoint"))
-  g <- read_tab(file.path(saige_goldens, "step2", "plink_group_fastTest_screenoff.txt"))
+  # the Davies reference is the SAME session's (0, davies) run, not the golden:
+  # column-exact comparisons across platforms are the byte-vs-numeric trap
+  ref <- tail_run(c("--SKATO_tail_method=davies"))
+  expect_cli_ok(ref$status)
+  g <- read_tab(ref$out)
   b <- read_tab(r$out)
   expect_identical(dim(g), dim(b))
   key <- function(d) paste(d$Region, d$Group, d$max_MAF)
@@ -179,5 +183,5 @@ test_that("tail method davies is a no-op: P67's bytes at any tail threshold", {
   expect_cli_ok(r$status)
   expect_true(any(grepl("SKAT-O screen: off", r$log, fixed = TRUE)))
   golden <- file.path(saige_goldens, "step2", "plink_group_fastTest_screenoff.txt")
-  expect_files_byte_identical(golden, r$out)
+  expect_output_matches_golden(golden, r$out)
 })
