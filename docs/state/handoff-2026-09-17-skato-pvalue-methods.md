@@ -384,3 +384,30 @@ goldens, check with the comparator before assuming); TSAN is unaffected
 Not affected: BURDEN runs (`--r.corr=1` never calls SKAT-O), FlexRV
 (the owner does not combine it with SKAT-O; the #127 sidecar records what
 was combined either way).
+
+**Decisions added 2026-09-18 (owner).**
+
+- *Threshold for the multi-biobank setting: 0.05, not 0.01.* If SKAT-O
+  p-values are combined across cohorts, per-cohort systematic bias adds as
+  b*sqrt(K) in a Stouffer sum; the Liu-form omnibus is 1.02x Davies (median)
+  in (0.01, 0.05] on both fixtures and exactly 1.00 above 0.05, so 0.05
+  confines Liu to the unbiased band at a cost of ~5 points of the saving
+  (91% vs 96% of the Davies-outer time). If only the burden Z is combined,
+  the screen touches nothing the meta reads and 0.01 is fine. Default 0.05.
+- *Two CLI options, and (0, davies) IS the upstream kernel.*
+  `--SKATO_screen_threshold` (default 0.05; 0 disables the screen) and
+  `--SKATO_tail_method` (`saddlepoint` default; `davies` = today's kernel
+  below 1e-5, i.e. SKAT's own Davies/Liu/Bonferroni behaviour). With
+  `--SKATO_screen_threshold=0 --SKATO_tail_method=davies` every output file
+  must be byte-identical to the goldens, and that is the test that pins the
+  revert path (the LEDGER #30 shape: a knob that fails to arrive would
+  otherwise pass as green -- assert the run REPORTED its mode). Both go in
+  `optiondrift.py`'s map with the exported formals. No environment variable:
+  the choice must appear in the run's log and the CLI help.
+- *Provenance without a schema change.* Do not add a column to the region
+  file (every golden's schema would move). Write a sidecar
+  `<SAIGEOutputFile>.skatoMethod.txt` -- one row per cell: region, group,
+  max_MAF, which path produced `Pvalue` (`liu-screen`, `davies`,
+  `saddlepoint`) and the screen's Liu value -- only when the new path is on,
+  the #127 sidecar's pattern. The meta-analysis can then audit which method
+  produced each combined p.
