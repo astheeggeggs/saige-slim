@@ -282,3 +282,105 @@ today; the 100-case inflation is a separate, real item** for the SPA/ER
 Phi adjustment: LEDGER #159, DECIDED 2026-09-18 by the owner, leave as is,
 noted. The pinned All of Us phenotypes with few cases are where it should
 be checked next.
+
+## 10. Implementation notes for option C (decided 2026-09-18; NOT implemented)
+
+Everything a session needs to build it without re-deriving. Read #158 and
+#159 first.
+
+**Where it hooks.** `get_SKAT_pvalue` in `R/SAIGE_SPATest_Region_Func.R:411`
+is the only kernel call site for the marginal AND the conditional cell
+(`skat_fun`, `R/SAIGE_SPATest_Region.R:536` and `:656`), and the SKAT-O pool
+and the identical-cell memo wrap it (`skatoMemoKernel`, `R/SkatoParallel.R`),
+so the change goes INSIDE `get_SKAT_pvalue` and both keep working untouched.
+The `try()` and the `error.code`/`skatFailures` accounting (#57) stay around
+whatever replaces the call. What the caller reads from the result
+(`:442-449`): `p.value` -> `Pvalue` (SKAT-O), `param$p.val.each[rho == 0]`
+-> `Pvalue_SKAT`, `param$p.val.each[rho == 1]` -> `Pvalue_Burden`, and
+`SE_Burden = |BETA_Burden| / qnorm(p.val.each[rho == 1] / 2)` -- **the
+signed burden Z the owner's Stouffer meta-analysis consumes is derived from
+the kernel's per-rho burden p.** Any design that lets modified Liu touch
+the per-rho layer changes that Z for every screened cell: measured, Liu's
+per-rho burden value is 0.13x-4.6x Davies' on the y_binary cells.
+
+**The refined design (measured in `harness/skato_pvalue/screen_outer_only.R`).**
+SKAT's kernel is two layers, and the cost is almost all in the second: per
+cell, the eight per-rho Davies calls take 4.4 ms and the outer rho integral
+80 ms (binary; 4.7 / 93 quantitative), i.e. the outer integral is 95% of the
+kernel. So:
+
+1. Per-rho layer exactly as today (`Get_PValue.Lambda`: Davies acc 1e-6,
+   Liu only when the value leaves (0, 1]). `Pvalue_SKAT`, `Pvalue_Burden`,
+   `BETA_Burden`, `SE_Burden` are then byte-identical for EVERY cell of a
+   run, screened or not.
+2. Outer integral: compute the Liu form first (`SKAT_Optimal_PValue_Liu`,
+   5 ms, closed form per node, includes the `8 * pmin` cap). If its p is
+   above the threshold, report it as `Pvalue`. Otherwise run today's Davies
+   outer (`SKAT_Optimal_PValue_Davies`) and report that -- byte-identical.
+3. If the Davies omnibus is below 1e-5, recompute BOTH layers with the
+   saddlepoint inner function, direct integral form, and report its
+   `p.value` and its per-rho values (this is the one class of cell whose
+   `Pvalue_SKAT`/`Pvalue_Burden`/`SE_Burden` change, and they should: today's
+   per-rho values there are Davies junk or Liu, section 4).
+4. Apply SKAT's own post-rules after each path exactly as
+   `SKAT_META_Optimal_Get_Pvalue` does (`pmin * n.r` cap; `3 * min(p_rho)`
+   when p <= 0 or a per-rho p is 0; `min(p_rho)` when p == 0): 17 of 1645
+   binary cells reach them, and skipping them changes those cells by up to
+   5x.
+
+Measured on the sim50k cells (binary / quantitative), outer-only screen:
+
+| threshold | cells skipped | Davies-outer time saved | misses (Davies p < threshold/10) | worst skipped Davies p |
+|---|---|---|---|---|
+| 0.05 | 81% / 89% | 91% / 93% | 0 / 0 | 0.049 / 0.050 |
+| 0.01 | 88% / 96% | 96% / 98% | 0 / 0 | 0.0101 / 0.0108 |
+| 0.001 | 91% / 98% | 98% / 99% | 0 / 0 | 0.0015 / 0.0014 |
+
+**Blast radius, stated exactly.** For a screened cell only `Pvalue` changes,
+to the Liu-form omnibus: ratio to Davies 0.95-1.10 above 0.01 (median 1.00;
+1.00-1.06 in (0.01, 0.05]). Every region golden therefore moves in its
+`Pvalue` column for most rows, by under 10%; the #127 Cauchy row moves with
+it; `Pvalue_SKAT`/`Pvalue_Burden`/`BETA_Burden`/`SE_Burden` and every
+single-variant file do not move at all. Cells passing the screen are
+byte-identical. Cells below 1e-5 move in all three p columns (the fix). So
+the gate cannot be the byte comparator or the 1e-5 numeric one: the
+comparison rule is (a) byte-identical for `Pvalue_SKAT`, `Pvalue_Burden`,
+`BETA_Burden`, `SE_Burden`, every single-variant column and every `Pvalue`
+below the threshold and above 1e-5; (b) `Pvalue` within 15% relative above
+the threshold; (c) below 1e-5, the saddlepoint against the adaptive-Davies
+reference of `variants.R` within 15% where the reference exists, and
+monotone-ordered against the Liu value where it does not. Then re-baseline.
+
+**The saddlepoint tier.** `harness/skato_pvalue/variants.R` `skato()` is
+the reimplementation of `SKAT_META_Optimal -> _Get_Pvalue` (method
+`optimal.adj`, no resampling) with a pluggable inner survival function; with
+`S_dav_skat` in both layers and `skat_semantics = TRUE` it reproduces
+SKAT's `p.value` bit-for-bit on 1630/1645 and 1497/1506 cells (rest 1e-13),
+which is the control to keep as a test on the bundled cells. `S_spa` is
+Kuonen's Lugannani-Rice form (validated: 1.4% from the exact chi-square at
+1e-8, 8-13% conservative against Ruben's exact series to 1e-23). Facts that
+each cost a debugging round: Davies' `acc` is ABSOLUTE and it returns
+`ifault` 1/2 below ~1e-14 at any `lim`; the direct-form integrand needs the
+`x = t^2` substitution (the chi-square-1 density is singular at 0) and a
+`rel.tol` matched to the inner method (1e-6 for the saddlepoint); the
+saddlepoint is undefined at the mean (`|q - mu| < 1e-7 mu`) and near `w = 0`,
+so that node falls back to Davies (cheap there); single-rho cells (q = 1, or
+`rank(Phi) <= 1` at q <= 10) never enter SKAT-O -- SKAT collapses `r.corr`
+to 0 and uses `Get_Davies_PVal`/`Get_Liu_PVal` -- and the tier must leave
+them on that path; the R saddlepoint costs as much as Davies (a `uniroot`
+per node), so compile it (Rcpp, `src/`) if the 82-cell-per-run confirmation
+cost matters, which it does not at 50k. Threshold 1e-5 matches REGENIE and
+sits above where the per-rho Davies starts failing (~1e-6).
+
+**Knobs and tests.** Env kill switch (`SAIGE_SKATO_SCREEN=0`, `=1` restores
+today's kernel exactly) and a CLI option for the threshold, default 0.01,
+recorded in `optiondrift.py`'s map. Tests: the reimplementation control;
+the miss count on every bundled group golden (zero) and on one null sweep
+per trait (the `nullrep` scripts; zero over ~100k cells per arm measured);
+kill switch == golden bytes; saddlepoint vs reference on the bundled cells
+below 1e-5 (P-values that low exist in the FlexRV and single-in-group
+goldens, check with the comparator before assuming); TSAN is unaffected
+(pure R). The identical-cell memo stays valid (same inputs, same answer).
+Not affected: BURDEN runs (`--r.corr=1` never calls SKAT-O), FlexRV
+(the owner does not combine it with SKAT-O; the #127 sidecar records what
+was combined either way).
