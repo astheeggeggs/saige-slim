@@ -1,4 +1,6 @@
-# What is worth doing next (2026-09-03, updated 2026-09-17; read docs/state/handoff-2026-09-16-pgen-sparse-read.md first)
+# What is worth doing next (2026-09-03, updated 2026-09-18; read docs/state/handoff-2026-09-17-skato-pvalue-methods.md first)
+
+**Current handoff: `docs/state/handoff-2026-09-17-skato-pvalue-methods.md`** -- LEDGER #158 FIXED 2026-09-18 in two pushed commits (`11d09a7b` the outer-integral Liu screen, `7054100a` the saddlepoint tail; `R/SkatoScreen.R`, options `--SKATO_screen_threshold` 0.05 / `--SKATO_tail_method` saddlepoint / `--SKATO_tail_threshold` 1e-5; (0, davies) = upstream byte for byte, golden P67). Open from it: a compiled saddlepoint if biobank-scale cell counts below 1e-5 make the R one visible; a null sweep per trait on the finished build (`harness/skato_pvalue/nullrep/`, ~1 h) as the regression guard; LEDGER #159 (few-case SKAT inflation) decided, left as is. The pgen-sparse-read handoff below is the previous one.
 
 **Current handoff: `docs/state/handoff-2026-09-16-pgen-sparse-read.md`,
 its "State at the end of the session" section first** -- step 2 reads PGEN
