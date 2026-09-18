@@ -409,16 +409,23 @@ get_newPhi_scaleFactor_traitType <- function(q.sum, mu.a, g.sum, p.new, Score, P
 
 
 get_SKAT_pvalue <- function(Score, Phi, r.corr, regionTestType) {
-  out_SKAT_List <- try(
-    SKAT:::Met_SKAT_Get_Pvalue(
-      Score = Score,
-      Phi = Phi,
-      r.corr = r.corr,
-      method = "optimal.adj",
-      Score.Resampling = NULL
-    ),
-    silent = TRUE
-  )
+  # LEDGER #158: with the screen on (SKATO_screen_threshold > 0) the outer rho
+  # integral is screened by its Liu form (R/SkatoScreen.R); with it off this
+  # is SKAT's kernel exactly as before.
+  out_SKAT_List <- if (skatoScreenOn()) {
+    try(skatoScreenKernel(Score, Phi, r.corr), silent = TRUE)
+  } else {
+    try(
+      SKAT:::Met_SKAT_Get_Pvalue(
+        Score = Score,
+        Phi = Phi,
+        r.corr = r.corr,
+        method = "optimal.adj",
+        Score.Resampling = NULL
+      ),
+      silent = TRUE
+    )
+  }
 
 
   # LEDGER #103 fix: the burden information is the FULL sum of Phi,
@@ -468,6 +475,10 @@ get_SKAT_pvalue <- function(Score, Phi, r.corr, regionTestType) {
   }
   out <- list(Pvalue_SKATO = Pvalue[1], Pvalue_Burden = Pvalue[3], Pvalue_SKAT = Pvalue[2], BETA_Burden = BETA_Burden, SE_Burden = SE_Burden)
   if (!is.null(skat_error)) out$error <- skat_error
+  if (!inherits(out_SKAT_List, "try-error") && !is.null(attr(out_SKAT_List, "skato_method"))) {
+    out$skato_method <- attr(out_SKAT_List, "skato_method")
+    out$skato_screen_p <- attr(out_SKAT_List, "skato_screen_p")
+  }
   out
 }
 

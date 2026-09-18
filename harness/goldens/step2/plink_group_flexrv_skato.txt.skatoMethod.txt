@@ -1,0 +1,9 @@
+Region	Group	max_MAF	Weight	Test	Method	Liu_p
+GENE1	lof;missense	0.02	REVEL_unw_unw	marginal	liu-screen	0.446598817349616
+GENE1	lof;missense	0.02	REVEL_unw_mafbeta2@0.02	marginal	liu-screen	0.575870474288459
+GENE1	lof;missense	0.02	REVEL_sbeta2_unw	marginal	liu-screen	0.396198991379307
+GENE1	lof;missense	0.02	REVEL_sbeta2_mafbeta2@0.02	marginal	liu-screen	0.544475722107373
+GENE2	lof;missense	0.02	REVEL_unw_unw	marginal	liu-screen	0.624817807241651
+GENE2	lof;missense	0.02	REVEL_unw_mafbeta2@0.02	marginal	liu-screen	0.722241750745517
+GENE2	lof;missense	0.02	REVEL_sbeta2_unw	marginal	liu-screen	0.470714258722853
+GENE2	lof;missense	0.02	REVEL_sbeta2_mafbeta2@0.02	marginal	liu-screen	0.548029180418136

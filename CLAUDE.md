@@ -718,6 +718,32 @@ degradation: a
 reader that cannot clone (only the PLINK pread fallback now) drops to one
 thread with a printed reason and an R `warning()`.
 
+**The SKAT-O kernel's outer integral is screened (LEDGER #158, 2026-09-18,
+`R/SkatoScreen.R`).** SKAT's SKAT-O has two layers: eight per-rho Davies
+p-values (4 ms per cell) and Lee's outer rho integral with Davies at every
+quadrature node (80 ms, 95% of the kernel and ~70% of a SKAT-O run).
+`--SKATO_screen_threshold` (default 0.05) evaluates SKAT's own closed-form
+(modified Liu) version of the outer integral first and reports it as `Pvalue`
+when it is above the threshold; below it SKAT's Davies path runs verbatim.
+Measured: zero screened cells with a Davies p below threshold/10 over ~250k
+null cells of three trait/prevalence arms and ~4.5k cells with signal; a
+screened `Pvalue` is within 10% of Davies' (median 1.00 above 0.05); ~96% of
+the kernel's Davies time gone, ~2.5x on a SKAT-O run. **The per-rho layer is
+never screened, and must not be**: `Pvalue_SKAT`, `Pvalue_Burden`,
+`BETA_Burden` and `SE_Burden` (the signed burden Z a Stouffer meta-analysis
+reads) come from it, and Liu's per-rho burden value is 0.13x-4.6x Davies'.
+`--SKATO_screen_threshold=0` is the upstream kernel byte for byte
+(`test-step2-skato-screen.R` pins it, and pins that the run REPORTS its mode).
+Provenance is the sidecar `<SAIGEOutputFile>.skatoMethod.txt`, one row per
+tested cell (`liu-screen` / `davies` / `single-rho`), committed with the
+goldens like `.pooledTests.txt`. The tail below 1e-5 -- where SKAT as shipped
+is 0.05x-7.5x off an exact reference, because its per-rho Davies at acc 1e-6
+fails and modified Liu is substituted -- is NOT fixed by the screen; that is
+`--SKATO_tail_method` (only `davies` exists) and the saddlepoint tier of
+`docs/state/handoff-2026-09-17-skato-pvalue-methods.md` section 10.
+Ultra-rare few-case inflation (100 cases: 2.7x at 1e-4) is upstream of every
+kernel option and is LEDGER #159, decided: left as is.
+
 Three findings that outlive the fork path: **E0** chunk boundaries cannot reach
 the output bytes (`markers_per_chunk` drives only a stdout counter); **E1**
 `closeOutfile_single()`/`flushOutfile_singleInCPP()` exist because the output

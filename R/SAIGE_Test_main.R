@@ -93,6 +93,8 @@ parse_X_PARregion_token <- function(token) {
 #' @param is_output_moreDetails logical. Whether to output heterozygous and homozygous carrier counts in cases and controls. Binary traits only: the columns N_case_hom, N_case_het, N_ctrl_hom, N_ctrl_het are appended to the single-variant output (and to the single-in-group output of a group run); on a quantitative trait the flag adds no column. By default, FALSE
 #' @param is_overwrite_output logical. Whether to overwrite the output file if it exists. If FALSE, the program will continue the unfinished analysis instead of starting over from the beginining. By default, TRUE
 #' @param minGroupMAC_in_BurdenTest numeric. Minimum minor allele count of a (annotation x max_MAF x weight set) cell for its burden test to be performed. Applied on BOTH the burden-only (r.corr=1) and the SKAT-O path, which also reports Pvalue_Burden (LEDGER #126). The count is an unweighted allele count over the markers the weight set keeps (LEDGER #118). By default, 1
+#' @param SKATO_screen_threshold numeric. LEDGER #158: the SKAT-O kernel's outer rho integral is first evaluated in SKAT's closed-form (modified Liu) version and, when that value is above this threshold, reported as Pvalue; below it SKAT's Davies integral runs exactly as before. The per-rho layer (Pvalue_SKAT, Pvalue_Burden, BETA_Burden, SE_Burden) is never screened. 0 disables the screen and reproduces the upstream kernel byte for byte. Measured: zero screened cells with a Davies p below threshold/10 over ~250k null cells, ~96% of the kernel's Davies time saved at 0.01, the reported Pvalue of a screened cell within 10% of Davies'. By default 0.05, which confines the Liu form to the band where its median bias is 1.00 (for a multi-biobank meta-analysis of SKAT-O p-values). A sidecar <SAIGEOutputFile>.skatoMethod.txt names the path each cell took.
+#' @param SKATO_tail_method character. How the SKAT-O p-value is computed for a cell whose Davies omnibus is below 1e-5. "davies" (the only value in this version) is SKAT's kernel unchanged; the saddlepoint tier of the handoff is not implemented yet.
 #' @param groupFile character. Path to the file containing the group information for gene-based tests. Each gene/set has 2 + K lines in the group file (K >= 0 weight lines). The first element of each line is the gene/set name. The second element indicates whether the line contains variant IDs (var), annotations (anno), or weights. A weight line's second element is 'weight' (weight set named "WEIGHT"), or 'weight:NAME' / 'weight,NAME' to name the weight set NAME. Weight lines are optional; with none, the default weights are generated based on beta(MAF, 1, 25) (use weights.beta to change the parameters). With more than one weight line per gene/set (each named, same names and order in every gene/set), each weight line defines one weight set and results are output per (annotation, max MAF, weight set) with a Weight column labeling the set (plus Pvalue_ACATV/Pvalue_ACATO columns for SKAT-O). The variant ids must match the genotype input's marker IDs (bim column 2 for PLINK). Elements are seperated by tab or space.
 #' @param sparseGRMFile character. Path to the pre-calculated sparse GRM file that was used in Step 1
 #' @param sparseGRMSampleIDFile character. Path to the sample ID file for the pre-calculated sparse GRM. No header is included. The order of sample IDs is corresponding to sample IDs in the sparse GRM
@@ -195,6 +197,8 @@ SPAGMMATtest <- function(bedFile = "",
                          maxMAF_in_groupTest = c(0.0001, 0.001, 0.01), # LEDGER #151: was c(0.01); the CLI has always passed three
                          maxMAC_in_groupTest = c(0),
                          minGroupMAC_in_BurdenTest = 1,
+                         SKATO_screen_threshold = 0.05,
+                         SKATO_tail_method = "davies",
                          is_Firth_beta = FALSE,
                          pCutoffforFirth = 0.01,
                          firth_solver = "closed",
@@ -427,6 +431,10 @@ SPAGMMATtest <- function(bedFile = "",
     # order the max MAF from lowest to highest
     maxMAF_in_groupTest <- maxMAF_in_groupTest[order(maxMAF_in_groupTest)]
     maxMAC_in_groupTest <- maxMAC_in_groupTest[order(maxMAC_in_groupTest)]
+
+    # LEDGER #158: run-wide SKAT-O kernel settings, set BEFORE the SKAT-O pool
+    # forks so every worker inherits them (R/SkatoScreen.R).
+    skatoScreenSet(SKATO_screen_threshold, SKATO_tail_method)
 
     checkArgsList_for_Region(
       MACCutoff_to_CollapseUltraRare,

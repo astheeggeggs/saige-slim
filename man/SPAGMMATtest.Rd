@@ -50,6 +50,8 @@ SPAGMMATtest(
   maxMAF_in_groupTest = c(1e-04, 0.001, 0.01),
   maxMAC_in_groupTest = c(0),
   minGroupMAC_in_BurdenTest = 1,
+  SKATO_screen_threshold = 0.05,
+  SKATO_tail_method = "davies",
   is_Firth_beta = FALSE,
   pCutoffforFirth = 0.01,
   firth_solver = "closed",
@@ -173,6 +175,10 @@ is_imputed_data = TRUE. By default, 10}
 \item{maxMAC_in_groupTest}{character. Max MAC for markers tested in the group test, separated by comma, e.g. '1,2'. Combined with maxMAF_in_groupTest. By default, '0', i.e. no maxMAC cutoff}
 
 \item{minGroupMAC_in_BurdenTest}{numeric. Minimum minor allele count of a (annotation x max_MAF x weight set) cell for its burden test to be performed. Applied on BOTH the burden-only (r.corr=1) and the SKAT-O path, which also reports Pvalue_Burden (LEDGER #126). The count is an unweighted allele count over the markers the weight set keeps (LEDGER #118). By default, 1}
+
+\item{SKATO_screen_threshold}{numeric. LEDGER #158: the SKAT-O kernel's outer rho integral is first evaluated in SKAT's closed-form (modified Liu) version and, when that value is above this threshold, reported as Pvalue; below it SKAT's Davies integral runs exactly as before. The per-rho layer (Pvalue_SKAT, Pvalue_Burden, BETA_Burden, SE_Burden) is never screened. 0 disables the screen and reproduces the upstream kernel byte for byte. Measured: zero screened cells with a Davies p below threshold/10 over ~250k null cells, ~96% of the kernel's Davies time saved at 0.01, the reported Pvalue of a screened cell within 10% of Davies'. By default 0.05, which confines the Liu form to the band where its median bias is 1.00 (for a multi-biobank meta-analysis of SKAT-O p-values). A sidecar <SAIGEOutputFile>.skatoMethod.txt names the path each cell took.}
+
+\item{SKATO_tail_method}{character. How the SKAT-O p-value is computed for a cell whose Davies omnibus is below 1e-5. "davies" (the only value in this version) is SKAT's kernel unchanged; the saddlepoint tier of the handoff is not implemented yet.}
 
 \item{is_Firth_beta}{logical. Whether to estimate effect sizes using approx Firth, only for binary traits. By default, FALSE}
 

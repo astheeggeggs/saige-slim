@@ -283,7 +283,15 @@ Phi adjustment: LEDGER #159, DECIDED 2026-09-18 by the owner, leave as is,
 noted. The pinned All of Us phenotypes with few cases are where it should
 be checked next.
 
-## 10. Implementation notes for option C (decided 2026-09-18; NOT implemented)
+## 10. Implementation notes for option C (decided 2026-09-18; STEP 1 LANDED the same day, step 2 not built)
+
+**Status.** Step 1, the outer-integral screen, is in `R/SkatoScreen.R` with
+`test-step2-skato-screen.R` (51 expectations), the two CLI options mapped in
+`optiondrift.py`, the `.skatoMethod.txt` sidecars committed as goldens, and
+17 region goldens re-baselined after two independent regenerations agreed
+byte for byte (only `Pvalue`/`Pvalue_cond` moved, 0.985-1.001, screened cells
+and their Cauchy rows). `--SKATO_tail_method` accepts only `davies`; the
+saddlepoint tier below is the remaining work and the notes stand as written.
 
 Everything a session needs to build it without re-deriving. Read #158 and
 #159 first.

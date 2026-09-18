@@ -54,7 +54,7 @@ Legend: **L** live · **P** partly live · **R** refused · **I** inert · `+` t
 | `GMMATmodelFile` | "" | the step-1 `.rda` (must hold `modglmm`) | L |
 | `varianceRatioFile` | "" | MAC-keyed variance ratios rescaling the score variance | L (see §4) |
 | `GMMATmodel_varianceRatio_multiTraits_File` `+` | "" | 3-col manifest: N models, one genotype pass, one file each | L |
-| `SAIGEOutputFile` `~` | "" | results path — and the prefix for `.index`, `.singleAssoc.txt`, `.markerList.txt`, `.skatFailures.txt`, `.pooledTests.txt`, `_<model>` | L |
+| `SAIGEOutputFile` `~` | "" | results path — and the prefix for `.index`, `.singleAssoc.txt`, `.markerList.txt`, `.skatFailures.txt`, `.pooledTests.txt`, `.skatoMethod.txt`, `_<model>` | L |
 | `is_overwrite_output` `~` | TRUE | TRUE truncates; FALSE resumes from the `.index`, truncating the results file (and, on a group run, `.singleAssoc.txt`) to the sizes the index recorded for the last completed chunk, on both the marker path (LEDGER #47) and the region path (LEDGER #140, fixed 2026-09-13). The end-of-run `.pooledTests.txt` / `.skatFailures.txt` sidecars are rewritten over the resumed regions only | L |
 | `is_output_moreDetails` | FALSE | adds N_case/ctrl hom/het columns | **P** (binary only) |
 | `LOCO` | TRUE | swap fitted values/residuals/obj.noK for the per-chrom fit | L |
@@ -100,7 +100,7 @@ Legend: **L** live · **P** partly live · **R** refused · **I** inert · `+` t
 | `flexRV_lofAnno` | lof | which anno labels the `lof` transform keys on | L (only if `lof` in the score spec) |
 | `flexRV_maxMAF` | 0.001 | the single max-MAF cell **and** the mafbeta boundary M | L |
 
-### Test method (8)
+### Test method (10)
 
 | option | default | what it changes | |
 |---|---|---|---|
@@ -112,6 +112,8 @@ Legend: **L** live · **P** partly live · **R** refused · **I** inert · `+` t
 | `pval_cutoff_for_fastTest` `+` | 0.05 | the escalation threshold (per marker, or per region's Cauchy p) | L (help says otherwise — §4) |
 | `is_noadjCov` | TRUE | TRUE = raw AF-centred score + null_noXadj ratio; FALSE regresses covariates out first | **P** (ignored by group tests) |
 | `max_MAC_for_ER` | 4 | MAC ≤ this gets the exact resampling p | **P** (binary only) |
+| `SKATO_screen_threshold` `+` | 0.05 | LEDGER #158: the SKAT-O outer rho integral is evaluated in SKAT's closed-form (modified Liu) version first and reported as `Pvalue` when above this; below it SKAT's Davies integral runs verbatim. Per-rho layer (`Pvalue_SKAT`, `Pvalue_Burden`, `BETA_Burden`, `SE_Burden`) never screened. 0 = the upstream kernel byte for byte | **P** (SKAT-O `Pvalue` of screened cells only, < 10%; sidecar `.skatoMethod.txt`) |
+| `SKATO_tail_method` `+` | davies | how a cell below 1e-5 is computed; `davies` = SKAT unchanged (the saddlepoint tier is not implemented yet) | L (one value) |
 
 ### Performance / chrX (5)
 
@@ -240,7 +242,7 @@ Step 0 reads only the **line count** from `bimFile`/`pvarFile`; IDs, chromosomes
 
 **Step 0 (4):** `--plink2File`, `--pgenFile`, `--pvarFile`, `--psamFile`.
 **Step 1 (6):** the same PGEN quartet, plus `--seed` (upstream hardcodes `set.seed(1)`, #8) and `--tolCoef` (#125).
-**Step 2 (12):** `--pgenFile` / `--pvarFile` / `--psamFile` (upstream has only `--pgenPrefix`), `--GMMATmodel_varianceRatio_multiTraits_File`, `--is_output_weight_column`, `--firth_solver`, `--pval_cutoff_for_fastTest` (as a CLI flag; the R-API parameter and its 0.05 default are upstream's), and the five `--flexRV_*`.
+**Step 2 (14):** `--pgenFile` / `--pvarFile` / `--psamFile` (upstream has only `--pgenPrefix`), `--GMMATmodel_varianceRatio_multiTraits_File`, `--is_output_weight_column`, `--firth_solver`, `--pval_cutoff_for_fastTest` (as a CLI flag; the R-API parameter and its 0.05 default are upstream's), and the five `--flexRV_*`, `--SKATO_screen_threshold` / `--SKATO_tail_method` (#158, the SKAT-O outer-integral screen).
 
 **Upstream options whose capability is effectively new here:** `--phenoCol` / `--traitType` (comma lists = several fits per process, per-phenotype outputs + `.multiTraits.txt`); `--weights.beta` (semicolon pair list, one beta weight set per extra pair, #19); `--LOCO` (default NULL so the sparse-fit resolution is explicit and an explicit TRUE is refused, #112); `--is_no_weight_in_groupTest` (appends a `No_Weights` set where upstream stopped); `--rangestoIncludeFile` (non-functional upstream, #11); `--maxMAC_in_groupTest` (silently produced duplicate bins upstream, #61); `--nThreads` in step 2 (upstream forked `mclapply` and did nothing without `--idstoIncludeFile`, #30); `--is_rewrite_XnonPAR_forMales` (chrX-only, #69); `--minGroupMAC_in_BurdenTest` (default 5 → 1, both region paths, per-set MAC, #126/#118).
 

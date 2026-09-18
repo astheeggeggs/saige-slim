@@ -469,6 +469,22 @@ run step2_plink_group_fastTest.log R2 step2_SPAtests.R \
   --maxMAF_in_groupTest=0.0001,0.001,0.01 \
   --is_fastTest=TRUE
 
+# P67 (2026-09-18, LEDGER #158): P2 with the SKAT-O outer-integral screen OFF.
+# The upstream kernel byte for byte: this file equals P2's bytes as committed
+# before the screen landed (proved once by cmp at re-baseline), and
+# test-step2-skato-screen.R pins the revert path against it. P2 itself now
+# holds the screened values (Pvalue of screened cells is the Liu-form outer
+# integral, within 1% of Davies on this fixture).
+run step2_plink_group_fastTest_screenoff.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_fastTest_screenoff.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --is_fastTest=TRUE --SKATO_screen_threshold=0
+
 # P3: group test conditional, binary (rs30,rs79)
 run step2_plink_group_cond.log R2 step2_SPAtests.R \
   $PLINK_G \

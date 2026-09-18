@@ -122,6 +122,29 @@ option_list <- list(
     )
   ),
   make_option(
+    "--SKATO_screen_threshold",
+    type = "double",
+    default = 0.05,
+    help = paste0(
+      "LEDGER #158: the SKAT-O outer rho integral is first evaluated in its ",
+      "closed-form (modified Liu) version; above this threshold that value is ",
+      "reported as Pvalue, below it SKAT's Davies integral runs as before. ",
+      "Pvalue_SKAT, Pvalue_Burden, BETA_Burden and SE_Burden are never ",
+      "screened. 0 disables the screen (the upstream kernel byte for byte). ",
+      "Provenance per cell in <SAIGEOutputFile>.skatoMethod.txt. [default 0.05]"
+    )
+  ),
+  make_option(
+    "--SKATO_tail_method",
+    type = "character",
+    default = "davies",
+    help = paste0(
+      "How a SKAT-O cell whose Davies omnibus is below 1e-5 is computed. ",
+      "\"davies\" (the only value in this version) is SKAT's kernel unchanged. ",
+      "[default davies]"
+    )
+  ),
+  make_option(
     "--minGroupMAC_in_BurdenTest",
     type = "double",
     default = 1,
@@ -848,6 +871,8 @@ fixed_params <- list(
   maxMAF_in_groupTest = maxMAF_in_groupTest,
   maxMAC_in_groupTest = maxMAC_in_groupTest,
   minGroupMAC_in_BurdenTest = opt$minGroupMAC_in_BurdenTest,
+  SKATO_screen_threshold = opt[["SKATO_screen_threshold"]],
+  SKATO_tail_method = opt[["SKATO_tail_method"]],
   annotation_in_groupTest = annotation_in_groupTest,
   groupFile = opt$groupFile,
   sparseGRMFile = opt$sparseGRMFile,

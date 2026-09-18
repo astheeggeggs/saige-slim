@@ -534,6 +534,11 @@ region_postprocess <- function(outList,
                 Phi <- re_phi$val
               }
               groupOutList <- skat_fun(Score, Phi, r.corr, regionTestType)
+              # LEDGER #158: which path produced this cell's Pvalue (sidecar)
+              skatoMethodRecord(regionName, AnnoName, maxMAFName,
+                                if (isMultiWeight) weightNames[r] else NA_character_,
+                                "marginal", groupOutList$skato_method,
+                                groupOutList$skato_screen_p)
               if (!is.null(groupOutList$error)) {
                 # LEDGER #57: the kernel failed and this cell's three p-values
                 # are NA. Count it here, where the labels are in scope.
@@ -659,6 +664,10 @@ region_postprocess <- function(outList,
                   r.corr,
                   regionTestType
                 )
+                skatoMethodRecord(regionName, AnnoName, maxMAFName,
+                                  if (isMultiWeight) weightNames[r] else NA_character_,
+                                  "conditional", groupOutList_cond$skato_method,
+                                  groupOutList_cond$skato_screen_p)
                 if (!is.null(groupOutList_cond$error)) {
                   skatFailureRecord(regionName, AnnoName, maxMAFName,
                                     if (isMultiWeight) weightNames[r] else NA_character_,
@@ -1908,6 +1917,9 @@ SAIGE.Region <- function(mu,
   # which CCT rule produced the number -- with a sidecar beside the FIRST
   # model's file when any region has something to disclose.
   pooledSummary(OutputFile)
+  # LEDGER #158: which path produced each cell's Pvalue, and the mode the run
+  # took (always printed), with a sidecar when the screen is on.
+  skatoMethodSummary(OutputFile)
 
   # Phase G1 slice 3 (R/RegionState.R)
   regionDoneMessage(OutputFiles, OutputFile, is_output_markerList_in_groupTest,
