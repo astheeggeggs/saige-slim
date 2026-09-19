@@ -251,9 +251,10 @@ the other was not. It scans only the CURRENT-state surfaces (`CLAUDE.md`,
 `docs/state/next.md`, `R/`, `man/`, `extdata/`); dated handoffs and `LEDGER.md`
 are correct about their own date and are never scanned. `docdrift.py selftest`
 is the control that no rule has quietly stopped matching, and every rule is
-drilled against `4c2ca05a^`, where the tool reports 43 hits (10 before the six
+drilled against `4c2ca05a^`, where the tool reports 45 hits (10 before the six
 #136 rules of 2026-09-13, 42 before the #139 rule; the #142 rule's sentence
-postdates that commit and adds none). Add a rule only
+postdates that commit and adds none; the `arma-no-debug-noop` rule of
+2026-09-19 adds 2, measured). Add a rule only
 after a claim has actually been written wrongly; a line that must quote a false
 claim on purpose carries the marker the tool names.
 
@@ -375,8 +376,19 @@ ARE captured. Baseline at C8: R 55.2%, live step-2 C++ 72.2% line / 42.9% branch
   (`/usr/lib/libgmalloc.dylib`, macOS only) over a two-chromosome step-1 LOCO
   fit: every allocation on its own page with an unmapped page after it, so a
   read past the end faults on the instruction that does it. This is what
-  characterizes LEDGER #102; a bounds-checked (`ARMA_NO_DEBUG`-less) build does
-  NOT, because armadillo's `operator[]` is unchecked in every build. **Always
+  characterizes LEDGER #102; armadillo's own bounds checks do NOT, because the
+  site uses `operator[]`, which is unchecked in every build by construction
+  (`Mat_meat.hpp`: "no bounds check"), as are `.at()` and `.at(r,c)`.
+  **`-DARMA_NO_DEBUG` in `src/Makevars` is a NO-OP and always has been**
+  (measured 2026-09-19): on armadillo 15.x it undefines only `ARMA_DEBUG`,
+  which is off by default, while bounds checking is gated on
+  `ARMA_CHECK_CONFORMANCE`, defined by default and removed only by
+  `-DARMA_DONT_CHECK_CONFORMANCE`, which nothing sets. So the shipped build
+  HAS armadillo's checks compiled in -- 250 `arma_stop_bounds_error` sites, and
+  `strings` on the installed `SAIGE.so` shows `Mat::operator(): index out of
+  bounds`. They cost ~1% and they are load-bearing: **do not add
+  `-DARMA_DONT_CHECK_CONFORMANCE`**, which would turn #102's throw into silent
+  UB no golden can see. **Always
   run the plant arm** (a deliberate out-of-range read at the same program
   point): `Rscript` routes through a SIP-protected binary that strips `DYLD_*`,
   so the GuardMalloc banner can print from the pre-exec process while the R

@@ -1,3 +1,9 @@
+# NOTE (2026-09-19): -DARMA_NO_DEBUG below is a NO-OP on armadillo 15.x -- it
+# undefines only ARMA_DEBUG, which is off by default. Bounds checking is gated on
+# ARMA_CHECK_CONFORMANCE (on by default), so this build HAS armadillo's checks
+# compiled in. Kept because it is harmless and removing it is a gated change; do
+# NOT "fix" it with -DARMA_DONT_CHECK_CONFORMANCE, which would turn LEDGER #102's
+# out-of-bounds throw into silent UB. See CLAUDE.md, the guardmalloc paragraph.
 PKG_CPPFLAGS = -D SQLITE_ENABLE_COLUMN_METADATA -fpic -pedantic -Wall -Wextra -Wno-unused-parameter -Wno-cast-function-type-mismatch -DARMA_64BIT_WORD=1 -D__STDC_FORMAT_MACROS -DARMA_NO_DEBUG
 
 CXX_STD = CXX14

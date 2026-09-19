@@ -42,6 +42,23 @@ ALLOW = "docdrift-allow"
 # how to re-check. `canary` is the sentence as it was actually written, and is
 # the rule's positive control in `selftest`.
 RULES = [
+    # 2026-09-19: measured that -DARMA_NO_DEBUG is a no-op on armadillo 15.x, so
+    # every sentence implying it disables (or that removing it enables) bounds
+    # checking is false. The build HAS the checks; they are load-bearing for #102.
+    dict(
+        id="arma-no-debug-noop",
+        pattern=r"ARMA_NO_DEBUG ?-less|ARMA_NO_DEBUG[^.]{0,60}(disabl|turns off|switches off)",
+        why="false: on armadillo 15.x ARMA_NO_DEBUG undefines only ARMA_DEBUG (off by "
+            "default); bounds checking is gated on ARMA_CHECK_CONFORMANCE, which is "
+            "defined by default and removed only by -DARMA_DONT_CHECK_CONFORMANCE. The "
+            "shipped build HAS armadillo's checks compiled in (250 arma_stop_bounds_error "
+            "sites; strings on SAIGE.so shows 'Mat::operator(): index out of bounds')",
+        evidence="config.hpp:180-186 and :333-336 in "
+                 ".pixi/envs/default/lib/R/library/RcppArmadillo/include/armadillo_bits/; "
+                 "drilled both ways -- v(100) on a 4-element vec throws under the shipped "
+                 "flags and returns garbage with -DARMA_DONT_CHECK_CONFORMANCE",
+        canary="a bounds-checked (`ARMA_NO_DEBUG`-less) build does",
+    ),
     # LEDGER #136 (fixed 2026-09-13): six help/roxygen sentences that stated what
     # the code does not do, each copied across the wrapper, the roxygen and man/.
     dict(
