@@ -1324,10 +1324,19 @@ Decided order for what remained. **Steps 3b, 4 and 5 all landed on
   zero. Measured on sim50k BURDEN: serial 29.1 s, `--nThreads=4` 19.8 s
   (1.47x), and FOUR PROCESSES on quarters of the group file 15.7 s (**1.85x**),
   with the four quarters reproducing the whole-file 3,345 rows identically.
-  So processes beat threads by 1.26x, nothing approaches 2.9x, and the four
-  processes cost **4.0x the RSS** (1,429 MB against 356 MB). **The case for
-  in-process region threading is MEMORY, not speed** -- job-splitting already
-  gives the speed. Do not build it for throughput.
+  **Those numbers were CPU-STARVED** (4 cores at load 3; the threads arm got 1.89 cores, the
+  serial baseline 0.84). **Re-measured on an IDLE 10-core box, 7.6 free**
+  (`docs/state/handoff-2026-09-19-region-parallelism-idle-box.md`): serial 11.06 s, threads4
+  7.84 s (**1.41x**, only **1.54 cores busy**), procs4 5.90 s (**1.87x**, 3.18 cores busy),
+  all three reps reconstructing the whole run exactly. The threads arm CANNOT use 4 cores --
+  that is the ~45% serial fraction NOTES.md:1409-1419 models -- and four processes run four
+  copies of it concurrently, which is exactly what this item originally proposed. So the
+  original instinct was RIGHT. Nothing reaches 2.9x (best 1.87x). **The case for in-process
+  region threading is EFFICIENCY: processes buy 1.87x at 1.85x CPU and 4x RSS (efficiency
+  1.02), threads convert CPU far better (1.19) but cap at 1.41x; threading the region loop
+  in process would aim at 1.87x with threads' efficiency.** Worth building if CPU-hours or
+  memory bind; not for wall clock alone, since job-splitting already gives 1.87x. Note BURDEN
+  never calls SKAT-O, so the `qfc` thread-safety blocker does not apply to this path.
 
 ## FlexRV: F0-F4 LANDED, F5 (the RAM/CPU measurement) is what is left (upd. 2026-09-09 late)
 

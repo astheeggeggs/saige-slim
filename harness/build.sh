@@ -1,4 +1,26 @@
 #!/usr/bin/env bash
+
+# osx-arm64 FLIBS TRAP (2026-09-19, first build ever attempted on Apple Silicon).
+# `R CMD INSTALL` fails at the link step with:
+#     ld: warning: directory not found for option
+#         '-L<env>/lib/gcc/arm64-apple-darwin20.0.0/14.3.0'
+#     ld: library not found for -lheapt_w
+# CAUSE: the osx-arm64 r-base in pixi.lock baked FLIBS against
+# libgfortran-devel 14.3.0, while the lock installs 14.4.0. Only the VERSION
+# component of the -L path is wrong -- libheapt_w.a is present, at
+# lib/gcc/arm64-apple-darwin20.0.0/14.4.0/. So this is a -L fix, not a missing
+# library, and NOT the same symptom as the x86_64 case (where the baked
+# directory happens to exist).
+# WORKAROUND, local and non-invasive -- do NOT edit pixi.toml or pixi.lock,
+# which are deliberately pinned and whose regeneration is its own gated change:
+#     printf 'FLIBS = -L%s/lib/gcc/arm64-apple-darwin20.0.0/14.4.0 -lheapt_w -lgfortran -lquadmath -lm\n' \
+#       "$PWD/.pixi/envs/default" > /tmp/saige-makevars
+#     R_MAKEVARS_USER=/tmp/saige-makevars bash harness/build.sh
+# (R_MAKEVARS_USER rather than ~/.R/Makevars: this is per-env, not per-user.)
+# Verified: `clean install OK` with the warnings ratchet still at baseline, so
+# only the link line moved. osx-arm64 is declared in pixi.toml's platforms but
+# no gate has ever built it -- CI is linux-64 and local dev was x86_64.
+
 # Canonical build for gates: ALWAYS from clean objects.
 #   bash harness/build.sh                 clean (the default, and what a gate wants)
 #   bash harness/build.sh --incremental   keep src/*.o; REFUSES if a header moved
