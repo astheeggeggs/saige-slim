@@ -41,10 +41,15 @@ ncores=$( sysctl -n hw.physicalcpu 2>/dev/null || nproc 2>/dev/null || echo 0 )
 load=$(uptime | sed 's/.*load averages*: *//' | awk '{print $1}' | tr -d ,)
 echo "cores=$ncores  1-min load=$load  reps=$REPS"
 if [ "${BENCH_FORCE:-0}" != "1" ]; then
-  busy=$(awk -v l="$load" 'BEGIN{print (l > 0.5) ? 1 : 0}')
-  [ "$busy" = "1" ] && { echo "REFUSING: 1-min load $load > 0.5. A 4-way scaling test needs 4 idle cores."
-                         echo "Close other work and retry, or set BENCH_FORCE=1 to override (results will not be a scaling measurement)."; exit 2; }
+  # The test needs FOUR genuinely free cores. Scale the load bound to the box:
+  # a fixed 0.5 was calibrated on a 4-core laptop and refuses spuriously on a
+  # 10-core machine where load 1.0 still leaves 9 cores idle.
   [ "$ncores" -lt 4 ] && { echo "REFUSING: only $ncores physical cores; a 4-way test cannot scale here."; exit 2; }
+  free=$(awk -v n="$ncores" -v l="$load" 'BEGIN{printf "%.1f", n - l}')
+  busy=$(awk -v f="$free" 'BEGIN{print (f < 4.0) ? 1 : 0}')
+  [ "$busy" = "1" ] && { echo "REFUSING: $ncores cores at 1-min load $load leaves only $free free; the test needs 4."
+                         echo "Close other work and retry, or set BENCH_FORCE=1 to override (results will not be a scaling measurement)."; exit 2; }
+  echo "free cores: $free (need 4)"
 fi
 
 cd "$REPO" && source harness/env.sh && cd extdata
