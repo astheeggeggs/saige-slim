@@ -18,8 +18,24 @@
 set -uo pipefail
 FIX=${1:?usage: bench.sh <fixture-dir> [reps]}
 REPS=${2:-3}
-REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
+# Resolve the repo root without depending on BASH_SOURCE: it is UNSET under zsh,
+# and with `set -u` that aborts before the script prints anything -- which is
+# exactly how this failed the first time someone ran it on another machine.
+# $0 works under bash and zsh; SAIGE_REPO overrides for any other shell.
+_self=${BASH_SOURCE[0]:-$0}
+REPO=${SAIGE_REPO:-$(cd "$(dirname "$_self")/../../.." && pwd)}
+[ -f "$REPO/pixi.toml" ] || { echo "Cannot find the repo root from '$_self' (got '$REPO')."
+                              echo "Run it as: bash harness/skato_pvalue/regthread/bench.sh <fixture-dir>"
+                              echo "or set SAIGE_REPO=/path/to/saige-slim"; exit 2; }
+echo "repo=$REPO  fixture=$FIX"
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
+
+for f in geno.pgen geno.pvar geno.psam groupFile.txt step1_y_binary.rda \
+           step1_y_binary.varianceRatio.txt pedigree_truth.sparseGRM.mtx \
+           pedigree_truth.sparseGRM.mtx.sampleIDs.txt; do
+  [ -f "$FIX/$f" ] || { echo "Fixture incomplete: '$FIX/$f' is missing."
+                        echo "Extract benchkit.tar.gz and pass the directory that holds these eight files."; exit 2; }
+done
 
 ncores=$( sysctl -n hw.physicalcpu 2>/dev/null || nproc 2>/dev/null || echo 0 )
 load=$(uptime | sed 's/.*load averages*: *//' | awk '{print $1}' | tr -d ,)
