@@ -39,7 +39,17 @@ run_step2_case <- function(golden_base, extra_args, extra_outputs = character())
   status <- run_saige_cli("step2_SPAtests.R",
                           c(extra_args, paste0("--SAIGEOutputFile=", out)))
   expect_cli_ok(status)
-  for (suffix in c("", extra_outputs)) {
+  # LEDGER #158's provenance sidecar: 23 `.skatoMethod.txt` goldens are
+  # committed, and before 2026-09-19 NOTHING in this file compared them -- a
+  # commit that rewrote the writer (aeb1469a) was gated only by one hand-run
+  # case. Compare it automatically wherever a golden exists, so a new SKAT-O
+  # golden gets its sidecar gated without anyone remembering to add a suffix.
+  # Only SKAT-O runs emit one (BURDEN never calls the kernel), hence the
+  # file.exists() rather than a hand-maintained list.
+  sidecar <- ".skatoMethod.txt"
+  auto <- if (file.exists(file.path(saige_goldens, "step2",
+                                    paste0(golden_base, sidecar)))) sidecar else character()
+  for (suffix in unique(c("", extra_outputs, auto))) {
     expect_output_matches_golden(
       file.path(saige_goldens, "step2", paste0(golden_base, suffix)),
       paste0(out, suffix)

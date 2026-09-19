@@ -1,3 +1,21 @@
+# STALE AS OF 2026-09-18 -- DO NOT RUN THIS AGAINST A CURRENT BUILD.
+#
+# This patches SKAT:::Met_SKAT_Get_Pvalue, which stopped being the funnel every
+# SKAT-O cell passes when LEDGER #158 landed: get_SKAT_pvalue routes to
+# skatoScreenKernel() whenever the screen is on (the shipped default), and a
+# SCREENED cell never reaches SKAT's kernel. Re-running this therefore scores a
+# SMALLER, BIASED cell set -- the unscreened tail only -- and READS AS A PASS.
+# That is how a guard silently stops guarding.
+#
+# Use dump_arm_finished.R beside this file, which patches SAIGE:::get_SKAT_pvalue
+# (the one funnel, screened or not) and records the shipped answer alongside
+# SKAT's own on identical inputs. See
+# docs/state/handoff-2026-09-19-158-finished-build-guard.md.
+#
+# Kept, not deleted: it is what produced the 2026-09-18 method study, and that
+# study's numbers are only interpretable against the script that made them.
+stop("dump_arm.R is stale; use dump_arm_finished.R -- see the header of this file")
+
 # Dump every SKAT-O kernel input (Score, Phi, r.corr) and SKAT's own answer to an RDS.
 args <- commandArgs(trailingOnly = TRUE); out <- args[1]; rds <- args[2]; D <- args[3]; M <- args[4]
 suppressPackageStartupMessages({ library(SAIGE); library(SKAT) })
