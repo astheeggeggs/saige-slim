@@ -1315,9 +1315,19 @@ Decided order for what remained. **Steps 3b, 4 and 5 all landed on
   (`1c706bd2`, `docs/state/handoff-2026-09-06-region-skato-batch.md`): the
   cells of a whole batch of regions go to the pool in one call. 2026-09-09
   added identical-cell dedupe on top (`1b5bf4c1`).
-* **Still open, unscheduled:** if BURDEN at scale matters, thread across
+* ~~**Still open, unscheduled:** if BURDEN at scale matters, thread across
   REGIONS rather than markers, which approaches the hardware ceiling
-  (~2.9x at 4 threads here).
+  (~2.9x at 4 threads here).~~ **MEASURED AND CLOSED 2026-09-19**
+  (`docs/state/handoff-2026-09-19-region-threading-measured.md`). The ~2.9x had
+  NO SOURCE -- it landed in `ddedfa6d` with no supporting number and is most
+  likely `4 / 1.39`, an arithmetic bound assuming the serial residue goes to
+  zero. Measured on sim50k BURDEN: serial 29.1 s, `--nThreads=4` 19.8 s
+  (1.47x), and FOUR PROCESSES on quarters of the group file 15.7 s (**1.85x**),
+  with the four quarters reproducing the whole-file 3,345 rows identically.
+  So processes beat threads by 1.26x, nothing approaches 2.9x, and the four
+  processes cost **4.0x the RSS** (1,429 MB against 356 MB). **The case for
+  in-process region threading is MEMORY, not speed** -- job-splitting already
+  gives the speed. Do not build it for throughput.
 
 ## FlexRV: F0-F4 LANDED, F5 (the RAM/CPU measurement) is what is left (upd. 2026-09-09 late)
 
