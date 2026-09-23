@@ -1337,10 +1337,12 @@ SAIGE.Region <- function(mu,
   # matching comment in src/Main.cpp mainRegionInCPP). The legacy WEIGHT
   # object is canonicalized into the K-set matrix form without touching any
   # numeric value:
-  #   - c(0) sentinel (unweighted file) -> 1x1 zero matrix: C++ sees no
-  #     custom sets and falls back to the implicit beta set parameterized by
+  #   - c(0) sentinel (unweighted file) -> 0x0 matrix: C++ sees no custom
+  #     sets and falls back to the implicit beta set parameterized by
   #     weights.beta via setAssocTest_GlobalVarsInCPP, exactly the legacy
-  #     beta-weights path
+  #     beta-weights path. It must carry no COLUMNS rather than one, because
+  #     the 1x1 form it used to take collides with the q0 x 1 form below at
+  #     q0 == 1 and C++ can only tell them apart by shape (LEDGER #160)
   #   - length-q0 numeric vector (weighted file, or is_no_weight's
   #     rep(1, q0)) -> q0 x 1 matrix: one custom set (all-ones still counts
   #     as "equal weights" for the per-set ER gate)
@@ -1351,7 +1353,21 @@ SAIGE.Region <- function(mu,
   # sentinel and the implicit legacy beta path) and t_includeNoWeights
   # appends the all-ones "No_Weights" set; C++ composes the sets in the same
   # custom -> beta -> No_Weights order as weight_sets/region_weight_names.
-  weight_matrix_for_CPP <- function(WEIGHT) {
+  # hasCustom comes from the region state record, NOT from WEIGHT's shape:
+  # a plain numeric vector is a GENUINE one-column set in two cases
+  # (legacyNoWeight's all-ones, a K = 1 matrix collapsed by as.numeric) and
+  # the K = 0 `c(0)` sentinel in a third, and at q0 == 1 all three reach C++
+  # as the same 1 x 1 matrix. C++ decides `hasCustomWeights` on
+  # `t_weight.n_rows == q0` ALONE since #146(b) dropped the `!is_zero()` half
+  # that used to separate them, so it read the sentinel as one custom set and
+  # stopped on the count it could not reconcile with R's (LEDGER #160).
+  # Required argument, so a caller that forgets it is an error rather than a
+  # silently weightless run.
+  weight_matrix_for_CPP <- function(WEIGHT, hasCustom) {
+    if (!isTRUE(hasCustom)) {
+      # no custom sets: no COLUMNS, so q_weight_custom is 0 at every q0
+      return(matrix(numeric(0), nrow = 0L, ncol = 0L))
+    }
     if (is.matrix(WEIGHT)) {
       matrix(as.numeric(WEIGHT), nrow = nrow(WEIGHT), ncol = ncol(WEIGHT))
     } else {
@@ -1383,7 +1399,7 @@ SAIGE.Region <- function(mu,
       P2Mat,
       regionTestType,
       isImputation,
-      weight_matrix_for_CPP(S$WEIGHT),
+      weight_matrix_for_CPP(S$WEIGHT, S$hasCustomWeights),
       beta_params_for_CPP,
       includeNoWeightsSet,
       region_weight_names,

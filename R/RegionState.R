@@ -85,6 +85,13 @@ regionStateFor <- function(region, regionName, i, nRegions, nModels,
     i = i,
     SNP = SNP,
     WEIGHT = WEIGHT,
+    # LEDGER #160: whether WEIGHT carries CUSTOM sets at all, recorded here
+    # because only this function can tell. The three branches above produce a
+    # plain numeric vector in two different senses -- a GENUINE one-column set
+    # (legacyNoWeight's all-ones, or a K = 1 matrix collapsed by as.numeric)
+    # and the K = 0 `c(0)` sentinel -- and at q0 == 1 those are the same 1 x 1
+    # matrix by the time C++ sees them, which is the collision #160 fixes.
+    hasCustomWeights = isTRUE(legacyNoWeight) || nWeightSets >= 1L,
     SCORE = SCORE,
     ISLOF = ISLOF,
     annolistsub = region$annoVec,
