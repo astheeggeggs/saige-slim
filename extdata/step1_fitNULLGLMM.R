@@ -503,9 +503,10 @@ option_list <- list(
       "Optional. The fraction of samples whose fitted probability may sit at ",
       "the 0/1 boundary before --separationCheck treats the model as ",
       "separated. A pinned sample contributes ~0 to the score variance, so it ",
-      "carries no information: 0.5%% pinned is a 0.5%% loss of effective ",
-      "sample size, 100%% is total collapse. Above zero but at or below this ",
-      "is a warning and the run continues [default=0.02]."
+      "carries no information and a pinned fraction costs that same fraction ",
+      "of the effective sample size; a fraction of 1 is total collapse. Above ",
+      "zero but at or below this is a warning and the run continues ",
+      "[default=0.02]."
     )
   ),
   make_option(
