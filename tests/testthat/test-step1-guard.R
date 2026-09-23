@@ -21,7 +21,8 @@
 #    three starts agree at 1.085-1.094 and --tolCoef=0.02 reproduces the old
 #    start-dependent stop, which is how the flag is pinned below.
 # A planted trait whose fixed point is the boundary (score at 0 negative)
-# must still stop at 0, and now says so.
+# must still stop at 0, and now says so. LEDGER #161: a POSITIVE score at 0
+# whose Newton step is below tol is floored to 0 and must also stop, once.
 #
 # Tier: standard (~19 step-1 fits of ~3 s, half of them in-process controls).
 
@@ -63,6 +64,12 @@ sg_pheno_file <- local({
         y <- as.integer(lp + stats::rlogis(n) > stats::quantile(lp + stats::rlogis(n), 1 - k))
         ph[[sprintf("c_K%02d_t%d", round(100 * k), t2)]] <- y
       }
+    }
+    set.seed(161) # LEDGER #161: the Newton step from 0 on h_t0.02 is 0.0198, below tol
+    for (t2 in c(0, 0.02)) {
+      b <- as.vector(l %*% stats::rnorm(n)) * sqrt(t2)
+      eta <- 0.2 + 0.5 * x1 + 0.3 * x2 + b
+      ph[[paste0("h_t", t2)]] <- stats::rbinom(n, 1, stats::plogis(eta))
     }
     path <<- tempfile("planted_", fileext = ".txt")
     utils::write.table(ph, path, quote = FALSE, row.names = FALSE)
@@ -212,6 +219,23 @@ test_that("a planted trait whose fixed point is the boundary stops at 0 and says
   f <- sg_fit(sg_pheno_file(), "c_K03_t3", "x1,x2", "x2")
   expect_equal(f$theta[2], 0)
   expect_true(any(grepl("tau2 = 0 is the optimum", f$log)))
+})
+
+test_that("#161: a positive score at 0 whose Newton step is below tol stops at 0, once", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  # Every default binary fit enters the loop at tau2 = 0. On this trait the
+  # score there is +1.87 and the Newton step 0.0198: below tol, so
+  # tauStepBinary floors it to 0 (GMMAT's rule), and before the fix the loop
+  # re-evaluated identical inputs for all 40 iterations and reported
+  # converged = FALSE (the AoU refit's 21 refusals). The criterion on the raw
+  # proposal cannot fire either: Dtau/(Dtau + tol) < tol needs Dtau < 4.1e-4.
+  f <- sg_fit(sg_pheno_file(), "h_t0.02", "x1,x2", "x2")
+  expect_equal(f$iters, 1)
+  expect_true(f$converged)
+  expect_equal(f$theta, c(1, 0))
+  expect_true(any(grepl("tau2 = 0 by the floor", f$log)))
+  expect_false(any(grepl("tau2 = 0 is the optimum", f$log)))
 })
 
 test_that("a healthy planted trait keeps its pre-guard fit exactly", {

@@ -206,20 +206,32 @@ glmmkin.ai_PCG_Rcpp_Binary <- function(bedFile, bimFile, famFile, Xorig, isCovar
     # guard decides how much of that step is taken.
     re <- getAIScore(re.coef$Y, X, re.coef$W, tau, re.coef$Sigma_iY, re.coef$Sigma_iX, re.coef$cov, nrun, maxiterPCG, tolPCG = tolPCG, traceCVcutoff = traceCVcutoff)
     score <- re$YPAPY - re$Trace
-    if (tau0[2] == 0 && score <= 0) {
-      # zero is an iterate, not a decision: the boundary is the optimum only
-      # when the score there is non-positive. The post-loop refit reads the
-      # inner pass's state, so hand it over as the step below would have.
+    prop <- tauProposalBinary(tau0[2], re$YPAPY, re$Trace, re$AI, tol)
+    if (tau0[2] == 0 && prop[["step"]] == 0) {
+      # zero is an iterate, not a decision: an arrival AT 0 from a positive
+      # tau0 is evaluated again here. But once the iterate IS 0 and the
+      # floored step from 0 is 0 again, another iteration has identical
+      # inputs and cannot move it (LEDGER #161: with the exit keyed on
+      # `score <= 0` a positive score whose Newton step was below tol --
+      # floored to 0 by tauStepBinary's GMMAT rule -- ran out --maxiter at
+      # (1, 0)). Two ways to be here, and the log says which. The post-loop
+      # refit reads the inner pass's state, so hand it over as the step
+      # below would have.
       cov <- re.coef$cov
       alpha <- re.coef$alpha
       eta <- re.coef$eta
       Y <- re.coef$Y
       mu <- re.coef$mu
-      cat("tau2 = 0 is the optimum: the REML score at 0 is ", score, "\n")
+      if (score <= 0) {
+        cat("tau2 = 0 is the optimum: the REML score at 0 is ", score, "\n")
+      } else {
+        cat("tau2 = 0 by the floor: the REML score at 0 is ", score,
+            " and the Newton step from 0, ", prop[["raw"]],
+            ", is below tol = ", tol, ", so the estimate is set to 0 (LEDGER #161)\n")
+      }
       didConverge <- TRUE
       break
     }
-    prop <- tauProposalBinary(tau0[2], re$YPAPY, re$Trace, re$AI, tol)
     sg <- tauGuardApply(guard, tau0[2], prop[["raw"]], prop[["step"]])
     guard <- sg$state
     fit <- list(tau = c(tau0[1], sg$p))
