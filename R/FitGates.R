@@ -407,7 +407,10 @@ checkModelEligibility <- function(modglmm, modelFile, minCaseCount,
 #   (a) the loop ran out, completing maxiter iterations without meeting its
 #       criterion;
 #   (b) the loop BAILED OUT, because max(tau) exceeded tol^(-2), and printed
-#       "Large variance estimate observed in the iterations".
+#       SAIGE's own large-variance warning (R/SAIGE_fitGLMM_fast.R:260).
+# Do NOT quote that warning verbatim in the message below: a log classifier
+# grepping for it would match this message instead of SAIGE's, and report a
+# bail-out for every gate refusal. Measured 2026-09-23 -- it reported 21.
 # The step-1 log distinguishes them. Note that tol does double duty there, so
 # a loose tol makes convergence easier while making the bail-out far more
 # aggressive: tol = 0.02 aborts above tau 2500, tol = 0.2 above tau 25.
@@ -441,9 +444,10 @@ checkConvergence <- function(converged, label, action) {
     "the null model ", label, " did NOT converge, so the variance components ",
     "-- and the variance ratio derived from them -- did not settle, and test ",
     "statistics scaled by them are not interpretable. The AI-REML loop either ",
-    "ran out at --maxiter without meeting its criterion, or bailed out with ",
-    "\"Large variance estimate observed in the iterations\" because max(tau) ",
-    "exceeded tol^(-2); the step-1 log says which. Note that --tol sets both ",
+    "ran out at --maxiter without meeting its criterion, or bailed out on a ",
+    "large variance estimate because max(tau) exceeded tol^(-2) -- the ",
+    "step-1 log carries SAIGE's own warning for that case, and says which. ",
+    "Note that --tol sets both ",
     "the criterion and that bail-out, so a loose tol converges more easily ",
     "while aborting far sooner (0.02 -> tau 2500, 0.2 -> tau 25). Refit, or ",
     "set --convergenceCheck=warn or none to proceed anyway."
