@@ -441,6 +441,74 @@ option_list <- list(
     )
   ),
   make_option(
+    "--minCaseCount",
+    type = "integer",
+    default = 100,
+    help = paste0(
+      "Optional. Binary traits only. Refuse to fit if the final sample set has ",
+      "fewer than this many cases. Below a few hundred cases the step-2 SKAT-O ",
+      "null tail is liberal (measured: 2.7x nominal at p=1e-4 with 100 cases, ",
+      "1.5x at 1e-3 with 500) [default=100]. 0 disables the gate; a fit with ",
+      "fewer than 500 cases is warned about and still run."
+    )
+  ),
+  make_option(
+    "--minSampleCount",
+    type = "integer",
+    default = 0,
+    help = paste0(
+      "Optional. Refuse to fit if the final sample set has fewer than this many ",
+      "samples with a non-missing phenotype. Both trait types [default=0, no gate]."
+    )
+  ),
+  make_option(
+    "--minCovariateCellCount",
+    type = "integer",
+    default = 10,
+    help = paste0(
+      "Optional. Refuse to fit if any level of a categorical covariate has fewer ",
+      "than this many cases or controls (samples, for a quantitative trait). A ",
+      "level with zero cases is complete separation [default=10]. 0 disables the ",
+      "gate. Distinct from --minCovariateCount, which EXCLUDES a low-count ",
+      "covariate instead of refusing; the exclusion runs first."
+    )
+  ),
+  make_option(
+    "--separationCheck",
+    type = "character",
+    default = "error",
+    help = paste0(
+      "Optional. What to do when the covariate GLM shows separation (fails to ",
+      "converge, or a fitted probability reaches the 0/1 boundary): 'error', ",
+      "'warn' or 'none' [default='error']. Catches separation on a continuous ",
+      "covariate, which a cell count cannot. Binary traits only."
+    )
+  ),
+  make_option(
+    "--convergenceCheck",
+    type = "character",
+    default = "error",
+    help = paste0(
+      "Optional. What to do when the null fit did not converge -- the AI-REML ",
+      "loop ran out without meeting its criterion, so the variance components ",
+      "and the variance ratio derived from them never settled: 'error', ",
+      "'warn' or 'none' [default='error']. Both trait types."
+    )
+  ),
+  make_option(
+    "--separationMaxFraction",
+    type = "double",
+    default = 0.02,
+    help = paste0(
+      "Optional. The fraction of samples whose fitted probability may sit at ",
+      "the 0/1 boundary before --separationCheck treats the model as ",
+      "separated. A pinned sample contributes ~0 to the score variance, so it ",
+      "carries no information: 0.5%% pinned is a 0.5%% loss of effective ",
+      "sample size, 100%% is total collapse. Above zero but at or below this ",
+      "is a warning and the run continues [default=0.02]."
+    )
+  ),
+  make_option(
     "--includeNonautoMarkersforVarRatio",
     type = "logical",
     default = FALSE,
@@ -607,6 +675,12 @@ fitNULLGLMM_multi(
   minMAFforGRM = opt$minMAFforGRM,
   maxMissingRateforGRM = opt$maxMissingRateforGRM,
   minCovariateCount = opt$minCovariateCount,
+  minCaseCount = opt[["minCaseCount"]],
+  minSampleCount = opt[["minSampleCount"]],
+  minCovariateCellCount = opt[["minCovariateCellCount"]],
+  separationCheck = opt[["separationCheck"]],
+  convergenceCheck = opt[["convergenceCheck"]],
+  separationMaxFraction = opt[["separationMaxFraction"]],
   includeNonautoMarkersforVarRatio = opt$includeNonautoMarkersforVarRatio,
   sexCol = opt$sexCol,
   FemaleCode = opt$FemaleCode,

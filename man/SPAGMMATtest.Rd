@@ -54,6 +54,10 @@ SPAGMMATtest(
   SKATO_tail_method = "saddlepoint",
   SKATO_tail_threshold = 1e-05,
   is_Firth_beta = FALSE,
+  minCaseCount = 100,
+  separationCheck = "error",
+  convergenceCheck = "error",
+  separationMaxFraction = 0.02,
   pCutoffforFirth = 0.01,
   firth_solver = "closed",
   is_overwrite_output = TRUE,
@@ -184,6 +188,14 @@ is_imputed_data = TRUE. By default, 10}
 \item{SKATO_tail_threshold}{numeric. The Davies omnibus p below which SKATO_tail_method applies. By default 1e-5 (REGENIE's); 1 sends every screened-in cell through the tail method, which is how the tests compare it with Davies where both are valid.}
 
 \item{is_Firth_beta}{logical. Whether to estimate effect sizes using approx Firth, only for binary traits. By default, FALSE}
+
+\item{minCaseCount}{integer. Binary traits only. Refuse to TEST a null model that was fitted on fewer than this many cases. The count is read from the model file, so this also screens models fitted by a SAIGE that had no such gate. Below a few hundred cases the SKAT-O null tail is liberal (measured on this branch: 2.7x the nominal rate at p = 1e-4 with 100 cases, 1.5x at 1e-3 with 500). By default, 100; 0 disables the gate. SAIGE_FIT_GATES=0 disables every gate at once.}
+
+\item{separationCheck}{character. What to do when the loaded null model has fitted values at the 0/1 boundary -- the signature of separation in the covariate model, which collapses the score variance these tests divide by. One of "error" (the default), "warn" or "none". Binary traits only.}
+
+\item{convergenceCheck}{character. What to do when the loaded null model records that its fit did not converge. Nothing in step 2 read that flag before, so an unconverged model was tested exactly like a converged one. One of "error" (the default), "warn" or "none". Both trait types; a model file predating the flag is not checked.}
+
+\item{separationMaxFraction}{numeric. The fraction of samples whose fitted probability may sit at the 0/1 boundary before separationCheck treats the loaded model as separated. Anything above zero but at or below this is a warning and the run continues. By default, 0.02; a reasoned default, not a measured one.}
 
 \item{pCutoffforFirth}{numeric. p-value cutoff to use approx Firth to estiamte the effect sizes. Only for binary traits. The effect sizes of markers with p-value <= pCutoffforFirth will be estimated using approx Firth. By default, 0.01.}
 

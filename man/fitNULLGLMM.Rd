@@ -50,6 +50,12 @@ fitNULLGLMM(
   isCovariateTransform = TRUE,
   isDiagofKinSetAsOne = FALSE,
   minCovariateCount = -1,
+  minCaseCount = 100,
+  minSampleCount = 0,
+  minCovariateCellCount = 10,
+  separationCheck = "error",
+  separationMaxFraction = 0.02,
+  convergenceCheck = "error",
   minMAFforGRM = 0.01,
   maxMissingRateforGRM = 0.15,
   useSparseGRMtoFitNULL = FALSE,
@@ -169,6 +175,18 @@ TRUE otherwise}
 \item{isDiagofKinSetAsOne}{logical. Whether to set the diagnal elements in GRM to be 1. By default, FALSE}
 
 \item{minCovariateCount}{integer. If binary covariates have a count less than this, they will be excluded from the model to avoid convergence issues. By default, -1 (no covariates will be excluded)}
+
+\item{minCaseCount}{integer. Binary traits only. Refuse to fit if the final sample set has fewer than this many cases. Below a few hundred cases the step-2 SKAT-O null tail is liberal (measured on this branch: 2.7x the nominal rate at p = 1e-4 with 100 cases, 1.5x at 1e-3 with 500), so a model fitted below the gate produces p-values that are wrong exactly where they would be reported. By default, 100; 0 disables the gate. A fit with fewer than 500 cases is warned about and still run.}
+
+\item{minSampleCount}{integer. Refuse to fit if the final sample set has fewer than this many samples with a non-missing phenotype. Applies to both trait types. By default, 0 (no gate) -- the quantitative null is calibrated at small N, so this is a power decision rather than a correctness one.}
+
+\item{minCovariateCellCount}{integer. Refuse to fit if any level of a categorical covariate has fewer than this many cases or controls (fewer than this many samples for a quantitative trait). A level with zero cases is complete separation: the logistic coefficient is infinite and, with isCovariateOffset = TRUE, is frozen into the offset, pinning fitted values at 0 or 1 and collapsing the step-2 score variance. Every covariate named in qCovarCol is checked, as is any covariate that is effectively binary. By default, 10 (the events-per-variable convention); 0 disables the gate. This composes with minCovariateCount, which EXCLUDES a low-count covariate rather than refusing: the exclusion runs first and this gate judges what survives.}
+
+\item{separationCheck}{character. What to do when the covariate GLM shows separation -- it fails to converge, or a fitted probability reaches the 0/1 boundary. One of "error" (the default), "warn" or "none". Unlike minCovariateCellCount this also catches separation on a continuous covariate, such as an age-by-sex interaction. Binary traits only.}
+
+\item{separationMaxFraction}{numeric. The fraction of samples whose fitted probability may sit at the 0/1 boundary before separationCheck treats the model as separated. A pinned sample contributes ~0 to the score variance instead of mu*(1 - mu), so it carries no information: 0.5%% pinned is a 0.5%% loss of effective sample size, while 100%% pinned is total collapse. Anything above zero but at or below this is reported as a warning and the run continues. By default, 0.02. This is a reasoned default, not a measured one -- no study here has established where p-values actually degrade as the fraction rises.}
+
+\item{convergenceCheck}{character. What to do when the null fit does not converge -- the AI-REML loop ran out without meeting its criterion, so the variance components and the variance ratio derived from them did not settle. One of "error" (the default), "warn" or "none". Both trait types.}
 
 \item{minMAFforGRM}{numeric. Minimum MAF for markers (in the Plink file) used for construcing the sparse GRM. By default, 0.01}
 

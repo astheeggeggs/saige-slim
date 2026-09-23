@@ -83,6 +83,40 @@ Standing facts that have each cost at least one session. One line of why each.
   annotation binning, which is what #131's revisit trigger needs. A native
   AF > 0.5 fixture with real separation is still absent; the cheap way to make
   one is `harness/tools/make_dosage_fixture.py`, which already generates that file.
+- **Every binary step-1 AND step-2 run on the bundled fixture is REFUSED unless
+  the gates are off** (2026-09-23, `R/FitGates.R`). `--minCaseCount` defaults to
+  100 and the fixture has 98 cases; `--minCovariateCellCount` defaults to 10 and
+  `a10` level 2 has 7 cases. Both numbers are properties of the fixture, not
+  accidents: it is a mechanical fixture, not a valid analysis. `harness/env.sh`
+  sets `SAIGE_FIT_GATES=0`, which every harness script and `run_tests.sh`
+  inherit, so nothing in the repo carries an opt-out flag -- and a run with the
+  gates off PRINTS a WARNING line saying so, which is how you tell the two
+  states apart in a log. `tests/testthat/test-step1-fit-gates.R` is the only
+  place the shipped defaults are exercised; it sets `SAIGE_FIT_GATES=1` per
+  test. If a step-1 or step-2 run refuses with "below --minCaseCount", the
+  question is whether `env.sh` was sourced, not whether the gate is wrong.
+  The thresholds are the branch's OWN measurement (`harness/work/nullrep-20260918/`,
+  LEDGER #159): binary SKAT-O null tail 2.7x nominal at 1e-4 with 100 cases,
+  1.5x at 1e-3 with 500; the quantitative arm is calibrated, so
+  `--minSampleCount` defaults to 0 and is a power knob, not a correctness one.
+  Separation is judged as a FRACTION, not as any pinned sample:
+  `--separationMaxFraction` (default 0.02) -- a pinned sample contributes ~0 to
+  the score variance instead of `mu*(1-mu)`, so it costs one sample's worth of
+  information, and the rule this replaced refused a real model over fewer than 20
+  samples in 2,737. Above zero but at or below the fraction is a warning, not a refusal.
+  `--convergenceCheck` (default error) refuses a fit whose `converged` flag is
+  FALSE -- which covers BOTH the loop running out at `--maxiter` AND the
+  bail-out at `max(tau) > tol^(-2)`; only the step-1 log tells them apart, and
+  `--tol` sets both the criterion and that bail-out (0.02 aborts above tau
+  2500, 0.2 above tau 25). All 13 committed step-1 goldens are `converged=TRUE`,
+  so that gate is inert here and a test asserts it stays so.
+  Two halves that are NOT redundant: step 1 scans covariate cells and the
+  covariate GLM; step 2 reads the loaded model's own `y` and `fitted.values`,
+  which is the only check a model fitted by an older SAIGE ever meets. And the
+  step-1 cell scan sees `model.matrix` DUMMIES, where the reference level has
+  no column -- so it reconstructs the factor (a sample is in the reference
+  level when every dummy is 0); measured, a per-dummy scan misses a zero-case
+  reference level that a factor scan catches.
 - **Do not force `--pCutoffforFirth` upward** to make Firth fire: above the
   intended cutoff the penalised fit drifts to `maxstep*maxit` = 750 (#26). Use
   0.05, which fires on 5 of the 70 bundled markers.

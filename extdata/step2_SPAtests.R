@@ -673,6 +673,54 @@ option_list <- list(
     )
   ),
   make_option(
+    "--minCaseCount",
+    type = "integer",
+    default = 100,
+    help = paste0(
+      "Optional. Binary traits only. Refuse to TEST a null model fitted on ",
+      "fewer than this many cases; the count is read from the model file, so ",
+      "this also screens models fitted by a SAIGE that had no such gate. ",
+      "Below a few hundred cases the SKAT-O null tail is liberal (measured: ",
+      "2.7x nominal at p=1e-4 with 100 cases, 1.5x at 1e-3 with 500) ",
+      "[default=100]. 0 disables it; SAIGE_FIT_GATES=0 disables every gate."
+    )
+  ),
+  make_option(
+    "--separationCheck",
+    type = "character",
+    default = "error",
+    help = paste0(
+      "Optional. What to do when the loaded null model has fitted values at ",
+      "the 0/1 boundary -- the signature of separation in the covariate ",
+      "model, which collapses the score variance these tests divide by: ",
+      "'error', 'warn' or 'none' [default='error']. Binary traits only."
+    )
+  ),
+  make_option(
+    "--convergenceCheck",
+    type = "character",
+    default = "error",
+    help = paste0(
+      "Optional. What to do when the null fit did not converge -- the AI-REML ",
+      "loop ran out without meeting its criterion, so the variance components ",
+      "and the variance ratio derived from them never settled: 'error', ",
+      "'warn' or 'none' [default='error']. Both trait types."
+    )
+  ),
+  make_option(
+    "--separationMaxFraction",
+    type = "double",
+    default = 0.02,
+    help = paste0(
+      "Optional. The fraction of samples whose fitted probability may sit at ",
+      "the 0/1 boundary before --separationCheck treats the model as ",
+      "separated. A pinned sample contributes ~0 to the score variance, so it ",
+      "carries no information: 0.5%% pinned is a 0.5%% loss of effective ",
+      "sample size, 100%% is total collapse. Above zero but at or below this ",
+      "is a warning and the run continues [default=0.02]."
+    )
+  ),
+  make_option(
     "--pCutoffforFirth",
     type = "double",
     default = 0.01,
@@ -906,6 +954,10 @@ fixed_params <- list(
   dosage_zerod_cutoff = opt$dosage_zerod_cutoff,
   dosage_zerod_MAC_cutoff = opt$dosage_zerod_MAC_cutoff,
   is_Firth_beta = opt$is_Firth_beta,
+  minCaseCount = opt[["minCaseCount"]],
+  separationCheck = opt[["separationCheck"]],
+  convergenceCheck = opt[["convergenceCheck"]],
+  separationMaxFraction = opt[["separationMaxFraction"]],
   pCutoffforFirth = opt$pCutoffforFirth,
   firth_solver = opt$firth_solver,
   is_single_in_groupTest = opt$is_single_in_groupTest,

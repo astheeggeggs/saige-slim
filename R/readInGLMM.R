@@ -34,7 +34,10 @@ removeLOCOResult <- function(chromList, obj.glmm.null) {
 }
 
 
-ReadModel <- function(GMMATmodelFile = "", chrom = "", LOCO = TRUE, is_Firth_beta = FALSE) {
+ReadModel <- function(GMMATmodelFile = "", chrom = "", LOCO = TRUE, is_Firth_beta = FALSE,
+                      minCaseCount = 100, separationCheck = "error",
+                      convergenceCheck = "error",
+                      separationMaxFraction = 0.02) {
   # Check file existence
   Check_File_Exist(GMMATmodelFile, "GMMATmodelFile")
   if (!LOCO %in% c(TRUE, FALSE)) {
@@ -125,6 +128,9 @@ ReadModel <- function(GMMATmodelFile = "", chrom = "", LOCO = TRUE, is_Firth_bet
   }
 
   modglmm$mu <- as.vector(modglmm$fitted.values)
+  # The eligibility gates (R/FitGates.R), before any work is done on the model.
+  checkModelEligibility(modglmm, GMMATmodelFile, minCaseCount, separationCheck,
+                        convergenceCheck, separationMaxFraction)
   tau <- modglmm$theta
   N <- length(modglmm$mu)
   if (modglmm$traitType == "binary") {
@@ -177,7 +183,11 @@ ReadModel <- function(GMMATmodelFile = "", chrom = "", LOCO = TRUE, is_Firth_bet
 }
 
 
-ReadModel_subsample <- function(GMMATmodelFile = "", chrom = "", LOCO = TRUE, is_Firth_beta = FALSE, subSampleFile = "") {
+ReadModel_subsample <- function(GMMATmodelFile = "", chrom = "", LOCO = TRUE, is_Firth_beta = FALSE,
+                                subSampleFile = "", minCaseCount = 100,
+                                separationCheck = "error",
+                                convergenceCheck = "error",
+                                separationMaxFraction = 0.02) {
   # Check file existence
   Check_File_Exist(GMMATmodelFile, "GMMATmodelFile")
   if (!LOCO %in% c(TRUE, FALSE)) {
@@ -303,6 +313,9 @@ ReadModel_subsample <- function(GMMATmodelFile = "", chrom = "", LOCO = TRUE, is
   # no-op for a prefix subset, NAs and wrong elements for any other.
   modglmm$mu <- as.vector(modglmm$fitted.values)
 
+  # The gates see the SUBSET, which is the sample set actually tested.
+  checkModelEligibility(modglmm, GMMATmodelFile, minCaseCount, separationCheck,
+                        convergenceCheck, separationMaxFraction)
 
   tau <- modglmm$theta
   N <- length(modglmm$mu)

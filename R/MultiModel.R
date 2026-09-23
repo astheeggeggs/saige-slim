@@ -213,16 +213,22 @@ prepareNullModel <- function(spec, k, chrom, LOCO, is_Firth_beta, subSampleFile,
                              sparseGRMFile, sparseGRMSampleIDFile, relatednessCutoff,
                              cateVarRatioMinMACVecExclude, cateVarRatioMaxMACVecInclude,
                              isGroupTest, is_fastTest, pval_cutoff_for_fastTest,
-                             is_noadjCov, max_MAC_use_ER, nThreads) {
+                             is_noadjCov, max_MAC_use_ER, nThreads,
+                             minCaseCount = 100, separationCheck = "error",
+                             convergenceCheck = "error",
+                             separationMaxFraction = 0.02) {
   label <- if (spec$name == "") "" else paste0(" ", spec$name)
   cat("---- null model ", k, label, " ----\n", sep = "")
 
   if (subSampleFile == "") {
-    obj.model <- ReadModel(spec$modelFile, chrom, LOCO, is_Firth_beta) # readInGLMM.R
+    obj.model <- ReadModel(spec$modelFile, chrom, LOCO, is_Firth_beta, # readInGLMM.R
+                           minCaseCount, separationCheck, convergenceCheck,
+                           separationMaxFraction)
   } else {
     # readInGLMM.R
     obj.model <- ReadModel_subsample(
-      spec$modelFile, chrom, LOCO, is_Firth_beta, subSampleFile
+      spec$modelFile, chrom, LOCO, is_Firth_beta, subSampleFile,
+      minCaseCount, separationCheck, convergenceCheck, separationMaxFraction
     )
   }
 
