@@ -42,10 +42,18 @@ RUN SAIGE_WARNINGS_RATCHET=0 SAIGE_R_LIBRARY="$(pwd)/.pixi/envs/runtime/lib/R/li
 # compilers, sanitizer runtimes, static archives and docs; the runtime
 # libraries R links (libgfortran, libstdc++, libgomp) stay. The --help calls
 # in the runtime stage and the release workflow's step-2 run are the check.
+# The second rm is ~37 MB more, all of it inert at runtime: R's message
+# catalogues (LC_ALL=C.UTF-8 here, so English either way), pixi's conda-meta
+# bookkeeping (no pixi binary in the runtime stage), and the Rcpp/RcppEigen/
+# RcppArmadillo headers, which exist for COMPILING against those packages and
+# are never read by an installed SAIGE.so. Not removed and worth knowing why:
+# libicudata (30 MB) -- R links ICU for collation and may not start without
+# it -- and the ubuntu base (79 MB), whose replacement needs its own testing.
 RUN cd .pixi/envs/runtime \
     && rm -rf lib/gcc libexec/gcc x86_64-conda-linux-gnu bin/x86_64-conda-linux-gnu-* \
        lib/libasan* lib/libtsan* lib/libhwasan* lib/liblsan* lib/libubsan* \
        lib/*.a share/doc share/man share/info share/gir-1.0 include \
+    && rm -rf lib/R/library/translations conda-meta lib/R/library/*/include \
     && du -sh .
 
 # -------------------------------------------------------------- runtime
