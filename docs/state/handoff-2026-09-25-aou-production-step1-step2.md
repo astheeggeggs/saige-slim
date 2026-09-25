@@ -207,6 +207,93 @@ with `;` although the command line takes `:`** -- `pLoF:damaging_missense` in,
 `pLoF;damaging_missense` out -- so hardcoded mask strings give EMPTY series with
 no error.
 
+## Validated against the previous run (2024-03-26), 166 trait-by-ancestry pairs
+
+The previous results under `saige/run/step2_group/combined_files/` have the
+IDENTICAL schema (same 13 columns, same `;`-joined mask labels, same three max
+MAFs), so a full cell-level comparison was possible on `(Region, Group, max_MAF)`.
+
+**On identical data the new pipeline reproduces the old to 0.07%.** Medians of the
+per-trait median `log10(p_new/p_old)` across 157 traits, by p-value column and by
+band of the OLD p-value:
+
+| band | `Pvalue` | `Pvalue_Burden` | `Pvalue_SKAT` |
+|---|---|---|---|
+| p > 0.05 | -0.0001 | -0.0002 | -0.0001 |
+| 1e-5 .. 0.05 | +0.0003 | +0.0004 | +0.0004 |
+| p <= 1e-5 | **+0.0153** (3.6%) | **+0.0218** (5.1%) | **+0.0464** (11.3%) |
+
+The band split is a DECOMPOSITION, not a convenience. #158 touches the three
+columns differently: the per-rho layer is never screened, so `Pvalue_Burden` and
+`Pvalue_SKAT` above 1e-5 isolate the MODEL change with no kernel confound, while
+`Pvalue` above 0.05 carries the screen as well. Below 1e-5 all three carry the
+saddlepoint. So the `1e-5 .. 0.05` row measures the step-1 model change and says
+it moves nothing (0.07%), and the bottom row measures the saddlepoint and lands
+inside its independently documented 5-12% conservatism.
+
+Genotype-level agreement on the stable traits is exact, not approximate: **MAC
+ratio new/old median 1.000 with IQR [1.000, 1.000]** and **`BETA_Burden` sign
+agreement 100.0%** on EUR T2Diab's 4,749 cells with p < 0.01 in either run.
+
+**137 of 166 pairs have the same samples to within 0.5%.** The 29 that differ all
+trace to one of four causes, none of them the pipeline:
+
+- **Cases recoded, same people** (`dN` ~ 1.000, `dcase` != 1, and MAC ratio
+  exactly 1.000 because MAC counts alleles over all samples regardless of case
+  status): `MatHem` 2.44/3.23/2.72x more cases (eur/afr/amr), `CAD`
+  1.67/1.59/1.55x, `ColonRectCanc` 1.21/1.56/1.34x.
+- **Sample grew, cases unchanged** (`dcase` exactly 1.000, more controls): `PAD`
+  +1.4 to +3.4%, `PeptUlcer` +1.0 to +1.4%, `Urolith` +0.6 to +1.0%. `eur PAD`'s
+  `dN = 1.0335` matches its MAC ratio 1.0327 to three decimals.
+- **The old model was mis-specified by the truncated step-0 GRM.** `amr BMI` is
+  the extreme -- rho 0.30-0.75 and `med_log10` up to **6.4**, with 82,542 cells
+  below 1e-5 in the OLD run, i.e. a quarter of the genome. This is the trait whose
+  old null variance ratio was 6.91, so it is INDEPENDENT confirmation of the
+  truncated-GRM diagnosis from the results side rather than the variance-ratio
+  side. Milder cases of the same thing, all quantitative and all heritable, with
+  stable sample counts: `amr AST` +0.125, `amr TChol` +0.140, `eur HDLC` +0.127,
+  `eur Height` +0.103, `afr Height` +0.173. The damage scales with how much the
+  GRM mattered.
+- **Cosmetic**, 0.5-1% on cases or N and absent from the p-value outlier list:
+  `Asth`, `Psori`, `HTN`, `CRP`.
+
+Two findings about the OLD data that the comparison turned up.
+
+**The old combined files carry DUPLICATE rows.** Found on eur T2Diab: two genes
+appear twice with identical values in the top-hits list, and a pooled-row join
+returned 20,402 rows from 18,463 genes. Probably a stitching artefact in
+`combined_files`. The summariser de-duplicates on `(Region, Group, max_MAF)`
+before merging, because otherwise the merge fans out and gene ranks are distorted
+by repeated entries. The new per-bin outputs cannot carry this: the chromosome
+bins partition 1-22 and that is asserted before every launch.
+
+**`EFRMB` exists twice per ancestry in the old run, under one label, with
+different case counts AND different totals.** Resolvable after all: for every
+ancestry one of the two matches the new case count almost exactly and the other
+is 2.0-2.5x off, so the canonical old file is the LARGER-case one (afr 4,710 vs
+new 4,725; eur 12,234 vs 12,351; amr 3,867 vs 3,882; eas 399 vs 403; sas 186 vs
+191). The smaller-case files are a superseded definition.
+
+Three things to carry into any future comparison of these files. `MatHem`, `CAD`
+and `ColonRectCanc` are NOT the same analysis in the two runs and must not be
+compared as though they were -- `MatHem` in particular has 2.4-3.2x more cases and
+is 6-8x LESS significant with sign agreement down to 0.909, which is a
+phenotype-definition question about whether the broader definition dilutes the
+rare-variant signal, not a pipeline one. `markers_same` tracks the SAMPLE set
+rather than the annotation, because the MAF and MAC filters are computed in
+sample, so a different sample set admits different markers per cell (eur T2Diab
+0.967 with an identical sample set, eur PAD 0.344 with a 3.4% larger one). And
+lambda_GC is unusable throughout, for the reason in the EUR T2Diab section.
+
+**Still outstanding: the variant-level comparison.** The old directory holds only
+`SAIGE.gene.*` files; whether single-variant results exist elsewhere was not
+established. Worth doing if they do, because single-variant p-values come from the
+score/SPA/ER/Firth cascade and are untouched by #158 -- so they would isolate the
+model change with no kernel confound at all, more cleanly even than the
+`1e-5 .. 0.05` band above. Note the new run has `FIRTH=FALSE`, so effect sizes
+would differ from an old run with Firth on, and `--minMAC=0.5` sets the marker
+floor.
+
 ## The three LEDGER rows
 
 - **#161 CONFIRMED at production scale** on a build that already carries the fix.
