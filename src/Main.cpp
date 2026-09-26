@@ -279,6 +279,64 @@ struct PooledRegionRecord {
 };
 static std::vector<PooledRegionRecord> g_pooledRecords;
 
+// LEDGER #164 (2026-09-26): every saddlepoint failure that fell back to the
+// exact test, with the cell it happened in. getMarkerPval sets
+// KernelWorkspace::spaFallback (and bumps SAIGE::spaFallbackCount()) on the
+// worker that ran the test; the four call sites that know their cell's name
+// record it here. The count can exceed the rows: a conditioning-marker test
+// (assign_conditionMarkers_factors) counts but has no cell to record. Read
+// by R at the end of the run (R/SpaFallbacks.R: the summary line and the
+// `<SAIGEOutputFile>.spaFallbacks.txt` sidecar).
+struct SpaFallbackRecord {
+  std::string kind, region, group, maxMAF, weight, marker, pvalNA, pval, note;
+  double MAC = 0.0;
+};
+static std::vector<SpaFallbackRecord> g_spaFallbacks;
+static std::mutex g_spaFallbackMutex;
+static void recordSpaFallback(const std::string & t_kind, const std::string & t_region,
+                              const std::string & t_group, const std::string & t_maxMAF,
+                              const std::string & t_weight, const std::string & t_marker,
+                              double t_MAC, const std::string & t_pvalNA, const std::string & t_pval,
+                              const std::string & t_note){
+  SpaFallbackRecord rec;
+  rec.kind = t_kind; rec.region = t_region; rec.group = t_group; rec.maxMAF = t_maxMAF;
+  rec.weight = t_weight; rec.marker = t_marker; rec.MAC = t_MAC; rec.pvalNA = t_pvalNA; rec.pval = t_pval; rec.note = t_note;
+  std::lock_guard<std::mutex> lock(g_spaFallbackMutex);
+  g_spaFallbacks.push_back(rec);
+}
+// the max-MAF label exactly as the ultra-rare row names print it
+static std::string maxMAFLabel(double t_x){
+  std::string str = std::to_string(t_x);
+  str.erase(str.find_last_not_of('0') + 1, std::string::npos);
+  return str;
+}
+
+// [[Rcpp::export]]
+void resetSpaFallbackRecordsInCPP(){
+  std::lock_guard<std::mutex> lock(g_spaFallbackMutex);
+  g_spaFallbacks.clear();
+  SAIGE::spaFallbackCountReset();
+}
+
+// [[Rcpp::export]]
+Rcpp::List getSpaFallbackRecordsInCPP(){
+  std::lock_guard<std::mutex> lock(g_spaFallbackMutex);
+  const unsigned int n = g_spaFallbacks.size();
+  std::vector<std::string> kind(n), region(n), group(n), maxMAF(n), weight(n), marker(n), pvalNA(n), pval(n), note(n);
+  Rcpp::NumericVector MAC(n);
+  for(unsigned int k = 0; k < n; k++){
+    const SpaFallbackRecord & r = g_spaFallbacks[k];
+    kind[k] = r.kind; region[k] = r.region; group[k] = r.group; maxMAF[k] = r.maxMAF;
+    weight[k] = r.weight; marker[k] = r.marker; pvalNA[k] = r.pvalNA; pval[k] = r.pval; MAC[k] = r.MAC; note[k] = r.note;
+  }
+  return Rcpp::List::create(Rcpp::Named("count") = (double)SAIGE::spaFallbackCount(),
+                            Rcpp::Named("kind") = kind, Rcpp::Named("region") = region,
+                            Rcpp::Named("group") = group, Rcpp::Named("maxMAF") = maxMAF,
+                            Rcpp::Named("weight") = weight, Rcpp::Named("marker") = marker,
+                            Rcpp::Named("MAC") = MAC, Rcpp::Named("pvalNA") = pvalNA,
+                            Rcpp::Named("pval") = pval, Rcpp::Named("note") = note);
+}
+
 // The CCT rule CCT_cpp will take on this vector, decided by the same
 // predicates it uses (src/CCT.cpp) and in the same order.
 static std::string pooledCCTRule(const arma::vec & t_pvals){
@@ -1255,6 +1313,9 @@ static void testOneModel(const SAIGE::SAIGEClass & t_model,
                         altFreq, Tstat, gy, varT, isSPAConverge, t_scratch.gtildeVec, is_gtilde, is_region, t_scratch.P2Vec, t_isCondition, Beta_c, seBeta_c, pval_c, pval_noSPA_c, Tstat_c, varT_c, t_scratch.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx, &t_scratch.ws);
   }
 
+  if(t_scratch.ws.spaFallback){ // LEDGER #164
+    recordSpaFallback("marker", "", "", "", "", t_res.marker, MAC, pval_noSPA, pval, t_scratch.ws.spaFallbackNote);
+  }
   const double pval_num = parsePrintedPval(pval); // the one guarded parse (LEDGER #72)
 
   if((t_traitType == "binary" && MAC > g_cfg.MACCutoffforER) || t_traitType != "binary"){
@@ -1293,6 +1354,7 @@ static void testOneModel(const SAIGE::SAIGEClass & t_model,
   t_res.Beta = Beta * (1 - 2*flip);  // Beta if flip = false, -1*Beta is flip = true
   t_res.seBeta = seBeta;
   t_res.pval = pval;
+  t_res.tested = true;   // LEDGER #164: a tested marker prints even when its p is NA
   t_res.pvalNA = pval_noSPA;
   t_res.Tstat = Tstat * (1 - 2*flip);
   t_res.varT = varT;
@@ -3067,6 +3129,9 @@ Rcpp::List mainRegionInCPP(
         }else{
           model.getMarkerPval(sc.GVec, sc.indexNonZeroVec_arma, sc.indexZeroVec_arma, prm.Beta, prm.seBeta, prm.pval, prm.pval_noSPA, altFreq, prm.Tstat, prm.gy, prm.varT, prm.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, prm.Beta_c, prm.seBeta_c, prm.pval_c, prm.pval_noSPA_c, prm.Tstat_c, prm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx, &sc.ws);
         }
+        if(sc.ws.spaFallback){ // LEDGER #164
+          recordSpaFallback("single_in_group", regionName, "", "", "", pr.marker, MAC, prm.pval_noSPA, prm.pval, sc.ws.spaFallbackNote);
+        }
         rpTest.stop();
 
         if(isCondition){
@@ -4081,6 +4146,13 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
       }else{
         model.getMarkerPval(genoURVecRef, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, c.flip, cm.ctx, &sc.ws);
       }
+      if(sc.ws.spaFallback){ // LEDGER #164
+        const unsigned int jmrU = urTested[t / P];
+        const unsigned int jU = jmrU / (q_maf * q_weight), mU = (jmrU / q_weight) % q_maf, rU = jmrU % q_weight;
+        recordSpaFallback("ultra_rare", regionName, annoStringVec.at(jU), maxMAFLabel(maxMAFVec.at(mU)),
+                          (q_weight > 1) ? t_weightNames.at(rU) : std::string(""), markerVec.at(c.i),
+                          genoSumcount_noweight(jmrU), cm.pval_noSPA, cm.pval, sc.ws.spaFallbackNote);
+      }
       rpUrTest.stop();
       // (urGuard clears sc.urScratch at scope exit, throw or not; nothing below
       // reads it -- G1, P1 and P2 are taken from other scratch members)
@@ -4393,6 +4465,12 @@ if(t_regionTestType == "BURDEN"){
            model.getMarkerPval(genoSumVecRef, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, isregion, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, cm.ctx, &sc.ws);
          }else{
            model.getMarkerPval(genoSumVecRef, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, isregion, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, cm.ctx, &sc.ws);
+         }
+         if(sc.ws.spaFallback){ // LEDGER #164
+           const unsigned int jU = jmrT / (q_maf * q_weight), mU = (jmrT / q_weight) % q_maf, rU = jmrT % q_weight;
+           recordSpaFallback("burden", regionName, annoStringVec.at(jU), maxMAFLabel(maxMAFVec.at(mU)),
+                             (q_weight > 1) ? t_weightNames.at(rU) : std::string(""), std::string(""),
+                             genoSumcount_noweight(jmrT), cm.pval_noSPA, cm.pval, sc.ws.spaFallbackNote);
          }
          // (sumGuard clears sc.sumScratch at scope exit, throw or not)
        };
@@ -5586,7 +5664,7 @@ void writeOutfile_single(bool t_isMoreOutput,
   int numtest = 0;
   for(unsigned int k = 0; k < t_resultVec.size(); k++){
         const Marker::MarkerResult & res = t_resultVec.at(k);
-        if(res.pval != "NA"){
+        if(res.pval != "NA" || res.tested){   // LEDGER #164: tested-but-NA still prints
                 numtest = numtest + 1;
                 writeSingleVariantRow(t_stream, sc, res);
         }

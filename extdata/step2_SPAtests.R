@@ -787,7 +787,12 @@ option_list <- list(
     help = paste0(
       "p-values of genetic variants with MAC <= max_MAC_for_ER will be ",
       "calculated via efficient resampling. [default=4]. Such markers report ",
-      "Is.SPA = true (their SE is back-derived from the exact p; see --SPAcutoff)."
+      "Is.SPA = true (their SE is back-derived from the exact p; see --SPAcutoff). ",
+      "At most 200, the largest value the exact test is verified at. Independently ",
+      "of this cutoff, a binary marker or cell whose saddlepoint fails to converge ",
+      "falls back to the exact test when its MAC is at most 200 (above that its ",
+      "p-value is NA); the run prints an 'SPA fallbacks' count and names each in ",
+      "<SAIGEOutputFile>.spaFallbacks.txt."
     )
   ),
   make_option(

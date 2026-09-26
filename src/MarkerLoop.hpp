@@ -47,6 +47,12 @@ struct MarkerResult {
   std::string pval = "NA";
   std::string pvalNA = "NA";
   bool isSPAConverge = false;
+  // LEDGER #164: set once getMarkerPval has run. The writer's skip rule is
+  // `pval != "NA"`, which also describes a marker QC dropped before any test
+  // (rows are reset to this default per marker); a TESTED marker whose p is
+  // NA -- the saddlepoint failed and the exact test failed too -- must still
+  // print its row, so the rule reads this flag as well.
+  bool tested = false;
 
   double Beta_c = arma::datum::nan;
   double seBeta_c = arma::datum::nan;

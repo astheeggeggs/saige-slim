@@ -70,7 +70,11 @@ checkArgsListNumeric <- function(
   cat("Any dosages <= ", dosage_zerod_cutoff, " for genetic variants with MAC <= ", dosage_zerod_MAC_cutoff, " are set to be 0.\n")
   checkArgNumeric(markers_per_chunk, deparse(substitute(markers_per_chunk)), minVal = 1000)
   checkArgNumeric(groups_per_chunk, deparse(substitute(groups_per_chunk)), minVal = 1)
-  checkArgNumeric(max_MAC_use_ER, deparse(substitute(max_MAC_use_ER)), minVal = 0)
+  # LEDGER #165: the exact test is verified on this fixture up to a MAC of 200
+  # (golden P33) and throws a non-standard exception at 607, so the option is
+  # capped at the largest value ever verified; the LEDGER #164 fallback applies
+  # the same ceiling. Raise it only with a golden that proves the new value.
+  checkArgNumeric(max_MAC_use_ER, deparse(substitute(max_MAC_use_ER)), minVal = 0, maxVal = 200)
   # LEDGER #147 FIXED: taken as a formal and never checked, so a non-numeric
   # value died ~200 lines later in an Rcpp conversion naming nothing and a
   # negative one silently made the #126 gate inert. 0 is admitted: it is as

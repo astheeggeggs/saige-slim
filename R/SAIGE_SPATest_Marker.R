@@ -98,6 +98,7 @@ SAIGE.Marker <- function(genoType, # nolint: object_name_linter.
     if (nChunks == 0) {
       stop("No markers on chrom ", chrom, " are found\n")
     }
+    resetSpaFallbackRecordsInCPP() # LEDGER #164: per-run accounting, R/SpaFallbacks.R
 
 
     cat("Number of all markers to test:\t", length(genoIndex), "\n")
@@ -162,6 +163,7 @@ SAIGE.Marker <- function(genoType, # nolint: object_name_linter.
       is_marker_test <- FALSE
     }
   } # while(is_marker_test){
+  spaFallbackSummary(OutputFile) # LEDGER #164: once per run, R/SpaFallbacks.R
 
   # Flush and close every g_out.singles stream explicitly. This is byte-neutral
   # -- it only moves the flush that static destruction would have done at exit

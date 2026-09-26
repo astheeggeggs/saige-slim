@@ -9,6 +9,14 @@ flexrvWeightsInCPP <- function(t_table, t_score, t_isLof, t_MAF, t_MAC, t_maxMAF
     .Call('_SAIGE_flexrvWeightsInCPP', PACKAGE = 'SAIGE', t_table, t_score, t_isLof, t_MAF, t_MAC, t_maxMAF)
 }
 
+resetSpaFallbackRecordsInCPP <- function() {
+    invisible(.Call('_SAIGE_resetSpaFallbackRecordsInCPP', PACKAGE = 'SAIGE'))
+}
+
+getSpaFallbackRecordsInCPP <- function() {
+    .Call('_SAIGE_getSpaFallbackRecordsInCPP', PACKAGE = 'SAIGE')
+}
+
 resetBurdenMemoInCPP <- function() {
     invisible(.Call('_SAIGE_resetBurdenMemoInCPP', PACKAGE = 'SAIGE'))
 }

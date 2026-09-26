@@ -216,7 +216,7 @@ the printed digits. Only for binary traits with is_Firth_beta = TRUE.}
 
 \item{pval_cutoff_for_fastTest}{numeric. Only when is_fastTest=TRUE. On a group run, a region whose Cauchy p-value from the fast pass is below this cutoff is re-tested with the sparse GRM; on a single-variant run, a marker whose fast-pass p-value is below it is re-tested the same way (src/Main.cpp, the single-variant escalation gate). In both cases the second result is the one reported, so the cutoff changes single-variant p-values too. By default, 0.05}
 
-\item{max_MAC_use_ER}{numeric. p-values of genetic variants with MAC <= max_MAC_use_ER are calculated by efficient resampling (the exact test). Such markers report Is.SPA = TRUE and their SE is back-derived from the exact p. By default, 4}
+\item{max_MAC_use_ER}{numeric. p-values of genetic variants with MAC <= max_MAC_use_ER are calculated by efficient resampling (the exact test). Such markers report Is.SPA = TRUE and their SE is back-derived from the exact p. At most 200, the largest value the exact test is verified at (LEDGER #165). Independently of this cutoff, a binary marker or region cell whose saddlepoint approximation fails to converge falls back to the exact test when its MAC is at most 200, is counted in the 'SPA fallbacks' line printed at the end of the run and named in <SAIGEOutputFile>.spaFallbacks.txt; above 200 its p-value is NA (LEDGER #164). By default, 4}
 
 \item{subSampleFile}{character. Path to a file with one column of IDs of samples that were included in Step 1 and are also to be included in Step 2, for when a Step-1 sample has no genotypes in Step 2. Not fully evaluated; if more than 5 percent of the Step-1 samples are missing in Step 2, re-run Step 1}
 

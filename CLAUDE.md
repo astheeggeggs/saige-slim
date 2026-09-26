@@ -465,7 +465,7 @@ with every closed form and every resolved ambiguity
 `docs/design/flexrv-design.md` (the MAF beta transform is DECREASING,
 `(1 - MAF/M)^(b-1)`, zero at and above M; read A1 before touching it).
 Custom-set semantics throughout: weighted ultra-rare collapse, `w0 = 1` on
-the pseudo-marker, ER only for `unw_unw`; `--weights.beta` is inert on them.
+the pseudo-marker, ER only for `unw_unw` NATIVELY -- but since 2026-09-26 (LEDGER #164) ANY set whose saddlepoint fails to converge falls back to the exact test at MAC <= 200, is counted in the `SPA fallbacks:` line and named in `<SAIGEOutputFile>.spaFallbacks.txt`; `--weights.beta` is inert on them.
 
 The run: `--flexRV_score=NAME --flexRV_maxMAF=M --annotation_in_groupTest=<ONE
 group> --r.corr=1`, optionally `--flexRV_scoreTransforms` /
@@ -711,6 +711,21 @@ declarations sit at the top of `src/Main.cpp`.
   `std::vector<bool>` (bit packing makes two markers' writes one word).
 - One dataset per R process; no reentrancy. TBB also drives the step-1 GRM
   kernels (source of LEDGER #7).
+- **A saddlepoint failure is never reported as the normal p** (LEDGER #163/#164,
+  2026-09-26, found on real data as three genes at p 1e-120..1e-256). The Newton
+  root finder overflowed when the carriers' fitted probabilities were of order
+  1e-3 and below (first step `(q - K1(0))/K2(0)` past the exp underflow; fixed
+  by a bracketed rescue that runs only after the plain Newton has failed, so
+  no golden moved), and SAIGE then printed the normal-approximation p as
+  `p.value` with only the sidecar's `Is.SPA = FALSE` to tell (which also reads
+  TRUE after the exact test, LEDGER #80). Now: on failure the exact test runs
+  at any weight set up to MAC 200 (`--max_MAC_for_ER` is capped there, LEDGER
+  #165), every fallback is counted in `SPA fallbacks: N ...` at the end of
+  every step-2 run and named in `<SAIGEOutputFile>.spaFallbacks.txt`, and
+  `SAIGE_SPA_PLANT_FAIL=1` is the test plant that forces it. A synthetic SPA
+  vector must be CENTRED to be realistic (an adjusted genotype's negative
+  entries sum to minus the carrier count), or its mirrored q is unattainable
+  and the test measures the fallback instead of the root.
 - **A SKAT kernel failure is counted, not hidden** (LEDGER #57): the cell's
   rows stay NA, the run prints `SKAT failures: N ...` before `Analysis done!`,
   and `<SAIGEOutputFile>.skatFailures.txt` names each failed cell with the

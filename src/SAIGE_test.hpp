@@ -19,6 +19,13 @@ namespace SAIGE{
 // call, which is still one allocation set per marker rather than per iteration.
 struct KernelWorkspace {
         SPAWorkspace spa;
+        // LEDGER #164: set by getMarkerPval when the saddlepoint failed and the
+        // exact test was run in its place (cleared at every entry), so the
+        // caller can record WHICH cell fell back; the count lives in
+        // spaFallbackCount() below.
+        bool spaFallback = false;
+        // "" when the exact test ran; otherwise why it could not (p.value is NA)
+        std::string spaFallbackNote;
         arma::mat x, XW2, Q, R;
         arma::vec pi_0, pi, W2, h, ypih;
         void ensureFirth(arma::uword n) {
@@ -46,6 +53,11 @@ struct KernelWorkspace {
 // sparse-GRM choice, which is what LEDGER #27 and #50 were, and it is now a
 // separate step-2 variable in Main.cpp (g_regionEscalatedPass). If you find
 // yourself wanting to put it in this struct, that is the collision coming back.
+// LEDGER #164: per-process count of saddlepoint failures that fell back to the
+// exact test (getMarkerPval). Reset per run by resetSpaFallbackRecordsInCPP.
+unsigned long long spaFallbackCount();
+void spaFallbackCountReset();
+
 struct TestContext {
         double varRatioVal = 0.0;   // the variance ratio selected for this marker
         bool useSparseGRM = false;  // was m_flagSparseGRM_cur

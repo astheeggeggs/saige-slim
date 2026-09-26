@@ -12,12 +12,37 @@
 #include "SAIGE_test.hpp"
 #include "SPA.hpp"
 #include "ER_binary_func.hpp"
+#include "Binary_global.hpp"   // SKATMainThread::NeedsMainThread (LEDGER #164)
 #include "UTIL.hpp"
 #include <thread>         // std::this_thread::sleep_for
+#include <atomic>
+#include <cmath>
+#include <cstdlib>        // getenv: the SAIGE_SPA_PLANT_FAIL test plant (LEDGER #164)
 #include <chrono>         // std::chrono::seconds
 #include <boost/iostreams/filter/zstd.hpp>
 #include <boost/date_time.hpp>
 #include <boost/math/distributions/normal.hpp>
+
+// LEDGER #164: the fallback counter (records with cell names are kept in
+// Main.cpp, where the names are in scope). Atomic because the region cell
+// tests and the marker loop run on workers.
+static std::atomic<unsigned long long> g_spaFallbackCount(0);
+unsigned long long SAIGE::spaFallbackCount(){ return g_spaFallbackCount.load(); }
+void SAIGE::spaFallbackCountReset(){ g_spaFallbackCount.store(0); }
+// Test plant: SAIGE_SPA_PLANT_FAIL=1 declares every attempted saddlepoint
+// non-converged, so the fallback and its sidecar can be exercised end to end
+// on a fixture whose saddlepoints all converge (tests/testthat/
+// test-step2-spa-fallback.R reconciles the planted run against a native
+// all-ER run). Read once per process; never set it in a real run.
+// LEDGER #165: the largest MAC at which the exact test is verified (golden
+// P33; it throws on this fixture at 607). --max_MAC_for_ER is capped at this
+// value in R (checkArgs.R) and the #164 fallback does not run the exact test
+// above it: a saddlepoint failure there reports NA with the reason.
+static const double kExactTestMACCeiling = 200.0;
+static bool spaPlantFail(){
+  static const bool plant = [](){ const char* v = std::getenv("SAIGE_SPA_PLANT_FAIL"); return v != nullptr && std::string(v) == "1"; }();
+  return plant;
+}
 #include <boost/math/distributions/chi_squared.hpp>
 
 // LEDGER #106 fix: the sparse-GRM PCG stops on a RELATIVE residual,
@@ -625,6 +650,8 @@ void SAIGEClass::getMarkerPval(arma::vec & t_GVec,
     if(!localWs) localWs.reset(new KernelWorkspace());
     return *localWs;
   };
+  ws().spaFallback = false;   // LEDGER #164: cleared at every entry
+  ws().spaFallbackNote.clear();
   //arma::vec adjGVec = getadjGFast(t_GVec);
   std::string t_pval_str;
   double t_var2, t_SPApval;
@@ -727,6 +754,73 @@ if((StdStat > m_SPA_Cutoff || std::isnan(StdStat)) && m_traitType != "quantitati
 
 //std::cout << "ok2" << std::endl;
 
+  // LEDGER #164: the exact test as one callable, so the saddlepoint's
+  // failure branch below can run it in place of the normal p. Body unchanged.
+  auto runExactTest = [&](){
+
+    arma::mat Z_er(t_GVec.n_elem, 1);
+    Z_er.col(0) = t_GVec;
+    arma::vec res_er = m_res;
+    arma::vec pi1_er = m_mu;
+    arma::vec resout_er = m_resout;
+    /*std::cout << "t_GVec(0) " << t_GVec(0) << std::endl;
+    std::cout << "res_er(0) " << res_er(0) << std::endl;
+    std::cout << "pi1_er(0) " << pi1_er(0) << std::endl;
+    resout_er.print("resout_er");
+    std::cout << "iIndex.n_elem" << iIndex.n_elem << std::endl;
+    std::cout << "iIndexComVec.n_elem" << iIndexComVec.n_elem << std::endl;
+    std::cout << "m_n_case " << m_n_case << std::endl;
+        iIndex.print("iIndex");
+*/	
+    // 2026-09-16: the one consumer of the zero-genotype INDICES. The marker
+    // path hands an empty vector (see iIndexComVecSize above), so this branch
+    // -- main-thread only and reached for MAC <= max_MAC_for_ER markers --
+    // builds the complement itself, in the increasing order every caller
+    // built it in. A caller that still materialises it is used as is.
+    arma::uvec iIndexComLocal;
+    arma::uvec * iIndexComPtr = &iIndexComVec;
+    if(iIndexComVec.n_elem == 0 && iIndex.n_elem < (arma::uword)m_n){
+      iIndexComLocal.set_size((arma::uword)m_n - iIndex.n_elem);
+      arma::uword* out = iIndexComLocal.memptr();
+      const arma::uword* nz = iIndex.memptr();
+      std::size_t kk = 0, o = 0;
+      for(arma::uword i = 0; i < (arma::uword)m_n; i++){
+        if(kk < iIndex.n_elem && nz[kk] == i){ kk++; }else{ out[o++] = i; }
+      }
+      iIndexComPtr = &iIndexComLocal;
+    }
+    double pval_ER =  SKATExactBin_Work(Z_er, res_er, pi1_er, m_n_case, iIndex, *iIndexComPtr, resout_er, 2e+6, 1e+4, 1e-6, 1);
+    char pValueBuf_ER[100];
+    sprintf(pValueBuf_ER, "%.6E", pval_ER);
+    std::string buffAsStdStr_ER = pValueBuf_ER;
+    t_pval = pValueBuf_ER;
+    
+    //std::cout << "t_pval " << t_pval << std::endl;
+    pval = pval_ER;
+    boost::math::normal ns;
+    double t_qval_ER;
+    try{
+      t_qval_ER = boost::math::quantile(ns, pval_ER/2);
+      t_qval_ER = fabs(t_qval_ER);
+      t_seBeta = fabs(t_Beta)/t_qval_ER;
+      t_isSPAConverge = true;
+    }catch (const std::overflow_error&) {
+      t_qval_ER = std::numeric_limits<double>::infinity();
+      t_seBeta = 0;
+    }
+
+    // `&` (not `&&`) and the parentheses are deliberate: <= binds tighter than
+    // & so this is what the expression always parsed as; the parentheses only
+    // make it explicit for -Wparentheses (Phase D, 2026-09-14). Do not change
+    // the operator: both operands are evaluated today and that is the
+    // preserved behaviour.
+    if(m_is_Firth_beta & (pval <= m_pCutoffforFirth)){
+	t_isFirth = true;
+	t_qval_Firth = t_qval_ER;
+    }
+  };
+
+bool spaFellBack = false;   // LEDGER #164
 if(!t_isER){
 
 
@@ -813,10 +907,52 @@ if(!t_isER){
     }
 
 
+    if(spaPlantFail()){ t_isSPAConverge = false; }   // test plant only
+    if(!t_isSPAConverge){
+      // LEDGER #164 FIXED: the saddlepoint was attempted and failed (LEDGER
+      // #163's root overflow, an unattainable mirrored q, a NaN step, the
+      // iteration cap, or a p that underflowed). The normal-approximation p
+      // is what the saddlepoint exists to replace, so it is NOT reported:
+      // the exact test runs instead, at any MAC and for any weight set. It
+      // may throw NeedsMainThread on a worker; the caller's deferral re-runs
+      // this whole call on the main thread, where the flag is set again.
+      double macForER = t_altFreq * 2.0 * (double)m_n;
+      if(macForER > (double)m_n){ macForER = 2.0 * (double)m_n - macForER; }
+      try {
+        if(macForER > kExactTestMACCeiling){
+          throw std::runtime_error("MAC " + std::to_string((long long)std::llround(macForER)) +
+                                   " is above the exact-test ceiling " + std::to_string((long long)kExactTestMACCeiling) +
+                                   " (LEDGER #165); no usable p");
+        }
+        runExactTest();
+      } catch (const SKATMainThread::NeedsMainThread&) {
+        throw;   // the caller's deferral re-runs this call on the main thread
+      } catch (const Rcpp::LongjumpException&) {
+        throw;   // an R-level unwind must reach Rcpp's handler; never swallow it
+      } catch (const std::exception& e) {
+        // The exact test itself failed (LEDGER #165: the native ER path throws
+        // on this fixture above MAC ~600). Neither number is usable: the
+        // normal p is what the saddlepoint exists to replace, and there is no
+        // exact p. The p is NA, the row says why, the run goes on.
+        t_pval = "NA"; pval = std::numeric_limits<double>::quiet_NaN();
+        t_isSPAConverge = false;
+        ws().spaFallbackNote = std::string("exact test not run or failed: ") + e.what();
+      } catch (...) {
+        t_pval = "NA"; pval = std::numeric_limits<double>::quiet_NaN();
+        t_isSPAConverge = false;
+        ws().spaFallbackNote = "exact test failed: non-standard exception (LEDGER #165)";
+      }
+      spaFellBack = true;
+      ws().spaFallback = true;
+      g_spaFallbackCount.fetch_add(1);
+    }
   }
    //t_pval_noSPA = pval_noadj; 
    char pValueBuf_SPA[100];
-   if(m_traitType!="quantitative"){
+   if(spaFellBack){
+        // t_pval, pval, t_seBeta, t_isSPAConverge and the Firth decision were
+        // set by runExactTest; nothing to format here.
+   }else if(m_traitType!="quantitative"){
         if(t_isSPAConverge){
 		if(!ispvallog){
 		  sprintf(pValueBuf_SPA, "%.6E", t_SPApval);
@@ -856,67 +992,7 @@ if(!t_isER){
    }
 
 }else{ //if(!t_isER){
-
-    arma::mat Z_er(t_GVec.n_elem, 1);
-    Z_er.col(0) = t_GVec;
-    arma::vec res_er = m_res;
-    arma::vec pi1_er = m_mu;
-    arma::vec resout_er = m_resout;
-    /*std::cout << "t_GVec(0) " << t_GVec(0) << std::endl;
-    std::cout << "res_er(0) " << res_er(0) << std::endl;
-    std::cout << "pi1_er(0) " << pi1_er(0) << std::endl;
-    resout_er.print("resout_er");
-    std::cout << "iIndex.n_elem" << iIndex.n_elem << std::endl;
-    std::cout << "iIndexComVec.n_elem" << iIndexComVec.n_elem << std::endl;
-    std::cout << "m_n_case " << m_n_case << std::endl;
-        iIndex.print("iIndex");
-*/	
-    // 2026-09-16: the one consumer of the zero-genotype INDICES. The marker
-    // path hands an empty vector (see iIndexComVecSize above), so this branch
-    // -- main-thread only and reached for MAC <= max_MAC_for_ER markers --
-    // builds the complement itself, in the increasing order every caller
-    // built it in. A caller that still materialises it is used as is.
-    arma::uvec iIndexComLocal;
-    arma::uvec * iIndexComPtr = &iIndexComVec;
-    if(iIndexComVec.n_elem == 0 && iIndex.n_elem < (arma::uword)m_n){
-      iIndexComLocal.set_size((arma::uword)m_n - iIndex.n_elem);
-      arma::uword* out = iIndexComLocal.memptr();
-      const arma::uword* nz = iIndex.memptr();
-      std::size_t kk = 0, o = 0;
-      for(arma::uword i = 0; i < (arma::uword)m_n; i++){
-        if(kk < iIndex.n_elem && nz[kk] == i){ kk++; }else{ out[o++] = i; }
-      }
-      iIndexComPtr = &iIndexComLocal;
-    }
-    double pval_ER =  SKATExactBin_Work(Z_er, res_er, pi1_er, m_n_case, iIndex, *iIndexComPtr, resout_er, 2e+6, 1e+4, 1e-6, 1);
-    char pValueBuf_ER[100];
-    sprintf(pValueBuf_ER, "%.6E", pval_ER);
-    std::string buffAsStdStr_ER = pValueBuf_ER;
-    t_pval = pValueBuf_ER;
-    
-    //std::cout << "t_pval " << t_pval << std::endl;
-    pval = pval_ER;
-    boost::math::normal ns;
-    double t_qval_ER;
-    try{
-      t_qval_ER = boost::math::quantile(ns, pval_ER/2);
-      t_qval_ER = fabs(t_qval_ER);
-      t_seBeta = fabs(t_Beta)/t_qval_ER;
-      t_isSPAConverge = true;
-    }catch (const std::overflow_error&) {
-      t_qval_ER = std::numeric_limits<double>::infinity();
-      t_seBeta = 0;
-    }
-
-    // `&` (not `&&`) and the parentheses are deliberate: <= binds tighter than
-    // & so this is what the expression always parsed as; the parentheses only
-    // make it explicit for -Wparentheses (Phase D, 2026-09-14). Do not change
-    // the operator: both operands are evaluated today and that is the
-    // preserved behaviour.
-    if(m_is_Firth_beta & (pval <= m_pCutoffforFirth)){
-	t_isFirth = true;
-	t_qval_Firth = t_qval_ER;
-    }
+    runExactTest();
 }
    if(t_isFirth){
 	if(!is_gtilde){

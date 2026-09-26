@@ -38,6 +38,25 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// resetSpaFallbackRecordsInCPP
+void resetSpaFallbackRecordsInCPP();
+RcppExport SEXP _SAIGE_resetSpaFallbackRecordsInCPP() {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    resetSpaFallbackRecordsInCPP();
+    return R_NilValue;
+END_RCPP
+}
+// getSpaFallbackRecordsInCPP
+Rcpp::List getSpaFallbackRecordsInCPP();
+RcppExport SEXP _SAIGE_getSpaFallbackRecordsInCPP() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(getSpaFallbackRecordsInCPP());
+    return rcpp_result_gen;
+END_RCPP
+}
 // resetBurdenMemoInCPP
 void resetBurdenMemoInCPP();
 RcppExport SEXP _SAIGE_resetBurdenMemoInCPP() {
@@ -2194,6 +2213,8 @@ END_RCPP
 static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_CCT_cpp", (DL_FUNC) &_SAIGE_CCT_cpp, 1},
     {"_SAIGE_flexrvWeightsInCPP", (DL_FUNC) &_SAIGE_flexrvWeightsInCPP, 6},
+    {"_SAIGE_resetSpaFallbackRecordsInCPP", (DL_FUNC) &_SAIGE_resetSpaFallbackRecordsInCPP, 0},
+    {"_SAIGE_getSpaFallbackRecordsInCPP", (DL_FUNC) &_SAIGE_getSpaFallbackRecordsInCPP, 0},
     {"_SAIGE_resetBurdenMemoInCPP", (DL_FUNC) &_SAIGE_resetBurdenMemoInCPP, 0},
     {"_SAIGE_getBurdenMemoInCPP", (DL_FUNC) &_SAIGE_getBurdenMemoInCPP, 0},
     {"_SAIGE_resetPooledRecordsInCPP", (DL_FUNC) &_SAIGE_resetPooledRecordsInCPP, 0},
