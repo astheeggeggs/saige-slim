@@ -48,10 +48,10 @@ spaFallbackSummary <- function(OutputFile) {
   for (k in seq_along(by_kind)) {
     cat("  ", by_kind[[k]], " x ", names(by_kind)[k], "\n", sep = "")
   }
-  n_na <- sum(nzchar(tab$Note))
+  n_na <- sum(tab$p_exact_reported == "NA")
   if (n_na > 0) {
     cat("  of which ", n_na, " could not run the exact test either and carry p.value NA ",
-        "(the Note column says why).\n", sep = "")
+        "(the Note column says why the saddlepoint failed, and why the exact test could not run).\n", sep = "")
   }
   invisible(tab)
 }

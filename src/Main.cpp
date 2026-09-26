@@ -2695,13 +2695,20 @@ Rcpp::List mainRegionInCPP(
     for(unsigned int c = 0; c < q_weight_custom; c++){
       sets[rset].kind = SET_CUSTOM;
       sets[rset].col = c;
-      sets[rset].erAllowed = arma::all(t_weight.col(c) == 1.0);
+      // LEDGER #166 (2026-09-26): every set is eligible for the exact test at
+      // MAC <= --max_MAC_for_ER, as beta sets always were. The unit-weight rule
+      // (F2/F3: "the ER path assumes an unweighted burden") was falsified: the
+      // test ranks configurations by a statistic linear in the vector and is
+      // exactly invariant to its scale once #167's normalisation is applied.
+      // Under the rule a tiny-mu low-MAC cell of a weighted set went to the
+      // saddlepoint and reported the normal p (the AoU FlexRV signature).
+      sets[rset].erAllowed = true;
       rset++;
     }
     for(unsigned int c = 0; c < q_weight_transform; c++){
       sets[rset].kind = SET_TRANSFORM;
       sets[rset].col = c;
-      sets[rset].erAllowed = FlexRV::isUnitRow(t_transformTable, c);
+      sets[rset].erAllowed = true;   // LEDGER #166, as for custom sets above
       rset++;
     }
     for(unsigned int b = 0; b < q_weight_beta; b++){

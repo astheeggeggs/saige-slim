@@ -465,7 +465,7 @@ with every closed form and every resolved ambiguity
 `docs/design/flexrv-design.md` (the MAF beta transform is DECREASING,
 `(1 - MAF/M)^(b-1)`, zero at and above M; read A1 before touching it).
 Custom-set semantics throughout: weighted ultra-rare collapse, `w0 = 1` on
-the pseudo-marker, ER only for `unw_unw` NATIVELY -- but since 2026-09-26 (LEDGER #164) ANY set whose saddlepoint fails to converge falls back to the exact test at MAC <= 200, is counted in the `SPA fallbacks:` line and named in `<SAIGEOutputFile>.spaFallbacks.txt`; `--weights.beta` is inert on them.
+the pseudo-marker; EVERY set is eligible for the exact test at MAC <= `--max_MAC_for_ER` since 2026-09-26 (LEDGER #166; it used to be `unw_unw` alone, on a premise #166 falsified), the vector is scaled to a largest entry of 1 before that test (LEDGER #167: its tie epsilon is absolute), and a set whose saddlepoint fails above the cutoff falls back to the exact test at up to 200 carriers, counted in the `SPA fallbacks:` line and named with the reason in `<SAIGEOutputFile>.spaFallbacks.txt`; `--weights.beta` is inert on them.
 
 The run: `--flexRV_score=NAME --flexRV_maxMAF=M --annotation_in_groupTest=<ONE
 group> --r.corr=1`, optionally `--flexRV_scoreTransforms` /
@@ -719,8 +719,8 @@ declarations sit at the top of `src/Main.cpp`.
   no golden moved), and SAIGE then printed the normal-approximation p as
   `p.value` with only the sidecar's `Is.SPA = FALSE` to tell (which also reads
   TRUE after the exact test, LEDGER #80). Now: on failure the exact test runs
-  at any weight set up to MAC 200 (`--max_MAC_for_ER` is capped there, LEDGER
-  #165), every fallback is counted in `SPA fallbacks: N ...` at the end of
+  at any weight set up to 13 carriers, the exact test's enumeration regime
+  (`--max_MAC_for_ER` itself is capped at 200, LEDGER #165), every fallback is counted in `SPA fallbacks: N ...` at the end of
   every step-2 run and named in `<SAIGEOutputFile>.spaFallbacks.txt`, and
   `SAIGE_SPA_PLANT_FAIL=1` is the test plant that forces it. A synthetic SPA
   vector must be CENTRED to be realistic (an adjusted genotype's negative

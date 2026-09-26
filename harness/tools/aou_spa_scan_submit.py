@@ -5,12 +5,12 @@
 import shlex, subprocess, os, re
 from datetime import datetime
 
-def submit_scan(outdir, pattern="*", tail_p="1e-5", image="google/cloud-sdk:slim",
+def submit_scan(outdir, pattern="*", tail_p="1e-5", image="gcr.io/google.com/cloudsdktool/google-cloud-cli:slim",
                 machine_type="n2-standard-2", dry=False):
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     scan_dir = f"{BUCKET}/SAIGE_SLIM_TESTING/{outdir}"
     out_dir  = f"{BUCKET}/SAIGE_SLIM_TESTING/spa_scan/{outdir}/{stamp}"
-    name = "spascan-" + re.sub(r"[._]", "-", outdir).lower()
+    name = "spascan-" + re.sub(r"[._/]", "-", outdir).lower()   # outdir may hold a slash: "afr/flexrv_v4"
     args = ["aou_dsub", "--name", name, "--image", image,
             "--env", f"SCAN_DIR={scan_dir}", "--env", f"TAIL_P={tail_p}",
             "--env", f"PATTERN={pattern}",
@@ -24,5 +24,6 @@ def submit_scan(outdir, pattern="*", tail_p="1e-5", image="google/cloud-sdk:slim
     print("results will land in", out_dir)
     return out_dir
 
-# e.g. one per delivered directory; PATTERN narrows to an arm ("fxv4.*", "skv4.*")
-# submit_scan("<outdir>", pattern="fxv4.*")
+# e.g. one per delivered directory; PATTERN is a shell glob on the file-name prefix,
+# which is the dsub job name: "fxv4*" (FlexRV arm), "skv4*" (SKAT-O arm). Not a regex.
+# submit_scan("<outdir>", pattern="fxv4*")

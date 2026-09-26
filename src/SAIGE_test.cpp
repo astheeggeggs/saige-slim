@@ -39,6 +39,23 @@ void SAIGE::spaFallbackCountReset(){ g_spaFallbackCount.store(0); }
 // value in R (checkArgs.R) and the #164 fallback does not run the exact test
 // above it: a saddlepoint failure there reports NA with the reason.
 static const double kExactTestMACCeiling = 200.0;
+// LEDGER #164/#165 (2026-09-26, after the first AoU rerun): the FALLBACK runs
+// the exact test only in its enumeration regime, i.e. at most 13 carriers
+// (2^13 = 8192 <= ExactMax 1e4). Above that the kernel resamples, and its
+// draw (SL_Binary_Boot1) converts carriers to cases at rates p_i / mean(p)
+// round by round, up to 500 rounds per draw: when the carriers' fitted
+// probabilities are heterogeneous the low-probability ones convert at ~1% a
+// round and a case-count target above the high-probability carriers costs
+// hundreds of rounds x 2e6 draws -- hours on one cell (an AoU chromosome
+// sat 40 minutes on a 209-carrier cell). Homogeneous probabilities (the
+// sim fixture) finish in seconds, which is why the timing runs missed it.
+static const double kFallbackCarrierCeiling = 13.0;
+// LEDGER #164 (2026-09-26, found on the first AoU rerun): the ceiling counts
+// CARRIERS, not the weighted allele count -- a FlexRV pseudo-marker under
+// tiny weights has an AC near 0 and hundreds of carriers. The fallback's
+// resampling budget is bounded for the same reason; the native ER branch
+// keeps upstream's 2e6 (its bytes are golden).
+static const int kFallbackResamples = 200000;
 static bool spaPlantFail(){
   static const bool plant = [](){ const char* v = std::getenv("SAIGE_SPA_PLANT_FAIL"); return v != nullptr && std::string(v) == "1"; }();
   return plant;
@@ -756,10 +773,22 @@ if((StdStat > m_SPA_Cutoff || std::isnan(StdStat)) && m_traitType != "quantitati
 
   // LEDGER #164: the exact test as one callable, so the saddlepoint's
   // failure branch below can run it in place of the normal p. Body unchanged.
-  auto runExactTest = [&](){
+  auto runExactTest = [&](int t_nResampling){
 
     arma::mat Z_er(t_GVec.n_elem, 1);
     Z_er.col(0) = t_GVec;
+    // LEDGER #167: the exact test ranks configurations by Q = (sum Z (y - pi))^2
+    // and calls two configurations tied when |dQ| <= 1e-6 ABSOLUTE
+    // (ComputeExact::Run, m_epsilon). Under weights of 1e-6 every
+    // configuration is a tie and p is ~1. The test is scale-invariant in exact
+    // arithmetic, so a vector whose largest entry is below 1 is scaled up to 1
+    // first; a 0/1/2 genotype vector (largest entry 1 or 2) is untouched, which
+    // keeps every existing exact-test row byte-identical.
+    {
+      double zmax = 0.0;
+      for(arma::uword e = 0; e < iIndex.n_elem; e++){ zmax = std::max(zmax, std::fabs(t_GVec(iIndex(e)))); }
+      if(zmax > 0.0 && zmax < 1.0){ Z_er.col(0) /= zmax; }
+    }
     arma::vec res_er = m_res;
     arma::vec pi1_er = m_mu;
     arma::vec resout_er = m_resout;
@@ -789,7 +818,7 @@ if((StdStat > m_SPA_Cutoff || std::isnan(StdStat)) && m_traitType != "quantitati
       }
       iIndexComPtr = &iIndexComLocal;
     }
-    double pval_ER =  SKATExactBin_Work(Z_er, res_er, pi1_er, m_n_case, iIndex, *iIndexComPtr, resout_er, 2e+6, 1e+4, 1e-6, 1);
+    double pval_ER =  SKATExactBin_Work(Z_er, res_er, pi1_er, m_n_case, iIndex, *iIndexComPtr, resout_er, t_nResampling, 1e+4, 1e-6, 1);
     char pValueBuf_ER[100];
     sprintf(pValueBuf_ER, "%.6E", pval_ER);
     std::string buffAsStdStr_ER = pValueBuf_ER;
@@ -916,15 +945,27 @@ if(!t_isER){
       // the exact test runs instead, at any MAC and for any weight set. It
       // may throw NeedsMainThread on a worker; the caller's deferral re-runs
       // this whole call on the main thread, where the flag is set again.
-      double macForER = t_altFreq * 2.0 * (double)m_n;
-      if(macForER > (double)m_n){ macForER = 2.0 * (double)m_n - macForER; }
+      // why the saddlepoint failed, for the sidecar
+      std::string why;
+      if(spaPlantFail()){ why = "planted"; }
+      else if(!ispvallog && t_SPApval == 0){ why = "p underflowed to 0"; }
+      else switch(ws().spa.failReason){
+        case 1: why = "root(q) not found"; break;
+        case 2: why = "root(mirrored q) not found"; break;
+        case 3: why = "saddle(q) invalid"; break;
+        case 4: why = "saddle(mirrored q) invalid"; break;
+        default: why = "qnorm overflow or unknown"; break;
+      }
+      ws().spaFallbackNote = "spa: " + why;
+      // carriers, not the (weighted) allele count: see kFallbackResamples
+      const double carriers = (double)iIndex.n_elem;
       try {
-        if(macForER > kExactTestMACCeiling){
-          throw std::runtime_error("MAC " + std::to_string((long long)std::llround(macForER)) +
-                                   " is above the exact-test ceiling " + std::to_string((long long)kExactTestMACCeiling) +
-                                   " (LEDGER #165); no usable p");
+        if(carriers > kFallbackCarrierCeiling){
+          throw std::runtime_error(std::to_string((long long)carriers) +
+                                   " carriers, above the fallback's exact-test ceiling " + std::to_string((long long)kFallbackCarrierCeiling) +
+                                   " (enumeration only; LEDGER #164/#165); no usable p");
         }
-        runExactTest();
+        runExactTest(kFallbackResamples);
       } catch (const SKATMainThread::NeedsMainThread&) {
         throw;   // the caller's deferral re-runs this call on the main thread
       } catch (const Rcpp::LongjumpException&) {
@@ -936,11 +977,11 @@ if(!t_isER){
         // exact p. The p is NA, the row says why, the run goes on.
         t_pval = "NA"; pval = std::numeric_limits<double>::quiet_NaN();
         t_isSPAConverge = false;
-        ws().spaFallbackNote = std::string("exact test not run or failed: ") + e.what();
+        ws().spaFallbackNote += std::string("; exact test not run or failed: ") + e.what();
       } catch (...) {
         t_pval = "NA"; pval = std::numeric_limits<double>::quiet_NaN();
         t_isSPAConverge = false;
-        ws().spaFallbackNote = "exact test failed: non-standard exception (LEDGER #165)";
+        ws().spaFallbackNote += "; exact test failed: non-standard exception (LEDGER #165)";
       }
       spaFellBack = true;
       ws().spaFallback = true;
@@ -992,7 +1033,7 @@ if(!t_isER){
    }
 
 }else{ //if(!t_isER){
-    runExactTest();
+    runExactTest(2000000);
 }
    if(t_isFirth){
 	if(!is_gtilde){
@@ -1590,4 +1631,35 @@ arma::vec SAIGEClass::getPCG1ofSigmaAndGtilde(arma::vec& bVec, int maxiterPCG, d
 
 
 
+}
+
+
+// Test/reconciliation export (LEDGER #166/#167): the exact resampling test on
+// one vector, exactly as getMarkerPval's runExactTest calls it (m = 1 column,
+// test_type 1, ExactMax 1e4, epsilon 1e-6), plus the weight-independent
+// configuration probabilities P(j cases among the carriers) it uses. The R
+// reference in tests/testthat/test-unit-er.R takes probK from here and does
+// the weight-dependent enumeration itself. Not used by the pipeline.
+// [[Rcpp::export]]
+Rcpp::List erExactTestInCPP(arma::vec t_Z, arma::vec t_y, arma::vec t_mu, int t_nResampling, bool t_normalise){
+  if(t_Z.n_elem != t_y.n_elem || t_Z.n_elem != t_mu.n_elem){ Rcpp::stop("erExactTestInCPP: Z, y, mu must have one entry per sample"); }
+  arma::uvec idx = arma::find(t_Z != 0.0);
+  arma::uvec idxComp = arma::find(t_Z == 0.0);
+  arma::vec res = t_y - t_mu;
+  arma::mat Z(t_Z.n_elem, 1); Z.col(0) = t_Z;
+  if(t_normalise){
+    double zmax = 0.0;
+    for(arma::uword e = 0; e < idx.n_elem; e++){ zmax = std::max(zmax, std::fabs(t_Z(idx(e)))); }
+    if(zmax > 0.0 && zmax < 1.0){ Z.col(0) /= zmax; }
+  }
+  arma::mat resout;   // empty: one residual vector, as in getMarkerPval
+  uint32_t ncase = (uint32_t)arma::accu(t_y);
+  double p = SKATExactBin_Work(Z, res, t_mu, ncase, idx, idxComp, resout, t_nResampling, 1e+4, 1e-6, 1);
+  const unsigned int k = idx.n_elem;
+  std::vector<int> n_total_k(k + 1, 0), IsExactVec(k + 1, 1);
+  std::vector<double> prob(k + 1, 0.0);
+  int n_total = 0; bool isExact = false;
+  SKATExactBin_ComputProb_New(idx, idxComp, t_mu, (uint32_t)t_Z.n_elem, ncase, t_nResampling, 1e+4, 1, 2, prob, IsExactVec, n_total_k, n_total, isExact);
+  return Rcpp::List::create(Rcpp::Named("pval") = p, Rcpp::Named("probK") = prob,
+                            Rcpp::Named("carriers") = (int)k, Rcpp::Named("exact") = isExact);
 }

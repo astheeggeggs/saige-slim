@@ -597,6 +597,10 @@ setminMAC_VarianceRatio <- function(t_minMACVarRatio, t_maxMACVarRatio, t_isVari
     invisible(.Call('_SAIGE_setminMAC_VarianceRatio', PACKAGE = 'SAIGE', t_minMACVarRatio, t_maxMACVarRatio, t_isVarianceRatioinGeno))
 }
 
+erExactTestInCPP <- function(t_Z, t_y, t_mu, t_nResampling, t_normalise) {
+    .Call('_SAIGE_erExactTestInCPP', PACKAGE = 'SAIGE', t_Z, t_y, t_mu, t_nResampling, t_normalise)
+}
+
 SPA <- function(mu, g, q, qinv, pval_noadj, tol, logp, traitType, pval, isSPAConverge) {
     invisible(.Call('_SAIGE_SPA', PACKAGE = 'SAIGE', mu, g, q, qinv, pval_noadj, tol, logp, traitType, pval, isSPAConverge))
 }

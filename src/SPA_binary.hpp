@@ -44,6 +44,11 @@ struct SPASaddle {
 // local workspace, so nothing R-visible changes.
 struct SPAWorkspace {
         arma::vec a, b, c, d;
+        // LEDGER #164: why the last SPA call did not converge (0 = it did):
+        // 1 root(q) not found, 2 root(mirrored q) not found, 3 saddle(q)
+        // invalid, 4 saddle(mirrored q) invalid. Set by SPA_ws/SPA_fast_ws;
+        // read by getMarkerPval for the fallback sidecar.
+        int failReason = 0;
         SPAWorkspace() {}
         explicit SPAWorkspace(arma::uword n) { ensure(n); }
         void ensure(arma::uword n) {

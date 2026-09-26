@@ -319,3 +319,57 @@ saddlepoint and is unaffected. Cheapest path: rebuild and push the image
 trait), and for the variant-level arm count `Is.SPA = FALSE` rows with
 `p.value.NA < 1e-4` per trait from the existing sidecars to decide which
 traits to rerun -- a trait with zero such rows needs nothing.
+
+## Night: the first AoU rerun, LEDGER #166 and #167, and what is still open
+
+The SAS FlexRV rerun on `1.5.2-dev-adfe6266` (filtered to the scan's regions,
+`REGIONS` in the wrapper) worked as designed for five traits (Asth: 107
+regions, 21 chromosomes in 5-20 s each, 9,554 rerun pseudo-marker rows, none
+with the old signature, none NA) and HUNG on HTN's chr16 for 40 minutes on
+a cell with 209 carriers that the fallback sent to the exact test. Measured
+since, on the kernel and on sim50k, and NONE of it explains the hang: the
+exact test at 13-209 carriers takes under 5 s at N = 50,000 with weights of
+1 or 2e-6, and with carriers chosen at the extremes of mu (max/mean 4.7)
+likewise. The resampling draw's round structure (`SL_Binary_Boot1`, up to
+500 rounds per draw at p_i/mean(p)) was the candidate; it did not reproduce.
+So the mechanism is NOT identified; `aou_spa_rerun.md` section 4 has the
+per-chromosome `timeout` diagnostic that names the region, and the
+sensible next probe is to time `erExactTestInCPP` on that cell's (Z, y, mu)
+INSIDE the workspace (the data cannot leave it). Meanwhile the fallback runs
+the exact test only in its enumeration regime (13 carriers) and reports NA
+with the reason above that, which removes its exposure whatever the cause.
+
+Owner's decisions, in order: both halves of #164; NOT NA when an exact test
+is possible; cap `--max_MAC_for_ER` at 200 rather than chase the MAC-607
+crash (#165); and "why can't we do similar things on the burden path?" --
+which became #166: every weight set is ER-eligible at MAC <=
+`--max_MAC_for_ER`, as beta sets always were. On the way, #167: the exact
+test's ABSOLUTE tie epsilon makes every configuration a tie under weights
+of 1e-3 and below (mid-p exactly 0.5, silently); the vector is now scaled to
+a largest entry of 1 first, which leaves every 0/1/2 vector, and so every
+existing exact-test row, byte-identical.
+
+Robustness, as asked: `tests/testthat/test-unit-er.R` is an R REFERENCE
+implementation of the exact test (enumeration, odds within a case count,
+Q = S^2, the kernel's mid-p and tie rule) fed the kernel's own
+weight-independent P(j) through the test export `erExactTestInCPP`; it
+matches the kernel to 1e-10 on 80 unit-vector cases (the control) and 150
+weighted ones, on weights spanning six orders in one vector, and is exactly
+scale-invariant from 1e-8 to 1e3. The cross-arm test asserts, natively and
+without any plant, that the FlexRV `unw_MAC1` row prints the SKAT-O arm's
+exact p. Goldens: exactly the predicted movers moved (P58 and P61, 16 set
+rows + GENE1's pooled row each), reproducible across two trees, every
+control identical; re-baselined.
+
+Also learned: the exact test's p is a MID-p (`pval - pval_same/2`), which
+the reference had to adopt before it matched; and the AoU sidecar's
+`AC_Allele2` for a weighted pseudo-marker is the WEIGHTED sum, so the
+carrier count must be read from the results file's per-set `MAC`.
+
+Next: commit (rows #163-#167), `make docker` + push, rerun the SAS six on the
+new image (most of the previously failing rows now take the exact test
+natively, so `SPA fallbacks:` should be near zero and the sidecar's Note
+column says why any remaining saddlepoint failed), splice, then the other
+ancestries from their scans. Wrapper: consider delivering
+`.spaFallbacks.txt` (a `--output OUT_FILE_SPAFALLBACKS` next to the other
+sidecars) so the reasons are readable without a diagnostic job.

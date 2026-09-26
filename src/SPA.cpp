@@ -25,6 +25,7 @@ void SPA(const arma::vec & mu, const arma::vec & g, double q, double qinv, doubl
 void SPA_ws(const arma::vec & mu, const arma::vec & g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, double & pval, bool & isSPAConverge, SPAWorkspace & ws){
         double p1, p2;
         bool Isconverge = true;
+        ws.failReason = 0;
         if( traitType != "binary"){
                 // Unreachable, and deliberately not an Rcpp::stop. Only the
                 // binary saddlepoint kernels exist, and SAIGE_test.cpp gates the
@@ -66,7 +67,7 @@ void SPA_ws(const arma::vec & mu, const arma::vec & g, double q, double qinv, do
         		//std::cout << "p1 " << p1 << std::endl;
 
                 }else{
-			Isconverge = false;
+			Isconverge = false; ws.failReason = 3;
                         if(logp){
                                 p1 = pval_noadj-std::log(2);
                         }else{
@@ -77,7 +78,7 @@ void SPA_ws(const arma::vec & mu, const arma::vec & g, double q, double qinv, do
                         p2 = getSaddle2.pval;
         		//std::cout << "p2 " << p2 << std::endl;
                 }else{
-			Isconverge = false;
+			Isconverge = false; ws.failReason = 4;
                         if(logp){
                                 p2 = pval_noadj-std::log(2);
                         }else{
@@ -95,7 +96,7 @@ void SPA_ws(const arma::vec & mu, const arma::vec & g, double q, double qinv, do
         }else {
                         //std::cout << "Error_Converge" << std::endl;
                         pval = pval_noadj;
-                        Isconverge=false;
+                        Isconverge=false; ws.failReason = outuni1.Isconverge ? 2 : 1;
                 }
         isSPAConverge = Isconverge;
 	//std::cout << "pval " << pval << std::endl;
@@ -116,6 +117,7 @@ void SPA_fast_ws(const arma::vec & g, double q, double qinv, double pval_noadj, 
 
         double p1, p2;
         bool Isconverge = true;
+        ws.failReason = 0;
         if( traitType != "binary"){
                 // Unreachable, and deliberately not an Rcpp::stop. Only the
                 // binary saddlepoint kernels exist, and SAIGE_test.cpp gates the
@@ -153,7 +155,7 @@ void SPA_fast_ws(const arma::vec & g, double q, double qinv, double pval_noadj, 
                 if(getSaddle.isSaddle){
                         p1 = getSaddle.pval;
                 }else{
-			Isconverge = false;
+			Isconverge = false; ws.failReason = 3;
 
                         if(logp){
                                 p1 = pval_noadj-std::log(2);
@@ -166,7 +168,7 @@ void SPA_fast_ws(const arma::vec & g, double q, double qinv, double pval_noadj, 
                         p2 = getSaddle2.pval;
 
                 }else{
-			Isconverge = false;
+			Isconverge = false; ws.failReason = 4;
                         if(logp){
                                 p2 = pval_noadj-std::log(2);
                         }else{
@@ -183,7 +185,7 @@ void SPA_fast_ws(const arma::vec & g, double q, double qinv, double pval_noadj, 
         }else {
                         //std::cout << "Error_Converge" << std::endl;
                         pval = pval_noadj;
-                        Isconverge=false;
+                        Isconverge=false; ws.failReason = outuni1.Isconverge ? 2 : 1;
         }
 	isSPAConverge = Isconverge;
         //result["pvalue"] = pval;

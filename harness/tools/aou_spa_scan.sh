@@ -1,14 +1,16 @@
 #!/bin/bash
 # Scan delivered SAIGE step-2 outputs for saddlepoint fallbacks (LEDGER #163/#164)
 # and list what a filtered rerun must cover. Runs INSIDE a dsub job on an image
-# that has gcloud (google/cloud-sdk:slim); streams every file with `gcloud
+# that has gcloud (gcr.io/google.com/cloudsdktool/google-cloud-cli:slim -- a
+# private-address VM can pull only from gcr.io or pkg.dev); streams every file with `gcloud
 # storage cat`, so nothing is localized and nothing leaves the region.
 #
 # Inputs (env): SCAN_DIR   gs:// directory holding *.singleAssoc.txt.gz and the
 #                          matching results files (<pre>.txt.gz)
 #               OUT_DIR    local dir dsub delocalizes (--output-recursive)
 #               TAIL_P     burden-cell tail threshold, default 1e-5
-#               PATTERN    optional glob on basenames, default '*'
+#               PATTERN    optional shell GLOB on the basename prefix (e.g. 'fxv4*';
+#                          NOT a regex -- 'fxv4.*' matches nothing), default '*'
 #
 # Signature of a failed saddlepoint in the sidecar: Is.SPA == FALSE and
 # p.value.NA < 0.0455 (|Z| > 2, the default --SPAcutoff: attempted, not
@@ -35,7 +37,13 @@ cat_any() {  # stream a gs:// file, gunzipping if needed
 }
 
 mapfile -t SIDES < <(gcloud storage ls "${SCAN_DIR}/${PATTERN}.singleAssoc.txt.gz" 2>/dev/null || true)
-echo "sidecars: ${#SIDES[@]}"
+echo "sidecars: ${#SIDES[@]}  (pattern: ${SCAN_DIR}/${PATTERN}.singleAssoc.txt.gz)"
+if (( ${#SIDES[@]} == 0 )); then
+  echo "ERROR: no sidecar matched. PATTERN is a shell GLOB on the basename prefix (e.g. 'fxv4*'," >&2
+  echo "       not 'fxv4.*'); the directory holds:" >&2
+  gcloud storage ls "${SCAN_DIR}/" | head -20 >&2
+  exit 1
+fi
 for side in "${SIDES[@]}"; do
   base=$(basename "${side}")
   pre="${base%.singleAssoc.txt.gz}"

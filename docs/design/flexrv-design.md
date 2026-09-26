@@ -378,7 +378,12 @@ not sufficient once a UR bucket is present.
 
 ## Rules this fixes for F2/F3
 
-- **ER gating.** `erAllowedVec[r]` is true only for the `unw_unw` set, whose
+- **ER gating -- SUPERSEDED 2026-09-26 (LEDGER #166/#167).** Every set is now
+  ER-eligible at MAC <= `--max_MAC_for_ER`; the premise below ("the ER path
+  assumes an unweighted burden") was measured false, and the one real hazard
+  -- the exact test's absolute tie epsilon under tiny weights -- is handled by
+  scaling the vector first. The original text is kept for the record:
+  `erAllowedVec[r]` was true only for the `unw_unw` set, whose
   weights are identically 1; every other transform set has non-unit weights and
   follows the custom-set rule. Unchanged from the plan; restated because the
   `lof_unw` set also has weights in {0,1} and is NOT exempt -- a zero weight is

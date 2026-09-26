@@ -1911,6 +1911,21 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// erExactTestInCPP
+Rcpp::List erExactTestInCPP(arma::vec t_Z, arma::vec t_y, arma::vec t_mu, int t_nResampling, bool t_normalise);
+RcppExport SEXP _SAIGE_erExactTestInCPP(SEXP t_ZSEXP, SEXP t_ySEXP, SEXP t_muSEXP, SEXP t_nResamplingSEXP, SEXP t_normaliseSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type t_Z(t_ZSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_y(t_ySEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_mu(t_muSEXP);
+    Rcpp::traits::input_parameter< int >::type t_nResampling(t_nResamplingSEXP);
+    Rcpp::traits::input_parameter< bool >::type t_normalise(t_normaliseSEXP);
+    rcpp_result_gen = Rcpp::wrap(erExactTestInCPP(t_Z, t_y, t_mu, t_nResampling, t_normalise));
+    return rcpp_result_gen;
+END_RCPP
+}
 // SPA
 void SPA(const arma::vec& mu, const arma::vec& g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, double& pval, bool& isSPAConverge);
 RcppExport SEXP _SAIGE_SPA(SEXP muSEXP, SEXP gSEXP, SEXP qSEXP, SEXP qinvSEXP, SEXP pval_noadjSEXP, SEXP tolSEXP, SEXP logpSEXP, SEXP traitTypeSEXP, SEXP pvalSEXP, SEXP isSPAConvergeSEXP) {
@@ -2360,6 +2375,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_setmaxMissingRateforGRM", (DL_FUNC) &_SAIGE_setmaxMissingRateforGRM, 1},
     {"_SAIGE_set_Diagof_StdGeno_LOCO", (DL_FUNC) &_SAIGE_set_Diagof_StdGeno_LOCO, 0},
     {"_SAIGE_setminMAC_VarianceRatio", (DL_FUNC) &_SAIGE_setminMAC_VarianceRatio, 3},
+    {"_SAIGE_erExactTestInCPP", (DL_FUNC) &_SAIGE_erExactTestInCPP, 5},
     {"_SAIGE_SPA", (DL_FUNC) &_SAIGE_SPA, 10},
     {"_SAIGE_SPA_fast", (DL_FUNC) &_SAIGE_SPA_fast, 16},
     {"_SAIGE_SPA_pval", (DL_FUNC) &_SAIGE_SPA_pval, 9},

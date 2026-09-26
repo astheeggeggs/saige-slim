@@ -485,7 +485,15 @@ test_that("FlexRV goldens: no MAC threshold above every MAC is composed, and the
   # depended on --MACCutoff_to_CollapseUltraRare. It no longer does, and the two
   # rows of this list agreeing is that statement. Re-measured on the fixed
   # build, not carried over from the screen that predicted it.
-  distinct <- list(plink_group_flexrv_burden.txt = c(GENE1 = 111L, GENE2 = 111L),
+  # LEDGER #166 (2026-09-26) moved the binary GENE1 count 111 -> 112: the one
+  # shared triple was REVEL_lof_MAC1 (3 carriers) and REVEL_sbeta20_MAC1 (the
+  # same 3 plus a 4th at weight 1e-38), which the saddlepoint could not tell
+  # apart (both 1.453839E-02). The MAC1 sets now take the exact test, which
+  # enumerates that 4th carrier: 2.425596E-02 against 2.433507E-02 -- 0.3%
+  # apart, the kernel's grouped conditional model not marginalising a
+  # negligible carrier exactly. Every GENE1 row is now distinct. The
+  # quantitative golden has no exact test and keeps 111.
+  distinct <- list(plink_group_flexrv_burden.txt = c(GENE1 = 112L, GENE2 = 111L),
                    plink_group_flexrv_burden_quant.txt = c(GENE1 = 111L, GENE2 = 111L))
   for (f in names(flexrv_goldens)) {
     d <- golden2(f)

@@ -101,10 +101,18 @@ test_that("#164 two ways: the planted fallback p equals the native exact-test p"
   rp <- read_saige_table(out_p); re <- read_saige_table(out_e)
   ip <- match(tab$MarkerID, rp$MarkerID); ie <- match(tab$MarkerID, re$MarkerID)
   expect_false(anyNA(c(ip, ie)))
-  ac <- as.numeric(re$AC_Allele2[ie]); n2 <- 2 * (as.numeric(re$N_case[ie]) + as.numeric(re$N_ctrl[ie]))
-  covered <- pmin(ac, n2 - ac) <= 200
-  expect_gte(sum(covered), 1)
-  expect_identical(as.character(rp$p.value[ip][covered]), as.character(re$p.value[ie][covered]))
+  # The fallback runs the exact test only in its enumeration regime (<= 13
+  # carriers); above that it reports NA and the sidecar's Note says so. The
+  # two P1 markers whose saddlepoint fires are both above it, so on this
+  # fixture the marker path exercises the NA branch and the region path (the
+  # cross-arm test below, 4 carriers) exercises the identity with native ER.
+  ceiling_rows <- grepl("above the fallback's exact-test ceiling", tab$Note)
+  expect_true(all(rp$p.value[ip][ceiling_rows] == "NA"))
+  expect_true(all(grepl("^spa: planted", tab$Note)))
+  ran <- !ceiling_rows
+  if (any(ran)) {
+    expect_identical(as.character(rp$p.value[ip][ran]), as.character(re$p.value[ie][ran]))
+  }
 })
 
 test_that("#164 region path: the planted fallback reaches the FlexRV ultra-rare rows and the BURDEN cells", {
@@ -122,11 +130,15 @@ test_that("#164 region path: the planted fallback reaches the FlexRV ultra-rare 
             "--groupFile=./input/group_new_snpid_flexrv.txt",
             "--flexRV_score=REVEL", "--flexRV_maxMAF=0.01",
             "--annotation_in_groupTest=lof:missense",
-            "--r.corr=1", "--is_fastTest=FALSE", "--is_single_in_groupTest=TRUE")
+            "--r.corr=1", "--is_fastTest=FALSE", "--is_single_in_groupTest=TRUE",
+            # LEDGER #166 made every set ER-eligible at MAC <= 4, so the MAC1
+            # sets no longer reach the saddlepoint natively; with the cutoff at
+            # 0 they do, and the plant then exercises the fallback as before
+            "--max_MAC_for_ER=0")
   st0 <- run_saige_cli("step2_SPAtests.R", args)
   expect_cli_ok(st0)
   expect_identical(fallback_count(read_log(st0)), 0L)
-  expect_output_matches_golden(file.path(saige_goldens, "step2", "plink_group_flexrv_burden.txt"), out)
+  # (not the golden: P58 runs at the default cutoff, where the MAC1 sets take the exact test)
   st <- run_saige_cli("step2_SPAtests.R", args, env = PLANT)
   expect_cli_ok(st)
   log <- read_log(st)
@@ -176,12 +188,23 @@ test_that("#164 cross-arm: the planted FlexRV set agrees with the SKAT-O arm's n
   out_f <- tempfile(fileext = ".txt")
   st_f <- run_saige_cli("step2_SPAtests.R",
                         c(base, paste0("--SAIGEOutputFile=", out_f), "--flexRV_score=REVEL",
-                          "--flexRV_maxMAF=0.01", "--r.corr=1"), env = PLANT)
+                          "--flexRV_maxMAF=0.01", "--r.corr=1", "--max_MAC_for_ER=0"), env = PLANT)
+  # LEDGER #166: at the DEFAULT cutoff and with no plant, the same set takes the
+  # exact test natively, like the SKAT-O arm's beta set -- the AoU discrepancy
+  # closed without any fallback
+  out_n <- tempfile(fileext = ".txt")
+  st_n <- run_saige_cli("step2_SPAtests.R",
+                        c(base, paste0("--SAIGEOutputFile=", out_n), "--flexRV_score=REVEL",
+                          "--flexRV_maxMAF=0.01", "--r.corr=1"))
   out_s <- tempfile(fileext = ".txt")
   st_s <- run_saige_cli("step2_SPAtests.R",
                         c(base, paste0("--SAIGEOutputFile=", out_s), "--maxMAF_in_groupTest=0.0005"))
-  expect_cli_ok(st_f); expect_cli_ok(st_s)
+  expect_cli_ok(st_f); expect_cli_ok(st_s); expect_cli_ok(st_n)
   expect_identical(fallback_count(read_log(st_s)), 0L)
+  expect_identical(fallback_count(read_log(st_n)), 0L)
+  sn <- read_saige_table(paste0(out_n, ".singleAssoc.txt"))
+  rn <- sn[sn$MarkerID == "GENE1:lof;missense:0.01:REVEL_unw_MAC1", ]
+  expect_identical(nrow(rn), 1L)
   sf <- read_saige_table(paste0(out_f, ".singleAssoc.txt"))
   ss <- read_saige_table(paste0(out_s, ".singleAssoc.txt"))
   rf <- sf[sf$MarkerID == "GENE1:lof;missense:0.01:REVEL_unw_MAC1", ]
@@ -193,6 +216,8 @@ test_that("#164 cross-arm: the planted FlexRV set agrees with the SKAT-O arm's n
   # the SKAT-O arm's p is the native exact test; the planted FlexRV arm now matches it
   expect_true(tolower(rs$Is.SPA) == "true")
   expect_identical(rf$p.value, rs$p.value)
+  expect_identical(rn$p.value, rs$p.value)        # native (#166) == SKAT-O arm's exact p
+  expect_true(tolower(rn$Is.SPA) == "true")
   side <- read_saige_table(paste0(out_f, ".spaFallbacks.txt"))
   expect_true("GENE1:lof;missense:0.01:REVEL_unw_MAC1" %in% side$MarkerID)
 })
