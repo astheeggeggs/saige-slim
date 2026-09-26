@@ -325,19 +325,18 @@ traits to rerun -- a trait with zero such rows needs nothing.
 The SAS FlexRV rerun on `1.5.2-dev-adfe6266` (filtered to the scan's regions,
 `REGIONS` in the wrapper) worked as designed for five traits (Asth: 107
 regions, 21 chromosomes in 5-20 s each, 9,554 rerun pseudo-marker rows, none
-with the old signature, none NA) and HUNG on HTN's chr16 for 40 minutes on
-a cell with 209 carriers that the fallback sent to the exact test. Measured
-since, on the kernel and on sim50k, and NONE of it explains the hang: the
-exact test at 13-209 carriers takes under 5 s at N = 50,000 with weights of
-1 or 2e-6, and with carriers chosen at the extremes of mu (max/mean 4.7)
-likewise. The resampling draw's round structure (`SL_Binary_Boot1`, up to
-500 rounds per draw at p_i/mean(p)) was the candidate; it did not reproduce.
-So the mechanism is NOT identified; `aou_spa_rerun.md` section 4 has the
-per-chromosome `timeout` diagnostic that names the region, and the
-sensible next probe is to time `erExactTestInCPP` on that cell's (Z, y, mu)
-INSIDE the workspace (the data cannot leave it). Meanwhile the fallback runs
-the exact test only in its enumeration regime (13 carriers) and reports NA
-with the reason above that, which removes its exposure whatever the cause.
+with the old signature, none NA) and was SLOW on HTN's chr16: 12m11s for 27 fallbacks including a
+209-carrier cell that the fallback sent to the exact test's resampling
+regime, against 5-15 s for every other chromosome -- it was read as a hang
+and a `ddel` was attempted, but it finished normally (SAIGE_SECONDS=912).
+On the kernel and on sim50k the exact test at 13-209 carriers takes under
+5 s at N = 50,000, with weights of 1 or 2e-6, and with carriers chosen at
+the extremes of mu (max/mean 4.7); so the ~x10-100 on real data is a
+data property not pinned down (`aou_spa_rerun.md` section 4 has a
+per-chromosome `timeout` if it is ever worth naming the cell, and timing
+`erExactTestInCPP` on that cell's (Z, y, mu) INSIDE the workspace is the
+probe). The fallback now runs the exact test only in its enumeration regime
+(13 carriers) and reports NA with the reason above that, which bounds it.
 
 Owner's decisions, in order: both halves of #164; NOT NA when an exact test
 is possible; cap `--max_MAC_for_ER` at 200 rather than chase the MAC-607

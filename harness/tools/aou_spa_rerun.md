@@ -83,8 +83,10 @@ Writes `<pre>.txt.gz` etc. under `<anc>/flexrv_v4_fixed/` plus
 
 ## 4. Per-chromosome timeout (diagnostic for a chromosome that never returns)
 
-On the first SAS rerun, HTN's chr16 (5 regions) ran for 40 minutes where
-every other chromosome took 5-20 s, and the cause is NOT identified: the
+On the first SAS rerun, HTN's chr16 (5 regions) took 12 minutes where every
+other chromosome took 5-20 s (27 fallbacks, one cell with 209 carriers in the
+exact test's resampling regime; it finished). The data property behind the
+slowdown is not identified: the
 exact test's cost is not set by carriers or weights (measured at N = 50,000,
 13-209 carriers, weights 1 or 2e-6, all under 5 s). The wrapper prints a
 chromosome's SAIGE log only on failure, so a hang leaves nothing. A timeout
