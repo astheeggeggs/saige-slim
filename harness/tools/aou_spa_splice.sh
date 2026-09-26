@@ -24,6 +24,18 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
   local old="${OLD_PREFIX}${sfx}" new="${NEW_PREFIX}${sfx}"   # a separate `local`: bash expands a
   local out="${OUT_DIR}/${pre}${sfx%.gz}"                     # local's words before it assigns them
   cat_any "${old}" > old.tsv; cat_any "${new}" > new.tsv
+  # A sidecar the run had nothing to write is delivered as a one-line '#'
+  # placeholder (the wrapper's doing: dsub fails delocalization on a declared
+  # output that does not exist). Treat a placeholder as an EMPTY table with the
+  # other side's header; both placeholders means nothing to splice.
+  local oph=0 nph=0
+  [[ $(head -c 1 old.tsv) == "#" ]] && oph=1
+  [[ $(head -c 1 new.tsv) == "#" ]] && nph=1
+  if (( oph && nph )); then
+    cp old.tsv "${out}"; gzip -f "${out}"; echo "${sfx}: placeholder on both sides, carried over"; return 0
+  elif (( oph )); then head -1 new.tsv > old.tsv; echo "${sfx}: old is a placeholder (no region had anything to disclose); treating as empty"
+  elif (( nph )); then head -1 old.tsv > new.tsv; echo "${sfx}: new is a placeholder; treating as empty"
+  fi
   head -1 old.tsv > hdr.old; head -1 new.tsv > hdr.new
   cmp -s hdr.old hdr.new || { echo "ERROR ${sfx}: header differs between old and new" >&2; exit 1; }
   # new rows, keyed by region (only the listed regions are expected in new)
