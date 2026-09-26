@@ -230,3 +230,53 @@ test_that("#164: SPA non-convergence hands back the normal-approximation p", {
   p <- SPA_pval(d$mu, d$g, q, qinv, p_na, .Machine$double.eps^0.25, FALSE, "binary", conv)
   expect_equal(p, p_na)
 })
+
+# LEDGER #168 (2026-09-26, from the AoU fallback sidecar: 172 of 245 failed
+# saddlepoints were "root(mirrored q) not found"). A REAL adjusted genotype is
+# centred with the working weights W = mu (1 - mu): the non-carriers' negative
+# entries sum to the carriers' W-weighted mass, and for carriers with mu ~ 1e-3
+# that mass is ~1e-2 while the mirrored q is ~-1 -- outside the attainable
+# range. That tail has probability exactly 0 (S cannot fall below gneg), which
+# is how SPAtest treats it; LEDGER #22's rule made it a non-convergence and
+# the whole test fell back. The earlier synthetic vector centred WITHOUT the
+# weights (negative mass -2) never reached this, which is why the rescue
+# looked complete on it.
+spa_w_centred_case <- function(m, n = 2000) {
+  mu <- rep(0.07, n); g <- rep(0, n)
+  mu[1:2] <- m; g[1:2] <- 1
+  W <- mu * (1 - mu)
+  g[3:n] <- -sum(W[1:2] * g[1:2]) / sum(W[3:n])        # W-weighted centring: sum(W g) = 0
+  set.seed(168); y <- rbinom(n, 1, mu); y[1] <- 1; y[2] <- 0
+  list(mu = mu, g = g, q = sum(g * y), m1 = sum(mu * g))
+}
+
+test_that("#168 FIXED: an unattainable mirrored q yields the one-sided saddlepoint p, not a fallback", {
+  d <- spa_w_centred_case(6e-4)
+  gneg <- sum(d$g[d$g < 0]); qinv <- 2 * d$m1 - d$q
+  expect_lt(qinv, gneg)                      # the mirror IS unattainable on this shape
+  S <- d$q - d$m1; v <- sum(d$mu * (1 - d$mu) * d$g^2)
+  p_na <- pchisq(S^2 / v, 1, lower.tail = FALSE)
+  conv <- FALSE
+  p <- SPA_pval(d$mu, d$g, d$q, qinv, p_na, .Machine$double.eps^0.25, FALSE, "binary", conv)
+  expect_lt(p_na, 1e-100)
+  expect_false(isTRUE(all.equal(p, p_na)))
+  exact <- 1 - prod(1 - d$mu[1:2])            # one-sided: at least one carrier is a case
+  expect_gt(p, exact / 10); expect_lt(p, exact * 10)
+})
+
+# LEDGER #163 amendment (from the same sidecar: 73 "root(q) not found"): the
+# root scales as 1/(vector scale), so the rescue's bracket cap is in units of
+# t * max|g|. Under weights of 1e-6 the root is near 1e7 and used to be past
+# the 2^20 cap.
+test_that("#163 amendment: the rescued root finder converges under weights of 1e-6", {
+  d <- spa_tiny_mu_case(6e-4, centred = TRUE)
+  for (w in c(1, 1e-3, 1e-6)) {
+    r <- getroot_K1_Binom(0, d$mu, w * d$g, w * d$q, .Machine$double.eps^0.25, 1000L)
+    expect_true(r$Isconverge)
+    # converged means the remaining Newton step |K1/K2| is below the finder's
+    # absolute tolerance on t (K1's residual itself scales with the weight)
+    step <- abs(K1_adj_Binom(r$root, d$mu, w * d$g, w * d$q) / K2_Binom(r$root, d$mu, w * d$g))
+    expect_lt(step, .Machine$double.eps^0.25)
+    expect_equal(r$root * w, 7.4158, tolerance = 1e-4)   # the root scales as 1/w
+  }
+})

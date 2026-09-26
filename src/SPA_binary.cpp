@@ -129,7 +129,13 @@ Rcpp::List getroot_K1_Binom(double init, const arma::vec & mu, const arma::vec &
 struct SPARescue { double root; int niter; bool ok; };
 static SPARescue rescueRootK1(const std::function<double(double)> & K1adj,
                               const std::function<double(double)> & K2,
-                              double tol, int maxiter){
+                              double tol, int maxiter, double t_gmax){
+	// LEDGER #163 amendment (2026-09-26, from the AoU fallback sidecar: 73
+	// "root(q) not found"): the root scales as 1/(vector scale) -- under
+	// weights of 1e-6 it sits near 1e7 -- so the bracket's cap is expressed in
+	// units of t * max|g|, i.e. the cap is 2^20 for a unit vector and 2^20/gmax
+	// otherwise. A unit vector's bracket is unchanged.
+	const double cap = (t_gmax > 0.0) ? 1048576.0 / t_gmax : 1048576.0;
 	SPARescue r; r.root = std::numeric_limits<double>::infinity(); r.niter = 0; r.ok = false;
 	double f0 = K1adj(0.0);
 	if(!std::isfinite(f0)){ return r; }
@@ -137,7 +143,7 @@ static SPARescue rescueRootK1(const std::function<double(double)> & K1adj,
 	const double dir = (f0 < 0.0) ? 1.0 : -1.0;   // K1 - q rises with t
 	double lo = 0.0, flo = f0, hi = dir, fhi = K1adj(hi);
 	int n = 1;
-	while(std::isfinite(fhi) && fhi * flo > 0.0 && std::abs(hi) < 1048576.0){
+	while(std::isfinite(fhi) && fhi * flo > 0.0 && std::abs(hi) < cap){
 		lo = hi; flo = fhi; hi = 2.0 * hi; fhi = K1adj(hi); n++;
 	}
 	if(!std::isfinite(fhi) || fhi * flo > 0.0){ return r; }
@@ -225,7 +231,7 @@ SPARoot getroot_K1_Binom_core(double init, const arma::vec & mu, const arma::vec
 		}
 		if(!conv){ // LEDGER #163: rescue only after the plain Newton has failed
 			SPARescue rs = rescueRootK1([&](double tt){ return K1_adj_Binom_ws(tt, mu, g, q, ws); },
-				[&](double tt){ return K2_Binom_ws(tt, mu, g, ws); }, tol, maxiter);
+				[&](double tt){ return K2_Binom_ws(tt, mu, g, ws); }, tol, maxiter, arma::abs(g).max());
 			if(rs.ok){ t = rs.root; rep = rep + rs.niter; conv = true; }
 		}
 		root=t;
@@ -539,7 +545,7 @@ SPARoot getroot_K1_fast_Binom_core(double init, const arma::vec & g, double q, c
 		}
 		if(!conv){ // LEDGER #163: rescue only after the plain Newton has failed
 			SPARescue rs = rescueRootK1([&](double tt){ return K1_adj_fast_Binom_ws(tt, q, gNB, muNB, NAmu, NAsigma, ws); },
-				[&](double tt){ return K2_fast_Binom_ws(tt, gNB, muNB, NAsigma, ws); }, tol, maxiter);
+				[&](double tt){ return K2_fast_Binom_ws(tt, gNB, muNB, NAsigma, ws); }, tol, maxiter, arma::abs(g).max());
 			if(rs.ok){ t = rs.root; rep = rep + rs.niter; conv = true; }
 		}
 		root=t;

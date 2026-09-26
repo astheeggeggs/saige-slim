@@ -723,9 +723,11 @@ declarations sit at the top of `src/Main.cpp`.
   (`--max_MAC_for_ER` itself is capped at 200, LEDGER #165), every fallback is counted in `SPA fallbacks: N ...` at the end of
   every step-2 run and named in `<SAIGEOutputFile>.spaFallbacks.txt`, and
   `SAIGE_SPA_PLANT_FAIL=1` is the test plant that forces it. A synthetic SPA
-  vector must be CENTRED to be realistic (an adjusted genotype's negative
-  entries sum to minus the carrier count), or its mirrored q is unattainable
-  and the test measures the fallback instead of the root.
+  vector must be centred the way `getadjGFast` centres: with W = mu(1-mu), so
+  for tiny-mu carriers the negative mass is ~1e-2 and the MIRRORED q is
+  unattainable -- a tail of probability 0, not a failure (LEDGER #168).
+  Centring without the weights hides that and made the #163 rescue look
+  complete when it converged almost nothing on real data.
 - **A SKAT kernel failure is counted, not hidden** (LEDGER #57): the cell's
   rows stay NA, the run prints `SKAT failures: N ...` before `Analysis done!`,
   and `<SAIGEOutputFile>.skatFailures.txt` names each failed cell with the

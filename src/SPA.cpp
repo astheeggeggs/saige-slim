@@ -56,6 +56,25 @@ void SPA_ws(const arma::vec & mu, const arma::vec & g, double q, double qinv, do
         std::cout << "Isconverge2" << Isconverge2 << std::endl;
 */
 
+        // LEDGER #168 (2026-09-26): the MIRRORED q lies outside the attainable
+        // range whenever the score is a large fraction of the carriers' mass
+        // and the adjusted genotype's negative mass is small -- exactly the
+        // tiny-mu cells (mu(1-mu)-weighted centring gives them a negative mass
+        // of ~1e-2 against a mirrored q of ~-1). That tail has probability
+        // EXACTLY 0 (S cannot go below gneg), which is how SPAtest treats it;
+        // LEDGER #22's rule made it a non-convergence and the whole test fell
+        // back. Now: root found on q, mirror unattainable => p = the q tail.
+        // An unattainable q itself (every carrier a case: S at its maximum) is
+        // still a failure, since that atom is the exact test's to compute.
+        const bool mirrorUnattainable = (!outuni2.Isconverge && outuni2.niter == 0 && std::isinf(outuni2.root));
+        if(outuni1.Isconverge && mirrorUnattainable){
+                SPASaddle getSaddle1 = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp, ws);
+                if(getSaddle1.isSaddle){
+                        pval = logp ? getSaddle1.pval : std::abs(getSaddle1.pval);
+                        isSPAConverge = true;
+                        return;
+                }
+        }
         if(outuni1.Isconverge  && outuni2.Isconverge)
         {
                 SPASaddle getSaddle  = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp, ws);
@@ -148,6 +167,25 @@ void SPA_fast_ws(const arma::vec & g, double q, double qinv, double pval_noadj, 
         std::cout << "Isconverge2" << Isconverge2 << std::endl;
 */
 
+        // LEDGER #168 (2026-09-26): the MIRRORED q lies outside the attainable
+        // range whenever the score is a large fraction of the carriers' mass
+        // and the adjusted genotype's negative mass is small -- exactly the
+        // tiny-mu cells (mu(1-mu)-weighted centring gives them a negative mass
+        // of ~1e-2 against a mirrored q of ~-1). That tail has probability
+        // EXACTLY 0 (S cannot go below gneg), which is how SPAtest treats it;
+        // LEDGER #22's rule made it a non-convergence and the whole test fell
+        // back. Now: root found on q, mirror unattainable => p = the q tail.
+        // An unattainable q itself (every carrier a case: S at its maximum) is
+        // still a failure, since that atom is the exact test's to compute.
+        const bool mirrorUnattainable = (!outuni2.Isconverge && outuni2.niter == 0 && std::isinf(outuni2.root));
+        if(outuni1.Isconverge && mirrorUnattainable){
+                SPASaddle getSaddle1 = Get_Saddle_Prob_fast_Binom_core(outuni1.root, g, q, gNB, muNB, NAmu, NAsigma, logp, ws);
+                if(getSaddle1.isSaddle){
+                        pval = logp ? getSaddle1.pval : std::abs(getSaddle1.pval);
+                        isSPAConverge = true;
+                        return;
+                }
+        }
         if(outuni1.Isconverge  && outuni2.Isconverge)
         {
                 SPASaddle getSaddle  = Get_Saddle_Prob_fast_Binom_core(outuni1.root, g, q, gNB, muNB,NAmu, NAsigma, logp, ws);
@@ -233,6 +271,25 @@ double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv
         std::cout << "Isconverge2" << Isconverge2 << std::endl;
 */
 
+        // LEDGER #168 (2026-09-26): the MIRRORED q lies outside the attainable
+        // range whenever the score is a large fraction of the carriers' mass
+        // and the adjusted genotype's negative mass is small -- exactly the
+        // tiny-mu cells (mu(1-mu)-weighted centring gives them a negative mass
+        // of ~1e-2 against a mirrored q of ~-1). That tail has probability
+        // EXACTLY 0 (S cannot go below gneg), which is how SPAtest treats it;
+        // LEDGER #22's rule made it a non-convergence and the whole test fell
+        // back. Now: root found on q, mirror unattainable => p = the q tail.
+        // An unattainable q itself (every carrier a case: S at its maximum) is
+        // still a failure, since that atom is the exact test's to compute.
+        const bool mirrorUnattainable = (!outuni2.Isconverge && outuni2.niter == 0 && std::isinf(outuni2.root));
+        if(outuni1.Isconverge && mirrorUnattainable){
+                SPASaddle getSaddle1 = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp, ws);
+                if(getSaddle1.isSaddle){
+                        pval = logp ? getSaddle1.pval : std::abs(getSaddle1.pval);
+                        isSPAConverge = true;
+                        return pval;
+                }
+        }
         if(outuni1.Isconverge  && outuni2.Isconverge)
         {
                 SPASaddle getSaddle  = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp, ws);

@@ -35,6 +35,14 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
     awk -F'\t' -v R="$r" 'FNR>1 && ('"${rule}"')==R' old.tsv > o.r; awk -F'\t' -v R="$r" 'FNR>1 && ('"${rule}"')==R' new.tsv > n.r
     if cmp -s o.r n.r && [[ ${sfx} == ".txt.gz" ]]; then echo "WARNING ${sfx}: failed region ${r} came back identical" >&2; fi
   done
+  # ROW ACCOUNTING: a region-path row whose p is NA is not written (LEDGER
+  # #127's convention; since #164 a saddlepoint failure above 13 carriers
+  # yields such a row), so a rerun region can come back with FEWER rows than
+  # it had. Print every region whose count changed, so the drop is visible.
+  for r in $(cat regions.txt); do
+    no=$(awk -F'\t' -v R="$r" 'FNR>1 && ('"${rule}"')==R' old.tsv | wc -l); nn=$(awk -F'\t' -v R="$r" 'FNR>1 && ('"${rule}"')==R' new.tsv | wc -l)
+    [[ ${no} -eq ${nn} ]] || echo "ROWS ${sfx}: ${r} old ${no} new ${nn} (NA rows are not written on the region path)"
+  done
   # the splice: old rows not in the list, then new rows, in old-file order of first appearance
   { head -1 old.tsv
     awk -F'\t' -v rule="${rule}" 'NR==FNR{keep[$1]=1; next} FNR==1{next} {reg=('"${rule}"'); if(!(reg in keep)) print}' regions.txt old.tsv
