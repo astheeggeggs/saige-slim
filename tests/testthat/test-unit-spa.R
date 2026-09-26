@@ -149,3 +149,84 @@ test_that("sum_arma1 sums a vector", {
   expect_identical(sum_arma1(as.numeric(1:5)), 15)
   expect_identical(sum_arma1(numeric(0)), 0)
 })
+
+# LEDGER #163 (2026-09-26, FIXED the same day): the Newton root finder
+# starts at t = 0, where K2(0) = sum(mu (1 - mu) g^2) is the score variance.
+# When the carriers' fitted probabilities are tiny, that first step
+# (q - K1(0)) / K2(0) exceeds ~730, exp(-g t) underflows, K2 evaluates to
+# exactly 0, the next iterate is -Inf, and 0 * Inf in the following K1 makes
+# NaN: non-convergence for a root that exists (q is strictly inside
+# (gneg, gpos), K1 is monotone). Two carriers at mu = 6e-4, one of them a
+# case, is a SYNTHETIC shape of that failure; the same two at mu = 1e-3 never
+# failed. The fix is a bracketed, safeguarded Newton that runs ONLY after the
+# plain iteration has failed, so every root the plain Newton finds keeps its
+# bytes. For two unit carriers the root is closed-form: log((1 - mu) / mu).
+spa_tiny_mu_case <- function(m, n = 2000, centred = FALSE) {
+  mu <- rep(0.07, n); g <- rep(0, n)
+  mu[1:2] <- m; g[1:2] <- 1
+  # centred = the shape of a covariate-ADJUSTED genotype (gtilde): the
+  # projection on an intercept makes the non-carriers slightly negative so the
+  # entries sum to ~0, which is what makes the MIRRORED q attainable
+  # (qinv = 2 m1 - q > gneg). The uncentred vector has gneg = 0, so its
+  # mirrored tail is unattainable by construction and lands in #164.
+  if (centred) g[3:n] <- -sum(g[1:2]) / (n - 2)
+  # one case carrier, one control carrier: q = sum(g * y) = 1 uncentred;
+  # centred, the non-carrier cases contribute their (tiny) g's
+  set.seed(163); y <- rbinom(n, 1, mu); y[1] <- 1; y[2] <- 0
+  list(mu = mu, g = g, q = sum(g * y), m1 = sum(mu * g))
+}
+
+test_that("#163 control: the root finder converges for carriers at mu = 1e-3", {
+  d <- spa_tiny_mu_case(1e-3)
+  r <- getroot_K1_Binom(0, d$mu, d$g, d$q, .Machine$double.eps^0.25, 1000L)
+  expect_true(r$Isconverge)
+  expect_equal(r$root, log((1 - 1e-3) / 1e-3), tolerance = 1e-4)
+})
+
+test_that("#163 FIXED: the root finder converges for carriers at mu = 6e-4 and 1e-4", {
+  for (m in c(6e-4, 1e-4)) {
+    d <- spa_tiny_mu_case(m)
+    # the first plain Newton step is past the exp underflow point ...
+    expect_gt((d$q - d$m1) / sum(d$mu * (1 - d$mu) * d$g^2), 730)
+    # ... and the rescue still lands on the closed-form root
+    r <- getroot_K1_Binom(0, d$mu, d$g, d$q, .Machine$double.eps^0.25, 1000L)
+    expect_true(r$Isconverge)
+    expect_equal(r$root, log((1 - m) / m), tolerance = 1e-4)
+    expect_equal(K1_adj_Binom(r$root, d$mu, d$g, d$q), 0, tolerance = 1e-6)
+  }
+})
+
+test_that("#163 FIXED: the composed saddlepoint p is near the exact tail, not the normal p", {
+  d <- spa_tiny_mu_case(6e-4, centred = TRUE)
+  # both roots exist: q and its mirror are strictly inside (gneg, gpos)
+  gpos <- sum(d$g[d$g > 0]); gneg <- sum(d$g[d$g < 0])
+  expect_true(d$q < gpos && d$q > gneg)
+  expect_true(2 * d$m1 - d$q < gpos && 2 * d$m1 - d$q > gneg)
+  S <- d$q - d$m1
+  v <- sum(d$mu * (1 - d$mu) * d$g^2)
+  p_na <- pchisq(S^2 / v, 1, lower.tail = FALSE)
+  qinv <- -abs(d$q - d$m1) + d$m1
+  conv <- FALSE
+  p <- SPA_pval(d$mu, d$g, d$q, qinv, p_na, .Machine$double.eps^0.25, FALSE, "binary", conv)
+  exact <- 1 - prod(1 - d$mu[1:2])   # one-sided: at least one carrier is a case
+  expect_lt(p_na, 1e-100)
+  expect_gt(p, exact / 10)
+  expect_lt(p, exact * 10)
+})
+
+# LEDGER #164 (OPEN): when the saddlepoint does not converge on a binary
+# trait, SPA_pval returns pval_noadj -- the normal approximation -- as THE
+# p-value, and getMarkerPval prints it in p.value with Is.SPA = FALSE. With
+# #163 fixed the tiny-mu shape no longer reaches this; the unattainable-q
+# rule (LEDGER #22: q outside (gneg, gpos), no root exists) still does.
+# Characterization; invert when the row is decided and fixed.
+test_that("#164: SPA non-convergence hands back the normal-approximation p", {
+  d <- spa_tiny_mu_case(0.07)
+  gpos <- sum(d$g[d$g > 0])
+  q <- gpos + 0.5                       # unattainable: K1 never reaches it
+  qinv <- -abs(q - d$m1) + d$m1
+  p_na <- 1e-120
+  conv <- TRUE
+  p <- SPA_pval(d$mu, d$g, q, qinv, p_na, .Machine$double.eps^0.25, FALSE, "binary", conv)
+  expect_equal(p, p_na)
+})

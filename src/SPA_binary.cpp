@@ -1,6 +1,7 @@
 // [[Rcpp::depends(BH)]]
 
 //[[Rcpp::depends(RcppArmadillo)]]
+#include <functional>
 #include <RcppArmadillo.h>
 #include <iostream>
 #include <fstream>
@@ -112,6 +113,54 @@ Rcpp::List getroot_K1_Binom(double init, const arma::vec & mu, const arma::vec &
 	return(result);
 }
 
+
+// LEDGER #163 (2026-09-26). The Newton iteration above starts at t = 0 with
+// the step (q - K1(0)) / K2(0), and K2(0) is the score variance. When the
+// carriers' fitted probabilities are tiny that step runs past the point where
+// exp(-g t) underflows: K2 evaluates to exactly 0, the next iterate is -Inf,
+// and 0 * Inf in the following K1 is NaN, which the #45 guard reads as
+// non-convergence -- for a root that exists (q strictly inside (gneg, gpos),
+// K1 monotone). This rescue runs ONLY after that iteration has failed, so
+// every root the plain Newton finds keeps its bytes: it brackets the sign
+// change of K1 - q by doubling from 0, then takes Newton steps that are
+// replaced by bisection whenever they leave the bracket or K2 is unusable.
+// The bracket cannot fail on an attainable q, because K1(t) -> gpos as
+// t -> +Inf and -> gneg as t -> -Inf, monotonically.
+struct SPARescue { double root; int niter; bool ok; };
+static SPARescue rescueRootK1(const std::function<double(double)> & K1adj,
+                              const std::function<double(double)> & K2,
+                              double tol, int maxiter){
+	SPARescue r; r.root = std::numeric_limits<double>::infinity(); r.niter = 0; r.ok = false;
+	double f0 = K1adj(0.0);
+	if(!std::isfinite(f0)){ return r; }
+	if(f0 == 0.0){ r.root = 0.0; r.ok = true; return r; }
+	const double dir = (f0 < 0.0) ? 1.0 : -1.0;   // K1 - q rises with t
+	double lo = 0.0, flo = f0, hi = dir, fhi = K1adj(hi);
+	int n = 1;
+	while(std::isfinite(fhi) && fhi * flo > 0.0 && std::abs(hi) < 1048576.0){
+		lo = hi; flo = fhi; hi = 2.0 * hi; fhi = K1adj(hi); n++;
+	}
+	if(!std::isfinite(fhi) || fhi * flo > 0.0){ return r; }
+	if(lo > hi){ std::swap(lo, hi); std::swap(flo, fhi); }
+	double t = 0.5 * (lo + hi);
+	for(int it = 0; it < maxiter; it++){
+		double ft = K1adj(t);
+		if(!std::isfinite(ft)){ return r; }
+		if(ft == 0.0){ r.root = t; r.niter = n + it; r.ok = true; return r; }
+		if(ft * flo < 0.0){ hi = t; fhi = ft; } else { lo = t; flo = ft; }
+		double k2 = K2(t);
+		double tnew = t - ft / k2;
+		if(!(k2 > 0.0) || !std::isfinite(tnew) || tnew <= lo || tnew >= hi){
+			tnew = 0.5 * (lo + hi);   // bisection whenever Newton is unusable
+		}
+		if(std::abs(tnew - t) < tol || (hi - lo) < tol){
+			r.root = tnew; r.niter = n + it + 1; r.ok = true; return r;
+		}
+		t = tnew;
+	}
+	return r;
+}
+
 SPARoot getroot_K1_Binom_core(double init, const arma::vec & mu, const arma::vec & g, double q, double tol, double gpos, double gneg, SPAWorkspace & ws, int maxiter){
 	SPARoot result;
 	double root;
@@ -173,6 +222,11 @@ SPARoot getroot_K1_Binom_core(double init, const arma::vec & mu, const arma::vec
 			rep = rep + 1;
 			t = tnew;
                         K1_eval = newK1;
+		}
+		if(!conv){ // LEDGER #163: rescue only after the plain Newton has failed
+			SPARescue rs = rescueRootK1([&](double tt){ return K1_adj_Binom_ws(tt, mu, g, q, ws); },
+				[&](double tt){ return K2_Binom_ws(tt, mu, g, ws); }, tol, maxiter);
+			if(rs.ok){ t = rs.root; rep = rep + rs.niter; conv = true; }
 		}
 		root=t;
 		niter=rep;
@@ -482,6 +536,11 @@ SPARoot getroot_K1_fast_Binom_core(double init, const arma::vec & g, double q, c
 			rep = rep + 1;
 			t = tnew;
                         K1_eval = newK1;
+		}
+		if(!conv){ // LEDGER #163: rescue only after the plain Newton has failed
+			SPARescue rs = rescueRootK1([&](double tt){ return K1_adj_fast_Binom_ws(tt, q, gNB, muNB, NAmu, NAsigma, ws); },
+				[&](double tt){ return K2_fast_Binom_ws(tt, gNB, muNB, NAsigma, ws); }, tol, maxiter);
+			if(rs.ok){ t = rs.root; rep = rep + rs.niter; conv = true; }
 		}
 		root=t;
 		niter=rep;
