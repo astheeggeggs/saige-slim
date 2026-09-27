@@ -530,3 +530,15 @@ whose unexplained rows are one whole region is this signature; read
 Gate 6611 pass both modes, zero goldens moved; commit `3e92d89d`; image
 `1.5.2-dev-3e92d89d`. Next: rerun sas/BenIntNeo into `flexrv_v6` on it (only chromosome 5 should differ from today's run), splice,
 then eas + afr.
+
+**sas COMPLETE (2026-09-27, ~19:30 UTC).** BenIntNeo rerun on `1.5.2-dev-3e92d89d`
+into `flexrv_v6`: `chrStatus` `failed none`, sidecar header-only, dump empty,
+every rerun region present, chromosome 5's region back with its 91 rows.
+Splice green: results 2,840 changed rows all explained (1,420 cells: the
+1,414 counted before plus that region's recorded failures and Cauchy row),
+totals unchanged; singleAssoc likewise; pooledTests lost the 8 rerun regions'
+rows because the v4 artefact (p underflowed to 0) had fired the CCT fallback
+rule and a plain Cauchy discloses nothing (the ROWS wording is per file since
+`60e3297c`). Six of six sas traits are in `flexrv_v4_fixed/`. Next: eas + afr
+on `IMG7` (section 6 of the recipe), stage checker over sidecars AND
+chrStatus, then amr, then eur.
