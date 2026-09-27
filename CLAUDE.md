@@ -721,8 +721,10 @@ declarations sit at the top of `src/Main.cpp`.
   TRUE after the exact test, LEDGER #80). Now: on failure the exact test runs
   at any weight set up to 13 carriers, the exact test's enumeration regime
   (`--max_MAC_for_ER` itself is capped at 200, LEDGER #165), every fallback is counted in `SPA fallbacks: N ...` at the end of
-  every step-2 run and named in `<SAIGEOutputFile>.spaFallbacks.txt`, and
-  `SAIGE_SPA_PLANT_FAIL=1` is the test plant that forces it. A synthetic SPA
+  every step-2 run and named in `<SAIGEOutputFile>.spaFallbacks.txt`,
+  `SAIGE_SPA_PLANT_FAIL=1` is the test plant that forces it, and
+  `SAIGE_SPA_DUMP_DIR=<dir>` writes the vector every failed saddlepoint saw
+  (individual-level: analyse it where the data lives). A synthetic SPA
   vector must be centred the way `getadjGFast` centres: with W = mu(1-mu), so
   for tiny-mu carriers the negative mass is ~1e-2 and the MIRRORED q is
   unattainable -- a tail of probability 0, not a failure (LEDGER #168).

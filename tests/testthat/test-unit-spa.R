@@ -280,3 +280,39 @@ test_that("#163 amendment: the rescued root finder converges under weights of 1e
     expect_equal(r$root * w, 7.4158, tolerance = 1e-4)   # the root scales as 1/w
   }
 })
+
+# LEDGER #168 (b): the mirrored q attainable by a HAIR. The vector is the
+# W-centred shape with its negative mass scaled to just beyond the mirrored
+# q, so the mirror's root exists but lies past any finder (K1 is within a
+# hair of its limit only at |t| ~ 1e6 and beyond). The Chernoff bound on
+# that tail is astronomically small, so the composed p is the q-side tail.
+# From the second SAS rerun: 24 fallbacks, all "root(mirrored q) not found"
+# by the finder, none by the attainability rule.
+test_that("#168 (b) FIXED: a mirrored root beyond the finder is bounded away, not a fallback", {
+  # The mirrored root's distance grows linearly with N when the mirror is
+  # attainable by a fixed margin (measured: -1.6e4 at N = 2,000, -6.5e4 at
+  # N = 8,000), so at N = 1.2e6 it sits near -1e7, beyond the bracket's cap
+  # of 2^20 / max|g|. The finder fails; the Chernoff bound on that tail is
+  # astronomically small; the composed p is the q-side tail.
+  n <- 1200000
+  mu <- rep(0.07, n); g <- rep(0, n); mu[1:2] <- 6e-4; g[1:2] <- 1
+  W <- mu * (1 - mu); g[3:n] <- -sum(W[1:2] * g[1:2]) / sum(W[3:n])
+  set.seed(168); y <- rbinom(n, 1, mu); y[1] <- 1; y[2] <- 0
+  q <- sum(g * y)
+  neg <- g < 0; marg <- 1.001
+  A <- sum(mu[!neg] * g[!neg]); B <- sum(mu[neg] * g[neg]); g0 <- sum(g[neg])
+  g[neg] <- g[neg] * (marg * (2 * A - q) / (g0 - 2 * marg * B))
+  m1 <- sum(mu * g); qinv <- 2 * m1 - q
+  expect_gt(qinv, sum(g[neg]))                                 # attainable ...
+  r2 <- getroot_K1_Binom(0, mu, g, qinv, .Machine$double.eps^0.25, 1000L)
+  expect_false(r2$Isconverge)                                  # ... beyond the finder
+  r1 <- getroot_K1_Binom(0, mu, g, q, .Machine$double.eps^0.25, 1000L)
+  expect_true(r1$Isconverge)
+  S <- q - m1; v <- sum(mu * (1 - mu) * g^2)
+  p_na <- pchisq(S^2 / v, 1, lower.tail = FALSE)
+  conv <- FALSE
+  p <- SPA_pval(mu, g, q, qinv, p_na, .Machine$double.eps^0.25, FALSE, "binary", conv)
+  expect_false(isTRUE(all.equal(p, p_na)))
+  exact <- 1 - prod(1 - mu[1:2])
+  expect_gt(p, exact / 20); expect_lt(p, exact * 20)
+})

@@ -124,3 +124,42 @@ The job fails at 10 minutes and its log then holds `saige.chr16.log` in full;
 `grep "Analyzing Region" | tail -1` names the region, and the same region's
 144 v4 rows (MAC, Number_ultra_rare, Number_rare per set) are the next thing
 to read. A region-level p is aggregate output.
+
+## 5. Investigating a saddlepoint failure on the real data (image a6213623 or later)
+
+The sidecar names the step that failed; the dump names the vector. With
+`SAIGE_SPA_DUMP_DIR` set, every failed saddlepoint writes
+`<dir>/spaFail_<k>.tsv` (one row per sample: gtilde, mu, y; header: q, qinv,
+m1, gneg, gpos, Tstat, var1, reason) and the sidecar's Note ends in
+`dump=<file>`. Individual-level data: it stays in the workspace.
+
+Wrapper: two lines. At the top, `SPA_DUMP="${SPA_DUMP:-}"` and
+`OUT_FILE_SPADUMP="${OUT_FILE_SPADUMP:-}"`; before the run,
+`if [[ -n ${SPA_DUMP} ]]; then mkdir -p spadump; export SAIGE_SPA_DUMP_DIR=$PWD/spadump; fi`;
+after the deliveries,
+`if [[ -n ${OUT_FILE_SPADUMP} ]]; then tar czf spadump.tgz spadump 2>/dev/null || tar czf spadump.tgz --files-from /dev/null; deliver spadump.tgz "${OUT_FILE_SPADUMP}"; fi`.
+`submit()`: `"--output", f"OUT_FILE_SPADUMP={od}/{pre}.spaDump.tgz"` and
+`env={"SPA_DUMP": "1", ...}`. Run ONE trait (the 24-fallback one) with
+`REGIONS` set to the failing regions only.
+
+Analysis runs in a dsub job on the SAIGE image (the notebook VM has no SAIGE;
+the exported kernels are what reproduce the finder exactly):
+
+```r
+# Rscript inside the SAIGE image, one dump file as input; prints summary numbers only
+suppressMessages(library(SAIGE))
+f <- commandArgs(TRUE)[1]
+hdr <- strsplit(readLines(f, n = 1), "\t")[[1]]; d <- read.table(f, header = TRUE, skip = 1, sep = "\t")
+q <- as.numeric(hdr[2]); qinv <- as.numeric(hdr[4]); tol <- .Machine$double.eps^0.25
+mu <- d$mu; g <- d$gtilde
+r1 <- getroot_K1_Binom(0, mu, g, q, tol, 1000L); r2 <- getroot_K1_Binom(0, mu, g, qinv, tol, 1000L)
+cat("N", length(g), "carriers", sum(g > 0.5 * max(g)), "gneg", sum(g[g < 0]), "gpos", sum(g[g > 0]), "qinv", qinv, "\n")
+cat("root q:", r1$root, r1$Isconverge, r1$niter, " root qinv:", r2$root, r2$Isconverge, r2$niter, "\n")
+for (t in -2^(0:24)) cat(sprintf("t=%-10.3g K1-qinv=%-12.4g K2=%-10.3g\n", t, K1_adj_Binom(t, mu, g, qinv), K2_Binom(t, mu, g)))
+p <- SPA_pval(mu, g, q, qinv, 1e-100, tol, FALSE, "binary", FALSE); cat("composed p:", p, "\n")
+```
+
+What to look for: where K1 - qinv changes sign (the root's location against
+the bracket cap 2^20 / max|g|), whether K2 underflows to 0 before it, and
+whether any entry makes K1 non-finite. That names the property my synthetic
+vectors lack.

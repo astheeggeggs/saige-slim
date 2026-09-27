@@ -1,6 +1,8 @@
 // [[Rcpp::depends(BH)]]
 
 //[[Rcpp::depends(RcppArmadillo)]]
+#include <cmath>
+#include <limits>
 #include <RcppArmadillo.h>
 #include <iostream>
 #include <fstream>
@@ -73,6 +75,33 @@ void SPA_ws(const arma::vec & mu, const arma::vec & g, double q, double qinv, do
                         pval = logp ? getSaddle1.pval : std::abs(getSaddle1.pval);
                         isSPAConverge = true;
                         return;
+                }
+        }
+        // LEDGER #168 (b): the mirrored q can be attainable by a hair -- then its
+        // root exists but lies where K1 is within that hair of its limit, at
+        // |t| of 1e6 and beyond, past any finder. That tail needs no root:
+        // Chernoff gives P(S beyond qinv) <= exp(K(t) - t qinv) at every t on
+        // the tail's side, and the bound at the far end of the bracket is
+        // astronomically small. When it is below a thousandth of the q-side
+        // tail, the two-sided p IS the q-side tail to that precision.
+        if(outuni1.Isconverge && !outuni2.Isconverge && !mirrorUnattainable){
+                SPASaddle sq = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp, ws);
+                if(sq.isSaddle){
+                        const double p1 = logp ? std::exp(sq.pval) : std::abs(sq.pval);
+                        double gmax = 0.0;
+                        for(arma::uword e = 0; e < g.n_elem; e++){ gmax = std::max(gmax, std::fabs(g(e))); }
+                        const double side = (qinv < q) ? -1.0 : 1.0;   // lower tail: t < 0; upper: t > 0
+                        double bound = std::numeric_limits<double>::infinity();
+                        for(int k = 0; k <= 20 && gmax > 0.0; k++){
+                                const double tt = side * std::ldexp(1.0, k) / gmax;
+                                const double b = std::exp(Korg_Binom_ws(tt, mu, g, ws) - tt * qinv);
+                                if(std::isfinite(b) && b < bound) bound = b;
+                        }
+                        if(bound <= 1e-3 * p1){
+                                pval = logp ? sq.pval : p1;
+                                isSPAConverge = true;
+                                return;
+                        }
                 }
         }
         if(outuni1.Isconverge  && outuni2.Isconverge)
@@ -186,6 +215,33 @@ void SPA_fast_ws(const arma::vec & g, double q, double qinv, double pval_noadj, 
                         return;
                 }
         }
+        // LEDGER #168 (b): the mirrored q can be attainable by a hair -- then its
+        // root exists but lies where K1 is within that hair of its limit, at
+        // |t| of 1e6 and beyond, past any finder. That tail needs no root:
+        // Chernoff gives P(S beyond qinv) <= exp(K(t) - t qinv) at every t on
+        // the tail's side, and the bound at the far end of the bracket is
+        // astronomically small. When it is below a thousandth of the q-side
+        // tail, the two-sided p IS the q-side tail to that precision.
+        if(outuni1.Isconverge && !outuni2.Isconverge && !mirrorUnattainable){
+                SPASaddle sq = Get_Saddle_Prob_fast_Binom_core(outuni1.root, g, q, gNB, muNB, NAmu, NAsigma, logp, ws);
+                if(sq.isSaddle){
+                        const double p1 = logp ? std::exp(sq.pval) : std::abs(sq.pval);
+                        double gmax = 0.0;
+                        for(arma::uword e = 0; e < g.n_elem; e++){ gmax = std::max(gmax, std::fabs(g(e))); }
+                        const double side = (qinv < q) ? -1.0 : 1.0;   // lower tail: t < 0; upper: t > 0
+                        double bound = std::numeric_limits<double>::infinity();
+                        for(int k = 0; k <= 20 && gmax > 0.0; k++){
+                                const double tt = side * std::ldexp(1.0, k) / gmax;
+                                const double b = std::exp(Korg_fast_Binom_ws(tt, gNB, muNB, NAmu, NAsigma, ws) - tt * qinv);
+                                if(std::isfinite(b) && b < bound) bound = b;
+                        }
+                        if(bound <= 1e-3 * p1){
+                                pval = logp ? sq.pval : p1;
+                                isSPAConverge = true;
+                                return;
+                        }
+                }
+        }
         if(outuni1.Isconverge  && outuni2.Isconverge)
         {
                 SPASaddle getSaddle  = Get_Saddle_Prob_fast_Binom_core(outuni1.root, g, q, gNB, muNB,NAmu, NAsigma, logp, ws);
@@ -288,6 +344,33 @@ double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv
                         pval = logp ? getSaddle1.pval : std::abs(getSaddle1.pval);
                         isSPAConverge = true;
                         return pval;
+                }
+        }
+        // LEDGER #168 (b): the mirrored q can be attainable by a hair -- then its
+        // root exists but lies where K1 is within that hair of its limit, at
+        // |t| of 1e6 and beyond, past any finder. That tail needs no root:
+        // Chernoff gives P(S beyond qinv) <= exp(K(t) - t qinv) at every t on
+        // the tail's side, and the bound at the far end of the bracket is
+        // astronomically small. When it is below a thousandth of the q-side
+        // tail, the two-sided p IS the q-side tail to that precision.
+        if(outuni1.Isconverge && !outuni2.Isconverge && !mirrorUnattainable){
+                SPASaddle sq = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp, ws);
+                if(sq.isSaddle){
+                        const double p1 = logp ? std::exp(sq.pval) : std::abs(sq.pval);
+                        double gmax = 0.0;
+                        for(arma::uword e = 0; e < g.n_elem; e++){ gmax = std::max(gmax, std::fabs(g(e))); }
+                        const double side = (qinv < q) ? -1.0 : 1.0;   // lower tail: t < 0; upper: t > 0
+                        double bound = std::numeric_limits<double>::infinity();
+                        for(int k = 0; k <= 20 && gmax > 0.0; k++){
+                                const double tt = side * std::ldexp(1.0, k) / gmax;
+                                const double b = std::exp(Korg_Binom_ws(tt, mu, g, ws) - tt * qinv);
+                                if(std::isfinite(b) && b < bound) bound = b;
+                        }
+                        if(bound <= 1e-3 * p1){
+                                pval = logp ? sq.pval : p1;
+                                isSPAConverge = true;
+                                return pval;
+                        }
                 }
         }
         if(outuni1.Isconverge  && outuni2.Isconverge)
