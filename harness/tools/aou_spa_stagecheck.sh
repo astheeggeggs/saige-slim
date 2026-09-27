@@ -8,7 +8,7 @@
 # then every NA row's cell and Note, then a verdict. A fallback that ran the
 # exact test is a valid p and is counted, not flagged; an NA is flagged.
 # Exit 0 on STAGE OK (no NA cell), 1 otherwise. Prints, never writes.
-#   usage: bash aou_spa_stagecheck.sh <dir-with-sidecars>
+#   usage: bash aou_spa_stagecheck.sh <dir-with-sidecars>   (also reads <pre>.chrStatus.txt[.gz] when present)
 set -euo pipefail
 dir="${1:?usage: aou_spa_stagecheck.sh <dir-with-sidecars>}"
 shopt -s nullglob
@@ -55,7 +55,18 @@ if (( ${#na_notes[@]} > 0 )); then
   echo "--- NA cells (no usable p; the Note says why the saddlepoint failed and why the exact test could not run):"
   printf '%s\n' "${na_notes[@]}"
 fi
-echo "stage: ${#files[@]} sidecar(s), fallbacks ${total}, NA ${total_na}"
-if (( total_na == 0 )); then echo "STAGE OK"; exit 0; fi
-echo "STAGE: ${total_na} NA cell(s) -- read their Notes; a 'saddle(q) invalid' with qsaddle=INVALID on 1.5.2-dev-4ff9576b or later is a NEW mechanism, stop the rollout"
+# A chromosome process can die while the JOB reports SUCCESS: the wrapper
+# records it in <pre>.chrStatus.txt[.gz] ('failed<TAB>5' or 'failed<TAB>none')
+# and every region on that chromosome is silently absent from the results
+# (seen 2026-09-27: sas/BenIntNeo chr5, LEDGER #170). Read it here.
+nfailed=0
+for src in "${dir}"/*.chrStatus.txt "${dir}"/*.chrStatus.txt.gz; do
+  base=$(basename "${src}"); base=${base%.gz}; base=${base%.chrStatus.txt}
+  if [[ ${src} == *.gz ]]; then line=$(gzip -dc "${src}" | awk -F'\t' '$1=="failed"{print $2}'); else line=$(awk -F'\t' '$1=="failed"{print $2}' "${src}"); fi
+  if [[ -n ${line} && ${line} != "none" ]]; then echo "CHROMOSOME FAILED ${base}: ${line} (its regions are absent from the results; read the job log's SAIGE output for that chromosome)"; nfailed=$((nfailed+1)); fi
+done
+echo "stage: ${#files[@]} sidecar(s), fallbacks ${total}, NA ${total_na}, traits with a failed chromosome ${nfailed}"
+if (( total_na == 0 && nfailed == 0 )); then echo "STAGE OK"; exit 0; fi
+(( total_na > 0 )) && echo "STAGE: ${total_na} NA cell(s) -- read their Notes; a 'saddle(q) invalid' with qsaddle=INVALID on 1.5.2-dev-4ff9576b or later is a NEW mechanism, stop the rollout"
+(( nfailed > 0 )) && echo "STAGE: ${nfailed} trait(s) lost a chromosome -- not spliceable until rerun"
 exit 1

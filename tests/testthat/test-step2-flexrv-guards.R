@@ -46,13 +46,46 @@ test_that("an explicit --maxMAF_in_groupTest equal to --flexRV_maxMAF changes no
   expect_identical(readLines(b$path), readLines(a$path))
 })
 
-test_that("a LoF label that matches nothing in the file is an error naming the labels present", {
+# LEDGER #170 (2026-09-27, FIXED): a LoF label absent from the file was an
+# ERROR. The check is file-level, and the AoU rerun wrapper writes one group
+# file per chromosome subset to the rerun regions: sas/BenIntNeo's chromosome
+# 5 had one region, with no pLoF variant, so its process died, the job still
+# reported success, and the region was silently absent from the results. A
+# region without the label was handled already (its lof sets keep no marker,
+# MAC 0, refused by the min-group-MAC gate), so the file-level case is the
+# same thing said once: a warning naming the labels present.
+test_that("#170 FIXED: a LoF label absent from the file warns, names the labels present, and runs", {
+  # one label absent, one present: the mask keys on the present one, so the
+  # run is the default run (the default label is 'lof') with an inert extra
+  a <- fx_run(c(FX_G, FX_BIN, FX_SG, FX_COMMON, FX_FLEX, FX_BURDEN), "lofanno-default")
+  fx_ok(a)
   r <- fx_run(c(FX_G, FX_BIN, FX_SG, FX_COMMON, FX_FLEX, FX_BURDEN,
                 "--flexRV_lofAnno=pLoF,lof"), "lofanno")
-  expect_false(identical(as.integer(r$status), 0L))
+  fx_ok(r)
   expect_true(fx_log_has(r, "'pLoF'"))
   expect_true(fx_log_has(r, "match no annotation in the group file"))
   expect_true(fx_log_has(r, "'missense'"))
+  expect_true(fx_log_has(r, "keys on the label(s) present: 'lof'"))
+  expect_identical(readLines(r$path), readLines(a$path))
+  # no label present: every region's lof sets are refused, and the rest of
+  # the run is the run that never asked for the lof transform -- one result
+  # computed two ways
+  z <- fx_run(c(FX_G, FX_BIN, FX_SG, FX_COMMON, FX_FLEX, FX_BURDEN,
+                "--flexRV_lofAnno=pLoF"), "lofanno-absent")
+  fx_ok(z)
+  expect_true(fx_log_has(z, "No named label is present"))
+  expect_false(any(grepl("_lof_", z$region$Weight, fixed = TRUE)))
+  nolof <- fx_run(c(FX_G, FX_BIN, FX_SG, FX_COMMON, FX_FLEX, FX_BURDEN,
+                    "--flexRV_scoreTransforms=unw;cbrt:0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9;sbeta:1.5,2,3,5,10,20"),
+                  "lofanno-nolof")
+  fx_ok(nolof)
+  expect_false(any(grepl("_lof_", nolof$region$Weight, fixed = TRUE)))
+  kz <- paste(z$region$Region, z$region$Group, z$region$max_MAF, z$region$Weight)
+  kn <- paste(nolof$region$Region, nolof$region$Group, nolof$region$max_MAF, nolof$region$Weight)
+  expect_identical(kz, kn)
+  pz <- suppressWarnings(as.numeric(z$region$Pvalue_Burden)); pn <- suppressWarnings(as.numeric(nolof$region$Pvalue_Burden))
+  expect_identical(is.na(pz), is.na(pn))
+  expect_equal(pz[!is.na(pz)], pn[!is.na(pn)], tolerance = 1e-10)
   # dropping the lof transform removes the need for the label entirely
   r <- fx_run(c(FX_G, FX_BIN, FX_SG, FX_COMMON, FX_FLEX, FX_BURDEN,
                 "--flexRV_lofAnno=pLoF", "--flexRV_scoreTransforms=unw;sbeta:2",

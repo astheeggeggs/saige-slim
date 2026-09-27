@@ -288,7 +288,8 @@ is the control that no rule has quietly stopped matching, and every rule is
 drilled against `4c2ca05a^`, where the tool reports 45 hits (10 before the six
 #136 rules of 2026-09-13, 42 before the #139 rule; the #142 rule's sentence
 postdates that commit and adds none; the `arma-no-debug-noop` rule of
-2026-09-19 adds 2, measured). Add a rule only
+2026-09-19 adds 2, measured; the `170-lofanno-must-occur` rule of 2026-09-27
+adds 0, its sentence postdates that commit). Add a rule only
 after a claim has actually been written wrongly; a line that must quote a false
 claim on purpose carries the marker the tool names.
 
@@ -470,7 +471,10 @@ the pseudo-marker; EVERY set is eligible for the exact test at MAC <= `--max_MAC
 The run: `--flexRV_score=NAME --flexRV_maxMAF=M --annotation_in_groupTest=<ONE
 group> --r.corr=1`, optionally `--flexRV_scoreTransforms` /
 `--flexRV_MAFTransforms` (spec strings, defaults are the paper's),
-`--flexRV_lofAnno=lof` (exact labels, each must occur in the file). ONE
+`--flexRV_lofAnno=lof` (exact labels; one absent from the file WARNS, and if
+none is present the `lof` sets keep no marker and are refused in every region
+-- LEDGER #170, 2026-09-27: the old error killed a whole chromosome of a
+filtered AoU rerun whose only region had no pLoF variant). ONE
 annotation group and ONE max MAF per run, or the pooled Cauchy row is not
 `p_FlexRV`; `--maxMAF_in_groupTest` is replaced when absent and rejected when
 different; `--condition` needs `--weights_for_condition`; M != 0.001 warns

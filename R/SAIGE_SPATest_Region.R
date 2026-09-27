@@ -1139,10 +1139,27 @@ SAIGE.Region <- function(mu,
       flexLofAnno <- parseFlexRVLofAnno(flexRV$lofAnno)
       absent <- setdiff(flexLofAnno, region_list$annoLabels)
       if (length(absent) > 0) {
-        stop("--flexRV_lofAnno label(s) ", paste(shQuote(absent), collapse = ", "),
-             " match no annotation in the group file, whose labels are ",
-             paste(shQuote(region_list$annoLabels), collapse = ", "),
-             ". The LoF mask (the 'lof' score transform) would be all zeros.\n")
+        # LEDGER #170 (2026-09-27): a warning, not an error. This is a
+        # FILE-level check, and a group file subset to a few regions (the AoU
+        # rerun wrapper writes one per chromosome) can lack the label although
+        # the same regions ran inside the whole-chromosome file; the error
+        # killed that chromosome's process while the job reported success and
+        # its regions were silently absent. A region without the label is
+        # handled already: its 'lof' sets keep no marker, have MAC 0 and are
+        # refused by --minGroupMAC_in_BurdenTest, disclosed in .pooledTests.txt.
+        present <- intersect(flexLofAnno, region_list$annoLabels)
+        warning("--flexRV_lofAnno label(s) ", paste(shQuote(absent), collapse = ", "),
+                " match no annotation in the group file, whose labels are ",
+                paste(shQuote(region_list$annoLabels), collapse = ", "), ". ",
+                if (length(present) > 0) {
+                  paste0("The 'lof' score transform keys on the label(s) present: ",
+                         paste(shQuote(present), collapse = ", "), ".")
+                } else {
+                  paste0("No named label is present, so in every region the 'lof' ",
+                         "transform's sets keep no marker (MAC 0) and are refused by ",
+                         "--minGroupMAC_in_BurdenTest, as they are in any region lacking ",
+                         "the label. If the label is misspelled, fix --flexRV_lofAnno.")
+                }, " (LEDGER #170)\n", call. = FALSE, immediate. = TRUE)
       }
     }
     if (any(flexNames %in% weightSetNames)) {

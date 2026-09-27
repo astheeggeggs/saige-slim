@@ -385,7 +385,7 @@ Three consequences that are not obvious:
   LoF marker 0.3 therefore DOWN-weights it against a missense marker scoring
   0.9 under `cbrt` and `sbeta`, silently, which is backwards from the method's
   intent. Similarly `--flexRV_lofAnno` is checked against the labels present
-  anywhere in the FILE, not per region: a region with no marker carrying a
+  anywhere in the FILE, not per region (a warning since LEDGER #170, not an error): a region with no marker carrying a
   named LoF label gets an all-zero LoF mask, and on a binary trait a weight of
   exactly 0 in a SKAT-O cell returns NA (LEDGER #117), which is part of why
   FlexRV on a binary trait is an `--r.corr=1` method.

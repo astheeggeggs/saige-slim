@@ -646,8 +646,10 @@ option_list <- list(
     default = "lof",
     help = paste0(
       "Annotation label(s) the FlexRV 'lof' score transform keys on, separated ",
-      "by ',', ':' or ';'. Matched exactly against the group file's anno line; ",
-      "each label must occur somewhere in the file. [default=lof]"
+      "by ',', ':' or ';'. Matched exactly against the group file's anno lines. ",
+      "A label absent from the file is warned about, not refused (LEDGER #170); ",
+      "if none is present the 'lof' sets keep no marker in any region and are ",
+      "refused by --minGroupMAC_in_BurdenTest. [default=lof]"
     )
   ),
   make_option(

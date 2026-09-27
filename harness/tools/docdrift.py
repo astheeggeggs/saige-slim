@@ -59,6 +59,24 @@ RULES = [
                  "flags and returns garbage with -DARMA_DONT_CHECK_CONFORMANCE",
         canary="a bounds-checked (`ARMA_NO_DEBUG`-less) build does",
     ),
+    # LEDGER #170 (fixed 2026-09-27): a --flexRV_lofAnno label absent from the
+    # group file was an ERROR and every surface said each label "must occur";
+    # it is a warning now, and a region without the label was handled all along.
+    dict(
+        id="170-lofanno-must-occur",
+        pattern=r"each (label )?must occur (somewhere )?in the (group )?file",
+        why="false since LEDGER #170: a --flexRV_lofAnno label absent from the group file "
+            "is warned about, not refused; if none is present the lof sets keep no marker "
+            "(MAC 0) and are refused per region by --minGroupMAC_in_BurdenTest, which is "
+            "what a region lacking the label always did. The error killed a whole "
+            "chromosome of a filtered AoU rerun (one region, no pLoF variant) while the "
+            "job reported success",
+        evidence="R/SAIGE_SPATest_Region.R, the `if (flexTT$usesLof)` block: warning(), "
+                 "not stop(); tests/testthat/test-step2-flexrv-guards.R #170 block runs "
+                 "the absent-label case and reconciles it with the run that never asked "
+                 "for the lof transform",
+        canary="each label must occur somewhere in the file. [default=lof]",
+    ),
     # LEDGER #136 (fixed 2026-09-13): six help/roxygen sentences that stated what
     # the code does not do, each copied across the wrapper, the roxygen and man/.
     dict(

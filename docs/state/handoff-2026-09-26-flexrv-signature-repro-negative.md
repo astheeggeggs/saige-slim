@@ -491,3 +491,42 @@ again, which the dump log shows as the same vector dumped several times
 (`.spaFallbacks.txt.gz`, ~92 bytes when header-only); `aou_spa_stagecheck.sh`
 reads both forms since `f228e86b`. Next: splice (old v4, new v6), then
 eas + afr.
+
+## LEDGER #170 (2026-09-27, night): the region the #169 rerun could not produce
+
+The splice of sas/BenIntNeo (old v4, new `flexrv_v6` on `4ff9576b`) REFUSED
+85 rows. Read against v4 they were one region's 91 rows minus its recorded
+failures and its Cauchy row: the region was absent from v6 altogether, and
+from the `8ca5d0e4` run too. `chrStatus` said `failed 5` on both while both
+jobs reported SUCCESS (the wrapper tolerates a dead chromosome). The job
+log's chromosome-5 SAIGE output ended in `--flexRV_lofAnno label(s) 'pLoF'
+match no annotation in the group file` -- the rerun wrapper writes one group
+file per chromosome SUBSET to the rerun regions, chromosome 5 had one region
+in the list, and it has no pLoF variant. In v4 the whole-chromosome file had
+pLoF elsewhere, the file-level check passed, and that region simply had no
+`lof` sets (90 of 96), which is what a region without the label always gets:
+those sets keep no marker, have MAC 0, and the min-group-MAC gate refuses
+them. The error was stricter than the code beneath it.
+
+**Fixed (LEDGER #170)**: the `stop` is a `warning` naming the absent labels,
+the labels present, and what the `lof` transform will do (key on the present
+labels, or be refused in every region). Test inverted in
+`test-step2-flexrv-guards.R` (red at unpatched HEAD, 8 assertions): the
+present-plus-absent case is byte-identical to the default run; the
+all-absent case equals the run that never asked for `lof` (keys identical, p
+within 1e-10). Doc surfaces updated (roxygen, CLI help, CLAUDE.md,
+`cli_status.Rmd`) with a docdrift rule (`170-lofanno-must-occur`, 0 hits at
+the drill commit). `aou_spa_stagecheck.sh` reads `chrStatus` and flags a
+lost chromosome. The five spliced sas traits all read `failed none`
+(checked), so nothing in `flexrv_v4_fixed` is affected.
+
+**Two facts for the rollout.** (1) On the other ancestries this WILL recur
+wherever a chromosome's rerun list holds only regions without a pLoF
+variant, so the reruns must go on the #170 image, and the stage checker's
+chromosome line is now part of the per-stage check. (2) A splice refusal
+whose unexplained rows are one whole region is this signature; read
+`chrStatus` before anything else.
+
+Next: gate, commit, image `1.5.2-dev-<commit>`, rerun sas/BenIntNeo into
+`flexrv_v6` on it (only chromosome 5 should differ from today's run), splice,
+then eas + afr.
