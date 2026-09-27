@@ -36,11 +36,10 @@ void SAIGE::spaFallbackCountReset(){ g_spaFallbackCount.store(0); }
 // on a fixture whose saddlepoints all converge (tests/testthat/
 // test-step2-spa-fallback.R reconciles the planted run against a native
 // all-ER run). Read once per process; never set it in a real run.
-// LEDGER #165: the largest MAC at which the exact test is verified (golden
-// P33; it throws on this fixture at 607). --max_MAC_for_ER is capped at this
-// value in R (checkArgs.R) and the #164 fallback does not run the exact test
-// above it: a saddlepoint failure there reports NA with the reason.
-static const double kExactTestMACCeiling = 200.0;
+// LEDGER #165: the largest MAC at which the exact test is verified is 200
+// (golden P33; it throws on this fixture at 607); --max_MAC_for_ER is capped
+// there in R (checkArgs.R). The fallback's own ceiling is the carrier constant
+// below, which is stricter.
 // LEDGER #164/#165 (2026-09-26, after the first AoU rerun): the FALLBACK runs
 // the exact test only in its enumeration regime, i.e. at most 13 carriers
 // (2^13 = 8192 <= ExactMax 1e4). Above that the kernel resamples, and its
@@ -985,6 +984,14 @@ if(!t_isER){
         case 3: why = "saddle(q) invalid"; break;
         case 4: why = "saddle(mirrored q) invalid"; break;
         default: why = "qnorm overflow or unknown"; break;
+      }
+      {
+        const SPAWorkspace & sw = ws().spa;
+        char dbuf[256];
+        snprintf(dbuf, sizeof(dbuf), " [root1=%.4g/%d root2=%.4g/%d qsaddle=%s bound=%.3g]",
+                 sw.diagRoot1, sw.diagNiter1, sw.diagRoot2, sw.diagNiter2,
+                 sw.diagQSaddle == 1 ? "valid" : (sw.diagQSaddle == 0 ? "INVALID" : "n/a"), sw.diagBound);
+        why += dbuf;
       }
       ws().spaFallbackNote = "spa: " + why;
       if(spaDumpDir() != nullptr){

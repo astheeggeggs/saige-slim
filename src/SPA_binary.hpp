@@ -49,6 +49,10 @@ struct SPAWorkspace {
         // invalid, 4 saddle(mirrored q) invalid. Set by SPA_ws/SPA_fast_ws;
         // read by getMarkerPval for the fallback sidecar.
         int failReason = 0;
+        // LEDGER #168 diagnostics for the sidecar's Note: what the composition saw
+        // when it gave up. Filled by SPA_ws/SPA_fast_ws/SPA_pval on failure.
+        double diagRoot1 = 0, diagRoot2 = 0, diagBound = -1;   // bound -1 = not computed
+        int diagNiter1 = 0, diagNiter2 = 0, diagQSaddle = -1;  // 1 valid, 0 invalid, -1 not evaluated
         SPAWorkspace() {}
         explicit SPAWorkspace(arma::uword n) { ensure(n); }
         void ensure(arma::uword n) {

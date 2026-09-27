@@ -45,6 +45,7 @@ void SPA_ws(const arma::vec & mu, const arma::vec & g, double q, double qinv, do
         getGPosNeg_Binom(g, gpos, gneg);
         SPARoot outuni1 = getroot_K1_Binom_core(0, mu, g, q, tol, gpos, gneg, ws);
         SPARoot outuni2 = getroot_K1_Binom_core(0, mu, g, qinv, tol, gpos, gneg, ws);
+        ws.diagRoot1 = outuni1.root; ws.diagNiter1 = outuni1.niter; ws.diagRoot2 = outuni2.root; ws.diagNiter2 = outuni2.niter; ws.diagBound = -1; ws.diagQSaddle = -1;
 
 /*
         double outuni1root = outuni1["root"];
@@ -71,6 +72,7 @@ void SPA_ws(const arma::vec & mu, const arma::vec & g, double q, double qinv, do
         const bool mirrorUnattainable = (!outuni2.Isconverge && outuni2.niter == 0 && std::isinf(outuni2.root));
         if(outuni1.Isconverge && mirrorUnattainable){
                 SPASaddle getSaddle1 = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp, ws);
+                ws.diagQSaddle = getSaddle1.isSaddle ? 1 : 0;
                 if(getSaddle1.isSaddle){
                         pval = logp ? getSaddle1.pval : std::abs(getSaddle1.pval);
                         isSPAConverge = true;
@@ -86,6 +88,7 @@ void SPA_ws(const arma::vec & mu, const arma::vec & g, double q, double qinv, do
         // tail, the two-sided p IS the q-side tail to that precision.
         if(outuni1.Isconverge && !outuni2.Isconverge && !mirrorUnattainable){
                 SPASaddle sq = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp, ws);
+                ws.diagQSaddle = sq.isSaddle ? 1 : 0;
                 if(sq.isSaddle){
                         const double p1 = logp ? std::exp(sq.pval) : std::abs(sq.pval);
                         double gmax = 0.0;
@@ -97,6 +100,7 @@ void SPA_ws(const arma::vec & mu, const arma::vec & g, double q, double qinv, do
                                 const double b = std::exp(Korg_Binom_ws(tt, mu, g, ws) - tt * qinv);
                                 if(std::isfinite(b) && b < bound) bound = b;
                         }
+                        ws.diagBound = bound;
                         if(bound <= 1e-3 * p1){
                                 pval = logp ? sq.pval : p1;
                                 isSPAConverge = true;
@@ -184,6 +188,7 @@ void SPA_fast_ws(const arma::vec & g, double q, double qinv, double pval_noadj, 
         SPARoot outuni1 = getroot_K1_fast_Binom_core(0, g, q, gNB, muNB,NAmu, NAsigma, tol, gpos, gneg, ws);
         //double qinv = -1*q;
         SPARoot outuni2 = getroot_K1_fast_Binom_core(0, g, qinv, gNB, muNB,NAmu, NAsigma, tol, gpos, gneg, ws);
+        ws.diagRoot1 = outuni1.root; ws.diagNiter1 = outuni1.niter; ws.diagRoot2 = outuni2.root; ws.diagNiter2 = outuni2.niter; ws.diagBound = -1; ws.diagQSaddle = -1;
 
 /*	double outuni1root = outuni1["root"];
         double outuni2root = outuni2["root"];
@@ -209,6 +214,7 @@ void SPA_fast_ws(const arma::vec & g, double q, double qinv, double pval_noadj, 
         const bool mirrorUnattainable = (!outuni2.Isconverge && outuni2.niter == 0 && std::isinf(outuni2.root));
         if(outuni1.Isconverge && mirrorUnattainable){
                 SPASaddle getSaddle1 = Get_Saddle_Prob_fast_Binom_core(outuni1.root, g, q, gNB, muNB, NAmu, NAsigma, logp, ws);
+                ws.diagQSaddle = getSaddle1.isSaddle ? 1 : 0;
                 if(getSaddle1.isSaddle){
                         pval = logp ? getSaddle1.pval : std::abs(getSaddle1.pval);
                         isSPAConverge = true;
@@ -224,6 +230,7 @@ void SPA_fast_ws(const arma::vec & g, double q, double qinv, double pval_noadj, 
         // tail, the two-sided p IS the q-side tail to that precision.
         if(outuni1.Isconverge && !outuni2.Isconverge && !mirrorUnattainable){
                 SPASaddle sq = Get_Saddle_Prob_fast_Binom_core(outuni1.root, g, q, gNB, muNB, NAmu, NAsigma, logp, ws);
+                ws.diagQSaddle = sq.isSaddle ? 1 : 0;
                 if(sq.isSaddle){
                         const double p1 = logp ? std::exp(sq.pval) : std::abs(sq.pval);
                         double gmax = 0.0;
@@ -235,6 +242,7 @@ void SPA_fast_ws(const arma::vec & g, double q, double qinv, double pval_noadj, 
                                 const double b = std::exp(Korg_fast_Binom_ws(tt, gNB, muNB, NAmu, NAsigma, ws) - tt * qinv);
                                 if(std::isfinite(b) && b < bound) bound = b;
                         }
+                        ws.diagBound = bound;
                         if(bound <= 1e-3 * p1){
                                 pval = logp ? sq.pval : p1;
                                 isSPAConverge = true;
@@ -313,6 +321,7 @@ double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv
         getGPosNeg_Binom(g, gpos, gneg);
         SPARoot outuni1 = getroot_K1_Binom_core(0, mu, g, q, tol, gpos, gneg, ws);
         SPARoot outuni2 = getroot_K1_Binom_core(0, mu, g, qinv, tol, gpos, gneg, ws);
+        ws.diagRoot1 = outuni1.root; ws.diagNiter1 = outuni1.niter; ws.diagRoot2 = outuni2.root; ws.diagNiter2 = outuni2.niter; ws.diagBound = -1; ws.diagQSaddle = -1;
 
 
         double outuni1root = outuni1.root;
@@ -340,6 +349,7 @@ double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv
         const bool mirrorUnattainable = (!outuni2.Isconverge && outuni2.niter == 0 && std::isinf(outuni2.root));
         if(outuni1.Isconverge && mirrorUnattainable){
                 SPASaddle getSaddle1 = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp, ws);
+                ws.diagQSaddle = getSaddle1.isSaddle ? 1 : 0;
                 if(getSaddle1.isSaddle){
                         pval = logp ? getSaddle1.pval : std::abs(getSaddle1.pval);
                         isSPAConverge = true;
@@ -355,6 +365,7 @@ double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv
         // tail, the two-sided p IS the q-side tail to that precision.
         if(outuni1.Isconverge && !outuni2.Isconverge && !mirrorUnattainable){
                 SPASaddle sq = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp, ws);
+                ws.diagQSaddle = sq.isSaddle ? 1 : 0;
                 if(sq.isSaddle){
                         const double p1 = logp ? std::exp(sq.pval) : std::abs(sq.pval);
                         double gmax = 0.0;
@@ -366,6 +377,7 @@ double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv
                                 const double b = std::exp(Korg_Binom_ws(tt, mu, g, ws) - tt * qinv);
                                 if(std::isfinite(b) && b < bound) bound = b;
                         }
+                        ws.diagBound = bound;
                         if(bound <= 1e-3 * p1){
                                 pval = logp ? sq.pval : p1;
                                 isSPAConverge = true;

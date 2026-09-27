@@ -372,3 +372,54 @@ column says why any remaining saddlepoint failed), splice, then the other
 ancestries from their scans. Wrapper: consider delivering
 `.spaFallbacks.txt` (a `--output OUT_FILE_SPAFALLBACKS` next to the other
 sidecars) so the reasons are readable without a diagnostic job.
+
+## STATE FOR THE NEXT SESSION (written 2026-09-27 ~17:15, before a context clear)
+
+**Where the code is.** Committed on `strip`: #163-#168 (last: `8ca5d0e4`
+clause (b) + the dump hook; `08641f7f` the dump-check script). Working tree:
+`src/SPA_binary.hpp`, `src/SPA.cpp`, `src/SAIGE_test.cpp` -- the sidecar Note
+now also carries `[root1=<t>/<niter> root2=<t>/<niter> qsaddle=valid|INVALID|n/a
+bound=<chernoff>]`, and the unused `kExactTestMACCeiling` constant is gone
+(the ratchet caught it). Built, `test-unit-spa.R` 88 and `test-unit-er.R`
+471 pass; the full gate on it was launched at 17:11 (`scratchpad/gate_diag.log`
+of the session that wrote this) -- it PASSED (6573, both modes, 10m08s) and
+the change is committed with this section. `docs/state/next.md`
+has another session's uncommitted edits; leave them.
+
+**Images on gcr.io/weighty-elf-452116-c7/saige-slim**: `1.5.2-dev-adfe6266`
+(#163-#165), `-7767bfee` (+#166/#167), `-a6213623` (+#168 a), `-8ca5d0e4`
+(+#168 b, dump hook) -- the current production one. The Note diagnostics
+above are NOT in any image yet.
+
+**AoU state (SAS, the pilot ancestry).** Scans done for all five ancestries
+(SKAT-O arms clean everywhere; FlexRV arms: every binary trait fails, 30-150
+regions each). SAS: Asth/EFRMB/HTN/PAD/T2Diab rerun on `a6213623` with ZERO
+fallbacks, spliced into `sas/flexrv_v4_fixed/` (splice controls green).
+BenIntNeo rerun on `8ca5d0e4`: STILL 24 fallbacks, all `root(mirrored q) not
+found` BY THE FINDER, 20 above 13 carriers -> NA -> 102 rows omitted (twins
+of NA primaries go unrecorded); NOT spliced. A dump run
+(`fxv5-sas-benintneo-dump`, `SPA_DUMP=1`, output under `sas/diag/`) was
+launched ~17:00 to capture those 24 vectors; the analysis job is
+`harness/tools/aou_spa_dumpcheck.sh` (recipe section 5) on the SAIGE image;
+its log's four lines per dump say whether root(q) converges, whether its
+saddle is `isSaddle=TRUE`, whether the mirror is attainable, where K1-qinv
+changes sign vs the bracket cap 2^20/max|g|, and the Chernoff minimum. On
+every synthetic vector at realistic N the mirrored root is within the
+bracket (~-6e4 at N = 8,000, scaling with N), so the real cells have a
+property the constructions lack; the two candidates the numbers will
+separate are "q-side saddle invalid at its root" and "bound not small".
+Whatever it is: fix, gate, image, rerun BenIntNeo, splice; then the other
+four ancestries follow the recipe (scan summaries already delivered under
+`spa_scan/<anc>/flexrv_v4/<stamp>/`; afr/BenIntNeo's three 1e-174 genes are
+the positive control and should land near 1e-3).
+
+**Notebook cells that must exist** (a fresh kernel loses them): env
+(`GOOGLE_CLOUD_PROJECT`, `PET_SA_EMAIL`, `WORKSPACE_BUCKET`, `BUCKET`, `GRM`,
+`STEP1`, `REG`, `RUNS`), the helpers cell (`submit` with the
+`OUT_FILE_SPAFALLBACKS` and `OUT_FILE_SPADUMP` outputs), `load_runs()`, the
+rerun cell (`IMG5`, `STAMP=20260926-170535` for sas, `regions_for`,
+`submit_rerun`), `submit_splice`, and on disk the patched wrapper
+(`grep -ci "spafallbacks\|REGIONS\|spadump"` >= 9), `aou_spa_splice.sh`,
+`aou_spa_dumpcheck.sh`. Job names are dsub job names; `job_id` in RUNS is
+always None (the parse never worked) -- status by `dstat --age`, ids by
+`dstat --full --format json` for `ddel`.
