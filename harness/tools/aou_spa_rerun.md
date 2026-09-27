@@ -168,8 +168,57 @@ vectors lack.
 LEDGER #169):** `root(q)` converged in every dump, the mirror was unattainable
 (0 iterations), and `Korg(root1)` was Inf with `K2(root1)` finite -- the CGF's
 `exp(g t)` overflows past ~709 while K1/K2 are written in `exp(-g t)`. Fixed
-in the kernels (image `1.5.2-dev-<commit of #169>` and later). The line to
+in the kernels (commit `4ff9576b`, image `1.5.2-dev-4ff9576b` and later). The line to
 read in this log is the `q-side saddle:` one: `isSaddle=FALSE` with
 `Korg(root1)=Inf` is #169; `root(qinv)` with `niter=0` is the #168 (a) rule,
 not the finder. The sidecar's Note on that image and later carries
 `qsaddle=INVALID` directly.
+
+## 6. Rolling the fix across the ancestries (2026-09-27, image `1.5.2-dev-4ff9576b`)
+
+Order decided by the owner: **sas/BenIntNeo first** (the one trait still
+unspliced, and the proof the #169 image lands: 24 fallbacks on `8ca5d0e4`,
+expected 0), then **eas and afr** together, then **amr**, then **eur**. Only
+the FlexRV arm of the BINARY traits reruns (a quantitative trait has no
+saddlepoint; the SKAT-O arms scanned clean everywhere); each job is filtered
+to its scan's regions (`regions_for`), so eur's size is the number of failing
+regions, not the cohort. amr: copy v4's flags exactly, which for amr means no
+`--sparseGRMFile` (its GRM is not sparse; the step-2 solve does not finish).
+eur: any job expected past ~45 min goes on demand, not Spot (preemption is
+correlated by zone).
+
+```python
+IMG6 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-4ff9576b"
+for anc in ["sas"]:                      # then ["eas", "afr"], then ["amr"], then ["eur"]
+    for pre, pheno in binary_traits(anc):        # the v4 job prefixes with a non-empty regions list
+        submit_rerun(anc, pheno, pre, STAMP[anc], IMG6)
+```
+
+**Per-stage check, before the next ancestry is launched.** "Every
+saddlepoint converged, or is NA for a stated reason" is read off the
+delivered `<pre>.spaFallbacks.txt` sidecars, which are the COMPLETE record: a
+region-path cell whose p is NA is not written to the results file at all
+(LEDGER #164; the splice's `ROWS` line makes the missing rows visible), so
+the results file cannot show it and the sidecar is where every failure is
+named. Copy the stage's sidecars to a local directory and run
+
+```sh
+bash harness/tools/aou_spa_stagecheck.sh <dir>      # one line per trait, one verdict
+```
+
+which prints per trait `fallbacks F (exact p E, NA X)` with the histogram of
+`spa: <reason>` from the Note column, lists every NA row's Note, and ends in
+`STAGE OK` (no NA) or `STAGE: N NA cell(s) -- read their Notes` (exit 1). On
+this image the expectation is zero fallbacks per trait, and a fallback that
+ran the exact test is a valid p (it is counted, not flagged). An NA is
+acceptable only when its Note says why (`carriers, above the fallback's
+exact-test ceiling` after a reason other than #169's `saddle(q) invalid`
+with `qsaddle=INVALID`); a `qsaddle=INVALID` on this image is a new
+mechanism and stops the rollout. Then splice (section 3; every `changed
+row(s), all explained` line green, no `WARNING ... came back identical`),
+and only then launch the next ancestry.
+
+**Positive control (afr/BenIntNeo).** The genes the scan reported at
+p ~1e-174 were the #163/#164 normal-p artefact; on this image they should
+come back at ~1e-3 (the dominant carrier's fitted probability times the
+rest's tail). If they come back at 1e-100 or NA, stop.

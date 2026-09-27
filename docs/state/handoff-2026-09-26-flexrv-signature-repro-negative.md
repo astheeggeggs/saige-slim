@@ -468,7 +468,13 @@ at unpatched HEAD (9 assertions), controls green. Gate: see the commit.
 
 **What the BenIntNeo cells will now report.** A p of order mu of the
 dominant carrier times the rest's tail: 1e-3 to 1e-4, not NA and not
-1e-100. Image: `1.5.2-dev-<this commit>`; rerun BenIntNeo on it (regions
+1e-100. Commit `4ff9576b`, image `1.5.2-dev-4ff9576b`; rerun BenIntNeo on it (regions
 list unchanged), expect `SPA fallbacks: 0`, splice, then the other four
 ancestries per `harness/tools/aou_spa_rerun.md`. The dump-name collision
 (pid in the file name) ships in the same commit.
+
+**Image pushed** (same evening): `gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-4ff9576b`,
+digest `sha256:9a44f52a...`, built by `make docker` from `4ff9576b`. Rollout
+order and the per-stage convergence check are `harness/tools/aou_spa_rerun.md`
+section 6 (owner's order: sas/BenIntNeo, then eas + afr, then amr, then eur;
+`aou_spa_stagecheck.sh` over each stage's sidecars before the next launch).
