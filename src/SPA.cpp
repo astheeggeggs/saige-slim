@@ -148,7 +148,10 @@ void SPA_ws(const arma::vec & mu, const arma::vec & g, double q, double qinv, do
         }else {
                         //std::cout << "Error_Converge" << std::endl;
                         pval = pval_noadj;
-                        Isconverge=false; ws.failReason = outuni1.Isconverge ? 2 : 1;
+                        // LEDGER #169: a q-side saddle refused in the #168 branches above is
+                        // a saddle failure, not a missing mirrored root -- the label that hid
+                        // the CGF overflow on the BenIntNeo cells
+                        Isconverge=false; ws.failReason = !outuni1.Isconverge ? 1 : (ws.diagQSaddle == 0 ? 3 : 2);
                 }
         isSPAConverge = Isconverge;
 	//std::cout << "pval " << pval << std::endl;
@@ -287,7 +290,10 @@ void SPA_fast_ws(const arma::vec & g, double q, double qinv, double pval_noadj, 
         }else {
                         //std::cout << "Error_Converge" << std::endl;
                         pval = pval_noadj;
-                        Isconverge=false; ws.failReason = outuni1.Isconverge ? 2 : 1;
+                        // LEDGER #169: a q-side saddle refused in the #168 branches above is
+                        // a saddle failure, not a missing mirrored root -- the label that hid
+                        // the CGF overflow on the BenIntNeo cells
+                        Isconverge=false; ws.failReason = !outuni1.Isconverge ? 1 : (ws.diagQSaddle == 0 ? 3 : 2);
         }
 	isSPAConverge = Isconverge;
         //result["pvalue"] = pval;

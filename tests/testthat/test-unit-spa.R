@@ -316,3 +316,91 @@ test_that("#168 (b) FIXED: a mirrored root beyond the finder is bounded away, no
   exact <- 1 - prod(1 - mu[1:2])
   expect_gt(p, exact / 20); expect_lt(p, exact * 20)
 })
+
+# LEDGER #169 (2026-09-27, from the 20 BenIntNeo saddlepoint dumps analysed
+# where the data lives): the q-side root converges, the mirror is
+# unattainable (#168 (a)), and the saddle at that root is refused because
+# K(t) = sum log(1 - mu + mu e^{g t}) overflows to Inf, while K1 and K2 --
+# written in e^{-g t} -- stay finite, so the Newton finder is happy where the
+# CGF cannot be evaluated. The root sits there whenever the cell's positive
+# mass is dominated by carriers with tiny fitted probabilities and the
+# observed S is within a hair of gpos: root * max|g| is of order 1/mu of the
+# dominant carrier (the dumps: 730 to 6,000; exp overflows at ~709). The
+# fallback was labelled "root(mirrored q) not found" by the final else, which
+# is what hid it. The fix rewrites the overflowing terms as
+# x + log((1 - mu) e^{-x} + mu), ONLY when the plain sum is non-finite.
+# Reference: exact enumeration of every configuration of a 20-sample vector.
+spa_boundary_case <- function(mu1, ncase_rest) {
+  n <- 20
+  mu <- c(mu1, seq(0.05, 0.15, length.out = n - 1)); W <- mu * (1 - mu)
+  g <- c(1, seq(5e-4, 1.5e-3, length.out = n - 1))
+  g[-1] <- g[-1] - 1.2 * sum(W * g) / sum(W[-1])       # over-centred: the rest is negative
+  y <- rep(0, n); y[1] <- 1                             # the dominant carrier is a case
+  if (ncase_rest > 0) y[n - seq_len(ncase_rest) + 1] <- 1
+  q <- sum(g * y); m1 <- sum(mu * g)
+  sums <- 0; pr <- 1
+  for (i in seq_len(n)) { sums <- c(sums, sums + g[i]); pr <- c(pr * (1 - mu[i]), pr * mu[i]) }
+  list(mu = mu, g = g, q = q, m1 = m1, qinv = 2 * m1 - q, gneg = sum(g[g < 0]),
+       exact_up = sum(pr[sums >= q - 1e-12]), exact_low = sum(pr[sums <= 2 * m1 - q + 1e-12]))
+}
+
+test_that("#169 FIXED: the CGF is finite at a root past exp's range and the saddle is taken", {
+  d <- spa_boundary_case(1e-3, 1)
+  tol <- .Machine$double.eps^0.25
+  expect_lt(d$qinv, d$gneg); expect_equal(d$exact_low, 0)       # #168 (a) shape: no lower tail
+  r1 <- getroot_K1_Binom(0, d$mu, d$g, d$q, tol, 1000L)
+  expect_true(r1$Isconverge)
+  expect_gt(r1$root * max(abs(d$g)), 709)                        # past exp's range
+  expect_true(is.infinite(sum(log(1 - d$mu + d$mu * exp(d$g * r1$root)))))   # the plain sum overflows
+  K <- Korg_Binom(r1$root, d$mu, d$g)
+  expect_true(is.finite(K))                                      # the kernel no longer does
+  x <- d$g * r1$root; m <- pmax(x, 0)
+  expect_equal(K, sum(m + log((1 - d$mu) * exp(-m) + d$mu * exp(x - m))), tolerance = 1e-12)
+  expect_true(Get_Saddle_Prob_Binom(r1$root, d$mu, d$g, d$q, FALSE)$isSaddle)
+  p_na <- 1e-100; conv <- FALSE
+  p <- SPA_pval(d$mu, d$g, d$q, d$qinv, p_na, tol, FALSE, "binary", conv)
+  expect_false(isTRUE(all.equal(p, p_na)))                       # not a fallback
+  # measured: 2.16e-4 against an exact 1.57e-4 (1.37x); the same shape one notch
+  # inside exp's range is 1.4-1.8x on the same side, so this is the saddlepoint's
+  # own accuracy at the boundary of the support, not something the fix moved
+  expect_gt(p, d$exact_up / 2); expect_lt(p, d$exact_up * 2)
+})
+
+test_that("#169: the fast kernel's CGF is finite at the same root", {
+  d <- spa_boundary_case(1e-3, 1)
+  tol <- .Machine$double.eps^0.25
+  # the dominant carrier is the only raw-nonzero sample; the rest folds to a normal
+  NAmu <- sum(d$mu[-1] * d$g[-1]); NAsigma <- sum(d$mu[-1] * (1 - d$mu[-1]) * d$g[-1]^2)
+  rf <- getroot_K1_fast_Binom(0, d$mu, d$g, d$q, d$g[-1], d$g[1], d$mu[-1], d$mu[1], NAmu, NAsigma, tol, 1000L)
+  expect_true(rf$Isconverge); expect_gt(rf$root * max(abs(d$g)), 709)
+  Kf <- Korg_fast_Binom(rf$root, d$mu, d$g, d$g[-1], d$g[1], d$mu[-1], d$mu[1], NAmu, NAsigma)
+  expect_true(is.finite(Kf))
+  expect_equal(Kf, rf$root + log((1 - d$mu[1]) * exp(-rf$root) + d$mu[1]) + NAmu * rf$root + 0.5 * NAsigma * rf$root^2,
+               tolerance = 1e-12)
+  s <- Get_Saddle_Prob_fast_Binom(rf$root, d$mu, d$g, d$q, d$g[-1], d$g[1], d$mu[-1], d$mu[1], NAmu, NAsigma, FALSE)
+  expect_true(s$isSaddle)
+  expect_gt(abs(s$pval), d$exact_up / 3); expect_lt(abs(s$pval), d$exact_up * 3)
+})
+
+test_that("#169 control: inside exp's range the CGF is the plain sum and the composed p is unchanged", {
+  d <- spa_boundary_case(1e-3, 2)                                 # same shape, root ~530
+  tol <- .Machine$double.eps^0.25
+  r1 <- getroot_K1_Binom(0, d$mu, d$g, d$q, tol, 1000L)
+  expect_true(r1$Isconverge); expect_lt(r1$root * max(abs(d$g)), 709)
+  plain <- sum(log(1 - d$mu + d$mu * exp(d$g * r1$root)))
+  expect_true(is.finite(plain))
+  expect_equal(Korg_Binom(r1$root, d$mu, d$g), plain, tolerance = 1e-12)
+  conv <- FALSE
+  p <- SPA_pval(d$mu, d$g, d$q, d$qinv, 1e-100, tol, FALSE, "binary", conv)
+  expect_gt(p, d$exact_up / 2); expect_lt(p, d$exact_up * 2)      # measured 1.77x, as before the fix
+})
+
+test_that("#169: S at its maximum (every carrier a case) is still the exact test's, not a saddle", {
+  d <- spa_boundary_case(1e-3, 0)                                 # q == gpos: no root
+  tol <- .Machine$double.eps^0.25
+  r1 <- getroot_K1_Binom(0, d$mu, d$g, d$q, tol, 1000L)
+  expect_false(r1$Isconverge); expect_equal(r1$niter, 0L)
+  conv <- TRUE
+  p <- SPA_pval(d$mu, d$g, d$q, d$qinv, 1e-100, tol, FALSE, "binary", conv)
+  expect_equal(p, 1e-100)
+})

@@ -19,7 +19,8 @@
 #include <mutex>
 #include <fstream>
 #include <cmath>
-#include <cstdlib>        // getenv: the SAIGE_SPA_PLANT_FAIL test plant (LEDGER #164)
+#include <cstdlib>
+#include <unistd.h>       // getpid, for the dump file names        // getenv: the SAIGE_SPA_PLANT_FAIL test plant (LEDGER #164)
 #include <chrono>         // std::chrono::seconds
 #include <boost/iostreams/filter/zstd.hpp>
 #include <boost/date_time.hpp>
@@ -73,7 +74,10 @@ static std::string spaDumpVector(const arma::vec & t_gtilde, const arma::vec & t
   const char* dir = spaDumpDir();
   if(dir == nullptr) return "";
   const unsigned long k = g_spaDumpCounter.fetch_add(1);
-  const std::string path = std::string(dir) + "/spaFail_" + std::to_string(k) + ".tsv";
+  // one SAIGE process per chromosome may share the directory (the AoU wrapper
+  // does), so the name carries the pid: without it later processes overwrote
+  // earlier ones' same-numbered dumps (24 fallbacks, 20 files, 2026-09-27)
+  const std::string path = std::string(dir) + "/spaFail_" + std::to_string((long)getpid()) + "_" + std::to_string(k) + ".tsv";
   std::ofstream os(path);
   if(!os) return "";
   double gpos = 0.0, gneg = 0.0;

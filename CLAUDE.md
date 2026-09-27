@@ -730,6 +730,14 @@ declarations sit at the top of `src/Main.cpp`.
   unattainable -- a tail of probability 0, not a failure (LEDGER #168).
   Centring without the weights hides that and made the #163 rescue look
   complete when it converged almost nothing on real data.
+  **The CGF itself is overflow-safe at a large root (LEDGER #169, 2026-09-27)**:
+  `exp(g t)` in `Korg_*` overflowed past `g t` ~709 while K1/K2, written in
+  `exp(-g t)`, stayed finite, so the finder converged where K was Inf and the
+  saddle was refused -- the 20 BenIntNeo dumps, every one. The root is that
+  large when the positive mass is dominated by carriers with tiny fitted
+  probabilities and S is within a hair of gpos (`root * max|g|` ~ 1/mu of the
+  dominant carrier). A refused q-side saddle is now labelled `saddle(q)
+  invalid`, not `root(mirrored q) not found`.
 - **A SKAT kernel failure is counted, not hidden** (LEDGER #57): the cell's
   rows stay NA, the run prints `SKAT failures: N ...` before `Analysis done!`,
   and `<SAIGEOutputFile>.skatFailures.txt` names each failed cell with the

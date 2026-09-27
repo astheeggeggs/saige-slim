@@ -432,3 +432,43 @@ but NOT gated and NOT committed -- run `bash harness/prepush.sh` and commit it
 with the next source change. The 20 vectors are enough: the analysis job
 (`spadumpcheck-sas-benintneo`, `harness/tools/aou_spa_dumpcheck.sh` on
 `1.5.2-dev-8ca5d0e4`) is the next step and its log is what to read first.
+
+## LEDGER #169 (2026-09-27, evening): the dumps said "q-side saddle invalid", and why
+
+The `spadumpcheck-sas-benintneo` log answered the question the addendum left:
+in every one of the 20 dumps `root(q)` converged (2.9e3..2.5e5, 5-9
+iterations, `K1 - q` ~1e-15), the mirror was UNATTAINABLE (`root(qinv)` Inf,
+0 iterations -- the #168 (a) rule, not the finder), the q-side saddle was
+`isSaddle=FALSE` with `Korg(root1)=Inf` and a finite `K2(root1)` (2.6e-11..
+7.9e-8), and the Chernoff bound on the mirror was 0. So: **q-side saddle
+invalid at its root**, and the bound is not the problem. The sidecar's
+`root(mirrored q) not found` was the final else's label (reason 2 chosen on
+`outuni1.Isconverge` alone) after the (a) branch had run and been refused.
+
+**Mechanism.** `Korg_*_ws` sums `log(1 - mu + mu e^{g t})` as written and
+`exp` overflows past `g t` ~709; K1 and K2 are written in `e^{-g t}` and stay
+finite, so Newton is happy where K is Inf. The root is that large when the
+cell's positive mass is dominated by carriers with tiny fitted probabilities
+and S is within a hair of gpos: in the single-dominant-carrier model of a
+covariate-adjusted vector, the rest contributes its expectation plus a
+leverage term, and `root * max|g| = (Delta/sd) * max|g| / sd(rest)`, roughly
+1/mu of the dominant carrier -- 730 to 6,000 on the dumps. My synthetic
+vectors had dominant carriers at mu 1e-2 and up, so `root * max|g|` was ~10.
+
+**Fix (LEDGER #169, one commit).** When the plain sum is non-finite, K is
+recomputed term by term as `x + log((1 - mu) e^{-x} + mu)` for `x > 0`, in
+both kernels; the finite path is untouched (bit-identical). The final else
+labels a refused q-side saddle reason 3. Test: 20-sample vector, dominant
+carrier at mu 1e-3, exact enumeration over 2^20 configurations as the
+reference; the fixed p is 2.16e-4 against exact 1.57e-4, and the same shape
+one notch inside exp's range is 1.77x -- r* is 1.3-1.8x conservative on this
+boundary shape on BOTH sides of the overflow, so the fix changes
+evaluability, not the approximation (recorded on the row, not changed). Red
+at unpatched HEAD (9 assertions), controls green. Gate: see the commit.
+
+**What the BenIntNeo cells will now report.** A p of order mu of the
+dominant carrier times the rest's tail: 1e-3 to 1e-4, not NA and not
+1e-100. Image: `1.5.2-dev-<this commit>`; rerun BenIntNeo on it (regions
+list unchanged), expect `SPA fallbacks: 0`, splice, then the other four
+ancestries per `harness/tools/aou_spa_rerun.md`. The dump-name collision
+(pid in the file name) ships in the same commit.

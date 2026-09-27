@@ -20,6 +20,26 @@
 
 
 
+// LEDGER #169 (2026-09-27): log(1 - mu + mu e^{x}) overflows to Inf once
+// x = g t passes ~709, while K1 and K2 are written in e^{-x} and stay finite,
+// so the Newton finder converges at a root where the CGF cannot be evaluated
+// and the saddle is refused. The root sits there whenever the cell's positive
+// mass is dominated by carriers with tiny fitted probabilities and S is within
+// a hair of gpos: root * max|g| is of order 1/mu of the dominant carrier (the
+// 20 BenIntNeo dumps: 730 to 6,000). For x > 0 the same term is
+// x + log((1 - mu) e^{-x} + mu), finite for any x. Used ONLY when the plain sum
+// is non-finite, so every evaluation that was finite is bit-identical to before.
+static double Korg_Binom_stable(double t1, const arma::vec & mu, const arma::vec & g)
+{
+	double out = 0.0;
+	for(arma::uword i = 0; i < mu.n_elem; i++){
+		const double x = g(i) * t1;
+		if(x > 0.0){ out += x + std::log((1.0 - mu(i)) * std::exp(-x) + mu(i)); }
+		else       { out += std::log(1.0 - mu(i) + mu(i) * std::exp(x)); }
+	}
+	return out;
+}
+
 // [[Rcpp::export]]
 double Korg_Binom(double t1, const arma::vec & mu, const arma::vec & g)
 {
@@ -34,6 +54,7 @@ double Korg_Binom_ws(double t1, const arma::vec & mu, const arma::vec & g, SPAWo
 	arma::vec temp(ws.a.memptr(), n, false, true);
 	temp = arma::log(1 - mu + mu % arma::exp(g * t1));
         double out = arma::sum(temp);
+	if(!std::isfinite(out)) out = Korg_Binom_stable(t1, mu, g);   // LEDGER #169
 	return(out);
 }
 
@@ -411,6 +432,7 @@ double Korg_fast_Binom_ws(double t1, const arma::vec & gNB, const arma::vec & mu
 	arma::vec temp(ws.a.memptr(), m, false, true);
 	temp = arma::log(1 - muNB + muNB % (arma::exp(gNB * t1)));
         double out = arma::sum(temp) + NAmu*t1+ 0.5*NAsigma*pow(t1,2);
+	if(!std::isfinite(out)) out = Korg_Binom_stable(t1, muNB, gNB) + NAmu*t1+ 0.5*NAsigma*pow(t1,2);   // LEDGER #169
 	return(out);
 }
 

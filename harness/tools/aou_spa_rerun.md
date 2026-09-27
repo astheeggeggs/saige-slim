@@ -163,3 +163,13 @@ What to look for: where K1 - qinv changes sign (the root's location against
 the bracket cap 2^20 / max|g|), whether K2 underflows to 0 before it, and
 whether any entry makes K1 non-finite. That names the property my synthetic
 vectors lack.
+
+**What it found (2026-09-27, `aou_spa_dumpcheck.sh` on the 20 BenIntNeo dumps,
+LEDGER #169):** `root(q)` converged in every dump, the mirror was unattainable
+(0 iterations), and `Korg(root1)` was Inf with `K2(root1)` finite -- the CGF's
+`exp(g t)` overflows past ~709 while K1/K2 are written in `exp(-g t)`. Fixed
+in the kernels (image `1.5.2-dev-<commit of #169>` and later). The line to
+read in this log is the `q-side saddle:` one: `isSaddle=FALSE` with
+`Korg(root1)=Inf` is #169; `root(qinv)` with `niter=0` is the #168 (a) rule,
+not the finder. The sidecar's Note on that image and later carries
+`qsaddle=INVALID` directly.
