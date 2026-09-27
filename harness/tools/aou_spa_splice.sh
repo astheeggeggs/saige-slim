@@ -81,7 +81,11 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
   # it had. Print every region whose count changed, so the drop is visible.
   for r in $(cat regions.txt); do
     no=$(awk -F'\t' -v R="$r" 'FNR>1 && ('"${rule}"')==R' old.tsv | wc -l); nn=$(awk -F'\t' -v R="$r" 'FNR>1 && ('"${rule}"')==R' new.tsv | wc -l)
-    [[ ${no} -eq ${nn} ]] || echo "ROWS ${sfx}: ${r} old ${no} new ${nn} (NA rows are not written on the region path)"
+    if [[ ${no} -ne ${nn} ]]; then
+      if [[ ${sfx} == ".pooledTests.txt.gz" ]]; then why="a region with nothing to disclose -- plain Cauchy, no refused cell -- writes no pooled row (LEDGER #127)"
+      else why="NA rows are not written on the region path; a WHOLE region missing is a lost chromosome, read chrStatus (LEDGER #170)"; fi
+      echo "ROWS ${sfx}: ${r} old ${no} new ${nn} (${why})"
+    fi
   done
   # the splice: old rows not in the list, then new rows, in old-file order of first appearance
   { head -1 old.tsv
