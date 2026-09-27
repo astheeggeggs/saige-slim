@@ -478,3 +478,16 @@ digest `sha256:9a44f52a...`, built by `make docker` from `4ff9576b`. Rollout
 order and the per-stage convergence check are `harness/tools/aou_spa_rerun.md`
 section 6 (owner's order: sas/BenIntNeo, then eas + afr, then amr, then eur;
 `aou_spa_stagecheck.sh` over each stage's sidecars before the next launch).
+
+**sas/BenIntNeo rerun on `4ff9576b` (same evening, `sas/flexrv_v6/`): SUCCESS,
+sidecar header-only (0 fallbacks against 24 on `8ca5d0e4`), dump tarball
+empty, and the results file equals the v4 file ROW FOR ROW in every rerun
+region** -- the `8ca5d0e4` shortfall was confined to a single region and is
+fully recovered. So the "102 rows missing for 20 NA cells" written above and
+in LEDGER #168 was wrong (corrected on the row): the sidecar counts TESTS,
+and the fastTest escalation pass re-tests a region and records its fallback
+again, which the dump log shows as the same vector dumped several times
+(identical q, N, root). The wrapper delivers the sidecars gzipped
+(`.spaFallbacks.txt.gz`, ~92 bytes when header-only); `aou_spa_stagecheck.sh`
+reads both forms since `f228e86b`. Next: splice (old v4, new v6), then
+eas + afr.
