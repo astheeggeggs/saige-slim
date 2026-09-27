@@ -174,7 +174,13 @@ read in this log is the `q-side saddle:` one: `isSaddle=FALSE` with
 not the finder. The sidecar's Note on that image and later carries
 `qsaddle=INVALID` directly.
 
-## 6. Rolling the fix across the ancestries (2026-09-27, image `1.5.2-dev-4ff9576b`)
+## 6. Rolling the fix across the ancestries (2026-09-27, image `1.5.2-dev-3e92d89d`)
+
+**Use `1.5.2-dev-3e92d89d` or later, not `4ff9576b`**: on `4ff9576b` a chromosome whose rerun
+list holds only regions without a pLoF variant dies on the `--flexRV_lofAnno`
+file-level check (LEDGER #170) while the job reports SUCCESS -- sas/BenIntNeo
+lost chromosome 5 that way on both `8ca5d0e4` and `4ff9576b`. The stage
+checker reads `chrStatus` and flags it.
 
 Order decided by the owner: **sas/BenIntNeo first** (the one trait still
 unspliced, and the proof the #169 image lands: 24 fallbacks on `8ca5d0e4`,
@@ -188,10 +194,10 @@ eur: any job expected past ~45 min goes on demand, not Spot (preemption is
 correlated by zone).
 
 ```python
-IMG6 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-4ff9576b"
+IMG7 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-3e92d89d"
 for anc in ["sas"]:                      # then ["eas", "afr"], then ["amr"], then ["eur"]
     for pre, pheno in binary_traits(anc):        # the v4 job prefixes with a non-empty regions list
-        submit_rerun(anc, pheno, pre, STAMP[anc], IMG6)
+        submit_rerun(anc, pheno, pre, STAMP[anc], IMG7)
 ```
 
 **Per-stage check, before the next ancestry is launched.** "Every
@@ -214,7 +220,9 @@ ran the exact test is a valid p (it is counted, not flagged). An NA is
 acceptable only when its Note says why (`carriers, above the fallback's
 exact-test ceiling` after a reason other than #169's `saddle(q) invalid`
 with `qsaddle=INVALID`); a `qsaddle=INVALID` on this image is a new
-mechanism and stops the rollout. Then splice (section 3; every `changed
+mechanism and stops the rollout. A `CHROMOSOME FAILED` line is a lost
+chromosome: its regions are absent from the results and the trait is not
+spliceable until rerun; the job log's SAIGE output for that chromosome says why. Then splice (section 3; every `changed
 row(s), all explained` line green, no `WARNING ... came back identical`),
 and only then launch the next ancestry.
 

@@ -527,6 +527,6 @@ chromosome line is now part of the per-stage check. (2) A splice refusal
 whose unexplained rows are one whole region is this signature; read
 `chrStatus` before anything else.
 
-Next: gate, commit, image `1.5.2-dev-<commit>`, rerun sas/BenIntNeo into
-`flexrv_v6` on it (only chromosome 5 should differ from today's run), splice,
+Gate 6611 pass both modes, zero goldens moved; commit `3e92d89d`; image
+`1.5.2-dev-3e92d89d`. Next: rerun sas/BenIntNeo into `flexrv_v6` on it (only chromosome 5 should differ from today's run), splice,
 then eas + afr.
