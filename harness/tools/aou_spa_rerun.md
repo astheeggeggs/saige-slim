@@ -196,7 +196,7 @@ for anc in ["sas"]:                      # then ["eas", "afr"], then ["amr"], th
 
 **Per-stage check, before the next ancestry is launched.** "Every
 saddlepoint converged, or is NA for a stated reason" is read off the
-delivered `<pre>.spaFallbacks.txt` sidecars, which are the COMPLETE record: a
+delivered `<pre>.spaFallbacks.txt.gz` sidecars (the wrapper gzips them; a 0-fallback run delivers a header-only placeholder of ~92 bytes, and the checker reads `.txt` or `.txt.gz`), which are the COMPLETE record: a
 region-path cell whose p is NA is not written to the results file at all
 (LEDGER #164; the splice's `ROWS` line makes the missing rows visible), so
 the results file cannot show it and the sidecar is where every failure is

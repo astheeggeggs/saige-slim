@@ -12,11 +12,14 @@
 set -euo pipefail
 dir="${1:?usage: aou_spa_stagecheck.sh <dir-with-sidecars>}"
 shopt -s nullglob
-files=("${dir}"/*.spaFallbacks.txt)
-if (( ${#files[@]} == 0 )); then echo "no *.spaFallbacks.txt under ${dir}" >&2; exit 2; fi
+# the AoU wrapper delivers the sidecars gzipped; both forms are read
+files=("${dir}"/*.spaFallbacks.txt "${dir}"/*.spaFallbacks.txt.gz)
+if (( ${#files[@]} == 0 )); then echo "no *.spaFallbacks.txt[.gz] under ${dir}" >&2; exit 2; fi
+work=$(mktemp -d); trap 'rm -rf "${work}"' EXIT
 total=0; total_na=0; na_notes=()
-for f in "${files[@]}"; do
-  base=$(basename "${f}" .spaFallbacks.txt)
+for src in "${files[@]}"; do
+  base=$(basename "${src}"); base=${base%.gz}; base=${base%.spaFallbacks.txt}
+  if [[ ${src} == *.gz ]]; then f="${work}/${base}.spaFallbacks.txt"; gzip -dc "${src}" > "${f}"; else f="${src}"; fi
   # a placeholder (empty table: header only, or not this sidecar's header) is zero fallbacks
   if [[ $(wc -l < "${f}") -lt 2 ]] || ! head -1 "${f}" | grep -q "p_exact_reported"; then
     echo "${base}: fallbacks 0"; continue
