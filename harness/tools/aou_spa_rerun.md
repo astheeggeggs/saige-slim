@@ -98,6 +98,19 @@ pseudo-marker row itself changed) is made in the singleAssoc. A `ROWS
 .pooledTests` line is expected wherever the v4 artefact had fired the CCT
 fallback rule: a plain Cauchy discloses nothing and writes no pooled row.
 
+**A burden cell with rare, non-collapsed markers is a test the scan could not
+observe** (eas/T2Diab, same evening): its vector is w*(real markers) +
+pseudo-marker, its saddlepoint can fail while every component's own single
+test converged, and v4 recorded nothing (pre-#164 the normal p was reported
+silently). Seen as a MAC-47 `sbeta20` cell at 1.6e-7 in v4 and 0.068 on the
+fixed image, same BETA. The splice accepts a changed cell with
+`Number_rare > 0` at REGION level (the region is in the rerun list for a
+failure or a tail p; the tail arm exists for exactly this), keeps the exact
+cell-level rule for every observable cell, and prints `unobservable burden
+cells (Number_rare > 0) accepted at region level: N (p rose in U, fell in D)`.
+Read that line: the artefact p's were too SMALL, so U should dominate; a
+stage where D is large is a question, not a pass.
+
 
 ## 4. Per-chromosome timeout (diagnostic for a chromosome that never returns)
 

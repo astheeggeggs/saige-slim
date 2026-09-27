@@ -66,8 +66,12 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
   # OLD file: per set from the results, per marker from AC_Allele2 folded by
   # AF_Allele2 in the singleAssoc.
   ERMAC="${ER_MAC:-4}"
+  local nri=0
   if [[ ${sfx} == ".txt.gz" ]]; then
     awk -F'\t' 'FNR==1{for(i=1;i<=NF;i++)h[$i]=i; next} $h["Group"]!="Cauchy"{print $h["Region"]"|"$h["Weight"]"\t"$h["MAC"]}' old.tsv > cellmac.tsv
+    nri=$(head -1 old.tsv | tr '\t' '\n' | awk '$0=="Number_rare"{print NR}'); nri=${nri:-0}
+    pci=$(head -1 old.tsv | tr '\t' '\n' | awk '$0=="Pvalue_Burden"{print NR}'); pci=${pci:-5}
+    : > okregions.txt
   fi
   : > markermac.tsv
   if (( single )); then
@@ -80,22 +84,47 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
   awk -F'\t' -v rule="${rule}" -v single="${single}" 'FILENAME=="regions.txt"{keep[$1]=1; next} FILENAME=="newmarkers.txt"{nm[$1]=1; next} FNR==1{next} { if(single && '"${isreal}"'){ if($3 in nm) print; next } reg=('"${rule}"'); if(reg in keep) print }' regions.txt newmarkers.txt old.tsv | sort > o.all
   awk -F'\t' 'FNR>1' new.tsv | sort > n.all
   comm -3 o.all n.all | sed 's/^\t//' > changed.rows
-  nbad=$(awk -F'\t' -v sfx="${sfx}" -v single="${single}" 'FILENAME=="failcells.txt"{fc[$1]=1; next}
+  # A burden cell with rare, NON-collapsed markers (Number_rare > 0) is a test
+  # the scan could not observe: its vector is w*(real markers) + pseudo-marker
+  # and its saddlepoint can fail while every component's own single test
+  # converged, and v4 recorded nothing (pre-#164 the normal p was reported
+  # silently). Found on eas/T2Diab: a MAC-47 sbeta20 cell at 1.6e-7 in v4 and
+  # 0.068 on the fixed image, same BETA, SE re-derived from the new p. Such a
+  # cell's change is accepted at REGION level (the region is in the rerun list
+  # for a recorded failure or a tail p, which is what the tail arm exists
+  # for), counted, and reported with its direction; the exact cell-level rule
+  # stays for every observable cell (Number_rare == 0, real markers, pseudo-
+  # marker rows). Pass 1 judges the cells and records the regions with an
+  # explained change; pass 2 judges the Cauchy/pooled rows against them.
+  awk -F'\t' -v sfx="${sfx}" -v single="${single}" -v nri="${nri}" 'FILENAME=="failcells.txt"{fc[$1]=1; n=split($1,b,"|"); fr[b[1]]=1; next}
         FILENAME=="failmarkers.txt"{fm[$1]=1; next}
-        FILENAME=="cellmac.tsv"{mac[$1]=$2; next}
+        FILENAME=="cellmac.tsv"{mac[$1]=$2; if($2+0 <= '"${ERMAC}"'){ split($1,b,"|"); mr[b[1]]=1 } next}
         FILENAME=="markermac.tsv"{mmac[$1]=$2; next}
-        { ok=0
-          if(single && '"${isreal}"'){ key=$3; if(key in fm) ok=1; if((key in mmac) && mmac[key]+0 <= '"${ERMAC}"') ok=1 }
-          else {
-            if(single){ id=$3; n=split(id,a,":"); key=a[1]"|"a[n]; reg=a[1] }
-            else if(sfx==".pooledTests.txt.gz" || $2=="Cauchy"){ key=$1; reg=$1 }
-            else { key=$1"|"$4; reg=$1 }
-            if(key in fc) ok=1
-            if((key in mac) && mac[key]+0 <= '"${ERMAC}"') ok=1
-            if(sfx==".pooledTests.txt.gz" || $2=="Cauchy"){ for(k in fc){ split(k,b,"|"); if(b[1]==reg) ok=1 } for(k in mac){ split(k,b,"|"); if(b[1]==reg && mac[k]+0 <= '"${ERMAC}"') ok=1 } }
-          }
+        FILENAME=="okregions.txt"{okr[$1]=1; next}
+        FNR==1 && FILENAME=="changed.rows"{pass++}
+        pass==1 {
+          if(sfx==".pooledTests.txt.gz" || $2=="Cauchy") next
+          ok=0; unobs=0
+          if(single && '"${isreal}"'){ key=$3; reg=""; if(key in fm) ok=1; if((key in mmac) && mmac[key]+0 <= '"${ERMAC}"') ok=1 }
+          else if(single){ id=$3; n=split(id,a,":"); key=a[1]"|"a[n]; reg=a[1]; if(key in fc) ok=1; if((key in mac) && mac[key]+0 <= '"${ERMAC}"') ok=1 }
+          else { key=$1"|"$4; reg=$1; if(key in fc) ok=1; if((key in mac) && mac[key]+0 <= '"${ERMAC}"') ok=1
+                 if(!ok && nri>0 && $nri+0 > 0){ ok=1; unobs=1; ucell[key]=1 } }
+          if(ok){ if(reg!="") okr[reg]=1 } else { bad++; if(bad<=5) print "  unexplained change: " substr($0,1,120) > "/dev/stderr" }
+          next }
+        pass==2 {
+          if(!(sfx==".pooledTests.txt.gz" || $2=="Cauchy")) next
+          reg=$1; ok=0; if(reg in okr) ok=1; if(reg in fr) ok=1; if(reg in mr) ok=1
           if(!ok){ bad++; if(bad<=5) print "  unexplained change: " substr($0,1,120) > "/dev/stderr" } }
-        END{print bad+0}' failcells.txt failmarkers.txt cellmac.tsv markermac.tsv changed.rows)
+        END{ for(k in ucell) print k > "ukeys.tmp"
+             for(r in okr) print r > "okregions.tmp"
+             print bad+0 }' failcells.txt failmarkers.txt cellmac.tsv markermac.tsv okregions.txt changed.rows changed.rows > nbad.txt
+  nbad=$(cat nbad.txt); [[ -f okregions.tmp ]] && { cat okregions.tmp >> okregions.txt; rm -f okregions.tmp; sort -u -o okregions.txt okregions.txt; }
+  if [[ -s ukeys.tmp ]]; then   # direction from the old and new tables themselves
+    awk -F'\t' -v pci="${pci}" 'FILENAME=="ukeys.tmp"{u[$1]=1; next} FILENAME=="o.all"{k=$1"|"$4; if(k in u) po[k]=$pci+0; next} {k=$1"|"$4; if(k in u) pn[k]=$pci+0}
+         END{ n=0; for(k in u){ n++; if((k in po) && (k in pn)){ if(pn[k]>po[k]) up++; else if(pn[k]<po[k]) down++ } }
+              print "  unobservable burden cells (Number_rare > 0) accepted at region level: " n " (p rose in " up+0 ", fell in " down+0 ")" }' ukeys.tmp o.all n.all >&2
+    rm -f ukeys.tmp
+  fi
   if [[ ${nbad} -gt 0 ]]; then echo "ERROR ${sfx}: ${nbad} changed row(s) are neither a recorded failure nor a MAC <= ${ERMAC} cell/marker -- splice refused" >&2; exit 1; fi
   echo "${sfx}: $(wc -l < changed.rows) changed row(s), all explained (failed saddlepoint or MAC <= ${ERMAC})"
   # CONTROL 2: every recorded failure must have changed. The recorded failure
