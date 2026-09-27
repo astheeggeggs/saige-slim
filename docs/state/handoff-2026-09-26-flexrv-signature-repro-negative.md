@@ -423,3 +423,12 @@ rerun cell (`IMG5`, `STAMP=20260926-170535` for sas, `regions_for`,
 `aou_spa_dumpcheck.sh`. Job names are dsub job names; `job_id` in RUNS is
 always None (the parse never worked) -- status by `dstat --age`, ids by
 `dstat --full --format json` for `ddel`.
+
+**Addendum 17:40.** The dump run delivered 20 files for 24 fallbacks: each
+chromosome's SAIGE process numbers its dumps from 0 into the wrapper's single
+`spadump/`, so later processes overwrote same-numbered earlier files. Fixed in
+the working tree (`src/SAIGE_test.cpp`: the name carries `getpid()`), BUILT
+but NOT gated and NOT committed -- run `bash harness/prepush.sh` and commit it
+with the next source change. The 20 vectors are enough: the analysis job
+(`spadumpcheck-sas-benintneo`, `harness/tools/aou_spa_dumpcheck.sh` on
+`1.5.2-dev-8ca5d0e4`) is the next step and its log is what to read first.
