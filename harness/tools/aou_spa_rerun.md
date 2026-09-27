@@ -81,6 +81,24 @@ pooledTests with the new ones, and checks two things before writing:
 Writes `<pre>.txt.gz` etc. under `<anc>/flexrv_v4_fixed/` plus
 `<pre>.splice.txt` naming the regions replaced and the row counts.
 
+**The singleAssoc holds two kinds of row (found on the eas/afr stage,
+2026-09-27).** A pseudo-marker row's MarkerID (`Region:Group:maxMAF:Weight`)
+names its region; a REAL marker -- rare but not ultra-rare, MAC above the
+collapse cutoff, which exists whenever `2 * N * maxMAF > 10`, i.e. N above
+~5,000 at max MAF 0.001 (eas, afr, amr, eur; never sas) -- is tested singly
+under its own `chr:pos:ref:alt` ID. The splice keys those by MarkerID: the
+rerun's rows replace the old rows for the same markers, a changed one must be
+a recorded real-marker failure or a marker at MAC <= `ER_MAC`, and the log
+prints `real-marker rows: K rerun marker(s), ...`. Before this the splice
+refused every eas/afr job with `ERROR: N new rows outside the region list`.
+Also: a recorded failure is the pseudo-marker's OWN single test, so in the
+results file a burden cell with `Number_rare > 0` is a different test that
+need not have changed -- that is a `NOTE`, and the exact check (the
+pseudo-marker row itself changed) is made in the singleAssoc. A `ROWS
+.pooledTests` line is expected wherever the v4 artefact had fired the CCT
+fallback rule: a plain Cauchy discloses nothing and writes no pooled row.
+
+
 ## 4. Per-chromosome timeout (diagnostic for a chromosome that never returns)
 
 On the first SAS rerun, HTN's chr16 (5 regions) took 12 minutes where every
