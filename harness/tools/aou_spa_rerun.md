@@ -91,6 +91,11 @@ rerun's rows replace the old rows for the same markers, a changed one must be
 a recorded real-marker failure or a marker at MAC <= `ER_MAC`, and the log
 prints `real-marker rows: K rerun marker(s), ...`. Before this the splice
 refused every eas/afr job with `ERROR: N new rows outside the region list`.
+A real marker sits in every region that spans it and its row is written once
+per region (the protocadherin cluster at chr5:140.98 Mb puts one variant in a
+dozen), so the splice replaces as many old copies as the rerun wrote and keeps
+the rest for the regions not rerun (`... Z old cop(y/ies) kept`); a rerun row
+that differs from its copies is refused like any other unexplained change.
 Also: a recorded failure is the pseudo-marker's OWN single test, so in the
 results file a burden cell with `Number_rare > 0` is a different test that
 need not have changed -- that is a `NOTE`, and the exact check (the

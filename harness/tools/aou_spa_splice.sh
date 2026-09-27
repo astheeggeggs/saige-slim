@@ -51,8 +51,15 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
   # MarkerID's second ':'-field is a number (a position).
   local single=0; [[ ${sfx} == ".singleAssoc.txt.gz" ]] && single=1
   local isreal='(split($3, a_, ":") >= 2 && a_[2] ~ /^[0-9]+$/)'
+  # newmarkers.txt: MarkerID<TAB>copies in new. A real marker sits in every
+  # region that spans it (the protocadherin clusters put one variant in a
+  # dozen), and its row is written once per region, so the old file can hold
+  # k identical copies where the rerun of one region writes one: MULTISET
+  # semantics -- replace as many old copies as new has, keep the rest for the
+  # regions not rerun (afr/VTE chr5:140.98 Mb, 56 surplus copies refused
+  # before this).
   : > newmarkers.txt
-  if (( single )); then awk -F'\t' 'FNR>1 && '"${isreal}"' {print $3}' new.tsv | sort -u > newmarkers.txt; fi
+  if (( single )); then awk -F'\t' 'FNR>1 && '"${isreal}"' {c[$3]++} END{for(m in c) print m"\t"c[m]}' new.tsv | sort > newmarkers.txt; fi
   # new pseudo-marker/region rows, keyed by region (only the listed regions are expected in new)
   awk -F'\t' -v rule="${rule}" -v single="${single}" 'NR==FNR{keep[$1]=1; next} FNR==1{next} single && '"${isreal}"' {next} {reg=('"${rule}"'); if(!(reg in keep)){bad++} } END{if(bad){print "ERROR: " bad " new rows outside the region list" > "/dev/stderr"; exit 1}}' regions.txt new.tsv
   # CONTROL 1 (row-level, since LEDGER #166): a rerun changes exactly two
@@ -81,7 +88,7 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
   cat_any "${FAILURES}" | awk -F'\t' -v f="${pre}" 'NR>1 && $1==f {n=split($2,a,":"); if(n>=2 && a[2] ~ /^[0-9]+$/) print $2}' | sort -u > failmarkers.txt
   # changed rows = old rows the rerun replaces (listed regions' rows; for the
   # singleAssoc also the rerun markers' rows) that do not appear verbatim in new, and vice versa
-  awk -F'\t' -v rule="${rule}" -v single="${single}" 'FILENAME=="regions.txt"{keep[$1]=1; next} FILENAME=="newmarkers.txt"{nm[$1]=1; next} FNR==1{next} { if(single && '"${isreal}"'){ if($3 in nm) print; next } reg=('"${rule}"'); if(reg in keep) print }' regions.txt newmarkers.txt old.tsv | sort > o.all
+  awk -F'\t' -v rule="${rule}" -v single="${single}" 'FILENAME=="regions.txt"{keep[$1]=1; next} FILENAME=="newmarkers.txt"{nm[$1]=$2; next} FNR==1{next} { if(single && '"${isreal}"'){ if($3 in nm){ seen[$3]++; if(seen[$3] <= nm[$3]) print } next } reg=('"${rule}"'); if(reg in keep) print }' regions.txt newmarkers.txt old.tsv | sort > o.all
   awk -F'\t' 'FNR>1' new.tsv | sort > n.all
   comm -3 o.all n.all | sed 's/^\t//' > changed.rows
   # A burden cell with rare, NON-collapsed markers (Number_rare > 0) is a test
@@ -153,12 +160,12 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
     fi
   done
   if (( single )); then
-    nold=$(awk -F'\t' 'NR==FNR{nm[$1]=1; next} FNR>1 && '"${isreal}"' && ($3 in nm)' newmarkers.txt old.tsv | wc -l)
-    echo "${sfx}: real-marker rows: $(wc -l < newmarkers.txt) rerun marker(s), ${nold} old row(s) replaced by $(awk -F'\t' 'FNR>1 && '"${isreal}"'' new.tsv | wc -l) new"
+    awk -F'\t' 'NR==FNR{nm[$1]=$2; next} FNR>1 && '"${isreal}"' && ($3 in nm){ seen[$3]++; if(seen[$3] <= nm[$3]) rep++; else kept++ } END{print rep+0"\t"kept+0}' newmarkers.txt old.tsv > rm.tmp
+    echo "${sfx}: real-marker rows: $(wc -l < newmarkers.txt) rerun marker(s), $(cut -f1 rm.tmp) old row(s) replaced by $(awk -F'\t' 'FNR>1 && '"${isreal}"'' new.tsv | wc -l) new, $(cut -f2 rm.tmp) old cop(y/ies) kept for regions not rerun"
   fi
   # the splice: old rows not replaced, then new rows, in old-file order of first appearance
   { head -1 old.tsv
-    awk -F'\t' -v rule="${rule}" -v single="${single}" 'FILENAME=="regions.txt"{keep[$1]=1; next} FILENAME=="newmarkers.txt"{nm[$1]=1; next} FNR==1{next} { if(single && '"${isreal}"'){ if(!($3 in nm)) print; next } reg=('"${rule}"'); if(!(reg in keep)) print }' regions.txt newmarkers.txt old.tsv
+    awk -F'\t' -v rule="${rule}" -v single="${single}" 'FILENAME=="regions.txt"{keep[$1]=1; next} FILENAME=="newmarkers.txt"{nm[$1]=$2; next} FNR==1{next} { if(single && '"${isreal}"'){ if(!($3 in nm)) print; else { seen[$3]++; if(seen[$3] > nm[$3]) print }; next } reg=('"${rule}"'); if(!(reg in keep)) print }' regions.txt newmarkers.txt old.tsv
     awk -F'\t' 'FNR>1' new.tsv
   } > "${out}"
   gzip -f "${out}"
