@@ -672,7 +672,7 @@ cells verbatim by marker) produced `04b_production_tidy.ipynb`.
 ## universal-saige (BRaVa-genetics) moved to this build (2026-09-28)
 
 Branch `saige-slim-aou-parameters` in `~/Repositories/universal-saige`, one
-commit `e5c2223`, not pushed: the analyst pipeline now pulls
+commit `e5c2223`, pushed; draft PR https://github.com/BRaVa-genetics/universal-saige/pull/7 awaiting the owner's review and merge: the analyst pipeline now pulls
 `astheeggeggs/saige-slim:<tag>` from Docker Hub (the namespace is a
 placeholder until the owner's Docker Hub push; `SAIGE_IMAGE`/`SAIGE_VERSION`
 in its `download_resources.sh`), refuses VCF (convert once with plink2),
