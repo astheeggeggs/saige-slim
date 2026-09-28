@@ -689,3 +689,5 @@ LEDGER #171 (a refused step-1 fit leaves 0-byte outputs). The three
 `harness/tools/{flexrv_score_from_alphamissense.py,build_flexrv_groupfiles.sh,check_groupfile_overlap.py}`
 here are still UNTRACKED (another session's); universal-saige holds a copy of
 the first.
+
+**Docker Hub (2026-09-28):** `astheeggeggs/saige-slim:1.5.2-dev-3e92d89d` pushed, public, digest identical to the gcr copy; universal-saige pins it. Registries and push commands: `docker/readme.md`.
