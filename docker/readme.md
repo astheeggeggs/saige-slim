@@ -19,6 +19,28 @@ smoke-tests the image (the four `--help`s and one step-2 run on the bundled
 git tag v1.5.2 && git push slim v1.5.2
 ```
 
+## Registries (2026-09-28)
+
+The same local build goes to up to three registries; which one to pull from
+depends on where the puller is:
+
+| registry | who pulls | why |
+|---|---|---|
+| `gcr.io/weighty-elf-452116-c7/saige-slim:<tag>` | All of Us Batch workers | `--use-private-address` workers reach Google-hosted registries only; same-region pulls are priced at zero by Artifact Registry, pulls from outside Google are billed egress, so never pull it to a laptop |
+| `astheeggeggs/saige-slim:<tag>` (Docker Hub) | everyone else: universal-saige, other biobanks, laptops | free to pull from anywhere |
+| `ghcr.io/astheeggeggs/saige-slim:X.Y.Z` | release consumers | pushed by `release.yml` on a `vX.Y.Z` tag |
+
+Dev tags are `1.5.2-dev-<commit>`. After `make docker` (which builds
+`saige-slim:dev`):
+
+```sh
+docker tag saige-slim:dev gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-<commit> && docker push gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-<commit>
+docker tag saige-slim:dev astheeggeggs/saige-slim:1.5.2-dev-<commit>            && docker push astheeggeggs/saige-slim:1.5.2-dev-<commit>   # needs `docker login`
+```
+
+Push the same commit's image to both when it is a production candidate;
+`universal-saige` pins the Docker Hub tag in its `download_resources.sh`.
+
 ## Using it
 
 ```sh
