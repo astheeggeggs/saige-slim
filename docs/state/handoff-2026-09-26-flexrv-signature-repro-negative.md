@@ -639,3 +639,12 @@ job needs the SKAT-O arm's results path pattern and the columns to plot,
 which the owner has and this handoff does not. After that, the OPEN item
 above (a submission system for thousands of traits) before any production
 launch.
+
+**eur checks (2026-09-28).** Over the 198 splice logs: no WARNING, no
+`ROWS .txt.gz` line, every unobservable burden cell rose and none fell,
+real-marker rows in every job (eur's MAC range). Positive/negative control
+over the scan's eight most extreme v4 burden tails among the rerun binary
+traits: BRCA1 (5e-78) and BRCA2 (3e-61) for breast cancer, PKD1 (6e-43)
+for CRF and APC (1e-31) for BenIntNeo are unchanged to the printed digits;
+the other four (2e-88, 9e-70, 2e-38, 7e-32) now read 4e-4 to 1e-3 -- the
+artefact, gone; the biology, untouched.
