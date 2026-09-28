@@ -243,8 +243,11 @@ expected 0), then **eas and afr** together, then **amr**, then **eur**. Only
 the FlexRV arm of the BINARY traits reruns (a quantitative trait has no
 saddlepoint; the SKAT-O arms scanned clean everywhere); each job is filtered
 to its scan's regions (`regions_for`), so eur's size is the number of failing
-regions, not the cohort. amr: copy v4's flags exactly, which for amr means no
-`--sparseGRMFile` (its GRM is not sparse; the step-2 solve does not finish).
+regions, not the cohort. amr: copy v4's flags exactly -- it runs WITH a sparse
+GRM like every other ancestry (the 2026-09-21 "drop `--sparseGRMFile` for amr"
+prescription is void: the GRM was rebuilt with the relatedness cutoff changed,
+owner, 2026-09-28; `submit_rerun` copies `sparse_grm` from the v4 record and
+never needs to know).
 eur: any job expected past ~45 min goes on demand, not Spot (preemption is
 correlated by zone).
 
