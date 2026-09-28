@@ -60,7 +60,7 @@ def qq_grid(anc, trait, c, s):
     blues = plt.cm.Blues(np.linspace(0.35, 0.95, max(len(mafs), 1)))
     fig = plt.figure(figsize=(18, 8.5))
     axes = fig.subplots(2, 4)          # independent axes: a p of 1e-78 (BRCA1) must not set every panel's scale, nor be clipped
-    fig.suptitle(f"{anc.upper()}  {trait}   burden p-value — SKAT-O cells by mask, and FlexRV pooled vs all masks at maxMAF {FLEX_MAF:g}", y=0.995)
+    fig.suptitle(f"{anc.upper()}  {trait}   burden $p$-value per annotation mask and max MAF (SAIGE-GENE+ cells), and FlexRV pooled vs all masks at maxMAF {FLEX_MAF:g}", y=0.995)
     for ax, g in zip(axes.flat[:6], MASK_ORDER):
         ax.set_title(nice(g).replace(";", ";\n") if g.count(";") > 1 else nice(g), fontsize=10)
         nmax = 0
@@ -74,7 +74,7 @@ def qq_grid(anc, trait, c, s):
             e, lo, hi = null_band(nmax); ax.fill_between(e, lo, hi, color="grey", alpha=0.25, lw=0, label="95% null band")
             ax.plot([0, e.max()], [0, e.max()], color="0.3", lw=0.8)
         ax.grid(alpha=0.3); ax.legend(fontsize=7, loc="upper left")
-    ax = axes.flat[6]; ax.set_title(f"FlexRV pooled vs all masks at maxMAF {FLEX_MAF:g}", fontsize=10)
+    ax = axes.flat[6]; ax.set_title(f"FlexRV pooled vs burden per mask at maxMAF {FLEX_MAF:g}", fontsize=10)
     palette = ["#08306b", "#2ca02c", "#ff7f0e", "#7f7f7f", "#6a3d9a", "#8c564b"]
     nmax = 0
     for g, col in zip(MASK_ORDER, palette):
