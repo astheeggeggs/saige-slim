@@ -122,14 +122,18 @@ pseudo-marker takes the exact test when its OWN unweighted allele count is
 <= `--max_MAC_for_ER`, where v4 gave that to `unw_unw` alone. That count is
 neither the set's MAC in the results (which adds the rare, non-collapsed
 markers) nor a weighted set's `AC_Allele2` (a weighted sum). The splice
-reads it exactly from two handles: the `unw_unw` pseudo-marker's AC is the
-unweighted count of the maximal collapsed set (weights of 1, LEDGER #133) and
-every other set collapses a subset of it; a set with 0/1 weights (`unw`|`lof`
-score x `unw`|`MACk` MAF) reports its own count. Either at or below the
-cutoff explains the row, printed as `pseudo-marker rows explained by their
-own exact-test eligibility (LEDGER #166, ...): K`. A weighted set's
-pseudo-marker changing in a region whose maximal count is above the cutoff
-is still refused.
+reads it exactly from the set's 0/1-weight TWIN: a set with 0/1 weights
+(`unw`|`lof` score x `unw`|`MACk` MAF) reports its own count in its
+pseudo-marker's AC (LEDGER #133), and every set collapses the same markers
+as -- or a subset of -- the 0/1 set with its zero pattern (`lof x mafbeta`
+keeps the LoF markers, as `lof x unw` does; `cbrt x MAC25` keeps the MAC <= 25
+markers, as `unw x MAC25` does), so the twin's count bounds it from above.
+Twin at or below the cutoff explains the row, printed as `pseudo-marker rows
+explained by their own exact-test eligibility (LEDGER #166, ...): K`; a
+pseudo-marker changing where its twin's count is above the cutoff is still
+refused. The `unw_unw` bound alone missed `lof x mafbeta` on three afr
+traits, because the LoF subset can be at the cutoff while the whole
+collapsed set is not.
 
 
 ## 4. Per-chromosome timeout (diagnostic for a chromosome that never returns)

@@ -80,23 +80,23 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
     pci=$(head -1 old.tsv | tr '\t' '\n' | awk '$0=="Pvalue_Burden"{print NR}'); pci=${pci:-5}
     : > okregions.txt
   fi
-  : > markermac.tsv; : > urown.tsv; : > urmax.tsv
+  : > markermac.tsv; : > urown.tsv
   if (( single )); then
     awk -F'\t' 'FNR==1{for(i=1;i<=NF;i++)h[$i]=i; next} '"${isreal}"' {ac=$h["AC_Allele2"]+0; af=$h["AF_Allele2"]+0; mac=ac; if(af>0.5 && af<1) mac=ac*(1-af)/af; print $3"\t"mac}' old.tsv > markermac.tsv
     # A pseudo-marker's single test takes the exact test when ITS OWN unweighted
     # allele count is <= ER_MAC (LEDGER #166 gave that to every set; v4 gave it
     # to unw_unw alone), and that count is not the set's MAC in the results
     # (which adds the rare, non-collapsed markers) nor the row's AC_Allele2 for
-    # a weighted set (a weighted sum). Two exact handles: the unw_unw set's
-    # pseudo-marker AC IS the unweighted count of the maximal collapsed set
-    # (weights of 1, LEDGER #133) and every other set collapses a subset of
-    # it; and a set with 0/1 weights (unw|lof score x unw|MACk MAF) reports
-    # its own count. Found on eas/Asth and afr/BenIntNeo (a lof_MAC100
+    # a weighted set (a weighted sum). The exact handle: a set with 0/1 weights
+    # (unw|lof score x unw|MACk MAF) reports its own count (LEDGER #133), and
+    # every set collapses the same markers as -- or a subset of -- the 0/1 set
+    # with the same zero pattern (lof x mafbeta keeps the LoF markers, as
+    # lof x unw does; cbrt x MAC25 keeps the MAC <= 25 markers, as unw x MAC25
+    # does), so that twin's count bounds it from above. Found on eas/Asth and afr/BenIntNeo (a lof_MAC100
     # pseudo-marker whose own count is at or below the cutoff, inside a set
     # whose MAC is above it).
     awk -F'\t' 'FNR==1{for(i=1;i<=NF;i++)h[$i]=i; next} !('"${isreal}"') {n=split($3,a,":"); if(n<2) next; ac=$h["AC_Allele2"]+0; af=$h["AF_Allele2"]+0; mac=ac; if(af>0.5 && af<1) mac=ac*(1-af)/af
-        if(a[n] ~ /_(unw|lof)_(unw|MAC[0-9]+)$/) print a[1]"|"a[n]"\t"mac > "urown.tsv"
-        if(a[n] ~ /_unw_unw$/) print a[1]"\t"mac > "urmax.tsv" }' old.tsv
+        if(a[n] ~ /_(unw|lof)_(unw|MAC[0-9]+)$/) print a[1]"|"a[n]"\t"mac > "urown.tsv" }' old.tsv
   fi
   cat_any "${FAILURES}" | awk -F'\t' -v f="${pre}" 'NR>1 && $1==f {n=split($2,a,":"); if(!(n>=2 && a[2] ~ /^[0-9]+$/)) print a[1]"|"a[n]}' | sort -u > failcells.txt
   cat_any "${FAILURES}" | awk -F'\t' -v f="${pre}" 'NR>1 && $1==f {n=split($2,a,":"); if(n>=2 && a[2] ~ /^[0-9]+$/) print $2}' | sort -u > failmarkers.txt
@@ -122,7 +122,6 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
         FILENAME=="cellmac.tsv"{mac[$1]=$2; if($2+0 <= '"${ERMAC}"'){ split($1,b,"|"); mr[b[1]]=1 } next}
         FILENAME=="markermac.tsv"{mmac[$1]=$2; next}
         FILENAME=="urown.tsv"{uown[$1]=$2; next}
-        FILENAME=="urmax.tsv"{umax[$1]=$2; next}
         FILENAME=="okregions.txt"{okr[$1]=1; next}
         FNR==1 && FILENAME=="changed.rows"{pass++}
         pass==1 {
@@ -130,7 +129,10 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
           ok=0; unobs=0
           if(single && '"${isreal}"'){ key=$3; reg=""; if(key in fm) ok=1; if((key in mmac) && mmac[key]+0 <= '"${ERMAC}"') ok=1 }
           else if(single){ id=$3; n=split(id,a,":"); key=a[1]"|"a[n]; reg=a[1]; if(key in fc) ok=1; if((key in mac) && mac[key]+0 <= '"${ERMAC}"') ok=1
-                           if(!ok && (((reg in umax) && umax[reg]+0 <= '"${ERMAC}"') || ((key in uown) && uown[key]+0 <= '"${ERMAC}"'))){ ok=1; urer[key]=1 } }
+                           if(!ok){ # the 0/1-weight twin with the same zero pattern collapses the same markers (or a superset): lof stays lof, any other score -> unw; MACk stays, any other MAF -> unw
+                             w=a[n]; m=split(w,f,"_"); if(m>=3){ sc=f[m-1]; mf=f[m]; pre=f[1]; for(i=2;i<=m-2;i++) pre=pre"_"f[i]
+                               twin=a[1]"|"pre"_"((sc=="lof")?"lof":"unw")"_"((mf ~ /^MAC[0-9]+$/)?mf:"unw")
+                               if((twin in uown) && uown[twin]+0 <= '"${ERMAC}"'){ ok=1; urer[key]=1 } } } }
           else { key=$1"|"$4; reg=$1; if(key in fc) ok=1; if((key in mac) && mac[key]+0 <= '"${ERMAC}"') ok=1
                  if(!ok && nri>0 && $nri+0 > 0){ ok=1; unobs=1; ucell[key]=1 } }
           if(ok){ if(reg!="") okr[reg]=1 } else { bad++; if(bad<=5) print "  unexplained change: " substr($0,1,120) > "/dev/stderr" }
@@ -142,7 +144,7 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
         END{ for(k in ucell) print k > "ukeys.tmp"
              nu=0; for(k in urer) nu++; if(nu>0) print "  pseudo-marker rows explained by their own exact-test eligibility (LEDGER #166, count <= '"${ERMAC}"'): " nu > "/dev/stderr"
              for(r in okr) print r > "okregions.tmp"
-             print bad+0 }' failcells.txt failmarkers.txt cellmac.tsv markermac.tsv urown.tsv urmax.tsv okregions.txt changed.rows changed.rows > nbad.txt
+             print bad+0 }' failcells.txt failmarkers.txt cellmac.tsv markermac.tsv urown.tsv okregions.txt changed.rows changed.rows > nbad.txt
   nbad=$(cat nbad.txt); [[ -f okregions.tmp ]] && { cat okregions.tmp >> okregions.txt; rm -f okregions.tmp; sort -u -o okregions.txt okregions.txt; }
   if [[ -s ukeys.tmp ]]; then   # direction from the old and new tables themselves
     awk -F'\t' -v pci="${pci}" 'FILENAME=="ukeys.tmp"{u[$1]=1; next} FILENAME=="o.all"{k=$1"|"$4; if(k in u) po[k]=$pci+0; next} {k=$1"|"$4; if(k in u) pn[k]=$pci+0}
