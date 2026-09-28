@@ -648,3 +648,23 @@ traits: BRCA1 (5e-78) and BRCA2 (3e-61) for breast cancer, PKD1 (6e-43)
 for CRF and APC (1e-31) for BenIntNeo are unchanged to the printed digits;
 the other four (2e-88, 9e-70, 2e-38, 7e-32) now read 4e-4 to 1e-3 -- the
 artefact, gone; the biology, untouched.
+
+## Plotting layer (2026-09-28)
+
+`harness/tools/aou_flexrv_summary.sh` (one dsub job per ancestry, cloud-cli
+image, `summary2-<anc>`) writes two gene-level tables under
+`SAIGE_SLIM_TESTING/summary_v4/`: `<anc>.flexrv_vs_skato.v4.tsv.gz` (one row
+per trait x gene: FlexRV pooled and best set, SKAT-O pooled and best cell,
+best burden and SKAT, fixed-vs-v4 provenance) and
+`<anc>.skato_cells.v4.tsv.gz` (every SKAT-O cell wide, burden and SKAT-O p
+per mask@maxMAF). A separate plotting notebook (`05_flexrv_power.ipynb`,
+workbench) draws from those alone: the per-(ancestry, trait) QQ grid -- six
+mask panels with the three max MAF series and the Beta order-statistic 95%
+band, a seventh with the six masks at max MAF 0.001 plus FlexRV pooled --
+one PNG per pair at 110 dpi under `summary_v4/qq/<anc>/`, bulk thinned to
+~1,500 ranks below expected 2 with every tail point kept. The four
+power/calibration figures (stacked counts below a threshold, per-trait
+counts, -log10 scatter, QQ by trait type) read the first table. sas verified
+end to end; the other four follow their jobs. Notebook tidy-up:
+`tidy_04b.py` (scratchpad of this session; a builder that copies the kept
+cells verbatim by marker) produced `04b_production_tidy.ipynb`.
