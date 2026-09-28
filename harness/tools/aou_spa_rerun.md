@@ -300,7 +300,10 @@ Cauchy row), `p_flexrv_best`/`set_best`/`n_sets`, `p_skato` (the SKAT-O
 file's Cauchy row over its 18 cells), `p_skato_best`/`cell_best`,
 `p_burden_best`, `p_skat_best`, and `source` = `fixed` when the trait's job
 was spliced (`flexrv_v4_fixed/`) else `v4` (nothing to rerun, or a
-quantitative trait). A gene in one arm only carries NA on the other. Self-test:
+quantitative trait). A gene in one arm only carries NA on the other. A second table per
+ancestry, `<anc>.skato_cells.v4.tsv.gz`, holds every SKAT-O cell of every gene
+wide (`burden:<mask>@<maxMAF>`, `skato:<mask>@<maxMAF>`), which the per-mask
+QQ grids are drawn from (a few tens of MB gzipped for eur). Self-test:
 `aou_flexrv_summary_selftest.sh`. The notebook then loads five files of a
 few MB, and displays figures only.
 

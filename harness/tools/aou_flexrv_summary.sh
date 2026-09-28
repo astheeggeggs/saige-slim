@@ -14,6 +14,10 @@
 # (jobs with nothing to rerun, every quantitative trait); `source` says which.
 # Columns: anc trait gene source p_flexrv p_flexrv_best set_best n_sets
 #          p_skato p_skato_best cell_best p_burden_best p_skat_best
+# A second table, <anc>.skato_cells.<tag>.tsv.gz, holds every SKAT-O cell of
+# every gene, wide: anc trait gene then burden:<mask>@<maxMAF> and
+# skato:<mask>@<maxMAF> for each cell the ancestry's files contain (the QQ
+# grids per mask and max MAF are drawn from it). Gene level, no counts.
 set -euo pipefail
 : "${ANC:?}"; : "${BASE:?}"; : "${OUT_DIR:?}"; RUNTAG="${RUNTAG:-v4}"
 mkdir -p "${OUT_DIR}"
@@ -44,7 +48,7 @@ while read -r f; do
     END{ for(g in n) printf "%s\t%s\t%s\t%s\t%s\t%s\t%d\n", tr, g, src, ((g in pc)?pc[g]:"NA"), ((g in pb)?pb[g]:"NA"), ((g in wb)?wb[g]:"NA"), n[g] }' >> fx.tsv
 done < fx.list
 # --- SKAT-O: per gene, the Cauchy row, the best cell, best burden, best SKAT --
-: > sk.tsv
+: > sk.tsv; : > cells.long
 while read -r f; do
   [[ -n ${f} ]] || continue
   catz "${f}" | awk -F'\t' -v tr="$(trait_of "${f}")" '
@@ -52,6 +56,7 @@ while read -r f; do
     { g=$h["Region"]; p=$h["Pvalue"]
       if($h["Group"]=="Cauchy"){ pc[g]=p; next }
       cell=$h["Group"] "@" $h["max_MAF"]
+      printf "%s\t%s\t%s\t%s\t%s\n", tr, g, cell, $h["Pvalue_Burden"], p >> "cells.long"
       if(p!="NA" && (!(g in pb) || p+0 < pb[g]+0)){ pb[g]=p; cb[g]=cell }
       q=$h["Pvalue_Burden"]; if(q!="NA" && (!(g in bb) || q+0 < bb[g]+0)) bb[g]=q
       q=$h["Pvalue_SKAT"];   if(q!="NA" && (!(g in sb) || q+0 < sb[g]+0)) sb[g]=q
@@ -65,6 +70,19 @@ awk -F'\t' -v anc="${ANC}" 'BEGIN{OFS="\t"; print "anc","trait","gene","source",
   FILENAME=="sk.tsv"{k=$1"\t"$2; sk[k]=$3"\t"$4"\t"$5"\t"$6"\t"$7; keys[k]=1; next}
   END{ for(k in keys){ print anc, k, ((k in fx)?fx[k]:"NA\tNA\tNA\tNA\tNA"), ((k in sk)?sk[k]:"NA\tNA\tNA\tNA\tNA") } }' fx.tsv sk.tsv | (read -r hdr; echo "${hdr}"; sort -t $'\t' -k2,2 -k3,3) > "${out}"
 gzip -f "${out}"
+# --- every SKAT-O cell, wide: the cell list is whatever the files contain ---
+cut -f3 cells.long | sort -u > cells.list
+cellsout="${OUT_DIR}/${ANC}.skato_cells.${RUNTAG}.tsv"
+sort -t $'\t' -k1,1 -k2,2 -S 1G cells.long | awk -F'\t' -v anc="${ANC}" 'BEGIN{OFS="\t"}
+  FILENAME=="cells.list"{nc++; cl[nc]=$1; next}
+  FNR==1{ printf "anc\ttrait\tgene"; for(i=1;i<=nc;i++) printf "\tburden:%s", cl[i]; for(i=1;i<=nc;i++) printf "\tskato:%s", cl[i]; printf "\n" }
+  { k=$1"\t"$2
+    if(k!=cur){ if(cur!=""){ flush() } cur=k; delete b; delete s }
+    b[$3]=$4; s[$3]=$5 }
+  function flush(   i){ printf "%s\t%s", anc, cur; for(i=1;i<=nc;i++) printf "\t%s", ((cl[i] in b)?b[cl[i]]:"NA"); for(i=1;i<=nc;i++) printf "\t%s", ((cl[i] in s)?s[cl[i]]:"NA"); printf "\n" }
+  END{ if(cur!="") flush() }' cells.list - > "${cellsout}"
+gzip -f "${cellsout}"
+echo "cells table: $(( $(gzip -dc "${cellsout}.gz" | wc -l) - 1 )) (trait, gene) rows x $(( $(wc -l < cells.list) )) cells"
 n=$(( $(gzip -dc "${out}.gz" | wc -l) - 1 ))
 both=$(gzip -dc "${out}.gz" | awk -F'\t' 'NR>1 && $5!="NA" && $9!="NA"{n++} END{print n+0}')
 echo "rows: ${n} (trait, gene) pairs; ${both} with both arms; traits: $(gzip -dc "${out}.gz" | awk -F'\t' 'NR>1{t[$2]=1} END{n=0; for(k in t)n++; print n}')"

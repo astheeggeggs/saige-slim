@@ -38,5 +38,12 @@ check 'NR>1 && $2=="TraitA" && $3=="G4" && $4=="NA" && $5=="NA" && $9=="0.9"' "g
 check 'NR>1 && $2=="TraitA" && $3=="G2" && $9=="NA"' "gene in the FlexRV arm only carries NA on the SKAT-O side"
 [[ $(($(wc -l < out.tsv) - 1)) -eq 5 ]] && echo "ok   5 rows" || { echo "FAIL row count"; fail=1; }
 grep -q "rows: 5 (trait, gene) pairs; 2 with both arms; traits: 2" run.log && echo "ok   summary line" || { echo "FAIL summary line"; fail=1; }
+# the wide cell table: TraitA G1 has two cells (pLoF@0.001, pLoF@0.01), G4 one; TraitB G1 one
+gzip -dc out/xx.skato_cells.v4.tsv.gz > cells.tsv
+head -1 cells.tsv | grep -qx $'anc\ttrait\tgene\tburden:pLoF@0.001\tburden:pLoF@0.01\tskato:pLoF@0.001\tskato:pLoF@0.01' && echo "ok   cells header (cell list from the files)" || { echo "FAIL cells header: $(head -1 cells.tsv)"; fail=1; }
+awk -F'\t' 'NR>1 && $2=="TraitA" && $3=="G1" && $4=="0.02" && $5=="0.5" && $6=="0.01" && $7=="0.005"' cells.tsv | grep -q . && echo "ok   cells row: both cells of G1, burden and skato" || { echo "FAIL cells row G1"; fail=1; }
+awk -F'\t' 'NR>1 && $2=="TraitA" && $3=="G4" && $4=="0.9" && $5=="NA" && $7=="NA"' cells.tsv | grep -q . && echo "ok   cells row: a gene with one cell carries NA in the other" || { echo "FAIL cells row G4"; fail=1; }
+[[ $(($(wc -l < cells.tsv) - 1)) -eq 3 ]] && echo "ok   3 cell rows (genes in the SKAT-O arm)" || { echo "FAIL cells row count"; fail=1; }
+grep -q "cells table: 3 (trait, gene) rows x 2 cells" run.log && echo "ok   cells summary line" || { echo "FAIL cells summary line"; fail=1; }
 (( fail )) && { echo "SELFTEST FAILED"; exit 1; }
-echo "selftest OK: 7 checks"
+echo "selftest OK: 12 checks"
