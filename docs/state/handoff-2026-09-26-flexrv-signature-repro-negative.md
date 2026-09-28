@@ -575,3 +575,12 @@ control (scan-tail genes near 1e-174 should read ~1e-3 in `flexrv_v4_fixed`),
 then amr, then eur. No AoU count below 20 is written anywhere in the repo
 (checked 2026-09-27 over every change of the session, commit messages and
 memory notes included; the one such number written was scrubbed).
+
+**eas + afr COMPLETE (2026-09-28).** The last three splices passed on
+`0df0707a`. afr/BenIntNeo positive control over the scan's tail regions:
+the three artefact genes went 2.3e-256 -> 1.4e-4, 7.8e-120 -> 9.8e-8 and
+3.9e-174 -> 6.3e-4; the six genuine tail regions (8e-7 .. 8.6e-6) are
+unchanged to the printed digits -- only the failed tests moved. The gene at
+9.8e-8 is a minimum over ~100 weight sets, not a stop; worth reading (set,
+MAC, SKAT-O arm) when afr's results are read. Next: amr on `IMG7`
+(`STAMPS["amr"]` from the scan listing), stage checker, splices; then eur.
