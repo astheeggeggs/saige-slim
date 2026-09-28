@@ -68,25 +68,62 @@ static const char* spaDumpDir(){
   static const char* d = std::getenv("SAIGE_SPA_DUMP_DIR");
   return (d != nullptr && d[0] != '\0') ? d : nullptr;
 }
+// Diagnostic (2026-09-28, the AoU sbeta cells): SAIGE_SPA_DUMP_BELOW=<p>, with
+// SAIGE_SPA_DUMP_DIR set, ALSO dumps every CONVERGED saddlepoint whose p is
+// below <p>, as <dir>/spaBelow_<pid>_<k>.tsv. A converged saddlepoint that is
+// WRONG never fails, so the failure dump cannot see it; three AoU FlexRV cells
+// printed 1e-53..1e-93 with Is.SPA true where the exact answer is ~1e-3
+// (LEDGER #172). Every dump now carries a second header line naming the kernel
+// that ran (fast / dense), both roots, the q-side saddle's validity, the
+// Chernoff bound, NAmu/NAsigma and the reported p, and a fourth column `nz`
+// flagging the carriers (the fast kernel's exact set), so the run can be
+// replayed from the file with the exported kernels, and a fifth column `g`,
+// the raw vector the test was handed. Off unless set; the results are
+// untouched either way (test-step2-spa-dump.R pins the golden). The first
+// replay of P1 found LEDGER #173: on the marker path under --is_noadjCov=TRUE
+// the score test runs on the CENTRED genotype while the CGF runs on the
+// PROJECTED one, so NAsigma = var2(centred) - carriers(projected) is not the
+// non-carriers' variance; the region path builds its context with noadjCov
+// false and does not have this.
+static double spaDumpBelow(){
+  static const double v = [](){ const char* s = std::getenv("SAIGE_SPA_DUMP_BELOW"); return (s != nullptr && s[0] != '\0') ? std::atof(s) : 0.0; }();
+  return v;
+}
 static std::atomic<unsigned long> g_spaDumpCounter(0);
-static std::string spaDumpVector(const arma::vec & t_gtilde, const arma::vec & t_mu, const arma::vec & t_y,
-                                 double t_q, double t_qinv, double t_m1, double t_Tstat, double t_var1, const std::string & t_why){
+static std::string spaDumpLine2(const SPAWorkspace & t_sw, bool t_fast, double t_p, double t_pNA, double t_NAmu, double t_NAsigma,
+                                arma::uword t_nNB, double t_var2, double t_varRatio, double t_tol){
+  std::ostringstream s;
+  s.precision(17);
+  s << "kernel\t" << (t_fast ? "fast" : "dense") << "\tp\t" << t_p << "\tpNA\t" << t_pNA
+    << "\troot1\t" << t_sw.diagRoot1 << "\tniter1\t" << t_sw.diagNiter1
+    << "\troot2\t" << t_sw.diagRoot2 << "\tniter2\t" << t_sw.diagNiter2
+    << "\tqsaddle\t" << t_sw.diagQSaddle << "\tbound\t" << t_sw.diagBound << "\tfailReason\t" << t_sw.failReason
+    << "\tNAmu\t" << t_NAmu << "\tNAsigma\t" << t_NAsigma << "\tnNB\t" << t_nNB
+    << "\tvar2\t" << t_var2 << "\tvarRatio\t" << t_varRatio << "\ttol\t" << t_tol;
+  return s.str();
+}
+static std::string spaDumpVector(const arma::vec & t_gtilde, const arma::vec & t_G, const arma::vec & t_mu, const arma::vec & t_y, const arma::uvec & t_nz,
+                                 double t_q, double t_qinv, double t_m1, double t_Tstat, double t_var1, const std::string & t_why,
+                                 const char* t_prefix, const std::string & t_line2){
   const char* dir = spaDumpDir();
   if(dir == nullptr) return "";
   const unsigned long k = g_spaDumpCounter.fetch_add(1);
   // one SAIGE process per chromosome may share the directory (the AoU wrapper
   // does), so the name carries the pid: without it later processes overwrote
   // earlier ones' same-numbered dumps (24 fallbacks, 20 files, 2026-09-27)
-  const std::string path = std::string(dir) + "/spaFail_" + std::to_string((long)getpid()) + "_" + std::to_string(k) + ".tsv";
+  const std::string path = std::string(dir) + "/" + t_prefix + "_" + std::to_string((long)getpid()) + "_" + std::to_string(k) + ".tsv";
   std::ofstream os(path);
   if(!os) return "";
   double gpos = 0.0, gneg = 0.0;
   for(arma::uword i = 0; i < t_gtilde.n_elem; i++){ if(t_gtilde(i) > 0) gpos += t_gtilde(i); else gneg += t_gtilde(i); }
+  std::vector<unsigned char> nz(t_gtilde.n_elem, 0);
+  for(arma::uword e = 0; e < t_nz.n_elem; e++){ if(t_nz(e) < nz.size()) nz[t_nz(e)] = 1; }
   os.precision(17);
   os << "# q\t" << t_q << "\tqinv\t" << t_qinv << "\tm1\t" << t_m1 << "\tgneg\t" << gneg << "\tgpos\t" << gpos
      << "\tTstat\t" << t_Tstat << "\tvar1\t" << t_var1 << "\twhy\t" << t_why << "\n";
-  os << "gtilde\tmu\ty\n";
-  for(arma::uword i = 0; i < t_gtilde.n_elem; i++){ os << t_gtilde(i) << "\t" << t_mu(i) << "\t" << t_y(i) << "\n"; }
+  os << "# " << t_line2 << "\n";
+  os << "gtilde\tmu\ty\tnz\tg\n";   // g: the raw (weighted, unadjusted) vector the test was handed
+  for(arma::uword i = 0; i < t_gtilde.n_elem; i++){ os << t_gtilde(i) << "\t" << t_mu(i) << "\t" << t_y(i) << "\t" << (int)nz[i] << "\t" << t_G(i) << "\n"; }
   return path;
 }
 static bool spaPlantFail(){
@@ -969,6 +1006,18 @@ if(!t_isER){
     }
 
 
+    // SAIGE_SPA_DUMP_BELOW: a CONVERGED saddlepoint below the threshold is
+    // dumped too (see spaDumpBelow above). Nothing here changes a result.
+    if(t_isSPAConverge && spaDumpDir() != nullptr && spaDumpBelow() > 0.0){
+      const double pLin = ispvallog ? std::exp(t_SPApval) : t_SPApval;
+      if(pLin < spaDumpBelow()){
+        if(!is_gtilde){ getadjGFast(t_GVec, t_gtilde, iIndex); is_gtilde = true; }
+        const bool fastK = (p_iIndexComVecSize >= 0.5 && !t_ctx.useSparseGRM);
+        spaDumpVector(t_gtilde, t_GVec, m_mu, m_y, iIndex, q, qinv, m1, t_Tstat, t_var1, "converged", "spaBelow",
+                      spaDumpLine2(ws().spa, fastK, pLin, ispvallog ? std::exp(pval_noadj) : pval_noadj, NAmu, NAsigma, gNB.n_elem,
+                                   t_var2, t_ctx.varRatioVal, tol1));
+      }
+    }
     if(spaPlantFail()){ t_isSPAConverge = false; }   // test plant only
     if(!t_isSPAConverge){
       // LEDGER #164 FIXED: the saddlepoint was attempted and failed (LEDGER
@@ -1000,7 +1049,11 @@ if(!t_isER){
       ws().spaFallbackNote = "spa: " + why;
       if(spaDumpDir() != nullptr){
         if(!is_gtilde){ getadjGFast(t_GVec, t_gtilde, iIndex); is_gtilde = true; }
-        const std::string f = spaDumpVector(t_gtilde, m_mu, m_y, q, qinv, m1, t_Tstat, t_var1, why);
+        const bool fastK = (p_iIndexComVecSize >= 0.5 && !t_ctx.useSparseGRM);
+        const std::string f = spaDumpVector(t_gtilde, t_GVec, m_mu, m_y, iIndex, q, qinv, m1, t_Tstat, t_var1, why, "spaFail",
+                                            spaDumpLine2(ws().spa, fastK, ispvallog ? std::exp(t_SPApval) : t_SPApval,
+                                                         ispvallog ? std::exp(pval_noadj) : pval_noadj, NAmu, NAsigma, gNB.n_elem,
+                                                         t_var2, t_ctx.varRatioVal, tol1));
         if(!f.empty()) ws().spaFallbackNote += "; dump=" + f;
       }
       // carriers, not the (weighted) allele count: see kFallbackResamples

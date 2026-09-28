@@ -728,7 +728,19 @@ declarations sit at the top of `src/Main.cpp`.
   every step-2 run and named in `<SAIGEOutputFile>.spaFallbacks.txt`,
   `SAIGE_SPA_PLANT_FAIL=1` is the test plant that forces it, and
   `SAIGE_SPA_DUMP_DIR=<dir>` writes the vector every failed saddlepoint saw
-  (individual-level: analyse it where the data lives). A synthetic SPA
+  (individual-level: analyse it where the data lives), and with it
+  `SAIGE_SPA_DUMP_BELOW=<p>` ALSO writes every CONVERGED saddlepoint whose p
+  is below `<p>` (`spaBelow_*.tsv`; LEDGER #172, 2026-09-28: three AoU FlexRV
+  cells converged to 1e-53..1e-93 where ~1e-3 is right, which no failure dump
+  can see). Every dump carries a second header line (kernel, both roots,
+  NAmu/NAsigma, the reported p) and the columns `nz` (carrier flag) and `g`
+  (raw vector), so `harness/tools/aou_spa_dumpcheck.sh` replays the run's
+  own kernel; `test-step2-spa-dump.R` pins that the switch moves no byte and
+  that every converged P1 saddlepoint replays to its golden p. **The marker
+  path mixes two vectors (LEDGER #173)**: under the default
+  `--is_noadjCov=TRUE` the score is the CENTRED genotype's while the CGF is
+  the PROJECTED one's, so the fast kernel's Gaussian remainder is not the
+  non-carriers' variance; the region path always projects. A synthetic SPA
   vector must be centred the way `getadjGFast` centres: with W = mu(1-mu), so
   for tiny-mu carriers the negative mass is ~1e-2 and the MIRRORED q is
   unattainable -- a tail of probability 0, not a failure (LEDGER #168).

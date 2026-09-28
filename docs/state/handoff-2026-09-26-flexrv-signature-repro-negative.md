@@ -691,3 +691,19 @@ here are still UNTRACKED (another session's); universal-saige holds a copy of
 the first.
 
 **Docker Hub (2026-09-28):** `astheeggeggs/saige-slim:1.5.2-dev-3e92d89d` pushed, public, digest identical to the gcr copy; universal-saige pins it. Registries and push commands: `docker/readme.md`.
+
+**LEDGER #172 (2026-09-28, OPEN): three FlexRV cells with a CONVERGED but
+impossible saddlepoint p.** Found on the FlexRV-vs-SKAT-O QQ grids (amr/eas):
+p 1e-53..1e-93 with `Is.SPA true`, one of them 91 orders below its NORMAL p at
+|Z| = 2.3. The rows are the v4 image's: the scan flags only failures, so a
+converged wrong value was never rerun, and every kernel change since
+`f2fb24da` is on a failure path -- the current image is predicted to reproduce
+it. Five synthetic shapes through both kernels give sane answers, so the real
+vector is needed: `SAIGE_SPA_DUMP_BELOW=<p>` now dumps converged saddlepoints
+below `<p>`, every dump carries the kernel/roots/remainder line and an `nz`
+carrier flag, `aou_spa_dumpcheck.sh` replays the run's own kernel and prints a
+Monte Carlo reference (`aou_spa_rerun.md` section 8; test
+`test-step2-spa-dump.R`). Decision recorded on the row: do NOT rerun every
+SPA cell until the bug is found; binary traits only afterwards; the
+egress-safe lower bound is the count of rows with `log10(p.value.NA) -
+log10(p.value) > 3`.

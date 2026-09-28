@@ -335,3 +335,56 @@ def submit_qq(anc, image="gcr.io/weighty-elf-452116-c7/pyplot:20260928"):
     r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=os.environ)
     print(r.stdout[-300:] or r.stderr[-500:])
 ```
+
+## 8. Converged-but-wrong saddlepoints: `SPA_DUMP_BELOW` (2026-09-28, LEDGER #172)
+
+The scan (section 1) flags FAILED saddlepoints (`Is.SPA FALSE`); a saddlepoint
+that converges to a wrong value passes it, and the splice keeps its v4 row.
+Three FlexRV cells did exactly that: amr BenCervUterNeo ENSG00000101198
+`AM_sbeta20_MACsparse` p 2.2e-53 (normal p 8e-101), amr BenIntNeo ENSG00000196109
+(sbeta sets), eas MatHem ENSG00000136802 `AM_sbeta10_MACsparse` p 3.5e-93 with a
+NORMAL p of 0.02. Same carriers, sane p under `sbeta5` and `lof`; the trigger
+is the weight spread of `sbeta10`/`sbeta20`. Every kernel change since the v4
+image (`f2fb24da`) is on a failure path, so the current image is predicted to
+reproduce the values -- the run has to be watched, not trusted.
+
+With `SAIGE_SPA_DUMP_DIR` set, `SAIGE_SPA_DUMP_BELOW=<p>` ALSO dumps every
+CONVERGED saddlepoint whose p is below `<p>`, as `spaBelow_<pid>_<k>.tsv`.
+Every dump (both kinds) now carries a second header line -- `kernel`
+(`fast`/`dense`), both roots and iteration counts, the q-side saddle's
+validity, the Chernoff bound, `NAmu`/`NAsigma`, `var2`, the variance ratio,
+the reported `p` and `pNA` -- and an `nz` column flagging the carriers, so
+`aou_spa_dumpcheck.sh` replays the run's OWN kernel on the file: the `RUN:`
+line is what the run saw, `FAST replay` prints `t*q-K`, `w`, `v`, `Ztest` at
+the root (for these vectors the Legendre term is ~6 and `w` ~3.5; a `w` near
+15 says K is ~115 too small at the root, or q is not the vector's), and
+`MONTE CARLO reference` (2e6 draws, carriers exact, the rest Gaussian) is the
+p the cell should have printed. Dumps from an older image (no second line,
+no `nz`) still parse.
+
+Wrapper: inside the `SPA_DUMP` block,
+`[[ -n ${SPA_DUMP_BELOW:-} ]] && export SAIGE_SPA_DUMP_BELOW="${SPA_DUMP_BELOW}"`.
+Notebook, the three (trait, gene) pairs only, explicit regions rather than
+the scan's:
+
+```python
+def submit_below(anc, pheno, gene, image, thr="1e-10", trait="binary", **kw):
+    return submit(name=f"fxbelow-{anc}-{tag(pheno)}", image=image,
+                  masks="pLoF:damaging_missense:other_missense", fasttest="auto",
+                  outdir=f"{anc}/flexrv_below", anc=anc, pheno=pheno, trait=trait,
+                  chrs=range(1, 23), plk=lambda c, a=anc: cod(c, a), grp=am_grp,
+                  pooled=True, sidecars=True,
+                  env={"FLEXRV_SCORE": "AM", "FLEXRV_MAXMAF": "0.001", "MAXMAF": "0.001",
+                       "RCORR": "1", "REGIONS": gene, "SPA_DUMP": "1", "SPA_DUMP_BELOW": thr}, **kw)
+# masks/MAXMAF/model/cutoff exactly the v4 job's (RUNS["fxv4-..."]); then
+# aou_spa_dumpcheck.sh on each .spaDump.tgz as in section 5
+```
+
+The threshold `1e-10` keeps the dump to the cells of interest (a real 1e-10
+in one gene is at most a handful of sets). NOT to do yet: rerun every cell
+that triggered the SPA. Nothing changes until the kernel bug is found; the
+affected population is then binary traits only, and the lower bound from
+output, egress-safe as a count per ancestry x trait, is rows with `Is.SPA
+true` and `log10(p.value.NA) - log10(p.value) > 3`; the BenCervUterNeo
+shape (p between the normal p and the truth) is not screenable, so the
+measurement after the fix is a full binary FlexRV rerun diffed against v6.
