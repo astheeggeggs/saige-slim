@@ -362,13 +362,15 @@ the root (for these vectors the Legendre term is ~6 and `w` ~3.5; a `w` near
 p the cell should have printed. Dumps from an older image (no second line,
 no `nz`) still parse.
 
-Wrapper: inside the `SPA_DUMP` block,
+Image with the switch: `gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-f14d47e5` (IMG8; the
+same bytes on Docker Hub as `astheeggeggs/saige-slim:1.5.2-dev-f14d47e5`). Wrapper: inside the `SPA_DUMP` block,
 `[[ -n ${SPA_DUMP_BELOW:-} ]] && export SAIGE_SPA_DUMP_BELOW="${SPA_DUMP_BELOW}"`.
 Notebook, the three (trait, gene) pairs only, explicit regions rather than
 the scan's:
 
 ```python
-def submit_below(anc, pheno, gene, image, thr="1e-10", trait="binary", **kw):
+IMG8 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-f14d47e5"
+def submit_below(anc, pheno, gene, image=IMG8, thr="1e-10", trait="binary", **kw):
     return submit(name=f"fxbelow-{anc}-{tag(pheno)}", image=image,
                   masks="pLoF:damaging_missense:other_missense", fasttest="auto",
                   outdir=f"{anc}/flexrv_below", anc=anc, pheno=pheno, trait=trait,

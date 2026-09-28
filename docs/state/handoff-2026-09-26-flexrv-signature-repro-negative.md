@@ -707,3 +707,7 @@ Monte Carlo reference (`aou_spa_rerun.md` section 8; test
 SPA cell until the bug is found; binary traits only afterwards; the
 egress-safe lower bound is the count of rows with `log10(p.value.NA) -
 log10(p.value) > 3`.
+Commit `f14d47e5` (gate green, pushed); image **IMG8**
+`gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-f14d47e5` = Docker Hub
+`astheeggeggs/saige-slim:1.5.2-dev-f14d47e5`. Next action is the owner's: `submit_below` for the
+three (trait, gene) pairs, then `aou_spa_dumpcheck.sh` on each `.spaDump.tgz`.
