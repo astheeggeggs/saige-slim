@@ -108,3 +108,36 @@ FALSE, `maxMAC_in_groupTest` 0, `is_output_weight_column` FALSE.
 The first screen of every step-2 job log is SAIGE's dump of every option as
 parsed (`$bedFile ... $nThreads`), so a question about one run is answered by
 `fetch_log(<job>)` and reading that block, not by this page.
+
+## universal-saige (BRaVa-genetics, `main` at 8fa1aaf) against the AoU runs
+
+The analyst pipeline the AoU wrapper descends from: drivers `00_step0_VR_and_GRM.sh`,
+`01_step1_fitNULLGLMM.sh`, `02_step2_SPAtests_variant_and_gene.sh`, templates under
+`templates/`, image `wzhou88/saige:1.3.6` pulled from Docker Hub by
+`download_resources.sh`, one chromosome per step-2 invocation, run through
+`run_container.sh`. Where a value below is marked "AoU ?" the AoU step-0/1
+wrapper (workbench only) has not been read; the correspondence is presumed
+from the GRM file names, not established.
+
+| step | flag | universal-saige main | AoU v4 |
+|---|---|---|---|
+| 0 | GRM markers | LD-pruned `--indep-pairwise 50 5 0.05`, `createSparseGRM.R --numRandomMarkerforSparseKin=5000 --relatednessCutoff=0.05`, `--nThreads=$(nproc)` | file name agrees (`_relatednessCutoff_0.05_5000_randomMarkersUsed`); prefix `allofus_array_<pop>_snp_wise`; amr also at 0.125; AoU ? for the pruning |
+| 0 | VR plink | 2,000 markers at 10 <= MAC < 20 plus 2,000 at MAC >= 20 from the merged array data | AoU ? |
+| 1 | GRM | `--useSparseGRMtoFitNULL=TRUE --relatednessCutoff 0.05` | same at 0.05; amr 0.125 |
+| 1 | `--tol` | 0.00001 quantitative, 0.02 binary | 0.02 BOTH (handoff 09-23) |
+| 1 | `--invNormalize` | TRUE for quantitative | AoU ? |
+| 1 | covariates | template `age,age2,age_sex,age2_sex,sex,PC1..PC10`, categorical `sex` | AoU ? |
+| 1 | other | `--skipVarianceRatioEstimation FALSE --IsOverwriteVarianceRatioFile=TRUE --isCateVarianceRatio=TRUE --isCovariateOffset TRUE --nThreads=$(nproc)-1`, `--SampleIDIncludeFile` | AoU ?; a sparse-GRM fit is single-threaded regardless |
+| 2 | image | `wzhou88/saige:1.3.6` (Docker Hub) | `saige-slim:1.5.2-dev-f2fb24da` / `-3e92d89d` (gcr) |
+| 2 | genotypes | PLINK bed or VCF (`--vcfField=DS`) | PGEN; the slim build has NO VCF reader |
+| 2 | `--minMAC` | 0.5 for both test types | 0.5 group, 4 variant |
+| 2 | `--is_Firth_beta`, `--pCutoffforFirth` | TRUE, 0.1 | FALSE |
+| 2 | `--is_fastTest` | TRUE | FALSE |
+| 2 | `--maxMissing`, `--impute_method` | 1, mean | build defaults 0.15, best_guess |
+| 2 | `--relatednessCutoff` | not passed (moot when steps 0 and 1 share the cutoff; wrong for amr at 0.125) | passed, equal to step 1's, required by the wrapper |
+| 2 | annotations | `pLoF,damaging_missense_or_protein_altering,other_missense_or_protein_altering,synonymous,pLoF:...` (BRaVa labels) | `pLoF,damaging_missense,other_missense,synonymous,pLoF:damaging_missense,pLoF:damaging_missense:other_missense:synonymous` (the AoU annotation's labels) |
+| 2 | `--maxMAF_in_groupTest` | `0.0001,0.001,0.01` | same (SKAT-O arm); FlexRV arm 0.001 alone |
+| 2 | FlexRV | absent | the FlexRV arm (flags above) |
+| 2 | `--condition`, `--subSampleFile` | supported | not used |
+| 2 | fit gates | absent from 1.3.6 | ON in the slim build (`--minCaseCount` 100 etc.): a small cohort's trait is REFUSED, the wrapper records it as `REFUSED_BY_GATE` |
+| 2 | sidecars | none | pooledTests, skatoMethod, skatFailures, spaFallbacks, chrStatus, spaDump |
