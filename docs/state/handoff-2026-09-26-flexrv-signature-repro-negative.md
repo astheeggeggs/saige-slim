@@ -614,3 +614,28 @@ traits that is hours of submission before any compute. Levers, in order:
    how many AoU binary traits share one before designing around it.
 Not started; the current notebook loop is fine for the last stage of this
 rollout and not for production.
+
+## ROLLOUT COMPLETE (2026-09-28)
+
+**eur:** 198 reruns on `IMG7` (of 320 binary-trait bins; the rest had empty
+region lists), stage checker `STAGE OK` (0 fallbacks, no lost chromosome),
+198 splices SUCCESS. **All five ancestries** are now rerun on
+`1.5.2-dev-3e92d89d` (LEDGER #163-#170) and spliced into
+`<anc>/flexrv_v4_fixed/`: sas 6 traits, eas + afr 128 jobs, amr 118, eur 198
+-- every FlexRV binary-trait job the scans flagged, with zero saddlepoint
+fallbacks anywhere on the final image and every splice passing the
+"only failed tests moved" control (with the four larger-cohort rules of
+`aou_spa_splice.sh`, self-tested in `aou_spa_splice_selftest.sh`).
+The afr/BenIntNeo positive control held (artefact genes to 1e-4..1e-7,
+genuine tails unchanged). The SKAT-O arms never needed rerunning (scans
+clean). The quantitative traits have no saddlepoint and were never
+affected.
+
+**Next:** the plotting pass -- what FlexRV added over SKAT-O/burden -- from
+per-ancestry gene-level SUMMARY tables written by a job into the bucket
+(kilobytes; figures only displayed), never from the raw per-trait files:
+the Saturday egress warning coincided with plotting from those. The summary
+job needs the SKAT-O arm's results path pattern and the columns to plot,
+which the owner has and this handoff does not. After that, the OPEN item
+above (a submission system for thousands of traits) before any production
+launch.
