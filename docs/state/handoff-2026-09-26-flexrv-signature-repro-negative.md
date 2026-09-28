@@ -593,3 +593,24 @@ like the others (recipe corrected, `52fbaec3`). Next: eur on `IMG7`, on
 demand (its bins run longer), then the plotting pass from per-ancestry
 gene-level summary tables written in the bucket (the Saturday egress
 warning coincided with plotting from the raw per-trait files).
+
+## OPEN: a submission system for thousands of traits (owner, 2026-09-28)
+
+The rollout's mechanics do not scale: eur was 320 serial `aou_dsub` calls
+from the notebook (seconds each), then 320 serial `fetch_log` reads to
+classify verdicts, then a second wave of 320 splice jobs. At thousands of
+traits that is hours of submission before any compute. Levers, in order:
+1. `dsub --tasks` with a task table (trait, bin, regions, outputs): one API
+   call per stage. Already identified for step 1 in
+   `docs/state/` (the step-1 scaling handoff).
+2. Verdicts as files, not logs: the wrapper writes a one-line status per task
+   (fallbacks, failed chromosomes, splice verdict) under one prefix; one
+   `gcloud storage cat` over the prefix replaces per-job log fetching, and
+   displays kilobytes (the egress-safe pattern).
+3. The splice runs at the END of the rerun task, in the same container, so
+   the second wave disappears and the controls run where the data is.
+4. Several traits per genotype pass (`--GMMATmodel_varianceRatio_multiTraits_File`
+   on the region path) -- only for traits fitted on ONE sample set; measure
+   how many AoU binary traits share one before designing around it.
+Not started; the current notebook loop is fine for the last stage of this
+rollout and not for production.
