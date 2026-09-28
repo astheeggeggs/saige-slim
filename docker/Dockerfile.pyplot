@@ -1,0 +1,14 @@
+# A small Python plotting image for AoU dsub jobs: pandas, matplotlib, scipy.
+#
+# WHY: the plotting pass (harness/tools/aou_flexrv_qq.py) renders every
+# (ancestry, trait) QQ grid from the gene-level summary tables INSIDE a batch
+# VM and delivers PNGs only, so nothing is read into or displayed from the
+# notebook. AoU's dsub wrapper passes --use-private-address, so the workers
+# can neither pip-install nor pull from Docker Hub; the image has to carry the
+# libraries and live in the project's own gcr.io. Pinned by BUILD DATE:
+#   docker build -f docker/Dockerfile.pyplot -t pyplot:20260928 docker
+#   docker tag pyplot:20260928 gcr.io/weighty-elf-452116-c7/pyplot:20260928
+#   docker push gcr.io/weighty-elf-452116-c7/pyplot:20260928
+FROM python:3.12-slim
+RUN pip install --no-cache-dir "pandas==2.2.3" "matplotlib==3.9.2" "scipy==1.14.1" "numpy==2.1.3"
+ENV MPLBACKEND=Agg

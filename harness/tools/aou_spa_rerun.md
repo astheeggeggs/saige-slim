@@ -317,3 +317,21 @@ def submit_summary(anc, image="gcr.io/google.com/cloudsdktool/google-cloud-cli:s
     print(subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=os.environ).stdout[-300:])
 for anc in ANCS: submit_summary(anc)
 ```
+
+**Rendering inside dsub instead of the notebook** (`aou_flexrv_qq.py`, image
+`gcr.io/weighty-elf-452116-c7/pyplot:20260928` from `docker/Dockerfile.pyplot`):
+the same grids, drawn on a batch VM from the two tables as dsub inputs, PNGs
+delivered under `summary_v4/qq/<anc>/`; nothing is read into or displayed
+from the notebook. Self-test `aou_flexrv_qq_selftest.sh <python>`.
+
+```python
+def submit_qq(anc, image="gcr.io/weighty-elf-452116-c7/pyplot:20260928"):
+    sv = f"{BUCKET}/SAIGE_SLIM_TESTING/summary_v4"
+    args = ["aou_dsub", "--name", f"qq-{anc}", "--image", image, "--env", f"ANC={anc}",
+            "--input", f"IN_SUMMARY={sv}/{anc}.flexrv_vs_skato.v4.tsv.gz", "--input", f"IN_CELLS={sv}/{anc}.skato_cells.v4.tsv.gz",
+            "--output-recursive", f"OUT_DIR={sv}/qq/{anc}",
+            "--machine-type", "n2-standard-2", "--disk-size", "20", "--script", "aou_flexrv_qq.py"]
+    script = "source /home/jupyter/aou_dsub.bash\n" + " ".join(shlex.quote(a) for a in args)
+    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=os.environ)
+    print(r.stdout[-300:] or r.stderr[-500:])
+```
