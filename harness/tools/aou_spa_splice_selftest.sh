@@ -1,0 +1,107 @@
+#!/bin/bash
+# Self-test for aou_spa_splice.sh and aou_spa_stagecheck.sh on FABRICATED
+# files (no AoU data): one positive control that must splice, and planted
+# defects that must each be refused for the reason planted. Run from anywhere:
+#   bash harness/tools/aou_spa_splice_selftest.sh
+# The fixtures encode every structure the 2026-09-27/28 rollout met:
+# pseudo-marker and real-marker singleAssoc rows, a marker shared by
+# overlapping regions (multiset), a burden cell with Number_rare > 0
+# (unobservable in v4), pseudo-marker rows changed by their own exact-test
+# eligibility (LEDGER #166) bounded by the 0/1-weight twin, a pooled sidecar
+# placeholder, and a chrStatus with a failed chromosome.
+set -euo pipefail
+HERE=$(cd "$(dirname "$0")" && pwd)
+T=$(mktemp -d); trap 'rm -rf "${T}"' EXIT
+cd "${T}"
+python3 - <<'PY'
+import gzip, os
+def w(path, lines, gz=True):
+    data = "\n".join(lines) + "\n"
+    (gzip.open(path, "wt") if gz else open(path, "w")).write(data)
+H = "Region\tGroup\tmax_MAF\tWeight\tPvalue_Burden\tBETA_Burden\tSE_Burden\tMAC\tMAC_case\tMAC_control\tNumber_rare\tNumber_ultra_rare"
+def row(reg, w_, p, mac, nr=0): return f"{reg}\tgrp\t0.001\t{w_}\t{p}\t1\t1\t{mac}\t1\t{mac-1}\t{nr}\t{mac-nr}"
+def cau(reg, p): return f"{reg}\tCauchy\tNA\tNA\t{p}\tNA\tNA\tNA\tNA\tNA\tNA\tNA"
+SH = "CHR\tPOS\tMarkerID\tAllele1\tAllele2\tAC_Allele2\tAF_Allele2\tMissingRate\tBETA\tSE\tTstat\tvar\tp.value\tp.value.NA\tIs.SPA"
+def ur(reg, w_, ac, p, na, spa): return f"UR\tUR\t{reg}:grp:0.001:{w_}\tUR\tUR\t{ac}\t0.0001\t0\t1\t1\t1\t1\t{p}\t{na}\t{spa}"
+def rm(pos, ac, p, na, spa): return f"1\t{pos}\tchr1:{pos}:A:G\tA\tG\t{ac}\t0.0005\t0\t1\t1\t1\t1\t{p}\t{na}\t{spa}"
+# regions: R1 (recorded failure W1, MAC-3 cell W2, unchanged W3, unobservable W4), R2 (nothing changes),
+# R4 (tail region: only an unobservable cell changes), R5 (unw_unw count 3: weighted set's pseudo-marker changes),
+# R6 (lof_unw count 2: lof x mafbeta changes; cbrt x unw must NOT change), R7 (lof_unw count 9), R3 (not rerun)
+old_res = [H, row("R1","W1","1e-100",9), row("R1","W2","0.02",3), row("R1","W3","0.4",9), row("R1","W4","1.6e-7",47,2), cau("R1","1e-99"),
+           row("R2","W1","0.3",7), cau("R2","0.3"), row("R4","W1","2e-8",30,5), row("R4","W2","0.5",30,0), cau("R4","4e-8"),
+           row("R5","AM_unw_unw","0.2",9,2), row("R5","AM_cbrt0.2_mafbeta2","0.3",9,2), cau("R5","0.25"),
+           row("R6","AM_unw_unw","0.2",30,6), row("R6","AM_lof_MAC100","0.3",12,4), row("R6","AM_cbrt0.2_unw","0.4",30,6), row("R6","AM_lof_unw","0.3",12,4), row("R6","AM_lof_mafbeta2","0.3",12,4), cau("R6","0.3"),
+           row("R7","AM_unw_unw","0.2",40,10), row("R7","AM_lof_unw","0.3",30,8), row("R7","AM_lof_mafbeta2","0.3",30,8),
+           row("R3","W1","0.5",6), cau("R3","0.5")]
+new_res = [H, row("R1","W1","0.001",9), row("R1","W2","0.05",3), row("R1","W3","0.4",9), row("R1","W4","0.068",47,2), cau("R1","0.002"),
+           row("R2","W1","0.3",7), cau("R2","0.3"), row("R4","W1","0.03",30,5), row("R4","W2","0.5",30,0), cau("R4","0.06"),
+           row("R5","AM_unw_unw","0.2",9,2), row("R5","AM_cbrt0.2_mafbeta2","0.3",9,2), cau("R5","0.25"),
+           row("R6","AM_unw_unw","0.2",30,6), row("R6","AM_lof_MAC100","0.3",12,4), row("R6","AM_cbrt0.2_unw","0.4",30,6), row("R6","AM_lof_unw","0.3",12,4), row("R6","AM_lof_mafbeta2","0.3",12,4), cau("R6","0.3"),
+           row("R7","AM_unw_unw","0.2",40,10), row("R7","AM_lof_unw","0.3",30,8), row("R7","AM_lof_mafbeta2","0.3",30,8)]
+shared = rm(500,20,"0.7","0.7","false")   # a marker in three regions: three identical old copies, one rerun copy
+old_sa = [SH, ur("R1","W1",5,"1e-100","1e-100","false"), ur("R1","W2",5,"0.02","0.01","true"), ur("R1","W3",5,"0.4","0.4","false"),
+          ur("R2","W1",5,"0.3","0.3","false"), ur("R3","W1",5,"0.5","0.5","false"),
+          rm(100,12,"1e-90","1e-90","false"), rm(200,3,"0.02","0.01","true"), rm(300,15,"0.3","0.3","false"), rm(400,11,"0.2","0.2","false"),
+          shared, shared, shared,
+          ur("R5","AM_unw_unw",3,"0.5","0.5","false"), ur("R5","AM_cbrt0.2_mafbeta2","0.61","0.4","0.02","true"),
+          ur("R6","AM_unw_unw",9,"0.5","0.5","false"), ur("R6","AM_lof_MAC100",2,"0.3","0.02","true"), ur("R6","AM_cbrt0.2_unw","0.6","0.2","0.02","true"),
+          ur("R6","AM_lof_unw",2,"0.3","0.02","true"), ur("R6","AM_lof_mafbeta2","1.98","0.3","0.02","true"),
+          ur("R7","AM_unw_unw",30,"0.5","0.5","false"), ur("R7","AM_lof_unw",9,"0.3","0.02","true"), ur("R7","AM_lof_mafbeta2","8.1","0.3","0.02","true")]
+new_sa = [SH, ur("R1","W1",5,"0.001","1e-100","true"), ur("R1","W2",5,"0.05","0.01","true"), ur("R1","W3",5,"0.4","0.4","false"),
+          ur("R2","W1",5,"0.3","0.3","false"),
+          rm(100,12,"0.002","1e-90","true"), rm(200,3,"0.03","0.01","true"), rm(300,15,"0.3","0.3","false"), shared,
+          ur("R5","AM_unw_unw",3,"0.5","0.5","false"), ur("R5","AM_cbrt0.2_mafbeta2","0.61","0.45","0.02","true"),
+          ur("R6","AM_unw_unw",9,"0.5","0.5","false"), ur("R6","AM_lof_MAC100",2,"0.35","0.02","true"), ur("R6","AM_cbrt0.2_unw","0.6","0.2","0.02","true"),
+          ur("R6","AM_lof_unw",2,"0.35","0.02","true"), ur("R6","AM_lof_mafbeta2","1.98","0.36","0.02","true"),
+          ur("R7","AM_unw_unw",30,"0.5","0.5","false"), ur("R7","AM_lof_unw",9,"0.3","0.02","true"), ur("R7","AM_lof_mafbeta2","8.1","0.3","0.02","true")]
+def variant(sa, drop, add): return [l for l in sa if l != drop] + [add]
+plants = {
+  "ok":   (new_res, new_sa),
+  "real": (new_res, variant(new_sa, rm(300,15,"0.3","0.3","false"), rm(300,15,"0.31","0.3","false"))),          # unexplained real-marker change
+  "out":  (new_res, new_sa + [ur("R9","W1",5,"0.1","0.1","false")]),                                               # pseudo-marker row outside the list
+  "obs":  ([l if not l.startswith("R2\tgrp\t0.001\tW1\t") else row("R2","W1","0.31",7) for l in new_res], new_sa),  # observable cell changed unexplained
+  "dup":  (new_res, variant(new_sa, shared, rm(500,20,"0.71","0.7","false"))),                                     # shared marker's rerun row differs
+  "ur":   (new_res, variant(new_sa, ur("R6","AM_cbrt0.2_unw","0.6","0.2","0.02","true"), ur("R6","AM_cbrt0.2_unw","0.6","0.25","0.02","true"))),  # weighted set, maximal count 9
+  "twin": (new_res, variant(new_sa, ur("R7","AM_lof_mafbeta2","8.1","0.3","0.02","true"), ur("R7","AM_lof_mafbeta2","8.1","0.31","0.02","true"))),  # lof x mafbeta, twin count 9
+}
+os.makedirs("in", exist_ok=True)
+w("in/fxv4-test.txt.gz", old_res); w("in/fxv4-test.singleAssoc.txt.gz", old_sa)
+w("in/fxv4-test.pooledTests.txt.gz", ["Region\tRows\tRefused\tRule", "R1\t3\t0\tbonferroni", "R3\t1\t0\tcauchy"])
+for tag, (res, sa) in plants.items():
+    os.makedirs(f"in/{tag}", exist_ok=True); w(f"in/{tag}/fxv5-test.txt.gz", res); w(f"in/{tag}/fxv5-test.singleAssoc.txt.gz", sa)
+    gzip.open(f"in/{tag}/fxv5-test.pooledTests.txt.gz", "wt").write("# placeholder\n")
+w("in/regions.txt", ["R1", "R2", "R4", "R5", "R6", "R7"], gz=False)
+w("in/failures.tsv", ["file\tMarkerID\tRegion\tCHR\tp.value\tp.value.NA\tIs.SPA",
+                      "fxv4-test\tR1:grp:0.001:W1\tR1\t1\t1e-100\t1e-100\tfalse",
+                      "fxv4-test\tchr1:100:A:G\t-\t1\t1e-90\t1e-90\tfalse"], gz=False)
+# stage-checker fixtures
+os.makedirs("stage/null", exist_ok=True); os.makedirs("stage/pos", exist_ok=True); os.makedirs("stage/chr", exist_ok=True)
+hdr = "Kind\tRegion\tGroup\tmax_MAF\tWeight\tMarkerID\tMAC\tp_normal_not_reported\tp_exact_reported\tNote"
+w("stage/null/a.spaFallbacks.txt.gz", [hdr])
+w("stage/pos/b.spaFallbacks.txt.gz", [hdr, "region\tG1\tpLoF\t0.001\tunw_unw\tNA\t9\t1e-120\t0.0021\tspa: root(q) not found [root1=inf/1000 root2=-3/5 qsaddle=n/a bound=-1]",
+                                          "region\tG3\tpLoF\t0.001\tunw_unw\tNA\t44\t1e-200\tNA\tspa: saddle(q) invalid [qsaddle=INVALID]; exact test not run or failed: above the ceiling"])
+w("stage/chr/c.spaFallbacks.txt.gz", [hdr]); w("stage/chr/c.chrStatus.txt.gz", ["requested\t1 2 3", "failed\t5", "refused_by_gate\tnone", "skipped_no_region\tnone"])
+w("stage/null/a.chrStatus.txt.gz", ["requested\t1 2 3", "failed\tnone", "refused_by_gate\tnone", "skipped_no_region\tnone"])
+print("fixtures written")
+PY
+run(){ local tag="$1"; rm -rf "work/${tag}" "out/${tag}"; mkdir -p "work/${tag}" "out/${tag}"
+  (cd "work/${tag}" && OLD_PREFIX="${T}/in/fxv4-test" NEW_PREFIX="${T}/in/${tag}/fxv5-test" REGIONS="${T}/in/regions.txt" FAILURES="${T}/in/failures.tsv" OUT_DIR="${T}/out/${tag}" bash "${HERE}/aou_spa_splice.sh" > "${T}/${tag}.log" 2>&1); echo $?; }
+fail=0
+expect(){ local tag="$1" want="$2" pat="$3"; local got; got=$(run "${tag}")
+  if [[ ${got} != "${want}" ]] || ! grep -q -- "${pat}" "${tag}.log"; then echo "FAIL ${tag}: exit ${got} (want ${want}), pattern '${pat}' $(grep -q -- "${pat}" "${tag}.log" && echo found || echo MISSING)"; fail=1; else echo "ok   ${tag}: exit ${got}, '${pat}'"; fi; }
+expect ok   0 "unobservable burden cells (Number_rare > 0) accepted at region level: 2 (p rose in 2, fell in 0)"
+grep -q "pseudo-marker rows explained by their own exact-test eligibility (LEDGER #166, count <= 4): 4" ok.log || { echo "FAIL ok: pseudo-marker count"; fail=1; }
+grep -q "real-marker rows: 4 rerun marker(s), 4 old row(s) replaced by 4 new, 2 old cop(y/ies) kept" <(tr -s ' ' < ok.log) || { echo "FAIL ok: real-marker accounting"; fail=1; }
+[[ $(gzip -dc out/ok/fxv4-test.singleAssoc.txt.gz | grep -c "chr1:500") -eq 3 ]] || { echo "FAIL ok: shared marker copies"; fail=1; }
+expect real 1 "ERROR .singleAssoc.txt.gz"
+expect out  1 "new rows outside the region list"
+expect obs  1 "ERROR .txt.gz"
+expect dup  1 "ERROR .singleAssoc.txt.gz"
+expect ur   1 "ERROR .singleAssoc.txt.gz"
+expect twin 1 "ERROR .singleAssoc.txt.gz"
+# stage checker
+bash "${HERE}/aou_spa_stagecheck.sh" stage/null > sc_null.log 2>&1 && grep -q "STAGE OK" sc_null.log && echo "ok   stagecheck null" || { echo "FAIL stagecheck null"; fail=1; }
+if bash "${HERE}/aou_spa_stagecheck.sh" stage/pos > sc_pos.log 2>&1; then echo "FAIL stagecheck pos: exit 0"; fail=1; else grep -q "NA 1" sc_pos.log && echo "ok   stagecheck NA flagged" || { echo "FAIL stagecheck pos"; fail=1; }; fi
+if bash "${HERE}/aou_spa_stagecheck.sh" stage/chr > sc_chr.log 2>&1; then echo "FAIL stagecheck chr: exit 0"; fail=1; else grep -q "CHROMOSOME FAILED" sc_chr.log && echo "ok   stagecheck lost chromosome flagged" || { echo "FAIL stagecheck chr"; fail=1; }; fi
+if (( fail )); then echo "SELFTEST FAILED"; exit 1; fi
+echo "selftest OK: 1 positive control, 6 planted refusals, 3 stage-checker cases"
