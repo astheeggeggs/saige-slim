@@ -288,3 +288,29 @@ and only then launch the next ancestry.
 p ~1e-174 were the #163/#164 normal-p artefact; on this image they should
 come back at ~1e-3 (the dominant carrier's fitted probability times the
 rest's tail). If they come back at 1e-100 or NA, stop.
+
+## 7. The plotting pass: gene-level summaries first (2026-09-28)
+
+Never plot from the per-trait results files (the 2026-09-26 egress warning
+coincided with that). `harness/tools/aou_flexrv_summary.sh`, run as ONE dsub
+job per ancestry on the cloud-cli image, streams every FlexRV and SKAT-O
+results file of the ancestry and writes one small gzipped TSV to the bucket:
+one row per (trait, gene), gene level only -- `p_flexrv` (the FlexRV file's
+Cauchy row), `p_flexrv_best`/`set_best`/`n_sets`, `p_skato` (the SKAT-O
+file's Cauchy row over its 18 cells), `p_skato_best`/`cell_best`,
+`p_burden_best`, `p_skat_best`, and `source` = `fixed` when the trait's job
+was spliced (`flexrv_v4_fixed/`) else `v4` (nothing to rerun, or a
+quantitative trait). A gene in one arm only carries NA on the other. Self-test:
+`aou_flexrv_summary_selftest.sh`. The notebook then loads five files of a
+few MB, and displays figures only.
+
+```python
+def submit_summary(anc, image="gcr.io/google.com/cloudsdktool/google-cloud-cli:slim"):
+    args = ["aou_dsub", "--name", f"summary-{anc}", "--image", image,
+            "--env", f"ANC={anc}", "--env", f"BASE={BUCKET}/SAIGE_SLIM_TESTING", "--env", "RUNTAG=v4",
+            "--output-recursive", f"OUT_DIR={BUCKET}/SAIGE_SLIM_TESTING/summary_v4",
+            "--machine-type", "n2-standard-2", "--disk-size", "20", "--script", "aou_flexrv_summary.sh"]
+    script = "source /home/jupyter/aou_dsub.bash\n" + " ".join(shlex.quote(a) for a in args)
+    print(subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=os.environ).stdout[-300:])
+for anc in ANCS: submit_summary(anc)
+```
