@@ -584,3 +584,12 @@ unchanged to the printed digits -- only the failed tests moved. The gene at
 9.8e-8 is a minimum over ~100 weight sets, not a stop; worth reading (set,
 MAC, SKAT-O arm) when afr's results are read. Next: amr on `IMG7`
 (`STAMPS["amr"]` from the scan listing), stage checker, splices; then eur.
+
+**amr COMPLETE (2026-09-28).** 118 reruns on `IMG7` (the other submissions
+had empty region lists), stage checker `STAGE OK` (0 fallbacks, no lost
+chromosome), 118 splices clean on the first pass with the four
+larger-cohort rules in place -- nothing new. amr runs WITH its sparse GRM
+like the others (recipe corrected, `52fbaec3`). Next: eur on `IMG7`, on
+demand (its bins run longer), then the plotting pass from per-ancestry
+gene-level summary tables written in the bucket (the Saturday egress
+warning coincided with plotting from the raw per-trait files).
