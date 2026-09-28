@@ -668,3 +668,24 @@ counts, -log10 scatter, QQ by trait type) read the first table. sas verified
 end to end; the other four follow their jobs. Notebook tidy-up:
 `tidy_04b.py` (scratchpad of this session; a builder that copies the kept
 cells verbatim by marker) produced `04b_production_tidy.ipynb`.
+
+## universal-saige (BRaVa-genetics) moved to this build (2026-09-28)
+
+Branch `saige-slim-aou-parameters` in `~/Repositories/universal-saige`, one
+commit `e5c2223`, not pushed: the analyst pipeline now pulls
+`astheeggeggs/saige-slim:<tag>` from Docker Hub (the namespace is a
+placeholder until the owner's Docker Hub push; `SAIGE_IMAGE`/`SAIGE_VERSION`
+in its `download_resources.sh`), refuses VCF (convert once with plink2),
+takes PLINK 2 as the recommended input, carries the AoU step-2 choices and
+`--tol 0.02`, ADDS `--useSparseGRMforVarRatio=TRUE` to step 1 (without it
+step 2 given the GRM refuses the model on this build), runs FlexRV via
+`--flexRVscore NAME` with `04_flexrv_groupfile.sh` around a copy of
+`harness/tools/flexrv_score_from_alphamissense.py`, and passes the fit gates
+through. Checked end to end on this repo's fixture with the local image:
+gate refusal control, both step-1 arms byte-identical, variant / SKAT-O /
+FlexRV runs, PGEN vs PLINK FlexRV byte-identical. Its
+`docs/saige-slim-migration.md` records the decisions. Found on the way:
+LEDGER #171 (a refused step-1 fit leaves 0-byte outputs). The three
+`harness/tools/{flexrv_score_from_alphamissense.py,build_flexrv_groupfiles.sh,check_groupfile_overlap.py}`
+here are still UNTRACKED (another session's); universal-saige holds a copy of
+the first.
