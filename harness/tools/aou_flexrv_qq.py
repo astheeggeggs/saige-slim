@@ -59,9 +59,8 @@ def qq_grid(anc, trait, c, s):
     mafs = sorted({m for d in cells.values() for m in d})
     blues = plt.cm.Blues(np.linspace(0.35, 0.95, max(len(mafs), 1)))
     fig = plt.figure(figsize=(18, 8.5))
-    axes = fig.subplots(2, 4, sharex=True, sharey=True)
+    axes = fig.subplots(2, 4)          # independent axes: a p of 1e-78 (BRCA1) must not set every panel's scale, nor be clipped
     fig.suptitle(f"{anc.upper()}  {trait}   burden p-value — SKAT-O cells by mask, and FlexRV pooled vs all masks at maxMAF {FLEX_MAF:g}", y=0.995)
-    ymax = 1.0
     for ax, g in zip(axes.flat[:6], MASK_ORDER):
         ax.set_title(nice(g).replace(";", ";\n") if g.count(";") > 1 else nice(g), fontsize=10)
         nmax = 0
@@ -70,7 +69,7 @@ def qq_grid(anc, trait, c, s):
             if colname is None: continue
             e, o, n = qq_points(pd.to_numeric(c[colname], errors="coerce").dropna())
             if n == 0: continue
-            ax.scatter(e, o, s=4, color=col, label=f"maxMAF {m:g}  (n={n:,})"); nmax = max(nmax, n); ymax = max(ymax, o.max())
+            ax.scatter(e, o, s=4, color=col, label=f"maxMAF {m:g}  (n={n:,})"); nmax = max(nmax, n)
         if nmax:
             e, lo, hi = null_band(nmax); ax.fill_between(e, lo, hi, color="grey", alpha=0.25, lw=0, label="95% null band")
             ax.plot([0, e.max()], [0, e.max()], color="0.3", lw=0.8)
@@ -84,16 +83,15 @@ def qq_grid(anc, trait, c, s):
         e, o, n = qq_points(pd.to_numeric(c[colname], errors="coerce").dropna())
         if n: ax.scatter(e, o, s=4, color=col, label=(nice(g) if len(g) < 30 else nice(g)[:28] + "...")); nmax = max(nmax, n)
     e, o, n = qq_points(pd.to_numeric(s.p_flexrv, errors="coerce").dropna())
-    if n: ax.scatter(e, o, s=5, color="#d62728", label=f"FlexRV pooled (n={n:,})"); nmax = max(nmax, n); ymax = max(ymax, o.max())
+    if n: ax.scatter(e, o, s=5, color="#d62728", label=f"FlexRV pooled (n={n:,})"); nmax = max(nmax, n)
     if nmax:
         e, lo, hi = null_band(nmax); ax.fill_between(e, lo, hi, color="grey", alpha=0.25, lw=0, label="95% null band")
         ax.plot([0, e.max()], [0, e.max()], color="0.3", lw=0.8)
     ax.grid(alpha=0.3); ax.legend(fontsize=7, loc="upper left")
     axes.flat[7].axis("off")
-    for ax in axes.flat[:7]: ax.set_ylim(0, min(ymax * 1.05, 40))
-    for ax in axes[1, :3]: ax.set_xlabel("expected $-\\log_{10} p$")
-    axes[0, 3].set_xlabel("expected $-\\log_{10} p$")
-    for ax in axes[:, 0]: ax.set_ylabel("observed $-\\log_{10} p$")
+    for ax in axes.flat[:7]:
+        ax.set_xlim(left=0); ax.set_ylim(bottom=0)
+        ax.set_xlabel("expected $-\\log_{10} p$"); ax.set_ylabel("observed $-\\log_{10} p$")
     fig.tight_layout(rect=(0, 0, 1, 0.97))
     return fig
 
