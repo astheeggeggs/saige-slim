@@ -38,6 +38,7 @@ From `docs/state/handoff-2026-09-23-fit-gates-and-aou-refit.md` and `-09-25-`:
 |---|---|---|
 | model directory | `run/nullglmm_v4/<anc>_<TRAIT>.rda` (+ `.varianceRatio.txt`); amr in `nullglmm_v4_rc0.125/` | notebook `STEP1` |
 | `--useSparseGRMtoFitNULL` | TRUE (sparse-GRM fits; single-threaded whatever `--nThreads` says) | handoff 09-23 |
+| `--useSparseGRMforVarRatio` | TRUE: the AoU variance-ratio files carry `sparse` rows (`ratioVec_sparse 1 1` in every step-2 log), and step 2 given the GRM REFUSES a file without them | the step-2 option/VR dump |
 | `--relatednessCutoff` | 0.05; amr 0.125 (must match step 2's, nothing checks it) | handoff 09-25 |
 | `--tol` | 0.02, both trait types (the refit on `1.5.2-dev-3e61864a`) | handoff 09-23 |
 | `--traitType` | binary / quantitative per trait (`TRAIT_TYPE` in the notebook) | notebook |
@@ -127,6 +128,7 @@ from the GRM file names, not established.
 | 1 | `--tol` | 0.00001 quantitative, 0.02 binary | 0.02 BOTH (handoff 09-23) |
 | 1 | `--invNormalize` | TRUE for quantitative | AoU ? |
 | 1 | covariates | template `age,age2,age_sex,age2_sex,sex,PC1..PC10`, categorical `sex` | AoU ? |
+| 1 | `--useSparseGRMforVarRatio` | NOT passed: the VR file has no `sparse` rows, and step 2 with the GRM refuses it on the slim build (found running the drivers end to end, 2026-09-28) | TRUE (the files carry `sparse` rows) |
 | 1 | other | `--skipVarianceRatioEstimation FALSE --IsOverwriteVarianceRatioFile=TRUE --isCateVarianceRatio=TRUE --isCovariateOffset TRUE --nThreads=$(nproc)-1`, `--SampleIDIncludeFile` | AoU ?; a sparse-GRM fit is single-threaded regardless |
 | 2 | image | `wzhou88/saige:1.3.6` (Docker Hub) | `saige-slim:1.5.2-dev-f2fb24da` / `-3e92d89d` (gcr) |
 | 2 | genotypes | PLINK bed or VCF (`--vcfField=DS`) | PGEN; the slim build has NO VCF reader |
