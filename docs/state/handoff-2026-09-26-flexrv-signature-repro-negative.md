@@ -542,3 +542,36 @@ rule and a plain Cauchy discloses nothing (the ROWS wording is per file since
 `60e3297c`). Six of six sas traits are in `flexrv_v4_fixed/`. Next: eas + afr
 on `IMG7` (section 6 of the recipe), stage checker over sidecars AND
 chrStatus, then amr, then eur.
+
+## eas + afr stage (2026-09-27 night, into 2026-09-28)
+
+Reruns on `1.5.2-dev-3e92d89d`: 128 jobs (every binary trait of eas, and of
+afr in its chromosome bins; the other submissions had empty region lists),
+all delivered, `aou_spa_stagecheck.sh`: 0 fallbacks in every sidecar, no
+lost chromosome, `STAGE OK`. So #169 lands on two more ancestries and the
+#170 guard stayed quiet.
+
+The SPLICES then found three structures of larger cohorts that the sas stage
+(N = 2,645 in-sample, every marker ultra-rare) could not show, each first
+refused by the splice's control as designed and then given an exact rule
+(`aou_spa_splice.sh`, commits `e4606698`, `d69e85cd`, `5febb6b4`,
+`0d0452cd`, `0df0707a`; recipe section 3):
+1. **Real-marker singleAssoc rows** (MAC above the collapse cutoff, which
+   exists once `2 N maxMAF > 10`): keyed by MarkerID, explained by a recorded
+   real-marker failure or MAC <= the exact-test cutoff; a marker spanning
+   overlapping regions (protocadherin, ZNF clusters) has one row per region,
+   replaced as a multiset.
+2. **Burden cells with `Number_rare > 0`**: a test the scan could not
+   observe (its saddlepoint can fail while every component's own test
+   converged; v4 recorded nothing). Accepted at region level, counted, with
+   the direction reported (p rose in nearly all, as an artefact that was too
+   small predicts).
+3. **Pseudo-marker rows changed by #166** (every set now ER-eligible by its
+   own unweighted count): bounded by the 0/1-weight twin's count.
+Classifier over the 128 splice logs: 98 clean first time, 27 of the 30
+resubmitted clean, 3 refused on the `lof x mafbeta` twin case, fixed in
+`0df0707a`; those 3 are the next resubmission. Then afr/BenIntNeo's positive
+control (scan-tail genes near 1e-174 should read ~1e-3 in `flexrv_v4_fixed`),
+then amr, then eur. No AoU count below 20 is written anywhere in the repo
+(checked 2026-09-27 over every change of the session, commit messages and
+memory notes included; the one such number written was scrubbed).
