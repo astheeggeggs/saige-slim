@@ -21,10 +21,22 @@
 # conditioning-marker test counts but has no cell to name; the line says so
 # when that happens. A BURDEN twin served from the memo (R/BurdenMemo.R)
 # inherits its primary's p and is not recorded again.
+#
+# LEDGER #173 (decided 2026-09-29) rides on the same summary: on the marker
+# path under --is_noadjCov=TRUE the fast kernel's Gaussian remainder is the
+# centred genotype's variance minus the projected carriers' part, which is not
+# a variance and could in principle go negative. If it does the dense kernel
+# runs instead and the run says how many times.
 
 #' Print the end-of-run summary and, if anything fell back, write the sidecar.
 #' @noRd
 spaFallbackSummary <- function(OutputFile) {
+  # LEDGER #173's safety net: said only when it happened (it never has)
+  n_neg <- as.integer(getSpaNegRemainderCountInCPP())
+  if (n_neg > 0) {
+    cat("SPA remainder: ", n_neg, " test(s) had a fast-kernel Gaussian remainder that was not a ",
+        "variance and ran the dense kernel instead (LEDGER #173).\n", sep = "")
+  }
   rec <- getSpaFallbackRecordsInCPP()
   n <- as.integer(rec$count)
   if (n == 0) {

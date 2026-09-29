@@ -114,6 +114,16 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// getSpaNegRemainderCountInCPP
+double getSpaNegRemainderCountInCPP();
+RcppExport SEXP _SAIGE_getSpaNegRemainderCountInCPP() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(getSpaNegRemainderCountInCPP());
+    return rcpp_result_gen;
+END_RCPP
+}
 // getSpaFallbackRecordsInCPP
 Rcpp::List getSpaFallbackRecordsInCPP();
 RcppExport SEXP _SAIGE_getSpaFallbackRecordsInCPP() {
@@ -2314,6 +2324,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_resetSpaPinnedRecordsInCPP", (DL_FUNC) &_SAIGE_resetSpaPinnedRecordsInCPP, 0},
     {"_SAIGE_getSpaPinnedRecordsInCPP", (DL_FUNC) &_SAIGE_getSpaPinnedRecordsInCPP, 0},
     {"_SAIGE_resetSpaFallbackRecordsInCPP", (DL_FUNC) &_SAIGE_resetSpaFallbackRecordsInCPP, 0},
+    {"_SAIGE_getSpaNegRemainderCountInCPP", (DL_FUNC) &_SAIGE_getSpaNegRemainderCountInCPP, 0},
     {"_SAIGE_getSpaFallbackRecordsInCPP", (DL_FUNC) &_SAIGE_getSpaFallbackRecordsInCPP, 0},
     {"_SAIGE_resetBurdenMemoInCPP", (DL_FUNC) &_SAIGE_resetBurdenMemoInCPP, 0},
     {"_SAIGE_getBurdenMemoInCPP", (DL_FUNC) &_SAIGE_getBurdenMemoInCPP, 0},

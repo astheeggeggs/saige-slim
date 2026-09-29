@@ -66,6 +66,10 @@ struct KernelWorkspace {
 // exact test (getMarkerPval). Reset per run by resetSpaFallbackRecordsInCPP.
 unsigned long long spaFallbackCount();
 void spaFallbackCountReset();
+// LEDGER #173: tests whose fast-kernel Gaussian remainder was not a variance
+// and ran the dense kernel instead. Reset with the fallback records.
+unsigned long long spaNegRemainderCount();
+void spaNegRemainderCountReset();
 
 // LEDGER #174 (2026-09-29): a PINNED sample is one whose outcome the null model
 // holds certain -- the probability of the outcome it does NOT have (its flip

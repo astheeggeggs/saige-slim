@@ -32,6 +32,17 @@
 static std::atomic<unsigned long long> g_spaFallbackCount(0);
 unsigned long long SAIGE::spaFallbackCount(){ return g_spaFallbackCount.load(); }
 void SAIGE::spaFallbackCountReset(){ g_spaFallbackCount.store(0); }
+// LEDGER #173: tests whose fast-kernel Gaussian remainder was not a variance
+// (negative or NaN) and ran the dense kernel instead. Never observed;
+// SAIGE_SPA_PLANT_NEG_REMAINDER=1 is the test plant that declares every one
+// so (tests/testthat/test-step2-spa-remainder.R). Never set it in a real run.
+static std::atomic<unsigned long long> g_spaNegRemainderCount(0);
+unsigned long long SAIGE::spaNegRemainderCount(){ return g_spaNegRemainderCount.load(); }
+void SAIGE::spaNegRemainderCountReset(){ g_spaNegRemainderCount.store(0); }
+static bool spaPlantNegRemainder(){
+  static const bool plant = [](){ const char* v = std::getenv("SAIGE_SPA_PLANT_NEG_REMAINDER"); return v != nullptr && std::string(v) == "1"; }();
+  return plant;
+}
 // LEDGER #174: see SAIGE_test.hpp. The three settings are read once.
 static std::atomic<unsigned long long> g_spaPinnedCount(0);
 static std::atomic<unsigned long long> g_spaPinnedRefusedCount(0);
@@ -1052,7 +1063,17 @@ if(!t_isER){
     	//bool logp=false;
 	double tol0 = std::numeric_limits<double>::epsilon();
 	tol1 = std::pow(tol0, 0.25);
-	const bool fastKernel = (p_iIndexComVecSize >= 0.5 && !t_ctx.useSparseGRM);
+	bool fastKernel = (p_iIndexComVecSize >= 0.5 && !t_ctx.useSparseGRM);
+	// LEDGER #173 (DECIDED 2026-09-29: upstream's arithmetic stays). On the
+	// marker path under --is_noadjCov=TRUE the fast kernel's Gaussian remainder
+	// is var2 of the CENTRED genotype minus the PROJECTED carriers' part. That
+	// is not a variance, and if it ever went negative the CGF would be handed a
+	// negative quadratic. It has not been observed. If it happens the dense
+	// kernel runs instead -- it needs no remainder -- and the test is counted.
+	if(fastKernel && (spaPlantNegRemainder() || !(NAsigma >= 0.0))){
+	  fastKernel = false;
+	  g_spaNegRemainderCount.fetch_add(1);
+	}
 	// LEDGER #174: the pinned samples leave the vector the CGF is built from.
 	// The fast kernel's exact part is the carriers, so its pinned CARRIERS go
 	// (its Gaussian remainder has no exponential term to explode, and NAmu and

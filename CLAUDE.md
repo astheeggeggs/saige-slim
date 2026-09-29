@@ -780,6 +780,16 @@ declarations sit at the top of `src/Main.cpp`.
   probabilities and S is within a hair of gpos (`root * max|g|` ~ 1/mu of the
   dominant carrier). A refused q-side saddle is now labelled `saddle(q)
   invalid`, not `root(mirrored q) not found`.
+- **The marker path's saddlepoint mixes two vectors, and that is DECIDED
+  (LEDGER #173, 2026-09-29).** Under the default `--is_noadjCov=TRUE` the score
+  is the centred genotype's and the CGF the covariate-projected one's, so the
+  fast kernel's Gaussian remainder is not a variance (P1: 0.91 where the
+  projected non-carriers' is 0.78). Upstream's arithmetic, kept because the
+  single-variant path's agreement with upstream is what it buys; the region
+  path always projects. Do not "make it consistent". The safety net: a
+  remainder that is negative or NaN sends the test to the dense kernel and the
+  run prints `SPA remainder: N ...` -- never observed, exercised only by the
+  plant `SAIGE_SPA_PLANT_NEG_REMAINDER=1` (`test-step2-spa-remainder.R`).
 - **Pinned samples leave the saddlepoint's vector (LEDGER #174, 2026-09-29;
   the THRESHOLD is an open owner's decision).** A sample is pinned when its
   flip probability -- mu for a control, 1 - mu for a case -- is at or below

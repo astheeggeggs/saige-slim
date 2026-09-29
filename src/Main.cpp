@@ -478,6 +478,14 @@ void resetSpaFallbackRecordsInCPP(){
   std::lock_guard<std::mutex> lock(g_spaFallbackMutex);
   g_spaFallbacks.clear();
   SAIGE::spaFallbackCountReset();
+  SAIGE::spaNegRemainderCountReset();   // LEDGER #173
+}
+
+// LEDGER #173: how many tests ran the dense kernel because the fast kernel's
+// Gaussian remainder was not a variance (R/SpaFallbacks.R prints it when > 0).
+// [[Rcpp::export]]
+double getSpaNegRemainderCountInCPP(){
+  return (double)SAIGE::spaNegRemainderCount();
 }
 
 // [[Rcpp::export]]

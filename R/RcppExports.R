@@ -37,6 +37,10 @@ resetSpaFallbackRecordsInCPP <- function() {
     invisible(.Call('_SAIGE_resetSpaFallbackRecordsInCPP', PACKAGE = 'SAIGE'))
 }
 
+getSpaNegRemainderCountInCPP <- function() {
+    .Call('_SAIGE_getSpaNegRemainderCountInCPP', PACKAGE = 'SAIGE')
+}
+
 getSpaFallbackRecordsInCPP <- function() {
     .Call('_SAIGE_getSpaFallbackRecordsInCPP', PACKAGE = 'SAIGE')
 }
