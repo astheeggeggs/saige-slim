@@ -826,3 +826,5 @@ simulation, but a wider use of upstream's convention; (2) the pooled Cauchy
 row is sensitive to correlated sets near 1 (pooled 0.90 with a best set at
 0.004), which is the method's own arithmetic and worth a census: how often the
 pooled p exceeds 0.5 while the best set is below 0.01.
+
+**Pinned samples, all ancestries (2026-09-29, `aou_pinned_scan.sh` over the v4 logs).** Controls held (eas MatHem 77 of 4,089 at 2.22e-16; sas none; no gates-off run). 7 of 167 models: afr FemInf 56 and MatHem 44; amr AMD 74 and FemInf 28; eas FemInf 62 and MatHem 77; eur MatHem 28; shares 0.03% to 1.9%, eas near the gates' 2% limit. These are the traits to read first in each ancestry's v7 comparison. The guard of #174 needs the gate's 1e-8, not 1e-12 (five of the seven are pinned at 1e-9..1e-11). eas v7 rerun: 15 binary jobs submitted on IMG9.
