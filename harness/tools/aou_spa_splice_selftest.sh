@@ -65,6 +65,11 @@ plants = {
   "twin": (new_res, variant(new_sa, ur("R7","AM_lof_mafbeta2","8.1","0.3","0.02","true"), ur("R7","AM_lof_mafbeta2","8.1","0.31","0.02","true"))),  # lof x mafbeta, twin count 9
   "ew":   ([l if not l.startswith("R2\tgrp\t0.001\tW1\t") else row("R2","W1","0.31",7) for l in new_res], new_sa),  # the "obs" change, listed by the rerun's exactByWeight sidecar (LEDGER #172)
 }
+# LEDGER #174: the same two changes, explained (or not) by the rerun's spaPinned sidecar
+plants["pn"]     = (plants["obs"][0], new_sa)      # the "obs" cell, listed as a guarded burden test: accepted
+plants["pnref"]  = (plants["obs"][0], new_sa)      # listed, but the guard REFUSED (over the budget): nothing was left out, so nothing is explained
+plants["pnreal"] = (new_res, plants["real"][1])    # the "real" marker, listed as a guarded single test: accepted
+plants["pnur"]   = (new_res, plants["ur"][1])      # the "ur" pseudo-marker row, listed as a guarded ultra_rare test: accepted
 # a COMPLETE rerun (REGIONS=ALL, FAILURES=NONE; LEDGER #172): every region of the old table, one routed cell changed
 full_res = [l if not l.startswith("R2\tgrp\t0.001\tW1\t") else row("R2","W1","0.31",7) for l in old_res]
 full_res = [l if l != cau("R2","0.3") else cau("R2","0.31") for l in full_res]
@@ -78,6 +83,11 @@ for tag, (res, sa) in plants.items():
     os.makedirs(f"in/{tag}", exist_ok=True); w(f"in/{tag}/fxv5-test.txt.gz", res); w(f"in/{tag}/fxv5-test.singleAssoc.txt.gz", sa)
     gzip.open(f"in/{tag}/fxv5-test.pooledTests.txt.gz", "wt").write("# placeholder\n")
 w("in/ew/fxv5-test.exactByWeight.txt.gz", ["Kind\tRegion\tGroup\tmax_MAF\tWeight\tMAC\tn_eff\tn_material", "burden\tR2\tgrp\t0.001\tW1\t7\t1.0000012\t1"])
+PH = "Model\tKind\tRegion\tGroup\tmax_MAF\tWeight\tMarkerID\tn_dropped\tdropped_mass\tguard"
+w("in/pn/fxv5-test.spaPinned.txt.gz",     [PH, "1\tburden\tR2\tgrp\t0.001\tW1\t\t41\t4.1e-11\tapplied", "1\tburden\tR3\tgrp\t0.001\tW1\t\t41\t4.1e-11\tapplied"])
+w("in/pnref/fxv5-test.spaPinned.txt.gz",  [PH, "1\tburden\tR2\tgrp\t0.001\tW1\t\t0\t1.1e-06\trefused"])
+w("in/pnreal/fxv5-test.spaPinned.txt.gz", [PH, "1\tsingle_in_group\tR1\t\t\t\tchr1:300:A:G\t22\t2.2e-11\tapplied"])
+w("in/pnur/fxv5-test.spaPinned.txt.gz",   [PH, "1\tultra_rare\tR6\tgrp\t0.001\tAM_cbrt0.2_unw\tR6:grp:0.001:AM_cbrt0.2_unw\t26\t2.6e-11\tapplied"])
 # a LONG list (20,000 rows of regions that are not in the table, ~1 MB): a `| head -1` on it dies of SIGPIPE under pipefail
 w("in/allok/fxv5-test.exactByWeight.txt.gz", ["Kind\tRegion\tGroup\tmax_MAF\tWeight\tMAC\tn_eff\tn_material", "burden\tR2\tgrp\t0.001\tW1\t7\t1.0000012\t1"]
   + [f"burden\tZ{i:05d}\tgrp\t0.001\tAM_sbeta20_unw\t30\t1.0000001\t1" for i in range(20000)])
@@ -119,6 +129,11 @@ expect obs  1 "ERROR .txt.gz"
 expect dup  1 "ERROR .singleAssoc.txt.gz"
 expect ur   1 "ERROR .singleAssoc.txt.gz"
 expect twin 1 "ERROR .singleAssoc.txt.gz"
+expect pn     0 "cells in which pinned samples were left out of the saddlepoint (LEDGER #174): 1"
+grep -q ".spaPinned.txt.gz: 1 guarded test(s) in the spliced regions, carried over" pn.log && echo "ok   the pinned sidecar is carried over restricted to the spliced regions (R3 is not one)" || { echo "FAIL pn: sidecar carry-over"; fail=1; }
+expect pnref  1 "ERROR .txt.gz"
+expect pnreal 0 "real markers in which pinned samples were left out of the saddlepoint (LEDGER #174): 1"
+expect pnur   0 "cells in which pinned samples were left out of the saddlepoint (LEDGER #174): 1"
 expectall allok  allok  0 "cells routed to the exact test by weight (LEDGER #172): 1"
 grep -q ".exactByWeight.txt.gz: 1 routed cell(s) in the spliced regions, carried over" allok.log && [[ $(gzip -dc out/allok/fxv4-test.exactByWeight.txt.gz | wc -l) -eq 2 ]] && echo "ok   a 20,000-row routed list is carried over restricted to the table's regions" || { echo "FAIL the routed list carry-over"; fail=1; }
 expectall allbad allbad 1 "ERROR .txt.gz"
@@ -127,4 +142,4 @@ bash "${HERE}/aou_spa_stagecheck.sh" stage/null > sc_null.log 2>&1 && grep -q "S
 if bash "${HERE}/aou_spa_stagecheck.sh" stage/pos > sc_pos.log 2>&1; then echo "FAIL stagecheck pos: exit 0"; fail=1; else grep -q "NA 1" sc_pos.log && echo "ok   stagecheck NA flagged" || { echo "FAIL stagecheck pos"; fail=1; }; fi
 if bash "${HERE}/aou_spa_stagecheck.sh" stage/chr > sc_chr.log 2>&1; then echo "FAIL stagecheck chr: exit 0"; fail=1; else grep -q "CHROMOSOME FAILED" sc_chr.log && echo "ok   stagecheck lost chromosome flagged" || { echo "FAIL stagecheck chr"; fail=1; }; fi
 if (( fail )); then echo "SELFTEST FAILED"; exit 1; fi
-echo "selftest OK: 3 positive controls (two via the exactByWeight sidecar, one a complete rerun), 7 planted refusals, 3 stage-checker cases"
+echo "selftest OK: 6 positive controls (two via the exactByWeight sidecar, three via the spaPinned sidecar, one a complete rerun), 8 planted refusals (one a guard that refused), 3 stage-checker cases"
