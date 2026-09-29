@@ -36,7 +36,7 @@ From `docs/state/handoff-2026-09-23-fit-gates-and-aou-refit.md` and `-09-25-`:
 
 | flag | value | source |
 |---|---|---|
-| model directory | `run/nullglmm_v4/<anc>_<TRAIT>.rda` (+ `.varianceRatio.txt`); amr in `nullglmm_v4_rc0.125/` | notebook `STEP1` |
+| model directory | `<bucket>/data/saige/run/nullglmm_v4/<anc>_<TRAIT>.rda` (+ `.varianceRatio.txt`), ONE directory for afr, eas, eur and sas; amr in `<bucket>/data/saige/run/nullglmm_v4_rc0.125/`. Not under `SAIGE_SLIM_TESTING/`, which holds step-2 output only. File counts 42 / 25 / 43 / 15 / 42 for afr / eas / eur / sas / amr, read from the bucket 2026-09-29 | notebook `STEP1` (a dict: ancestry to directory and relatedness cutoff), printed 2026-09-29 |
 | `--useSparseGRMtoFitNULL` | TRUE (sparse-GRM fits; single-threaded whatever `--nThreads` says) | handoff 09-23 |
 | `--useSparseGRMforVarRatio` | TRUE: the AoU variance-ratio files carry `sparse` rows (`ratioVec_sparse 1 1` in every step-2 log), and step 2 given the GRM REFUSES a file without them | the step-2 option/VR dump |
 | `--relatednessCutoff` | 0.05; amr 0.125 (must match step 2's, nothing checks it) | handoff 09-25 |

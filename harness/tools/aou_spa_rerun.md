@@ -540,8 +540,9 @@ for anc in ["eas", "sas", "afr", "eur", "amr"]:
     print(anc, "model files:", n, "(expected 25 / 15 / 42 / 43 / 42 for eas / sas / afr / eur / amr)")
 ```
 
-If a count is 0 and `STEP1` names another directory, put that directory in
-`MODEL_DIR`. Then:
+Confirmed 2026-09-29: `STEP1` names exactly these two directories and the
+counts read 25 / 15 / 42 / 43 / 42. If a count is ever 0 and `STEP1` names
+another directory, put that directory in `MODEL_DIR`. Then:
 
 ```python
 def submit_mu_decades(anc, image=IMG9):
