@@ -14,6 +14,10 @@ treat a blank in those sections as "default".
 |---|---|
 | v4 production (both arms as scanned) | `gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-f2fb24da` |
 | saddlepoint reruns (LEDGER #163-#170) | `gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-3e92d89d` |
+| the #172 fix (the notebook's `IMG9`) | `gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-a08fb295` |
+
+The tags name the commits the images were built from; a hash that no longer
+resolves in the current history still names its image.
 
 ## Step 0: sparse GRM (partial)
 

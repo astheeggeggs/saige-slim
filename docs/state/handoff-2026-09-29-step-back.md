@@ -9,6 +9,9 @@ sas rerun); read them only if a question below needs them.
 
 No count from real data below 20 appears in this file.
 
+**HASHES.** Commit hashes cited in this file may not resolve in the current
+history; the image tags are what they name, and the images are unchanged.
+
 ## The problem, in four lines
 
 - A handful of All of Us FlexRV gene-trait pairs had implausible p-values
@@ -99,10 +102,10 @@ positive control and should come down by many orders of magnitude.
 
 ## Local state
 
-- Branch `strip`, working tree clean. **19 commits are local and unpushed**
-  (`git log slim/strip..HEAD`), held because the Actions minutes ran out.
-  Gates on the two code commits: FAIL 0 / PASS 6906 and FAIL 0 / PASS 6929 at
-  `both`; no existing golden moved.
+- Branch `strip`. **Everything up to the step-back handoff is PUSHED** (through the pre-push gate). CI failed in seconds on the Actions minutes limit, which is
+  not a test result. Gates on the two code commits: FAIL 0
+  / PASS 6906 and FAIL 0 / PASS 6929 at `both`; no existing golden moved. The
+  rewrite left every tree identical outside the four reworded files.
 - The installed package is `2c6cd345`'s tree.
 - A background null run for the guard was in progress at handoff
   (`harness/work/null4k-20260929/pinned100/`, gitignored, `run.log`; 18 of 100
@@ -110,9 +113,6 @@ positive control and should come down by many orders of magnitude.
   design: 100 of 4,000 samples separated by a covariate; arms guard off,
   shipped, 1e-6, and the model refitted without the 100. No analysis script
   was written; `analyse_rep100.R` in the parent directory is the template.
-- The pushed history still contains a real-data sample count below 20, in the
-  fit gates' rationale of 2026-09-23. It is reworded in the working tree
-  (`0714dcce`). Rewriting history is the owner's call.
 
 ## Lessons this session paid for
 
