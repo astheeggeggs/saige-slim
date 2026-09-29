@@ -807,3 +807,22 @@ The first submission was cancelled. The pinned-sample scan had the same
 closed-pipe trap in its gates detection and read each log twice; fixed before
 its results were used. Lesson recorded in memory: time a tool at the scale it
 will run at before handing it over.
+
+**sas, gene level, v7 against the spliced files (2026-09-29).** Controls:
+nine quantitative traits 0 changed genes; six binary traits `source` = v7. Of
+109,589 binary gene-level results 8,129 changed (7%), median change in
+-log10 p -0.008, 5%..95% -0.15..+0.08; no gene lost more than an order of
+magnitude; per-trait maxima unchanged (4.0 to 4.9); nothing past 2.5e-6 before
+or after. sas never had the artefact at gene level. ONE gene moved up by more
+than an order (PAD x ENSG00000124688, pooled 0.90 -> 0.089) with its best set
+unchanged (4.4e-3): 29 routed sets (the cbrt family and sbeta2_mafbeta2) went
+from ~0.05 (saddlepoint) to ~0.012 (exact mid-p), identical to seven digits
+within two groups as an exact test over one ordering must be; 24 of the 96
+sets sit above 0.99 in both versions and the Cauchy statistic was balanced on
+them. Two things for the owner, neither a defect of the fix: (1) the exact
+test's MID-p convention now reaches the tail of a third of sas cells where it
+used to reach the MAC <= 4 minority -- calibrated in the N = 4,000 null
+simulation, but a wider use of upstream's convention; (2) the pooled Cauchy
+row is sensitive to correlated sets near 1 (pooled 0.90 with a best set at
+0.004), which is the method's own arithmetic and worth a census: how often the
+pooled p exceeds 0.5 while the best set is below 0.01.
