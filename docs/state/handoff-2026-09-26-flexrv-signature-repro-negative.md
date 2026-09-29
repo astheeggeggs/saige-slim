@@ -711,3 +711,18 @@ Commit `f14d47e5` (gate green, pushed); image **IMG8**
 `gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-f14d47e5` = Docker Hub
 `astheeggeggs/saige-slim:1.5.2-dev-f14d47e5`. Next action is the owner's: `submit_below` for the
 three (trait, gene) pairs, then `aou_spa_dumpcheck.sh` on each `.spaDump.tgz`.
+
+**#172 MECHANISM (2026-09-29, from the replay of the amr dumps; owner's
+decision on the fix pending).** Not the kernel. `q = Tstat/sqrt(var1/var2) +
+m1` rescales the score by the band's variance ratio; at 0.9893 / 0.9907 a raw
+score of 0.998 (the weight-1 LoF atom, MAC <20, observed in cases) becomes 1.003, ABOVE
+`gmax` = 1, and the saddlepoint charges the remainder (sd 3.6e-4) 13 sigma for
+the excess: `t*q-K` 115 where ~6 is right, both kernels agreeing. Planted on a
+synthetic vector: VR 1.0 -> 1.4e-2, 1.01 -> 2.7e-3, 0.9893 -> 0, 0.98 -> 4e-46
+(reference 3.6e-3); `test-unit-spa.R` #172 block characterizes it. Options
+laid out for the owner on the row: route atom-dominated sets to the exact test
+by the weighted effective carrier count (recommended), refuse at the crossing,
+or rescale the CGF's support. The eas MatHem cell is NOT yet explained: on IMG8
+its `AM_sbeta10_MAC5` prints 0.86 with its MAC above the exact-test cutoff, so
+something changed a saddlepoint that v4 accepted -- its singleAssoc row and
+fallback sidecar are the next read.

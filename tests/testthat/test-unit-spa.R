@@ -404,3 +404,51 @@ test_that("#169: S at its maximum (every carrier a case) is still the exact test
   p <- SPA_pval(d$mu, d$g, d$q, d$qinv, 1e-100, tol, FALSE, "binary", conv)
   expect_equal(p, 1e-100)
 })
+
+# LEDGER #172 (2026-09-29, mechanism from the replay of the AoU dumps): the
+# saddlepoint is handed `q = Tstat/sqrt(VR) + m1`, the score rescaled by the
+# variance ratio. When one carrier's atom carries the whole score (a weight-1
+# LoF carrier with a tiny fitted probability who is a case, the other carriers
+# negligible), a VR below 1 lifts the rescaled score ABOVE that atom, and the
+# only way past it under the kernel's model is the remainder, whose sd is
+# ~1e-4: the excess costs it ~100 nats and a ~1e-3 event prints as 1e-50.
+# Not the kernel: both kernels agree, and the same vector with VR = 1 is sane.
+# Characterization -- pins today's arithmetic; invert when #172 is fixed.
+spa_atom_case <- function(seed = 3, N = 33434, prevalence = 0.12, n_tiny = 22) {
+  set.seed(seed)
+  mu <- plogis(rnorm(N, qlogis(prevalence), 0.9)); y <- rbinom(N, 1, mu)
+  c1 <- which.min(abs(mu - 1.3e-3)); tiny <- sample(setdiff(seq_len(N), c1), n_tiny)
+  g <- numeric(N); g[c1] <- 1; g[tiny] <- 10^runif(n_tiny, -19, -6); y[c1] <- 1
+  W <- mu * (1 - mu); gt <- g - sum(W * g) / sum(W)            # intercept-only projection
+  list(mu = mu, gt = gt, y = y, c1 = c1, m1 = sum(mu * gt),
+       Tstat = sum(gt * (y - mu)), var2 = sum(W * gt^2))
+}
+spa_p_at_vr <- function(d, vr) {
+  tol <- .Machine$double.eps^0.25
+  q <- d$Tstat / sqrt(vr) + d$m1; qinv <- 2 * d$m1 - q
+  SPA_pval(d$mu, d$gt, q, qinv, 2 * pnorm(-abs(d$Tstat / sqrt(d$var2 * vr))), tol, FALSE, "binary", FALSE)
+}
+
+test_that("#172: the raw score sits inside the dominant carrier's atom and the saddlepoint is sane at VR = 1", {
+  d <- spa_atom_case()
+  expect_lt(d$Tstat, max(d$gt))                       # "the LoF atom is a case", nothing more
+  p1 <- spa_p_at_vr(d, 1.0)
+  expect_gt(p1, 1e-3)
+  expect_lt(p1, 5e-2)            # the reference for this vector is ~3.6e-3
+})
+
+test_that("#172 characterization: a VR below 1 lifts the score above the atom and the p collapses", {
+  d <- spa_atom_case()
+  for (vr in c(0.9893, 0.98)) {                       # the AoU band ratio, and a rounder one
+    expect_gt(d$Tstat / sqrt(vr), max(d$gt))          # the crossing
+    expect_lt(spa_p_at_vr(d, vr), 1e-40)              # 0 and 4e-46 today; ~3.6e-3 is right
+  }
+})
+
+test_that("#172 control: a VR above 1 leaves the score inside the atom and the p sane", {
+  d <- spa_atom_case()
+  expect_lt(d$Tstat / sqrt(1.01), max(d$gt))
+  p <- spa_p_at_vr(d, 1.01)
+  expect_gt(p, 1e-3)
+  expect_lt(p, 5e-2)
+})
