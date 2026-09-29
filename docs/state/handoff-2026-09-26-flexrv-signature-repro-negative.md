@@ -760,3 +760,24 @@ FlexRV arm on IMG9 (recipe `aou_spa_rerun.md` section 9; sas first). Raised sepa
 for the owner: dropping pinned samples from every saddlepoint vector.
 
 **#172, ThreadSanitizer (2026-09-29, after the fix commit).** The stock `region` workload never enters the routed body (beta weights), so `harness/tsan.sh` gained `region_atom` and `region_atom_skato` (P69 and P71's commands): clean arm races=0 at 1/4/8 threads, bytes identical to serial, 24 and 10 cells routed in every run; plant arm races 61-202 or died at 4 and 8 threads. CI on Linux (numeric) is green on the fix's tree.
+
+**#172, null control and cost (2026-09-29, after the fix).** (1) sim50k, binary
+null (1% prevalence), 192 sets, one thread, two repetitions per arm: user CPU
+26.2/24.6 s routing on against 26.3/25.1 s off, runs byte-identical on repeat;
+99 of 30,167 cells routed (0.3%), gene-level pooled p identical in both arms.
+Too few routed cells to measure their calibration. (2) So a control where
+routing is common: a fixed 4,000-sample subset of sim50k, ten null binary
+phenotypes at ~20% prevalence (`plogis(-1.45 + 0.02 (age - 50) + 0.2 sex)`,
+seeds 1001..1010, subset seed 4000), each fitted with the AoU step-1 shape and
+tested with routing on and off: 5.6% of 194,770 cells routed, 3.5% of those
+had their p replaced (median factor 1.1, 5%..95% 0.47x..1.8x), no non-routed
+cell changed. Gene-level (pooled row, n = 2,080) fraction below 0.05 / 0.01 /
+0.001: on 0.0437 / 0.0058 / 0.0005, off 0.0437 / 0.0053 / 0.0005 -- calibrated
+in both. CPU 4.8 s on against 5.5 s off. This is the NEGATIVE control: the
+simulation has variance ratios of 1.000 and no pinned sample, so neither
+mechanism fires and the saddlepoint arm shows no artefact either; the positive
+controls are the planted blocks in `test-unit-spa.R` and the three AoU cells
+in the v7 rerun. On sas a third of cells are routed (7,834 of 24,171 on one
+chromosome of one trait), against 0.3% at N = 50,000. Scripts and logs:
+`harness/work/null4k-20260929/` (local, gitignored; the fixture is the
+SAIGE-sim checkout's sim50k).
