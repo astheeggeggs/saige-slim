@@ -1,0 +1,4 @@
+Model	Kind	Region	Group	max_MAF	Weight	MarkerID	n_dropped	dropped_mass	guard
+1	marker					rs23	60	6.00000000000001e-11	applied
+1	marker					rs38	9	9e-12	applied
+1	marker					rs99	13	1.3e-11	applied

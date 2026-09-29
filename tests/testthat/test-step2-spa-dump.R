@@ -5,7 +5,9 @@
 # FlexRV cells did (1e-53..1e-93 with Is.SPA true, exact answer ~1e-3). Every
 # dump now carries a second header line naming the kernel that ran, both roots,
 # the Gaussian remainder (NAmu, NAsigma) and the reported p, plus an `nz` column
-# flagging the carriers, so a dump REPLAYS through the exported kernels.
+# flagging the carriers, so a dump REPLAYS through the exported kernels, and a
+# `dropped` column (LEDGER #174) flagging the pinned samples left out of the CGF
+# (none on P1's model; test-step2-spa-pinned.R replays dumps that have them).
 #   1. the switch cannot move a result: P1 with the dump on IS the golden;
 #   2. at threshold 1 the dump count is the number of golden rows whose
 #      saddlepoint converged (Is.SPA true, MAC above --max_MAC_for_ER, so not
@@ -46,29 +48,10 @@ spa_rows_of <- function(gold) {
   which(tolower(gold$Is.SPA) == "true" & mac > 4)
 }
 
-parse_kv <- function(line) {
-  f <- strsplit(sub("^# ", "", line), "\t", fixed = TRUE)[[1]]
-  stats::setNames(f[seq(2, length(f), 2)], f[seq(1, length(f), 2)])
-}
-read_dump <- function(f) {
-  l <- readLines(f, n = 2, warn = FALSE)
-  list(h1 = parse_kv(l[1]), h2 = parse_kv(l[2]),
-       d = utils::read.table(f, header = TRUE, skip = 2, sep = "\t"))
-}
-num <- function(kv, k) as.numeric(kv[[k]])
-
-# the replay: the kernel the second line names, on the vector and the flag
-replay <- function(dm) {
-  mu <- dm$d$mu; g <- dm$d$gtilde; nz <- dm$d$nz == 1
-  q <- num(dm$h1, "q"); qinv <- num(dm$h1, "qinv")
-  pNA <- num(dm$h2, "pNA"); tol <- num(dm$h2, "tol")
-  if (identical(dm$h2[["kernel"]], "fast")) {
-    SPA_binary_fast(mu, g, q, qinv, pNA, FALSE, g[!nz], g[nz], mu[!nz], mu[nz],
-                    num(dm$h2, "NAmu"), num(dm$h2, "NAsigma"), tol)
-  } else {
-    SPA_binary(mu, g, q, qinv, pNA, tol, FALSE)
-  }
-}
+# the dump reader and the replay live in helper-spa-dump.R
+read_dump <- read_spa_dump
+num <- spa_dump_num
+replay <- replay_spa_dump
 
 run_p1_with <- function(env) {
   dir <- tempfile("spadump_"); dir.create(dir)
@@ -96,7 +79,8 @@ test_that(title_replay, {
     dm <- read_dump(f)
     expect_identical(dm$h1[["why"]], "converged")
     expect_true(dm$h2[["kernel"]] %in% c("fast", "dense"))
-    expect_identical(names(dm$d), c("gtilde", "mu", "y", "nz", "g"))
+    expect_identical(names(dm$d), c("gtilde", "mu", "y", "nz", "g", "dropped"))
+    expect_true(all(dm$d$dropped == 0))   # LEDGER #174: P1's model has no pinned sample
     n_model <- as.integer(as.numeric(gold$N_case[1]) + as.numeric(gold$N_ctrl[1]))
     expect_identical(nrow(dm$d), n_model)
     # the golden row this dump belongs to: Tstat AND var, at the golden's printed precision

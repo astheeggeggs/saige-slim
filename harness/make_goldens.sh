@@ -173,6 +173,43 @@ run step1_binary_sparseGRM_vr.log R2 step1_fitNULLGLMM.R \
   --isCateVarianceRatio=TRUE \
   --outputPrefix="$GOLD/step1/binary_sparseGRM_vr"
 
+# binary_sparseGRM_pinned (2026-09-29, LEDGER #174): binary_sparseGRM_vr's
+# command on a phenotype file with ONE more covariate, `sep`, which is 1 for 60
+# controls and 0 for everyone else (harness/tools/make_pinned_fixture.py). The
+# covariate is separated, so the group's fitted values are wherever the fit
+# stopped iterating: 1.7e-9..1.2e-7 here, 13 of them at or below the fit gate's
+# 1e-8. It is the only model in the repo with a PINNED sample, and the 13-of-60
+# split is what goldens P72/P73 are about. The fit gates would refuse it on the
+# case count and the covariate cell like every bundled fit (harness/env.sh
+# turns them off); on separation it is a warning, 1.3 % being under
+# --separationMaxFraction.
+run step1_binary_sparseGRM_pinned.log R2 step1_fitNULLGLMM.R \
+  --plinkFile=./input/nfam_100_nindep_0_step1_includeMoreRareVariants_poly_22chr \
+  --sparseGRMFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx \
+  --sparseGRMSampleIDFile=output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx.sampleIDs.txt \
+  --useSparseGRMtoFitNULL=TRUE \
+  --useSparseGRMforVarRatio=TRUE \
+  --phenoFile=./input/pheno_1000samples_pinned.txt \
+  --phenoCol=y_binary \
+  --covarColList=x1,x2,a9,a10,sep \
+  --qCovarColList=a9,a10,sep \
+  --sampleIDColinphenoFile=IID \
+  --traitType=binary \
+  --IsOverwriteVarianceRatioFile=TRUE \
+  --isCateVarianceRatio=TRUE \
+  --outputPrefix="$GOLD/step1/binary_sparseGRM_pinned"
+
+# binary_sparseGRM_pinned_planted: the same model with the separated group's
+# fitted values PLANTED at 1e-12, where a fit that had kept iterating would
+# have put them (harness/tools/plant_pinned_model.R recomputes what step 2
+# reads from them). A positive control, not a fit: it is the regime the guard
+# was designed on -- LEDGER #172's mechanism B, where one All of Us model had
+# fitted values at machine epsilon -- in a cell that is not one-atom. Its
+# variance ratios are the fitted model's.
+run step1_binary_sparseGRM_pinned_planted.log R2 "$REPO/harness/tools/plant_pinned_model.R" \
+  "$GOLD/step1/binary_sparseGRM_pinned.rda" "$GOLD/step1/binary_sparseGRM_pinned_planted.rda" 1e-12
+cp "$GOLD/step1/binary_sparseGRM_pinned.varianceRatio.txt" "$GOLD/step1/binary_sparseGRM_pinned_planted.varianceRatio.txt"
+
 # quant_sparseGRM_vr: the QUANTITATIVE counterpart of binary_sparseGRM_vr, and
 # the reason the quantitative sparse-GRM step-2 path had no golden at all until
 # 2026-09-08. A region test needs `sparse` rows in the variance-ratio file and
@@ -442,6 +479,8 @@ BIN_MODEL="--GMMATmodelFile=$GOLD/step1/binary_sparseGRM_a.rda --varianceRatioFi
 QUANT_MODEL="--GMMATmodelFile=$GOLD/step1/quant_sparseGRM.rda --varianceRatioFile=$GOLD/step1/quant_sparseGRM.varianceRatio.txt"
 VR_MODEL="--GMMATmodelFile=$GOLD/step1/binary_sparseGRM_vr.rda --varianceRatioFile=$GOLD/step1/binary_sparseGRM_vr.varianceRatio.txt"
 QUANT_VR_MODEL="--GMMATmodelFile=$GOLD/step1/quant_sparseGRM_vr.rda --varianceRatioFile=$GOLD/step1/quant_sparseGRM_vr.varianceRatio.txt"
+PIN_MODEL="--GMMATmodelFile=$GOLD/step1/binary_sparseGRM_pinned.rda --varianceRatioFile=$GOLD/step1/binary_sparseGRM_pinned.varianceRatio.txt"
+PINP_MODEL="--GMMATmodelFile=$GOLD/step1/binary_sparseGRM_pinned_planted.rda --varianceRatioFile=$GOLD/step1/binary_sparseGRM_pinned_planted.varianceRatio.txt"
 GRP_MODEL="--GMMATmodelFile=./output/example_binary_sparseGRM.rda --varianceRatioFile=./output/example_binary_sparseGRM.varianceRatio.txt"
 PLINK_G="--bedFile=./input/genotype_100markers.bed --bimFile=./input/genotype_100markers.bim --famFile=./input/genotype_100markers.fam --AlleleOrder=alt-first"
 
@@ -1660,6 +1699,82 @@ run step2_plink_group_customweight_atom_skato.log R2 step2_SPAtests.R \
   --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
   --maxMAF_in_groupTest=0.0001,0.001,0.01 \
   --is_fastTest=FALSE
+
+# P72-P76 (2026-09-29, LEDGER #174): PINNED samples and the saddlepoint. A
+# sample whose outcome the null model holds certain (flip probability at or
+# below 1e-8) leaves the vector the saddlepoint's CGF is built from, while the
+# mass left out of one test is within the budget (1e-6); the run prints
+# `Pinned samples: ...` and `<out>.spaPinned.txt` names every test touched.
+# SAIGE_SPA_PINNED_GUARD=0 restores the full vector. Two models, because the
+# two regimes are different findings (tests/testthat/test-step2-spa-pinned.R
+# holds the references and the guard-off runs):
+#   the PLANTED model, separated group at 1e-12, group file _pinnedTail.txt
+#     (heavy 1, light 1e-4): guard off, the burden cells read 7e-8 and 2e-13
+#     and every SKAT-O column 2e-13, where the reference is 0.020; guard on,
+#     0.021. All 60 are below the threshold, so the default guard is complete.
+#   the FITTED model, separated group at 1.7e-9..1.2e-7, group file _pinned.txt
+#     (heavy 1, light 0.01): guard off, 0.030 and 0.055 for two cells with the
+#     same score, reference 0.020. At the default threshold 13 of the 60 are
+#     pinned, the guard leaves out 10 or 11 of a cell's 41 separated carriers
+#     and the answer barely moves (P72: 0.030, 0.054). At 1e-6 all 60 go and
+#     both cells read 0.021 (P73). The threshold splits a separated group
+#     wherever the fit happened to stop; P72 pins that, as the ledger row says.
+# P72: BURDEN, fitted model, the shipped settings
+run step2_plink_group_pinned_burden.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_pinned_burden.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $PIN_MODEL \
+  --groupFile=./input/group_new_snpid_withWeights_pinned.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --r.corr=1 --is_fastTest=FALSE
+
+# P73: the same run with the threshold at 1e-6 and the budget at 1e-5
+SAIGE_SPA_PINNED_EPS=1e-6 SAIGE_SPA_PINNED_BUDGET=1e-5 \
+run step2_plink_group_pinned_burden_eps6.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_pinned_burden_eps6.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $PIN_MODEL \
+  --groupFile=./input/group_new_snpid_withWeights_pinned.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --r.corr=1 --is_fastTest=FALSE
+
+# P74: BURDEN, planted model, the shipped settings
+run step2_plink_group_pinned_planted_burden.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_pinned_planted_burden.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $PINP_MODEL \
+  --groupFile=./input/group_new_snpid_withWeights_pinnedTail.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --r.corr=1 --is_fastTest=FALSE
+
+# P75: SKAT-O, planted model -- the saddlepoint R runs itself (the burden
+# rescale, sidecar kind "region_rescale") and the pseudo-marker's ("ultra_rare")
+run step2_plink_group_pinned_planted_skato.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_pinned_planted_skato.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $PINP_MODEL $SG \
+  --groupFile=./input/group_new_snpid_withWeights_pinnedTail.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --is_fastTest=FALSE
+
+# P76: the marker path on the planted model. An UNWEIGHTED test is the control:
+# its saddlepoints' roots are nowhere near a pinned sample's -log(mu), so the
+# guard leaves pinned carriers out of three of them and no p moves by more
+# than the last printed digit against the guard-off run.
+run step2_plink_marker_pinned_planted.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_marker_pinned_planted.txt" \
+  --chrom=1 --minMAF=0 --minMAC=1 --LOCO=FALSE \
+  $PINP_MODEL \
+  --is_output_moreDetails=TRUE
 
 echo "### byte identity: PGEN reader vs PLINK reader (step0/step1)"
 PGEN_IDENTITY_FAILS=0

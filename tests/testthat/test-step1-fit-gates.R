@@ -433,3 +433,26 @@ test_that("the fraction is a knob, and both directions of it are drilled", {
                                          maxFraction = 0),
                "at the 0/1 boundary")
 })
+
+# ---- LEDGER #175 (characterization): the check sees only what is below 1e-8 --
+# A separated group is fitted wherever the covariate glm stopped iterating --
+# near 1e-8 x deviance / (1.26 x its size) -- so the check counts the part of
+# it that happens to be below 1e-8. The two vectors are the shapes the pinned
+# fixture's two fits produced (harness/tools/make_pinned_fixture.py): 8
+# separated samples fitted just above the threshold, and 60 straddling it.
+# Invert when #175 is decided.
+test_that("#175: a separated group fitted just above 1e-8 passes silently", {
+  withr::local_envvar(c(SAIGE_FIT_GATES = "1"))
+  mu <- rep(0.1, 1000)
+  mu[1:8] <- 10^seq(log10(1.7e-8), log10(4.8e-7), length.out = 8)
+  expect_silent(SAIGE:::checkMuSeparation(mu, "eight.rda", "error"))
+})
+
+test_that("#175: a separated group straddling 1e-8 is reported as the part below it", {
+  withr::local_envvar(c(SAIGE_FIT_GATES = "1"))
+  mu <- rep(0.1, 1000)
+  mu[1:13] <- 10^seq(log10(1.7e-9), log10(9.9e-9), length.out = 13)
+  mu[14:60] <- 10^seq(log10(1.1e-8), log10(1.2e-7), length.out = 47)
+  expect_warning(SAIGE:::checkMuSeparation(mu, "sixty.rda", "error"),
+                 "has 13 of 1000 fitted values")
+})

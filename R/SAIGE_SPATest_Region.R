@@ -241,6 +241,8 @@ region_postprocess <- function(outList,
                                # the entire single-threaded path -- at
                                # nThreadsSKATO = 1 nothing below changes at all.
                                skat_fun = get_SKAT_pvalue) {
+  # LEDGER #174: this model's pinned samples, for the burden rescale's saddlepoint
+  pinnedSet <- if (traitType == "binary") getSpaPinnedModelInCPP(as.integer(model_index - 1L)) else NULL
   # ---- weight-set layout (jmr decode) --------------------------------------
   # The composed weight-set list arrives as `weight_sets`, a descriptor from
   # weightSetDescriptor() (R/WeightSets.R; built in SAIGE.Region, per-set
@@ -529,9 +531,15 @@ region_postprocess <- function(outList,
                   Score,
                   Phi,
                   regionTestType,
-                  traitType
+                  traitType,
+                  pinned = pinnedSet
                 )
                 Phi <- re_phi$val
+                # LEDGER #174: recorded on the pass that holds real p-values
+                if (record_pooled) {
+                  spaPinnedRecord("region_rescale", regionName, AnnoName, maxMAFName,
+                                  if (isMultiWeight) weightNames[r] else "", model_index, re_phi$pinned)
+                }
               }
               groupOutList <- skat_fun(Score, Phi, r.corr, regionTestType)
               # LEDGER #158: which path produced this cell's Pvalue (sidecar)
@@ -971,6 +979,7 @@ SAIGE.Region <- function(mu,
   skatFailureReset() # LEDGER #57: per-run accounting, R/SkatFailures.R
   resetSpaFallbackRecordsInCPP() # LEDGER #164: per-run accounting, R/SpaFallbacks.R
   resetExactByWeightRecordsInCPP() # LEDGER #172: per-run accounting, R/ExactByWeight.R
+  resetSpaPinnedRecordsInCPP() # LEDGER #174: per-run accounting, R/SpaPinned.R
   skatoDedupeReset() # identical cells evaluated once: per-run counts, R/SkatoParallel.R
   burdenMemoReset() # identical BURDEN cells evaluated once: per-run counts, R/BurdenMemo.R
   pooledReset() # LEDGER #127: pooled-row provenance, R/PooledRow.R
@@ -1947,6 +1956,7 @@ SAIGE.Region <- function(mu,
   skatFailureSummary(OutputFile)
   spaFallbackSummary(OutputFile) # LEDGER #164
   exactByWeightSummary(OutputFile) # LEDGER #172
+  spaPinnedSummary(OutputFile) # LEDGER #174
   skatoDedupeSummary()
   burdenMemoSummary()
   # LEDGER #127: how each region's pooled (Cauchy) row was formed -- cells

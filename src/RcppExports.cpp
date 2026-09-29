@@ -57,6 +57,54 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// getSpaPinnedModelInCPP
+Rcpp::List getSpaPinnedModelInCPP(unsigned int t_modelIndex);
+RcppExport SEXP _SAIGE_getSpaPinnedModelInCPP(SEXP t_modelIndexSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< unsigned int >::type t_modelIndex(t_modelIndexSEXP);
+    rcpp_result_gen = Rcpp::wrap(getSpaPinnedModelInCPP(t_modelIndex));
+    return rcpp_result_gen;
+END_RCPP
+}
+// recordSpaPinnedInCPP
+void recordSpaPinnedInCPP(std::string t_kind, std::string t_region, std::string t_group, std::string t_maxMAF, std::string t_weight, unsigned int t_model, unsigned int t_dropped, double t_mass, bool t_refused);
+RcppExport SEXP _SAIGE_recordSpaPinnedInCPP(SEXP t_kindSEXP, SEXP t_regionSEXP, SEXP t_groupSEXP, SEXP t_maxMAFSEXP, SEXP t_weightSEXP, SEXP t_modelSEXP, SEXP t_droppedSEXP, SEXP t_massSEXP, SEXP t_refusedSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type t_kind(t_kindSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_region(t_regionSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_group(t_groupSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_maxMAF(t_maxMAFSEXP);
+    Rcpp::traits::input_parameter< std::string >::type t_weight(t_weightSEXP);
+    Rcpp::traits::input_parameter< unsigned int >::type t_model(t_modelSEXP);
+    Rcpp::traits::input_parameter< unsigned int >::type t_dropped(t_droppedSEXP);
+    Rcpp::traits::input_parameter< double >::type t_mass(t_massSEXP);
+    Rcpp::traits::input_parameter< bool >::type t_refused(t_refusedSEXP);
+    recordSpaPinnedInCPP(t_kind, t_region, t_group, t_maxMAF, t_weight, t_model, t_dropped, t_mass, t_refused);
+    return R_NilValue;
+END_RCPP
+}
+// resetSpaPinnedRecordsInCPP
+void resetSpaPinnedRecordsInCPP();
+RcppExport SEXP _SAIGE_resetSpaPinnedRecordsInCPP() {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    resetSpaPinnedRecordsInCPP();
+    return R_NilValue;
+END_RCPP
+}
+// getSpaPinnedRecordsInCPP
+Rcpp::List getSpaPinnedRecordsInCPP();
+RcppExport SEXP _SAIGE_getSpaPinnedRecordsInCPP() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(getSpaPinnedRecordsInCPP());
+    return rcpp_result_gen;
+END_RCPP
+}
 // resetSpaFallbackRecordsInCPP
 void resetSpaFallbackRecordsInCPP();
 RcppExport SEXP _SAIGE_resetSpaFallbackRecordsInCPP() {
@@ -2261,6 +2309,10 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_flexrvWeightsInCPP", (DL_FUNC) &_SAIGE_flexrvWeightsInCPP, 6},
     {"_SAIGE_resetExactByWeightRecordsInCPP", (DL_FUNC) &_SAIGE_resetExactByWeightRecordsInCPP, 0},
     {"_SAIGE_getExactByWeightRecordsInCPP", (DL_FUNC) &_SAIGE_getExactByWeightRecordsInCPP, 0},
+    {"_SAIGE_getSpaPinnedModelInCPP", (DL_FUNC) &_SAIGE_getSpaPinnedModelInCPP, 1},
+    {"_SAIGE_recordSpaPinnedInCPP", (DL_FUNC) &_SAIGE_recordSpaPinnedInCPP, 9},
+    {"_SAIGE_resetSpaPinnedRecordsInCPP", (DL_FUNC) &_SAIGE_resetSpaPinnedRecordsInCPP, 0},
+    {"_SAIGE_getSpaPinnedRecordsInCPP", (DL_FUNC) &_SAIGE_getSpaPinnedRecordsInCPP, 0},
     {"_SAIGE_resetSpaFallbackRecordsInCPP", (DL_FUNC) &_SAIGE_resetSpaFallbackRecordsInCPP, 0},
     {"_SAIGE_getSpaFallbackRecordsInCPP", (DL_FUNC) &_SAIGE_getSpaFallbackRecordsInCPP, 0},
     {"_SAIGE_resetBurdenMemoInCPP", (DL_FUNC) &_SAIGE_resetBurdenMemoInCPP, 0},

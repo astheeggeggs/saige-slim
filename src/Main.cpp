@@ -329,6 +329,34 @@ static void recordExactByWeight(const std::string & t_kind, const std::string & 
   std::lock_guard<std::mutex> lock(g_exactByWeightMutex);
   g_exactByWeight.push_back(rec);
 }
+// LEDGER #174 (2026-09-29): every test in which pinned samples were left out
+// of the saddlepoint's vector, or would have been but for the budget, with the
+// cell it happened in. getMarkerPval sets KernelWorkspace::spaPinned* on the
+// worker that ran the test; the four call sites that know the cell's name
+// record it here. Read by R at the end of the run (R/SpaPinned.R: the summary
+// line and the `<SAIGEOutputFile>.spaPinned.txt` sidecar).
+struct SpaPinnedRecord {
+  std::string kind, region, group, maxMAF, weight, marker;
+  unsigned int model = 0;      // 1-based position in the run's model list
+  unsigned int dropped = 0;
+  double mass = 0.0;
+  bool refused = false;
+};
+static std::vector<SpaPinnedRecord> g_spaPinned;
+static std::mutex g_spaPinnedMutex;
+static void recordSpaPinned(const std::string & t_kind, const std::string & t_region,
+                            const std::string & t_group, const std::string & t_maxMAF,
+                            const std::string & t_weight, const std::string & t_marker,
+                            const SAIGE::SAIGEClass & t_model, const SAIGE::KernelWorkspace & t_ws){
+  if(t_ws.spaPinnedDropped == 0 && !t_ws.spaPinnedRefused) return;
+  SpaPinnedRecord rec;
+  for(std::size_t km = 0; km < g_models.size(); km++){ if(g_models[km].get() == &t_model){ rec.model = (unsigned int)km + 1; break; } }
+  rec.kind = t_kind; rec.region = t_region; rec.group = t_group; rec.maxMAF = t_maxMAF;
+  rec.weight = t_weight; rec.marker = t_marker;
+  rec.dropped = t_ws.spaPinnedDropped; rec.mass = t_ws.spaPinnedMass; rec.refused = t_ws.spaPinnedRefused;
+  std::lock_guard<std::mutex> lock(g_spaPinnedMutex);
+  g_spaPinned.push_back(rec);
+}
 static bool exactByWeightEnabled(){
   static const bool on = [](){ const char* v = std::getenv("SAIGE_EXACT_BY_WEIGHT"); return !(v != nullptr && std::string(v) == "0"); }();
   return on;
@@ -369,6 +397,80 @@ static std::string maxMAFLabel(double t_x){
   std::string str = std::to_string(t_x);
   str.erase(str.find_last_not_of('0') + 1, std::string::npos);
   return str;
+}
+
+// LEDGER #174: the pinned set of one model, for the ONE saddlepoint R runs
+// itself (get_newPhi_scaleFactor_traitType, the burden rescale of the SKAT-O
+// path and of the conditioning markers). Indices are 1-based for R.
+// [[Rcpp::export]]
+Rcpp::List getSpaPinnedModelInCPP(unsigned int t_modelIndex){
+  // no model registered under this index (region_postprocess driven directly,
+  // as the unit tests do): there is no pinned set to apply
+  if(t_modelIndex >= g_models.size() || !g_models[t_modelIndex]){
+    return Rcpp::List::create(Rcpp::Named("idx") = Rcpp::IntegerVector(0), Rcpp::Named("flip") = Rcpp::NumericVector(0),
+                              Rcpp::Named("threshold") = SAIGE::spaPinnedThreshold(),
+                              Rcpp::Named("budget") = SAIGE::spaPinnedBudget());
+  }
+  const SAIGE::SAIGEClass & model = *g_models[t_modelIndex];
+  const unsigned int n = model.pinnedCount();
+  Rcpp::IntegerVector idx(n);
+  Rcpp::NumericVector flip(n);
+  model.pinnedCopy(idx, flip);
+  return Rcpp::List::create(Rcpp::Named("idx") = idx, Rcpp::Named("flip") = flip,
+                            Rcpp::Named("threshold") = SAIGE::spaPinnedThreshold(),
+                            Rcpp::Named("budget") = SAIGE::spaPinnedBudget());
+}
+
+// LEDGER #174: a record made by R for that saddlepoint; counted like the rest.
+// [[Rcpp::export]]
+void recordSpaPinnedInCPP(std::string t_kind, std::string t_region, std::string t_group, std::string t_maxMAF,
+                          std::string t_weight, unsigned int t_model, unsigned int t_dropped, double t_mass, bool t_refused){
+  if(t_dropped == 0 && !t_refused) return;
+  SpaPinnedRecord rec;
+  rec.kind = t_kind; rec.region = t_region; rec.group = t_group; rec.maxMAF = t_maxMAF; rec.weight = t_weight;
+  rec.model = t_model; rec.dropped = t_dropped; rec.mass = t_mass; rec.refused = t_refused;
+  SAIGE::spaPinnedCountAdd(t_refused);
+  std::lock_guard<std::mutex> lock(g_spaPinnedMutex);
+  g_spaPinned.push_back(rec);
+}
+
+// [[Rcpp::export]]
+void resetSpaPinnedRecordsInCPP(){
+  std::lock_guard<std::mutex> lock(g_spaPinnedMutex);
+  g_spaPinned.clear();
+  SAIGE::spaPinnedCountReset();
+}
+
+// [[Rcpp::export]]
+Rcpp::List getSpaPinnedRecordsInCPP(){
+  std::lock_guard<std::mutex> lock(g_spaPinnedMutex);
+  const unsigned int n = g_spaPinned.size();
+  std::vector<std::string> kind(n), region(n), group(n), maxMAF(n), weight(n), marker(n);
+  Rcpp::NumericVector dropped(n), mass(n), model(n);
+  Rcpp::LogicalVector refused(n);
+  for(unsigned int k = 0; k < n; k++){
+    const SpaPinnedRecord & r = g_spaPinned[k];
+    kind[k] = r.kind; region[k] = r.region; group[k] = r.group; maxMAF[k] = r.maxMAF;
+    weight[k] = r.weight; marker[k] = r.marker;
+    dropped[k] = (double)r.dropped; mass[k] = r.mass; refused[k] = r.refused; model[k] = (double)r.model;
+  }
+  // per model: how many samples are pinned, and their total flip probability
+  Rcpp::NumericVector modelPinned(g_models.size()), modelMass(g_models.size()), modelN(g_models.size());
+  for(std::size_t km = 0; km < g_models.size(); km++){
+    if(g_models[km]){ modelPinned[km] = (double)g_models[km]->pinnedCount(); modelMass[km] = g_models[km]->pinnedMass(); modelN[km] = (double)g_models[km]->m_n; }
+  }
+  return Rcpp::List::create(Rcpp::Named("count") = (double)SAIGE::spaPinnedCount(),
+                            Rcpp::Named("refused_count") = (double)SAIGE::spaPinnedRefusedCount(),
+                            Rcpp::Named("threshold") = SAIGE::spaPinnedThreshold(),
+                            Rcpp::Named("budget") = SAIGE::spaPinnedBudget(),
+                            Rcpp::Named("model_pinned") = modelPinned, Rcpp::Named("model_mass") = modelMass,
+                            Rcpp::Named("model_n") = modelN,
+                            Rcpp::Named("model") = model,
+                            Rcpp::Named("kind") = kind, Rcpp::Named("region") = region,
+                            Rcpp::Named("group") = group, Rcpp::Named("maxMAF") = maxMAF,
+                            Rcpp::Named("weight") = weight, Rcpp::Named("marker") = marker,
+                            Rcpp::Named("n_dropped") = dropped, Rcpp::Named("mass") = mass,
+                            Rcpp::Named("refused") = refused);
 }
 
 // [[Rcpp::export]]
@@ -1376,6 +1478,7 @@ static void testOneModel(const SAIGE::SAIGEClass & t_model,
   if(t_scratch.ws.spaFallback){ // LEDGER #164
     recordSpaFallback("marker", "", "", "", "", t_res.marker, MAC, pval_noSPA, pval, t_scratch.ws.spaFallbackNote);
   }
+  recordSpaPinned("marker", "", "", "", "", t_res.marker, t_model, t_scratch.ws);   // LEDGER #174
   const double pval_num = parsePrintedPval(pval); // the one guarded parse (LEDGER #72)
 
   if((t_traitType == "binary" && MAC > g_cfg.MACCutoffforER) || t_traitType != "binary"){
@@ -3199,6 +3302,7 @@ Rcpp::List mainRegionInCPP(
         if(sc.ws.spaFallback){ // LEDGER #164
           recordSpaFallback("single_in_group", regionName, "", "", "", pr.marker, MAC, prm.pval_noSPA, prm.pval, sc.ws.spaFallbackNote);
         }
+        recordSpaPinned("single_in_group", regionName, "", "", "", pr.marker, model, sc.ws);   // LEDGER #174
         rpTest.stop();
 
         if(isCondition){
@@ -4237,6 +4341,12 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
                           (q_weight > 1) ? t_weightNames.at(rU) : std::string(""), markerVec.at(c.i),
                           genoSumcount_noweight(jmrU), cm.pval_noSPA, cm.pval, sc.ws.spaFallbackNote);
       }
+      { // LEDGER #174
+        const unsigned int jmrP = urTested[t / P];
+        const unsigned int jP = jmrP / (q_maf * q_weight), mP = (jmrP / q_weight) % q_maf, rP = jmrP % q_weight;
+        recordSpaPinned("ultra_rare", regionName, annoStringVec.at(jP), maxMAFLabel(maxMAFVec.at(mP)),
+                        (q_weight > 1) ? t_weightNames.at(rP) : std::string(""), markerVec.at(c.i), model, sc.ws);
+      }
       rpUrTest.stop();
       // (urGuard clears sc.urScratch at scope exit, throw or not; nothing below
       // reads it -- G1, P1 and P2 are taken from other scratch members)
@@ -4571,6 +4681,11 @@ if(t_regionTestType == "BURDEN"){
            recordSpaFallback("burden", regionName, annoStringVec.at(jU), maxMAFLabel(maxMAFVec.at(mU)),
                              (q_weight > 1) ? t_weightNames.at(rU) : std::string(""), std::string(""),
                              genoSumcount_noweight(jmrT), cm.pval_noSPA, cm.pval, sc.ws.spaFallbackNote);
+         }
+         { // LEDGER #174
+           const unsigned int jP = jmrT / (q_maf * q_weight), mP = (jmrT / q_weight) % q_maf, rP = jmrT % q_weight;
+           recordSpaPinned("burden", regionName, annoStringVec.at(jP), maxMAFLabel(maxMAFVec.at(mP)),
+                           (q_weight > 1) ? t_weightNames.at(rP) : std::string(""), std::string(""), model, sc.ws);
          }
          // (sumGuard clears sc.sumScratch at scope exit, throw or not)
        };

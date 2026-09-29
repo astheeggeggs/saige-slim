@@ -26,6 +26,15 @@ struct KernelWorkspace {
         bool spaFallback = false;
         // "" when the exact test ran; otherwise why it could not (p.value is NA)
         std::string spaFallbackNote;
+        // LEDGER #174: set by getMarkerPval when the null model has PINNED samples
+        // in the vector the saddlepoint was about to see (cleared at every
+        // entry). Dropped > 0: that many were left out of the CGF and Mass is the
+        // sum of their flip probabilities, the bound on what leaving them out can
+        // change. Refused: their mass was over the budget, nothing was left out
+        // and the saddlepoint ran on the full vector as before.
+        unsigned int spaPinnedDropped = 0;
+        double spaPinnedMass = 0.0;
+        bool spaPinnedRefused = false;
         arma::mat x, XW2, Q, R;
         arma::vec pi_0, pi, W2, h, ypih;
         void ensureFirth(arma::uword n) {
@@ -57,6 +66,31 @@ struct KernelWorkspace {
 // exact test (getMarkerPval). Reset per run by resetSpaFallbackRecordsInCPP.
 unsigned long long spaFallbackCount();
 void spaFallbackCountReset();
+
+// LEDGER #174 (2026-09-29): a PINNED sample is one whose outcome the null model
+// holds certain -- the probability of the outcome it does NOT have (its flip
+// probability: mu for a control, 1 - mu for a case) is at or below the
+// threshold. Such a sample adds nothing to the score or its variance, but its
+// term in the saddlepoint's CGF, log(1 - mu + mu e^{g t}) ~ mu (e^{g t} - 1), is
+// inert while g t is below -log(mu) and explosive beyond: where the rest of
+// the vector needs a root of that order the finder stops on the phantom
+// instead and Lugannani-Rice is evaluated at a root that means nothing. The
+// binary saddlepoint leaves pinned samples out of the vector. What that can
+// change is bounded by the sum of the flip probabilities left out (the
+// distributions with and without them differ by at most that much in total
+// variation), so it is done only while that sum is within the budget.
+//   SAIGE_SPA_PINNED_EPS     the threshold (default kSpaPinnedEps)
+//   SAIGE_SPA_PINNED_BUDGET  the budget on the mass left out of one test
+//   SAIGE_SPA_PINNED_GUARD=0 the kill switch: the saddlepoint sees everyone
+// Each is read once per process.
+const double kSpaPinnedEps = 1e-8;      // R/FitGates.R checkMuSeparation's, on purpose
+const double kSpaPinnedBudget = 1e-6;
+double spaPinnedThreshold();            // 0 when the guard is off
+double spaPinnedBudget();
+unsigned long long spaPinnedCount();    // tests in which samples were left out
+unsigned long long spaPinnedRefusedCount();
+void spaPinnedCountReset();               // resets the two counts above
+void spaPinnedCountAdd(bool t_refused);    // a test counted by R (the saddlepoint R runs itself)
 
 struct TestContext {
         double varRatioVal = 0.0;   // the variance ratio selected for this marker
@@ -94,6 +128,14 @@ class SAIGEClass
       // the identical arma::accu call is bit-identical.
       double m_accu_mu2;
       double m_accu_res;
+      // LEDGER #174: the pinned samples of this model (flip probability at or
+      // below spaPinnedThreshold(), so the observed outcome is the certain one),
+      // as a mask and as the increasing index list, and each one's flip
+      // probability by sample. Set once in the constructor; empty for a
+      // quantitative trait and when the guard is off.
+      std::vector<unsigned char> m_pinned;
+      arma::uvec m_pinnedIdx;
+      arma::vec m_pinnedFlip;
       arma::vec m_tauvec;
       arma::vec  m_S_a;
       //std::string m_traitType; 
@@ -266,6 +308,14 @@ void scoreTestFast_noadjCov(arma::vec & t_GVec,
 
      void getadjG(arma::vec & t_GVec, arma::vec & g);
      void getadjGFast(arma::vec & t_GVec, arma::vec & g,  arma::uvec & iIndex) const;
+
+     // LEDGER #174: how many samples of this model are pinned, and their total
+     // flip probability (the most any one test can leave out)
+     unsigned int pinnedCount() const { return (unsigned int)m_pinnedIdx.n_elem; }
+     double pinnedMass() const { double s = 0.0; for(arma::uword k = 0; k < m_pinnedIdx.n_elem; k++){ s += m_pinnedFlip(m_pinnedIdx(k)); } return s; }
+     template <typename IDX, typename FLIP> void pinnedCopy(IDX & t_idx, FLIP & t_flip) const {
+       for(arma::uword k = 0; k < m_pinnedIdx.n_elem; k++){ t_idx[k] = (int)m_pinnedIdx(k) + 1; t_flip[k] = m_pinnedFlip(m_pinnedIdx(k)); }
+     }
 
      void getMarkerPval(arma::vec & t_GVec,
 			        arma::uvec & iIndex,

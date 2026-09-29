@@ -1,0 +1,13 @@
+Region	Group	max_MAF	Weight	Test	Method	Liu_p
+GENE1	lof	0.001	NA	marginal	single-rho	NA
+GENE1	lof	0.01	NA	marginal	davies	0.0206985616342074
+GENE1	missense;lof	0.001	NA	marginal	single-rho	NA
+GENE1	missense;lof	0.01	NA	marginal	davies	0.0207458762709366
+GENE1	missense;lof;synonymous	0.001	NA	marginal	single-rho	NA
+GENE1	missense;lof;synonymous	0.01	NA	marginal	davies	0.0207458762709366
+GENE2	lof	0.001	NA	marginal	single-rho	NA
+GENE2	lof	0.01	NA	marginal	liu-screen	0.391763606987766
+GENE2	missense;lof	0.001	NA	marginal	single-rho	NA
+GENE2	missense;lof	0.01	NA	marginal	liu-screen	0.552868542906007
+GENE2	missense;lof;synonymous	0.001	NA	marginal	single-rho	NA
+GENE2	missense;lof;synonymous	0.01	NA	marginal	liu-screen	0.552868542906007

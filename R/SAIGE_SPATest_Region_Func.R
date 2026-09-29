@@ -373,7 +373,15 @@ SPA_ER_kernel_related_Phiadj_fast_new <- function(p.new, Score, Phi, p.value_bur
 # through (SAIGE_Test_main.R, the binary group-test --condition set-up). One
 # rule, written twice, fixed once: the same shape as #44/#66 and #118/#134/#135.
 # The twin is deleted; both call sites use this function.
-get_newPhi_scaleFactor_traitType <- function(q.sum, mu.a, g.sum, p.new, Score, Phi, regionTestType, traitType) {
+#
+# LEDGER #174: `pinned` is the model's pinned set (getSpaPinnedModelInCPP: idx,
+# flip, budget), or NULL. This is the one saddlepoint R runs itself, on the raw
+# burden vector, and it has the hazard the C++ ones had: the pinned samples
+# that carry the burden leave the vector, the mean and q move by what they
+# carried, and the result says what was done in `$pinned` for the caller to
+# record. Over the budget nothing is left out.
+get_newPhi_scaleFactor_traitType <- function(q.sum, mu.a, g.sum, p.new, Score, Phi, regionTestType, traitType,
+                                             pinned = NULL) {
   m1 <- sum(mu.a * g.sum)
   if (traitType == "binary") {
     var1 <- sum(mu.a * (1 - mu.a) * g.sum^2)
@@ -397,13 +405,31 @@ get_newPhi_scaleFactor_traitType <- function(q.sum, mu.a, g.sum, p.new, Score, P
   qinv <- -sign(q_adj - m1) * abs(q_adj - m1) + m1
   pval_noadj <- pchisq((q_adj - m1)^2 / var1, lower.tail = FALSE, df = 1, log.p = TRUE)
   isSPAConverge <- TRUE
+  pinned_done <- list(n_dropped = 0L, mass = 0, refused = FALSE)
   if (abs(q_adj - m1) / sqrt(var1) < 2) {
     p.value_burden <- pval_noadj
   } else {
+    if (traitType == "binary" && !is.null(pinned) && length(pinned$idx) > 0) {
+      carried <- g.sum[pinned$idx] != 0
+      if (any(carried)) {
+        drop <- pinned$idx[carried]
+        mass <- sum(pinned$flip[carried])
+        if (mass <= pinned$budget) {
+          m1_drop <- sum(mu.a[drop] * g.sum[drop])
+          g.sum[drop] <- 0
+          q_adj <- q_adj - m1_drop
+          qinv <- qinv - m1_drop
+          pinned_done <- list(n_dropped = length(drop), mass = mass, refused = FALSE)
+        } else {
+          pinned_done <- list(n_dropped = 0L, mass = mass, refused = TRUE)
+        }
+      }
+    }
     p.value_burden <- SPA_pval(mu.a, g.sum, q_adj, qinv, pval_noadj, .Machine$double.eps^0.25, TRUE, traitType, isSPAConverge)
   }
 
   re_phi <- SPA_ER_kernel_related_Phiadj_fast_new(p.new, Score, Phi, p.value_burden, regionTestType)
+  re_phi$pinned <- pinned_done
   re_phi
 }
 

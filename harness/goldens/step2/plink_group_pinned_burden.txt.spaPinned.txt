@@ -1,0 +1,3 @@
+Model	Kind	Region	Group	max_MAF	Weight	MarkerID	n_dropped	dropped_mass	guard
+1	burden	GENE1	lof	0.01			10	5.19005094762221e-08	applied
+1	burden	GENE1	missense;lof	0.01			11	5.81699319793694e-08	applied

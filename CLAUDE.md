@@ -108,7 +108,7 @@ Standing facts that have each cost at least one session. One line of why each.
   FALSE -- which covers BOTH the loop running out at `--maxiter` AND the
   bail-out at `max(tau) > tol^(-2)`; only the step-1 log tells them apart, and
   `--tol` sets both the criterion and that bail-out (0.02 aborts above tau
-  2500, 0.2 above tau 25). All 13 committed step-1 goldens are `converged=TRUE`,
+  2500, 0.2 above tau 25). All 15 committed step-1 goldens are `converged=TRUE`,
   so that gate is inert here and a test asserts it stays so.
   Two halves that are NOT redundant: step 1 scans covariate cells and the
   covariate GLM; step 2 reads the loaded model's own `y` and `fitted.values`,
@@ -117,6 +117,18 @@ Standing facts that have each cost at least one session. One line of why each.
   no column -- so it reconstructs the factor (a sample is in the reference
   level when every dummy is 0); measured, a per-dummy scan misses a zero-case
   reference level that a factor scan catches.
+- **A separated group is fitted wherever the fit stopped, not at the boundary**
+  (2026-09-29, LEDGER #174/#175). R's glm stops on the relative change of the
+  deviance, of which a separated group's share is ~2 n mu, so the group is left
+  near `1e-8 x deviance / (1.26 n)`: 60 separated samples of the bundled 1,000
+  land at 1.7e-9..1.2e-7 (13 at or below 1e-8, 47 above), 8 land at
+  1.7e-8..4.8e-7 (none below), and without the covariate offset at
+  1.4e-6..3.9e-5. Any threshold on a fitted value therefore SPLITS the group,
+  and "K of N fitted values at the 0/1 boundary" in a log counts the part
+  below 1e-8, not the separated samples. `binary_sparseGRM_pinned` is the only
+  model in the repo with such a group (`harness/tools/make_pinned_fixture.py`);
+  `binary_sparseGRM_pinned_planted` is the same model with the group moved to
+  1e-12 by `plant_pinned_model.R` -- a positive control, not a fit.
 - **Do not force `--pCutoffforFirth` upward** to make Firth fire: above the
   intended cutoff the penalised fit drifts to `maxstep*maxit` = 750 (#26). Use
   0.05, which fires on 5 of the 70 bundled markers.
@@ -768,6 +780,31 @@ declarations sit at the top of `src/Main.cpp`.
   probabilities and S is within a hair of gpos (`root * max|g|` ~ 1/mu of the
   dominant carrier). A refused q-side saddle is now labelled `saddle(q)
   invalid`, not `root(mirrored q) not found`.
+- **Pinned samples leave the saddlepoint's vector (LEDGER #174, 2026-09-29;
+  the THRESHOLD is an open owner's decision).** A sample is pinned when its
+  flip probability -- mu for a control, 1 - mu for a case -- is at or below
+  `SAIGE_SPA_PINNED_EPS` (default 1e-8, the fit gate's). Its CGF term
+  `mu (exp(g t) - 1)` is inert while `g t` is below `-log(mu)` and explosive
+  beyond, so a weighted cell whose heavy carriers are pinned sends the root
+  finder to the phantom: on the planted model the burden cells read 7e-8 and
+  2e-13 and every SKAT-O column 2e-13 where the reference is 0.020. The guard
+  drops the pinned CARRIERS on the fast kernel and every pinned sample on the
+  dense one, in THREE places: the marginal and the conditional saddlepoint of
+  `getMarkerPval`, and **the saddlepoint R runs itself**,
+  `get_newPhi_scaleFactor_traitType` (the burden rescale of the SKAT-O path
+  and of the conditioning markers) -- grep `SPA_pval` before assuming a change
+  to the C++ kernels' callers covers the region path. A test leaves them out
+  only while their summed flip probability is within
+  `SAIGE_SPA_PINNED_BUDGET` (1e-6); `SAIGE_SPA_PINNED_GUARD=0` is the kill
+  switch, byte-identical to the build before it. Every run prints `Pinned
+  samples: ...` and `<SAIGEOutputFile>.spaPinned.txt` names each test touched.
+  **At the shipped threshold the guard is complete only when the whole
+  separated group is below it** (the planted model, goldens P74-P76); on the
+  fitted model it drops 10 of a cell's 41 separated carriers and the p stays
+  at 0.030/0.054 against a reference of 0.020 (P72, a characterization), while
+  1e-6 gives 0.021 (P73) -- and at 1e-6 the 1e-6 budget refuses those cells.
+  An unweighted test is unaffected either way: its roots are nowhere near
+  `-log(mu)`.
 - **A SKAT kernel failure is counted, not hidden** (LEDGER #57): the cell's
   rows stay NA, the run prints `SKAT failures: N ...` before `Analysis done!`,
   and `<SAIGEOutputFile>.skatFailures.txt` names each failed cell with the

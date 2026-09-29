@@ -712,8 +712,10 @@ SPAGMMATtest <- function(bedFile = "",
           q.sum = outG2cond$qsum_G2_cond, mu.a = prepared[[k]]$obj.model$mu,
           g.sum = outG2cond$gsum_G2_cond, p.new = outG2cond$pval_G2_cond,
           Score = outG2cond$Score_G2_cond, Phi = outG2cond$VarMat_G2_cond,
-          "SKAT-O", prepared[[k]]$obj.model$traitType
+          "SKAT-O", prepared[[k]]$obj.model$traitType,
+          pinned = getSpaPinnedModelInCPP(as.integer(k - 1L)) # LEDGER #174
         )
+        spaPinnedRecord("conditioning_rescale", "", "", "", "", k, G2condList$pinned)
         # print(G2condList)
         scaleFactorVec <- as.vector(G2condList$scaleFactor)
         # print(scaleFactorVec)

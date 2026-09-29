@@ -32,6 +32,37 @@
 static std::atomic<unsigned long long> g_spaFallbackCount(0);
 unsigned long long SAIGE::spaFallbackCount(){ return g_spaFallbackCount.load(); }
 void SAIGE::spaFallbackCountReset(){ g_spaFallbackCount.store(0); }
+// LEDGER #174: see SAIGE_test.hpp. The three settings are read once.
+static std::atomic<unsigned long long> g_spaPinnedCount(0);
+static std::atomic<unsigned long long> g_spaPinnedRefusedCount(0);
+unsigned long long SAIGE::spaPinnedCount(){ return g_spaPinnedCount.load(); }
+unsigned long long SAIGE::spaPinnedRefusedCount(){ return g_spaPinnedRefusedCount.load(); }
+void SAIGE::spaPinnedCountAdd(bool t_refused){ if(t_refused) g_spaPinnedRefusedCount.fetch_add(1); else g_spaPinnedCount.fetch_add(1); }
+void SAIGE::spaPinnedCountReset(){ g_spaPinnedCount.store(0); g_spaPinnedRefusedCount.store(0); }
+static double envPositive(const char* t_name, double t_default){
+  const char* s = std::getenv(t_name);
+  if(s == nullptr || s[0] == '\0') return t_default;
+  char* end = nullptr;
+  const double v = std::strtod(s, &end);
+  // a value that does not parse, or is not a probability, is an error and not
+  // a silent default: the run would otherwise report a setting it did not use
+  if(end == s || *end != '\0' || !(v >= 0.0) || !(v < 0.5)){
+    throw std::runtime_error(std::string(t_name) + "='" + s + "' is not a number in [0, 0.5)");
+  }
+  return v;
+}
+double SAIGE::spaPinnedThreshold(){
+  static const double v = [](){
+    const char* g = std::getenv("SAIGE_SPA_PINNED_GUARD");
+    if(g != nullptr && std::string(g) == "0") return 0.0;
+    return envPositive("SAIGE_SPA_PINNED_EPS", SAIGE::kSpaPinnedEps);
+  }();
+  return v;
+}
+double SAIGE::spaPinnedBudget(){
+  static const double v = envPositive("SAIGE_SPA_PINNED_BUDGET", SAIGE::kSpaPinnedBudget);
+  return v;
+}
 // Test plant: SAIGE_SPA_PLANT_FAIL=1 declares every attempted saddlepoint
 // non-converged, so the fallback and its sidecar can be exercised end to end
 // on a fixture whose saddlepoints all converge (tests/testthat/
@@ -104,7 +135,7 @@ static std::string spaDumpLine2(const SPAWorkspace & t_sw, bool t_fast, double t
 }
 static std::string spaDumpVector(const arma::vec & t_gtilde, const arma::vec & t_G, const arma::vec & t_mu, const arma::vec & t_y, const arma::uvec & t_nz,
                                  double t_q, double t_qinv, double t_m1, double t_Tstat, double t_var1, const std::string & t_why,
-                                 const char* t_prefix, const std::string & t_line2){
+                                 const char* t_prefix, const std::string & t_line2, const std::vector<unsigned char> & t_dropped){
   const char* dir = spaDumpDir();
   if(dir == nullptr) return "";
   const unsigned long k = g_spaDumpCounter.fetch_add(1);
@@ -122,8 +153,14 @@ static std::string spaDumpVector(const arma::vec & t_gtilde, const arma::vec & t
   os << "# q\t" << t_q << "\tqinv\t" << t_qinv << "\tm1\t" << t_m1 << "\tgneg\t" << gneg << "\tgpos\t" << gpos
      << "\tTstat\t" << t_Tstat << "\tvar1\t" << t_var1 << "\twhy\t" << t_why << "\n";
   os << "# " << t_line2 << "\n";
-  os << "gtilde\tmu\ty\tnz\tg\n";   // g: the raw (weighted, unadjusted) vector the test was handed
-  for(arma::uword i = 0; i < t_gtilde.n_elem; i++){ os << t_gtilde(i) << "\t" << t_mu(i) << "\t" << t_y(i) << "\t" << (int)nz[i] << "\t" << t_G(i) << "\n"; }
+  // g: the raw (weighted, unadjusted) vector the test was handed. dropped
+  // (LEDGER #174): 1 for a pinned sample left out of the CGF -- its gtilde is
+  // written as the 0 the kernel saw, and q, qinv and m1 above are the moved ones
+  os << "gtilde\tmu\ty\tnz\tg\tdropped\n";
+  const bool anyDropped = (t_dropped.size() == t_gtilde.n_elem);
+  for(arma::uword i = 0; i < t_gtilde.n_elem; i++){
+    os << t_gtilde(i) << "\t" << t_mu(i) << "\t" << t_y(i) << "\t" << (int)nz[i] << "\t" << t_G(i) << "\t" << (anyDropped ? (int)t_dropped[i] : 0) << "\n";
+  }
   return path;
 }
 static bool spaPlantFail(){
@@ -234,6 +271,25 @@ SAIGEClass::SAIGEClass(
     m_ctrl_indices = arma::find(m_y == 0);
 
     m_n = t_y.size();
+    // LEDGER #174: the pinned samples -- flip probability (mu for a control,
+    // 1 - mu for a case) at or below the threshold. A sample whose fitted
+    // value is at the boundary but whose outcome CONTRADICTS it has a flip
+    // probability near 1 and is not pinned: its term is the one the score
+    // needs explained, so it stays in the CGF.
+    m_pinned.assign((std::size_t)m_n, 0);
+    m_pinnedFlip.zeros((arma::uword)m_n);
+    {
+      const double eps = SAIGE::spaPinnedThreshold();
+      (void)SAIGE::spaPinnedBudget();   // read here, on the main thread: a bad value is an R error, not a worker's
+      std::vector<arma::uword> idx;
+      if(m_traitType == "binary" && eps > 0.0 && m_mu.n_elem == (arma::uword)m_n){
+        for(arma::uword i = 0; i < (arma::uword)m_n; i++){
+          const double f = (m_y(i) == 1) ? (1.0 - m_mu(i)) : m_mu(i);
+          if(f <= eps){ m_pinned[i] = 1; m_pinnedFlip(i) = f; idx.push_back(i); }
+        }
+      }
+      m_pinnedIdx = arma::conv_to<arma::uvec>::from(idx);
+    }
     m_p = t_XV.n_rows;
     m_SPA_Cutoff = t_SPA_Cutoff;
     m_impute_method =  t_impute_method;
@@ -753,6 +809,7 @@ void SAIGEClass::getMarkerPval(arma::vec & t_GVec,
   };
   ws().spaFallback = false;   // LEDGER #164: cleared at every entry
   ws().spaFallbackNote.clear();
+  ws().spaPinnedDropped = 0; ws().spaPinnedMass = 0.0; ws().spaPinnedRefused = false;   // LEDGER #174
   //arma::vec adjGVec = getadjGFast(t_GVec);
   std::string t_pval_str;
   double t_var2, t_SPApval;
@@ -995,13 +1052,67 @@ if(!t_isER){
     	//bool logp=false;
 	double tol0 = std::numeric_limits<double>::epsilon();
 	tol1 = std::pow(tol0, 0.25);
-	if(p_iIndexComVecSize >= 0.5 && !t_ctx.useSparseGRM){
+	const bool fastKernel = (p_iIndexComVecSize >= 0.5 && !t_ctx.useSparseGRM);
+	// LEDGER #174: the pinned samples leave the vector the CGF is built from.
+	// The fast kernel's exact part is the carriers, so its pinned CARRIERS go
+	// (its Gaussian remainder has no exponential term to explode, and NAmu and
+	// NAsigma are the non-carriers' and do not move); the dense kernel's is
+	// every sample, so every pinned sample goes. The mean moves by what they
+	// carried, m1' = m1 - sum(mu g), and q and its mirror move with it: the
+	// centred score Tstat/sqrt(VR) is untouched (a pinned sample's residual is
+	// at most the threshold, by definition). Over the budget nothing is left
+	// out and the test is counted as refused.
+	arma::vec gGuard;
+	const arma::vec * gSPA = &t_gtilde;
+	std::vector<unsigned char> droppedMask;
+	if(m_traitType == "binary" && m_pinnedIdx.n_elem > 0){
+	  double mass = 0.0, m1drop = 0.0;
+	  unsigned int nDrop = 0;
+	  if(fastKernel){
+	    for(arma::uword e = 0; e < iIndex.n_elem; e++){
+	      const arma::uword i = iIndex(e);
+	      if(m_pinned[i]){ nDrop++; mass += m_pinnedFlip(i); m1drop += m_mu(i) * t_gtilde(i); }
+	    }
+	  }else{
+	    for(arma::uword k = 0; k < m_pinnedIdx.n_elem; k++){
+	      const arma::uword i = m_pinnedIdx(k);
+	      if(t_gtilde(i) != 0.0){ nDrop++; mass += m_pinnedFlip(i); m1drop += m_mu(i) * t_gtilde(i); }
+	    }
+	  }
+	  if(nDrop > 0 && mass <= SAIGE::spaPinnedBudget()){
+	    gGuard = t_gtilde;
+	    droppedMask.assign((std::size_t)m_n, 0);
+	    if(fastKernel){
+	      arma::vec gKeep(gNB.n_elem - nDrop), muKeep(gNB.n_elem - nDrop);
+	      arma::uword o = 0;
+	      for(arma::uword e = 0; e < iIndex.n_elem; e++){
+	        const arma::uword i = iIndex(e);
+	        if(m_pinned[i]){ gGuard(i) = 0.0; droppedMask[i] = 1; }
+	        else { gKeep(o) = gNB(e); muKeep(o) = muNB(e); o++; }
+	      }
+	      gNB = gKeep; muNB = muKeep;
+	    }else{
+	      for(arma::uword k = 0; k < m_pinnedIdx.n_elem; k++){
+	        const arma::uword i = m_pinnedIdx(k);
+	        if(gGuard(i) != 0.0){ gGuard(i) = 0.0; droppedMask[i] = 1; }
+	      }
+	    }
+	    gSPA = &gGuard;
+	    m1 -= m1drop; q -= m1drop; qinv -= m1drop;
+	    ws().spaPinnedDropped = nDrop; ws().spaPinnedMass = mass;
+	    g_spaPinnedCount.fetch_add(1);
+	  }else if(nDrop > 0){
+	    ws().spaPinnedRefused = true; ws().spaPinnedMass = mass;
+	    g_spaPinnedRefusedCount.fetch_add(1);
+	  }
+	}
+	if(fastKernel){
 		//std::cout << "SPA_fast" << std::endl;
-        	SPA_fast_ws(t_gtilde, q, qinv, pval_noadj, ispvallog, gNB, muNB, NAmu, NAsigma, tol1, m_traitType, t_SPApval, t_isSPAConverge, ws().spa);
+        	SPA_fast_ws(*gSPA, q, qinv, pval_noadj, ispvallog, gNB, muNB, NAmu, NAsigma, tol1, m_traitType, t_SPApval, t_isSPAConverge, ws().spa);
 	
 	}else{
 		//std::cout << "SPA" << std::endl;
-		SPA_ws(m_mu, t_gtilde, q, qinv, pval_noadj, tol1, ispvallog, m_traitType, t_SPApval, t_isSPAConverge, ws().spa);	
+		SPA_ws(m_mu, *gSPA, q, qinv, pval_noadj, tol1, ispvallog, m_traitType, t_SPApval, t_isSPAConverge, ws().spa);	
 	}
 
     boost::math::normal ns;
@@ -1048,10 +1159,10 @@ if(!t_isER){
       const double pLin = ispvallog ? std::exp(t_SPApval) : t_SPApval;
       if(pLin < spaDumpBelow()){
         if(!is_gtilde){ getadjGFast(t_GVec, t_gtilde, iIndex); is_gtilde = true; }
-        const bool fastK = (p_iIndexComVecSize >= 0.5 && !t_ctx.useSparseGRM);
-        spaDumpVector(t_gtilde, t_GVec, m_mu, m_y, iIndex, q, qinv, m1, t_Tstat, t_var1, "converged", "spaBelow",
+        const bool fastK = fastKernel;
+        spaDumpVector(*gSPA, t_GVec, m_mu, m_y, iIndex, q, qinv, m1, t_Tstat, t_var1, "converged", "spaBelow",
                       spaDumpLine2(ws().spa, fastK, pLin, ispvallog ? std::exp(pval_noadj) : pval_noadj, NAmu, NAsigma, gNB.n_elem,
-                                   t_var2, t_ctx.varRatioVal, tol1));
+                                   t_var2, t_ctx.varRatioVal, tol1), droppedMask);
       }
     }
     if(spaPlantFail()){ t_isSPAConverge = false; }   // test plant only
@@ -1085,11 +1196,11 @@ if(!t_isER){
       ws().spaFallbackNote = "spa: " + why;
       if(spaDumpDir() != nullptr){
         if(!is_gtilde){ getadjGFast(t_GVec, t_gtilde, iIndex); is_gtilde = true; }
-        const bool fastK = (p_iIndexComVecSize >= 0.5 && !t_ctx.useSparseGRM);
-        const std::string f = spaDumpVector(t_gtilde, t_GVec, m_mu, m_y, iIndex, q, qinv, m1, t_Tstat, t_var1, why, "spaFail",
+        const bool fastK = fastKernel;
+        const std::string f = spaDumpVector(*gSPA, t_GVec, m_mu, m_y, iIndex, q, qinv, m1, t_Tstat, t_var1, why, "spaFail",
                                             spaDumpLine2(ws().spa, fastK, ispvallog ? std::exp(t_SPApval) : t_SPApval,
                                                          ispvallog ? std::exp(pval_noadj) : pval_noadj, NAmu, NAsigma, gNB.n_elem,
-                                                         t_var2, t_ctx.varRatioVal, tol1));
+                                                         t_var2, t_ctx.varRatioVal, tol1), droppedMask);
         if(!f.empty()) ws().spaFallbackNote += "; dump=" + f;
       }
       // carriers, not the (weighted) allele count: see kFallbackResamples
@@ -1310,6 +1421,28 @@ if(!t_isER){
         }else{
                 // unreachable: the enclosing block is guarded by m_traitType != "quantitative"
                 Rcpp::stop("conditional SPA: unknown trait type '" + m_traitType + "' (LEDGER #152)");
+        }
+        // LEDGER #174: the conditional saddlepoint is the dense kernel on the
+        // residualised vector, so every pinned sample leaves it, as above. The
+        // call's record keeps the larger of the two tests' numbers.
+        if(m_pinnedIdx.n_elem > 0){
+          double mass_c = 0.0, m1drop_c = 0.0;
+          unsigned int nDrop_c = 0;
+          for(arma::uword k = 0; k < m_pinnedIdx.n_elem; k++){
+            const arma::uword i = m_pinnedIdx(k);
+            if(gtilde_c(i) != 0.0){ nDrop_c++; mass_c += m_pinnedFlip(i); m1drop_c += m_mu(i) * gtilde_c(i); }
+          }
+          if(nDrop_c > 0 && mass_c <= SAIGE::spaPinnedBudget()){
+            for(arma::uword k = 0; k < m_pinnedIdx.n_elem; k++){ gtilde_c(m_pinnedIdx(k)) = 0.0; }
+            q_c -= m1drop_c; qinv_c -= m1drop_c;
+            if(ws().spaPinnedDropped == 0){ g_spaPinnedCount.fetch_add(1); }
+            ws().spaPinnedDropped = std::max(ws().spaPinnedDropped, nDrop_c);
+            ws().spaPinnedMass = std::max(ws().spaPinnedMass, mass_c);
+          }else if(nDrop_c > 0){
+            if(!ws().spaPinnedRefused){ g_spaPinnedRefusedCount.fetch_add(1); }
+            ws().spaPinnedRefused = true;
+            ws().spaPinnedMass = std::max(ws().spaPinnedMass, mass_c);
+          }
         }
         SPA_ws(m_mu, gtilde_c, q_c, qinv_c, pval_noSPA_c, tol1_c, ispvallog, m_traitType, SPApval_c, t_isSPAConverge_c, ws().spa);
 

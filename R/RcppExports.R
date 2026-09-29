@@ -17,6 +17,22 @@ getExactByWeightRecordsInCPP <- function() {
     .Call('_SAIGE_getExactByWeightRecordsInCPP', PACKAGE = 'SAIGE')
 }
 
+getSpaPinnedModelInCPP <- function(t_modelIndex) {
+    .Call('_SAIGE_getSpaPinnedModelInCPP', PACKAGE = 'SAIGE', t_modelIndex)
+}
+
+recordSpaPinnedInCPP <- function(t_kind, t_region, t_group, t_maxMAF, t_weight, t_model, t_dropped, t_mass, t_refused) {
+    invisible(.Call('_SAIGE_recordSpaPinnedInCPP', PACKAGE = 'SAIGE', t_kind, t_region, t_group, t_maxMAF, t_weight, t_model, t_dropped, t_mass, t_refused))
+}
+
+resetSpaPinnedRecordsInCPP <- function() {
+    invisible(.Call('_SAIGE_resetSpaPinnedRecordsInCPP', PACKAGE = 'SAIGE'))
+}
+
+getSpaPinnedRecordsInCPP <- function() {
+    .Call('_SAIGE_getSpaPinnedRecordsInCPP', PACKAGE = 'SAIGE')
+}
+
 resetSpaFallbackRecordsInCPP <- function() {
     invisible(.Call('_SAIGE_resetSpaFallbackRecordsInCPP', PACKAGE = 'SAIGE'))
 }

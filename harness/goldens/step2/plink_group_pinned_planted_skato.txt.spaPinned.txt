@@ -1,0 +1,10 @@
+Model	Kind	Region	Group	max_MAF	Weight	MarkerID	n_dropped	dropped_mass	guard
+1	ultra_rare	GENE1	lof	0.01		GENE1:lof:0.01	26	2.6e-11	applied
+1	ultra_rare	GENE1	missense;lof	0.01		GENE1:missense;lof:0.01	26	2.6e-11	applied
+1	ultra_rare	GENE1	missense;lof;synonymous	0.01		GENE1:missense;lof;synonymous:0.01	26	2.6e-11	applied
+1	region_rescale	GENE1	lof	0.001			60	6e-11	applied
+1	region_rescale	GENE1	lof	0.01			60	6e-11	applied
+1	region_rescale	GENE1	missense;lof	0.001			60	6e-11	applied
+1	region_rescale	GENE1	missense;lof	0.01			60	6e-11	applied
+1	region_rescale	GENE1	missense;lof;synonymous	0.001			60	6e-11	applied
+1	region_rescale	GENE1	missense;lof;synonymous	0.01			60	6e-11	applied
