@@ -475,3 +475,31 @@ current version (self-test: 3 positive controls, 7 planted refusals).
 `SAIGE_EXACT_BY_WEIGHT=0` in a job's env restores the pre-#172 routing for an
 A/B on one trait, which is how to measure the population on a sample before
 committing to all of it.
+
+## 10. How many samples are pinned, per model (LEDGER #174, 2026-09-29)
+
+Every step-2 run since the fit gates prints, when any fitted value is below
+1e-8 or above 1 - 1e-8, `the null model in <file> has K of N fitted values (x%)
+at the 0/1 boundary (range a .. b)`. `harness/tools/aou_pinned_scan.sh` greps
+the newest delivered log of every job with a given name prefix and writes ONE
+table, one row per (ancestry, trait), with any count from 1 to 19 written as
+`<20` and its percentage masked. No model is opened and nothing is rerun.
+Self-test: `aou_pinned_scan_selftest.sh`.
+
+```python
+def submit_pinned(prefix="fxv4-", tag="v4", image="gcr.io/google.com/cloudsdktool/google-cloud-cli:slim"):
+    args = ["aou_dsub", "--name", f"pinned-{tag}", "--image", image,
+            "--env", f"LOGS={BUCKET}/dsub/logs", "--env", f"PREFIX={prefix}", "--env", f"TAG={tag}",
+            "--output-recursive", f"OUT_DIR={BUCKET}/SAIGE_SLIM_TESTING/pinned",
+            "--machine-type", "n2-standard-2", "--disk-size", "20", "--script", "aou_pinned_scan.sh"]
+    script = "source /home/jupyter/aou_dsub.bash\n" + " ".join(shlex.quote(a) for a in args)
+    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=os.environ)
+    print((r.stdout or r.stderr).strip().splitlines()[-1])
+```
+
+Controls inside the table: `eas`/`mathem` must read 77 of 4,089 with a smallest
+fitted value of 2.22e-16 (measured from its dump job's log on 2026-09-29), and
+the six sas binary traits must read `none_reported` with gates `on_or_unknown`
+(measured the same day from the v7 logs). If the eas row reads `none_reported`,
+the logs of that prefix predate the gates or ran with them off: use the prefix
+of a later run (`fxv5-`, `fxv7-`).
