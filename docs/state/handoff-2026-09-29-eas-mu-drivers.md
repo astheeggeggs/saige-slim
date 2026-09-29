@@ -56,6 +56,35 @@ rungs of section 11's decade table, where the counts are 62/175 and 77/244.
    analysed. Restricting to the plausibly-at-risk age window keeps the analysis,
    fixes the estimand, and removes the numerical hazard as a side effect.
 
+## The gate's threshold is the wrong statistic, not the wrong number
+
+Asked whether `eps` should scale with N. It should not, because that is not
+what it scales with. Substituting deviance ~ 2 N H(p) into #175's formula, with
+f the separated fraction:
+
+    mu_rest ~ 1.6e-8 x H(p) / f
+
+**N cancels.** Checked two ways: eas FemInf (p = 2.54 %, H = 0.118,
+f = 175/4,054) predicts 4.4e-8 against the 5.6e-8 read from its driver log's
+gap; the 60-sample fixture (p = 9.8 %, H = 0.321, f = 0.06) predicts 8.6e-8
+against an observed 1.7e-9..1.2e-7. Both within ~1.3x, both high by the amount
+null deviance overstates residual.
+
+So the gate's percentage is f times whatever share of the group happens to rest
+below 1e-8 -- an unstable slice of f. Two statistically identical situations can
+read 1.5 % or 6 %. The number compared against `--separationMaxFraction` is not
+the quantity that threshold was reasoned about, which is a worse problem than a
+mis-set cut.
+
+An `eps` built from `H/f` would be circular (f is what is being measured) and
+would calibrate a scientific gate against glm's stopping tolerance. The gate's
+own warning names the stable quantity instead: a pinned sample contributes ~0
+to the score variance instead of mu(1 - mu), so the share of total
+sum-of-mu(1 - mu) lost is dimensionless and needs no fitted-value threshold.
+Recorded as #175's third and recommended candidate repair. **NOT BUILT**: no
+damage downstream is yet demonstrated, and the last threshold hunt on this
+mechanism is the session that had to be stepped back from.
+
 ## Why the SKAT-O arm is quiet, and why that is not reassurance
 
 The hazard needs a tiny-mu carrier AND enough weight on that one carrier for
