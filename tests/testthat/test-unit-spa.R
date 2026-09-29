@@ -429,7 +429,7 @@ spa_p_at_vr <- function(d, vr) {
   SPA_pval(d$mu, d$gt, q, qinv, 2 * pnorm(-abs(d$Tstat / sqrt(d$var2 * vr))), tol, FALSE, "binary", FALSE)
 }
 
-test_that("#172: the raw score sits inside the dominant carrier's atom and the saddlepoint is sane at VR = 1", {
+test_that("#172: the raw score sits inside the dominant atom; the saddlepoint is sane at VR = 1", {
   d <- spa_atom_case()
   expect_lt(d$Tstat, max(d$gt))                       # "the LoF atom is a case", nothing more
   p1 <- spa_p_at_vr(d, 1.0)
@@ -437,7 +437,7 @@ test_that("#172: the raw score sits inside the dominant carrier's atom and the s
   expect_lt(p1, 5e-2)            # the reference for this vector is ~3.6e-3
 })
 
-test_that("#172 characterization: a VR below 1 lifts the score above the atom and the p collapses", {
+test_that("#172 characterization: a VR below 1 lifts the score above the atom; p collapses", {
   d <- spa_atom_case()
   for (vr in c(0.9893, 0.98)) {                       # the AoU band ratio, and a rounder one
     expect_gt(d$Tstat / sqrt(vr), max(d$gt))          # the crossing
