@@ -407,7 +407,7 @@ test_that("#169: S at its maximum (every carrier a case) is still the exact test
 
 # LEDGER #172 (2026-09-29, mechanism from the replay of the AoU dumps): the
 # saddlepoint is handed `q = Tstat/sqrt(VR) + m1`, the score rescaled by the
-# variance ratio. When one carrier's atom carries the whole score (a weight-1
+# variance ratio. When a single atom carries the whole score (a weight-1
 # LoF carrier with a tiny fitted probability who is a case, the other carriers
 # negligible), a VR below 1 lifts the rescaled score ABOVE that atom, and the
 # only way past it under the kernel's model is the remainder, whose sd is
@@ -462,7 +462,7 @@ test_that("#172 control: a VR above 1 leaves the score inside the atom and the p
 })
 
 # LEDGER #172, mechanism B (2026-09-29, the eas MatHem dump): a PINNED sample --
-# fitted probability at machine epsilon, a control -- carrying the weight-1
+# fitted probability at machine epsilon, MAC <20, observed in controls -- carrying the weight-1
 # variant among tiny-weight carriers. Its CGF term mu*(e^{g t} - 1) is invisible
 # for small t and explosive past t ~ 35; the root finder stops where that phantom
 # term alone equals the score (t ~ 27), the Legendre cost is tiny (w ~ 0.06)
