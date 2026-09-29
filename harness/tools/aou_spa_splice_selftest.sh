@@ -65,6 +65,12 @@ plants = {
   "twin": (new_res, variant(new_sa, ur("R7","AM_lof_mafbeta2","8.1","0.3","0.02","true"), ur("R7","AM_lof_mafbeta2","8.1","0.31","0.02","true"))),  # lof x mafbeta, twin count 9
   "ew":   ([l if not l.startswith("R2\tgrp\t0.001\tW1\t") else row("R2","W1","0.31",7) for l in new_res], new_sa),  # the "obs" change, listed by the rerun's exactByWeight sidecar (LEDGER #172)
 }
+# a COMPLETE rerun (REGIONS=ALL, FAILURES=NONE; LEDGER #172): every region of the old table, one routed cell changed
+full_res = [l if not l.startswith("R2\tgrp\t0.001\tW1\t") else row("R2","W1","0.31",7) for l in old_res]
+full_res = [l if l != cau("R2","0.3") else cau("R2","0.31") for l in full_res]
+full_sa  = [l if l != ur("R2","W1",5,"0.3","0.3","false") else ur("R2","W1",5,"0.31","0.3","true") for l in old_sa]
+plants["allok"]  = (full_res, full_sa)   # the sidecar lists R2|W1: accepted
+plants["allbad"] = (full_res, full_sa)   # no sidecar: the same change is unexplained
 os.makedirs("in", exist_ok=True)
 w("in/fxv4-test.txt.gz", old_res); w("in/fxv4-test.singleAssoc.txt.gz", old_sa)
 w("in/fxv4-test.pooledTests.txt.gz", ["Region\tRows\tRefused\tRule", "R1\t3\t0\tbonferroni", "R3\t1\t0\tcauchy"])
@@ -72,6 +78,9 @@ for tag, (res, sa) in plants.items():
     os.makedirs(f"in/{tag}", exist_ok=True); w(f"in/{tag}/fxv5-test.txt.gz", res); w(f"in/{tag}/fxv5-test.singleAssoc.txt.gz", sa)
     gzip.open(f"in/{tag}/fxv5-test.pooledTests.txt.gz", "wt").write("# placeholder\n")
 w("in/ew/fxv5-test.exactByWeight.txt.gz", ["Kind\tRegion\tGroup\tmax_MAF\tWeight\tMAC\tn_eff\tn_material", "burden\tR2\tgrp\t0.001\tW1\t7\t1.0000012\t1"])
+w("in/allok/fxv5-test.exactByWeight.txt.gz", ["Kind\tRegion\tGroup\tmax_MAF\tWeight\tMAC\tn_eff\tn_material", "burden\tR2\tgrp\t0.001\tW1\t7\t1.0000012\t1"])
+for tag in ("allok", "allbad"):   # a complete rerun discloses the same pooled rows as the old run
+    w(f"in/{tag}/fxv5-test.pooledTests.txt.gz", ["Region\tRows\tRefused\tRule", "R1\t3\t0\tbonferroni", "R3\t1\t0\tcauchy"])
 w("in/regions.txt", ["R1", "R2", "R4", "R5", "R6", "R7"], gz=False)
 w("in/failures.tsv", ["file\tMarkerID\tRegion\tCHR\tp.value\tp.value.NA\tIs.SPA",
                       "fxv4-test\tR1:grp:0.001:W1\tR1\t1\t1e-100\t1e-100\tfalse",
@@ -86,6 +95,10 @@ w("stage/chr/c.spaFallbacks.txt.gz", [hdr]); w("stage/chr/c.chrStatus.txt.gz", [
 w("stage/null/a.chrStatus.txt.gz", ["requested\t1 2 3", "failed\tnone", "refused_by_gate\tnone", "skipped_no_region\tnone"])
 print("fixtures written")
 PY
+runall(){ local tag="$1" newtag="$2"; rm -rf "work/${tag}" "out/${tag}"; mkdir -p "work/${tag}" "out/${tag}"
+  (cd "work/${tag}" && OLD_PREFIX="${T}/in/fxv4-test" NEW_PREFIX="${T}/in/${newtag}/fxv5-test" REGIONS=ALL FAILURES=NONE OUT_DIR="${T}/out/${tag}" bash "${HERE}/aou_spa_splice.sh" > "${T}/${tag}.log" 2>&1); echo $?; }
+expectall(){ local tag="$1" newtag="$2" want="$3" pat="$4"; local got; got=$(runall "${tag}" "${newtag}")
+  if [[ ${got} != "${want}" ]] || ! grep -q -- "${pat}" "${tag}.log"; then echo "FAIL ${tag}: exit ${got} (want ${want}), pattern '${pat}' $(grep -q -- "${pat}" "${tag}.log" && echo found || echo MISSING)"; fail=1; else echo "ok   ${tag}: exit ${got}, '${pat}'"; fi; }
 run(){ local tag="$1"; rm -rf "work/${tag}" "out/${tag}"; mkdir -p "work/${tag}" "out/${tag}"
   (cd "work/${tag}" && OLD_PREFIX="${T}/in/fxv4-test" NEW_PREFIX="${T}/in/${tag}/fxv5-test" REGIONS="${T}/in/regions.txt" FAILURES="${T}/in/failures.tsv" OUT_DIR="${T}/out/${tag}" bash "${HERE}/aou_spa_splice.sh" > "${T}/${tag}.log" 2>&1); echo $?; }
 fail=0
@@ -102,9 +115,11 @@ expect obs  1 "ERROR .txt.gz"
 expect dup  1 "ERROR .singleAssoc.txt.gz"
 expect ur   1 "ERROR .singleAssoc.txt.gz"
 expect twin 1 "ERROR .singleAssoc.txt.gz"
+expectall allok  allok  0 "cells routed to the exact test by weight (LEDGER #172): 1"
+expectall allbad allbad 1 "ERROR .txt.gz"
 # stage checker
 bash "${HERE}/aou_spa_stagecheck.sh" stage/null > sc_null.log 2>&1 && grep -q "STAGE OK" sc_null.log && echo "ok   stagecheck null" || { echo "FAIL stagecheck null"; fail=1; }
 if bash "${HERE}/aou_spa_stagecheck.sh" stage/pos > sc_pos.log 2>&1; then echo "FAIL stagecheck pos: exit 0"; fail=1; else grep -q "NA 1" sc_pos.log && echo "ok   stagecheck NA flagged" || { echo "FAIL stagecheck pos"; fail=1; }; fi
 if bash "${HERE}/aou_spa_stagecheck.sh" stage/chr > sc_chr.log 2>&1; then echo "FAIL stagecheck chr: exit 0"; fail=1; else grep -q "CHROMOSOME FAILED" sc_chr.log && echo "ok   stagecheck lost chromosome flagged" || { echo "FAIL stagecheck chr"; fail=1; }; fi
 if (( fail )); then echo "SELFTEST FAILED"; exit 1; fi
-echo "selftest OK: 2 positive controls (one via the exactByWeight sidecar), 6 planted refusals, 3 stage-checker cases"
+echo "selftest OK: 3 positive controls (two via the exactByWeight sidecar, one a complete rerun), 7 planted refusals, 3 stage-checker cases"

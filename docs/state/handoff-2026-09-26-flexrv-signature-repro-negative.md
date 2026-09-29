@@ -781,3 +781,5 @@ in the v7 rerun. On sas a third of cells are routed (7,834 of 24,171 on one
 chromosome of one trait), against 0.3% at N = 50,000. Scripts and logs:
 `harness/work/null4k-20260929/` (local, gitignored; the fixture is the
 SAIGE-sim checkout's sim50k).
+
+**sas v7, first pass (2026-09-29).** Six binary FlexRV jobs on IMG9, unfiltered: `STAGE OK`, 0 fallbacks, ~570k-620k routed cells per trait. The wrapper did not deliver `.exactByWeight.txt.gz` (it gathers named sidecars only): one pair added to its sidecar loop and one `--output` to `submit()`, jobs resubmitted. The control for a complete rerun is `aou_spa_splice.sh` with `REGIONS=ALL FAILURES=NONE` (self-tested, cases `allok`/`allbad`), output to `flexrv_v7_checked/`; recipe in `aou_spa_rerun.md` section 9.

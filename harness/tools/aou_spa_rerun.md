@@ -429,6 +429,49 @@ so the population is measured by rerunning and diffing, not screened:
    mistake (the routing is binary-only).
 6. Then the summary and QQ jobs of section 7 over the spliced files.
 
+**What the first sas pass found (2026-09-29).** Six jobs, `STAGE OK`, 0
+fallbacks, 22 chromosomes each; ~570k-620k routed cells per trait (3.49 M over
+the six, a third of all cells, as on the one chromosome inspected); and **no
+`.exactByWeight.txt.gz` delivered**: the wrapper gathers only the sidecars it
+names. Two edits fix that, then the jobs are resubmitted into the same
+`flexrv_v7/`:
+
+- wrapper `saige_step2_brava_main_original.sh`, the sidecar loop gains a pair:
+  `"exactByWeight:${OUT_FILE_EXACTBYWEIGHT:-}"` beside
+  `"spaFallbacks:${OUT_FILE_SPAFALLBACKS:-}"` (the loop body already gathers the
+  per-chromosome parts or writes a placeholder);
+- `submit()`, the sidecars block gains
+  `"--output", f"OUT_FILE_EXACTBYWEIGHT={od}/{pre}.exactByWeight.txt.gz",`.
+
+**The control for a COMPLETE rerun** is the splice tool in its all-regions
+mode: `REGIONS=ALL` (every region of the new results file, derived inside the
+job) and `FAILURES=NONE` (the old side already carries the earlier fixes). It
+refuses any changed cell that is neither listed in the rerun's
+`.exactByWeight.txt.gz`, nor a MAC <= 4 cell (v4 rows never rerun took the
+saddlepoint there before #166), nor an unobservable burden cell, and writes the
+verified files to `flexrv_v7_checked/` under the v4 names:
+
+```python
+def submit_check_v7(v4name, image="gcr.io/google.com/cloudsdktool/google-cloud-cli:slim"):
+    r = RUNS[v4name]; anc = r["anc"]; pre = r["out_prefix"].rsplit("/", 1)[-1]
+    fixed = f"{BUCKET}/SAIGE_SLIM_TESTING/{anc}/flexrv_v4_fixed/{pre}"
+    has_fixed = subprocess.run(["bash", "-lc", f"gcloud storage ls {fixed}.txt.gz"], capture_output=True).returncode == 0
+    old = fixed if has_fixed else r["out_prefix"]          # the current final: spliced if it was, else v4
+    new = f"{BUCKET}/SAIGE_SLIM_TESTING/{anc}/flexrv_v7/{pre.replace('fxv4', 'fxv7')}"
+    args = ["aou_dsub", "--name", v4name.replace("fxv4", "check7"), "--image", image,
+            "--env", f"OLD_PREFIX={old}", "--env", f"NEW_PREFIX={new}", "--env", "REGIONS=ALL", "--env", "FAILURES=NONE",
+            "--output-recursive", f"OUT_DIR={BUCKET}/SAIGE_SLIM_TESTING/{anc}/flexrv_v7_checked",
+            "--machine-type", "n2-standard-2", "--disk-size", "20", "--script", "aou_spa_splice.sh"]
+    script = "source /home/jupyter/aou_dsub.bash\n" + " ".join(shlex.quote(a) for a in args)
+    out = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=os.environ)
+    print(v4name, "old =", "fixed" if has_fixed else "v4", "|", (out.stdout or out.stderr).strip().splitlines()[-1])
+```
+
+The log's lines to read: `cells routed to the exact test by weight (LEDGER
+#172): N`, the unobservable-cell line with its direction counts, and the
+absence of `ERROR`. The notebook's `aou_spa_splice.sh` must be the repo's
+current version (self-test: 3 positive controls, 7 planted refusals).
+
 `SAIGE_EXACT_BY_WEIGHT=0` in a job's env restores the pre-#172 routing for an
 A/B on one trait, which is how to measure the population on a sample before
 committing to all of it.

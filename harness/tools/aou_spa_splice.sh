@@ -4,8 +4,11 @@
 # streams with gcloud storage cat. Env:
 #   OLD_PREFIX  gs://.../<pre>          (v4: .txt.gz, .singleAssoc.txt.gz, .pooledTests.txt.gz)
 #   NEW_PREFIX  gs://.../<pre>          (v5 rerun of the listed regions only)
-#   REGIONS     gs://.../rerun/<pre>.regions.txt
-#   FAILURES    gs://.../failures.tsv   (the scan's; rows of this file's failures are used)
+#   REGIONS     gs://.../rerun/<pre>.regions.txt, or ALL for a COMPLETE rerun: every
+#               region of the new results file (LEDGER #172's unfiltered rerun;
+#               derived inside the job, so the notebook reads no results file)
+#   FAILURES    gs://.../failures.tsv   (the scan's; rows of this file's failures are
+#               used), or NONE when OLD_PREFIX already carries the earlier fixes
 #   OUT_DIR     local dir dsub delocalizes (--output-recursive)
 set -euo pipefail
 : "${OLD_PREFIX:?}"; : "${NEW_PREFIX:?}"; : "${REGIONS:?}"; : "${FAILURES:?}"; : "${OUT_DIR:?}"
@@ -14,7 +17,17 @@ cat_any(){  # gs:// or a local path, gzipped or not
   if [[ $1 == gs://* ]]; then src=(gcloud storage cat "$1"); else src=(cat "$1"); fi
   if [[ $1 == *.gz ]]; then "${src[@]}" | gzip -dc; else "${src[@]}"; fi; }
 exists(){ if [[ $1 == gs://* ]]; then gcloud storage ls "$1" >/dev/null 2>&1; else [[ -s $1 ]]; fi; }
-cat_any "${REGIONS}" | sed '/^$/d' | sort -u > regions.txt
+if [[ ${REGIONS} == "ALL" ]]; then
+  cat_any "${NEW_PREFIX}.txt.gz" | awk -F'\t' 'NR>1 {print $1}' | sed '/^$/d' | sort -u > regions.txt
+  echo "REGIONS=ALL: every region of the new results file"
+else
+  cat_any "${REGIONS}" | sed '/^$/d' | sort -u > regions.txt
+fi
+if [[ ${FAILURES} == "NONE" ]]; then
+  printf 'file\tMarkerID\tRegion\tCHR\tp.value\tp.value.NA\tIs.SPA\n' > failures.none.tsv
+  FAILURES="${PWD}/failures.none.tsv"
+  echo "FAILURES=NONE: no recorded failure is expected to explain a change"
+fi
 cat_any "${FAILURES}" | awk -F'\t' -v f="${pre}" 'NR>1 && $1==f && $3!="-" {print $3}' | sort -u > failregions.txt
 echo "regions to splice: $(wc -l < regions.txt); with failed rows: $(wc -l < failregions.txt)"
 
