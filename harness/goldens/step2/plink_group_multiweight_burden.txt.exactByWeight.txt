@@ -1,0 +1,2 @@
+Kind	Region	Group	max_MAF	Weight	MAC	n_eff	n_material
+burden	GENE2	lof	0.001	CADD	5	3.80767131831293	5
