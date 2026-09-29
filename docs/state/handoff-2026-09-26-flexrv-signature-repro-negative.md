@@ -783,3 +783,5 @@ chromosome of one trait), against 0.3% at N = 50,000. Scripts and logs:
 SAIGE-sim checkout's sim50k).
 
 **sas v7, first pass (2026-09-29).** Six binary FlexRV jobs on IMG9, unfiltered: `STAGE OK`, 0 fallbacks, ~570k-620k routed cells per trait. The wrapper did not deliver `.exactByWeight.txt.gz` (it gathers named sidecars only): one pair added to its sidecar loop and one `--output` to `submit()`, jobs resubmitted. The control for a complete rerun is `aou_spa_splice.sh` with `REGIONS=ALL FAILURES=NONE` (self-tested, cases `allok`/`allbad`), output to `flexrv_v7_checked/`; recipe in `aou_spa_rerun.md` section 9.
+
+**After the sas first pass (2026-09-29).** `aou_flexrv_summary.sh` prefers `flexrv_v7_checked/` over `_fixed` over v4 (`source` = v7) and ignores the `.exactByWeight.txt.gz` sidecar (self-test extended); LEDGER #174 OPEN raises the pinned-sample guard for the owner. Commits from `23841f01` on are LOCAL: the CI account hit its Actions limit on 2026-09-29 and documentation pushes are held until it resets.

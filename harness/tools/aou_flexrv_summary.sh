@@ -9,9 +9,14 @@
 #   BASE     gs://.../SAIGE_SLIM_TESTING   (or a local dir for the self-test)
 #   RUNTAG   v4 (default)
 #   OUT_DIR  local dir dsub delocalizes (--output-recursive)
-# FlexRV: the final file of a job is flexrv_<tag>_fixed/<pre>.txt.gz when a
-# splice exists (binary traits with rerun regions), else flexrv_<tag>/<pre>.txt.gz
-# (jobs with nothing to rerun, every quantitative trait); `source` says which.
+# FlexRV: the final file of a job is, in this order of precedence,
+#   flexrv_v7_checked/<pre>.txt.gz   the complete rerun after LEDGER #172 (binary
+#                                    traits), verified by the splice control
+#                                    (`source` = v7; FLEXRV_V7_DIR names the dir)
+#   flexrv_<tag>_fixed/<pre>.txt.gz  the splice of the filtered reruns (fixed)
+#   flexrv_<tag>/<pre>.txt.gz        the original (v4): jobs with nothing to
+#                                    rerun, every quantitative trait
+# `source` says which.
 # Columns: anc trait gene source p_flexrv p_flexrv_best set_best n_sets
 #          p_skato p_skato_best cell_best p_burden_best p_skat_best
 # A second table, <anc>.skato_cells.<tag>.tsv.gz, holds every SKAT-O cell of
@@ -29,17 +34,21 @@ else
   catz(){ gzip -dc "$1"; }
 fi
 FX="${BASE}/${ANC}/flexrv_${RUNTAG}"; FXF="${BASE}/${ANC}/flexrv_${RUNTAG}_fixed"; SK="${BASE}/${ANC}/skato_${RUNTAG}"
-lsd "${FX}/*.txt.gz"  | grep -E '\.txt\.gz$' | grep -vE '\.(singleAssoc|markerList|pooledTests|skatoMethod|skatFailures|spaFallbacks|chrStatus)\.txt\.gz$' > fx.list || true
-lsd "${FXF}/*.txt.gz" | grep -E '\.txt\.gz$' | grep -vE '\.(singleAssoc|markerList|pooledTests|skatoMethod|skatFailures|spaFallbacks|chrStatus)\.txt\.gz$' > fxf.list || true
-lsd "${SK}/*.txt.gz"  | grep -E '\.txt\.gz$' | grep -vE '\.(singleAssoc|markerList|pooledTests|skatoMethod|skatFailures|spaFallbacks|chrStatus)\.txt\.gz$' > sk.list || true
-echo "flexrv: $(wc -l < fx.list) v4 files, $(wc -l < fxf.list) fixed; skato: $(wc -l < sk.list) files"
+FX7="${BASE}/${ANC}/${FLEXRV_V7_DIR:-flexrv_v7_checked}"
+SIDECARS='\.(singleAssoc|markerList|pooledTests|skatoMethod|skatFailures|spaFallbacks|chrStatus|exactByWeight)\.txt\.gz$'
+lsd "${FX}/*.txt.gz"  | grep -E '\.txt\.gz$' | grep -vE "${SIDECARS}" > fx.list || true
+lsd "${FXF}/*.txt.gz" | grep -E '\.txt\.gz$' | grep -vE "${SIDECARS}" > fxf.list || true
+lsd "${SK}/*.txt.gz"  | grep -E '\.txt\.gz$' | grep -vE "${SIDECARS}" > sk.list || true
+lsd "${FX7}/*.txt.gz" | grep -E '\.txt\.gz$' | grep -vE "${SIDECARS}" > fx7.list || true
+echo "flexrv: $(wc -l < fx.list) v4 files, $(wc -l < fxf.list) fixed, $(wc -l < fx7.list) v7; skato: $(wc -l < sk.list) files"
 trait_of(){ basename "$1" | awk -F. '{print $2}'; }   # <job>.<TRAIT>.<anc>.chr<...>.txt.gz
 # --- FlexRV: per gene, the Cauchy row's p, the best set and how many sets ----
 : > fx.tsv
 while read -r f; do
   [[ -n ${f} ]] || continue
   pre=$(basename "${f}"); src=v4
-  if grep -qxF "${FXF}/${pre}" fxf.list; then f="${FXF}/${pre}"; src=fixed; fi
+  if grep -qxF "${FX7}/${pre}" fx7.list; then f="${FX7}/${pre}"; src=v7
+  elif grep -qxF "${FXF}/${pre}" fxf.list; then f="${FXF}/${pre}"; src=fixed; fi
   catz "${f}" | awk -F'\t' -v tr="$(trait_of "${f}")" -v src="${src}" '
     NR==1{for(i=1;i<=NF;i++)h[$i]=i; if(!("Weight" in h)){print "ERROR: no Weight column in " FILENAME > "/dev/stderr"; exit 1} next}
     { g=$h["Region"]; p=$h["Pvalue_Burden"]

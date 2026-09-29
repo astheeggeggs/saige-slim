@@ -1,12 +1,13 @@
 #!/bin/bash
 # Self-test for aou_flexrv_summary.sh on FABRICATED files (no AoU data): the
-# fixed file must win over v4 for a spliced trait, an NA set p is skipped, a gene
+# verified v7 file must win over fixed, and fixed over v4, the exactByWeight
+# sidecar must not be read as a results file, an NA set p is skipped, a gene
 # in one arm only carries NA on the other, sidecars are ignored, and the row
 # count and both-arms count are what the fixtures say.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 T=$(mktemp -d); trap 'rm -rf "${T}"' EXIT
-mkdir -p "${T}/base/xx/flexrv_v4" "${T}/base/xx/flexrv_v4_fixed" "${T}/base/xx/skato_v4" "${T}/out"
+mkdir -p "${T}/base/xx/flexrv_v4" "${T}/base/xx/flexrv_v4_fixed" "${T}/base/xx/flexrv_v7_checked" "${T}/base/xx/skato_v4" "${T}/out"
 cd "${T}"
 python3 - <<'PY'
 import gzip
@@ -16,28 +17,36 @@ def cau(reg, p): return f"{reg}\tCauchy\tNA\tNA\t{p}\tNA\tNA\tNA\tNA\tNA\tNA\tNA
 v4a = [H, fx("G1","W1","0.5"), fx("G1","W2","1e-100"), cau("G1","1e-99"), fx("G2","W1","0.2"), cau("G2","0.3")]
 fxa = [H, fx("G1","W1","0.5"), fx("G1","W2","0.001"), cau("G1","0.002"), fx("G2","W1","0.2"), cau("G2","0.3")]
 v4b = [H, fx("G1","W1","0.04"), fx("G1","W2","NA"), cau("G1","0.05"), fx("G3","W1","0.7"), cau("G3","0.7")]
+v7a = [H, fx("G1","W1","0.5"), fx("G1","W2","0.01"), cau("G1","0.02"), fx("G2","W1","0.2"), cau("G2","0.3")]   # the complete rerun (LEDGER #172)
+v4c = [H, fx("G1","W1","0.6"), fx("G1","W2","1e-50"), cau("G1","1e-49")]
+fxc = [H, fx("G1","W1","0.6"), fx("G1","W2","0.003"), cau("G1","0.006")]
 SH = "Region\tGroup\tmax_MAF\tPvalue\tPvalue_Burden\tPvalue_SKAT\tBETA_Burden\tSE_Burden\tMAC"
 def sk(reg, grp, maf, p, pb, ps): return f"{reg}\t{grp}\t{maf}\t{p}\t{pb}\t{ps}\t1\t1\t9"
 def skc(reg, p): return f"{reg}\tCauchy\tNA\t{p}\tNA\tNA\tNA\tNA\tNA"
 ska = [SH, sk("G1","pLoF","0.001","0.01","0.02","0.03"), sk("G1","pLoF","0.01","0.005","0.5","0.004"), skc("G1","0.008"), sk("G4","pLoF","0.001","0.9","0.9","0.9"), skc("G4","0.9")]
 skb = [SH, sk("G1","pLoF","0.001","0.3","0.3","0.3"), skc("G1","0.3")]
 for path, lines in [("base/xx/flexrv_v4/fxv4-xx-traita.TraitA.xx.chr1-22.txt.gz", v4a), ("base/xx/flexrv_v4_fixed/fxv4-xx-traita.TraitA.xx.chr1-22.txt.gz", fxa),
+                    ("base/xx/flexrv_v7_checked/fxv4-xx-traita.TraitA.xx.chr1-22.txt.gz", v7a),
                     ("base/xx/flexrv_v4/fxv4-xx-traitb.TraitB.xx.chr1-22.txt.gz", v4b),
+                    ("base/xx/flexrv_v4/fxv4-xx-traitc.TraitC.xx.chr1-22.txt.gz", v4c), ("base/xx/flexrv_v4_fixed/fxv4-xx-traitc.TraitC.xx.chr1-22.txt.gz", fxc),
                     ("base/xx/skato_v4/skv4-xx-traita.TraitA.xx.chr1-22.txt.gz", ska), ("base/xx/skato_v4/skv4-xx-traitb.TraitB.xx.chr1-22.txt.gz", skb)]:
     gzip.open(path, "wt").write("\n".join(lines) + "\n")
 gzip.open("base/xx/flexrv_v4/fxv4-xx-traita.TraitA.xx.chr1-22.singleAssoc.txt.gz", "wt").write("x\n")
+gzip.open("base/xx/flexrv_v7_checked/fxv4-xx-traita.TraitA.xx.chr1-22.exactByWeight.txt.gz", "wt").write("Kind\tRegion\tGroup\tmax_MAF\tWeight\tMAC\tn_eff\tn_material\nburden\tG1\tgrp\t0.001\tW2\t9\t1.0\t1\n")
 PY
 ANC=xx BASE="${T}/base" OUT_DIR="${T}/out" bash "${HERE}/aou_flexrv_summary.sh" > run.log 2>&1 || { cat run.log; echo "SELFTEST FAILED: script exited non-zero"; exit 1; }
 gzip -dc out/xx.flexrv_vs_skato.v4.tsv.gz > out.tsv
 fail=0
 check(){ if awk -F'\t' "$1" out.tsv | grep -q .; then echo "ok   $2"; else echo "FAIL $2"; fail=1; fi; }
-check 'NR>1 && $2=="TraitA" && $3=="G1" && $4=="fixed" && $5=="0.002" && $6=="0.001" && $7=="W2" && $8=="2"' "fixed file wins over v4, best set found"
+check 'NR>1 && $2=="TraitA" && $3=="G1" && $4=="v7" && $5=="0.02" && $6=="0.01" && $7=="W2" && $8=="2"' "verified v7 file wins over fixed and v4, best set found"
+check 'NR>1 && $2=="TraitC" && $3=="G1" && $4=="fixed" && $5=="0.006" && $6=="0.003" && $7=="W2" && $8=="2"' "fixed file wins over v4 when there is no v7"
 check 'NR>1 && $2=="TraitB" && $3=="G1" && $4=="v4" && $6=="0.04" && $7=="W1" && $8=="2"' "NA set p skipped, v4 used when no fixed file"
 check 'NR>1 && $2=="TraitA" && $3=="G1" && $9=="0.008" && $10=="0.005" && $11=="pLoF@0.01" && $12=="0.02" && $13=="0.004"' "SKAT-O cauchy, best cell, best burden, best SKAT"
 check 'NR>1 && $2=="TraitA" && $3=="G4" && $4=="NA" && $5=="NA" && $9=="0.9"' "gene in the SKAT-O arm only carries NA on the FlexRV side"
 check 'NR>1 && $2=="TraitA" && $3=="G2" && $9=="NA"' "gene in the FlexRV arm only carries NA on the SKAT-O side"
-[[ $(($(wc -l < out.tsv) - 1)) -eq 5 ]] && echo "ok   5 rows" || { echo "FAIL row count"; fail=1; }
-grep -q "rows: 5 (trait, gene) pairs; 2 with both arms; traits: 2" run.log && echo "ok   summary line" || { echo "FAIL summary line"; fail=1; }
+[[ $(($(wc -l < out.tsv) - 1)) -eq 6 ]] && echo "ok   6 rows (the exactByWeight sidecar is not a results file)" || { echo "FAIL row count"; fail=1; }
+grep -q "rows: 6 (trait, gene) pairs; 2 with both arms; traits: 3" run.log && echo "ok   summary line" || { echo "FAIL summary line"; fail=1; }
+grep -q "1 v7" run.log && echo "ok   one v7 file listed" || { echo "FAIL v7 listing"; fail=1; }
 # the wide cell table: TraitA G1 has two cells (pLoF@0.001, pLoF@0.01), G4 one; TraitB G1 one
 gzip -dc out/xx.skato_cells.v4.tsv.gz > cells.tsv
 head -1 cells.tsv | grep -qx $'anc\ttrait\tgene\tburden:pLoF@0.001\tburden:pLoF@0.01\tskato:pLoF@0.001\tskato:pLoF@0.01' && echo "ok   cells header (cell list from the files)" || { echo "FAIL cells header: $(head -1 cells.tsv)"; fail=1; }
