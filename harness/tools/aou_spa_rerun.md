@@ -581,3 +581,59 @@ What to read:
   to 1e-6 is a model that really does assign tiny probabilities, and those
   samples are not separated.
 - **`mass_le_1e-06`.** The most any one test could leave out at that threshold.
+
+## 12. Which covariate carries the tail? (LEDGER #174/#175, 2026-09-29)
+
+The eas decade scan (section 11) found a tail in two of fifteen binary models,
+FemInf and MatHem, and it is NOT the shape of the fixture's separated group:
+the widest gap is 0 decades and the counts rise steadily, 62 / 103 / 175 / 310
+and 77 / 141 / 244 / 394 at or below 1e-8 / 1e-7 / 1e-6 / 1e-5. A categorical
+covariate that separates a group gives a cluster with a gap above it; a
+continuum is what a steep CONTINUOUS effect gives. Both traits have N near
+4,050, like the three other female-specific traits (3,961 to 4,098) and unlike
+the both-sex traits (6,090 to 6,379), so the other sex was excluded.
+
+`aou_mu_drivers.sh` answers the rest from the model alone: the covariates that
+entered the fit (a constant or collinear column is dropped by step 1 before
+the fit and is simply absent), the case count, and which covariate carries the
+tail samples' linear predictor away from everyone else's. Every number is a
+sum over the cohort or over the tail group; a tail of 1 to 19 samples is
+written `<20` and its rows are withheld. Self-test: 16 checks on simulated
+models where the driver is known (a separating covariate; age and its square).
+
+Upload `aou_mu_drivers.sh`, then (BreastCanc is the control: female-specific,
+no tail, so its summary is withheld but its covariates and case count print):
+
+```python
+def submit_mu_drivers(anc, traits, image=IMG9):
+    for tr in traits:
+        args = ["aou_dsub", "--name", f"mudrv-{anc}-{tr.lower()}", "--image", image,
+                "--input", f"MODELS={MODEL_DIR[anc]}/{anc}_{tr}.rda", "--env", f"TAG={anc}_{tr}",
+                "--output-recursive", f"OUT_DIR={BUCKET}/SAIGE_SLIM_TESTING/mu_drivers",
+                "--machine-type", "n2-standard-4", "--disk-size", "50", "--script", "aou_mu_drivers.sh"]
+        script = "source /home/jupyter/aou_dsub.bash\n" + " ".join(shlex.quote(a) for a in args)
+        r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=os.environ)
+        print(tr, (r.stdout or r.stderr).strip().splitlines()[-1])
+submit_mu_drivers("eas", ["FemInf", "MatHem", "BreastCanc"])
+```
+
+Reading it, from the job logs:
+
+```python
+for tr in ["FemInf", "MatHem", "BreastCanc"]:
+    log = fetch_log(f"mudrv-eas-{tr.lower()}")
+    print(log[log.find("====="):][:1600])
+```
+
+What each answer looks like:
+
+- **`columns whose name contains 'sex': none`** on all three: sex did not enter
+  these fits (not passed, or passed and dropped as constant).
+- **a sex column present**: it survived the collinearity check, so the cohort
+  is not single-sex after all. Then look at how much of the gap it carries.
+- **`age` and `age2` carry the gap**: a steep age effect. The samples in the
+  tail are those the model places furthest along it.
+- **one categorical column carries the gap**: a separated level, the fixture's
+  shape, whatever the decade table's gap column said.
+- **`(no covariate: random effect)` carries the gap**: the tail is the random
+  effect's doing, and the covariates are not the story.
