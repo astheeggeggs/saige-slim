@@ -726,3 +726,5 @@ or rescale the CGF's support. The eas MatHem cell is NOT yet explained: on IMG8
 its `AM_sbeta10_MAC5` prints 0.86 with its MAC above the exact-test cutoff, so
 something changed a saddlepoint that v4 accepted -- its singleAssoc row and
 fallback sidecar are the next read.
+
+**Correction (2026-09-29):** the eas pair is MatHem x `ENSG00000128607`; an earlier note carried `ENSG00000136802`, a gene id copied from a splice-count line, and the first IMG8 eas run tested that wrong gene (it reproduced v4 trivially, empty dump). Every mention above is corrected; the eas rerun on the right gene is the next step.

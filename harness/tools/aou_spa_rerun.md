@@ -342,7 +342,7 @@ The scan (section 1) flags FAILED saddlepoints (`Is.SPA FALSE`); a saddlepoint
 that converges to a wrong value passes it, and the splice keeps its v4 row.
 Three FlexRV cells did exactly that: amr BenCervUterNeo ENSG00000101198
 `AM_sbeta20_MACsparse` p 2.2e-53 (normal p 8e-101), amr BenIntNeo ENSG00000196109
-(sbeta sets), eas MatHem ENSG00000136802 `AM_sbeta10_MACsparse` p 3.5e-93 with a
+(sbeta sets), eas MatHem ENSG00000128607 `AM_sbeta10_MACsparse` p 3.5e-93 with a
 NORMAL p of 0.02. Same carriers, sane p under `sbeta5` and `lof`; the trigger
 is the weight spread of `sbeta10`/`sbeta20`. Every kernel change since the v4
 image (`f2fb24da`) is on a failure path, so the current image is predicted to
