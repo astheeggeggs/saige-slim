@@ -398,6 +398,10 @@ ARE captured. Baseline at C8: R 55.2%, live step-2 C++ 72.2% line / 42.9% branch
   `plant`, and under `clean` it makes the script exit non-zero. Without it a
   crashed arm hangs on R's interactive abort prompt indefinitely (once for
   4h32m).
+  **The `region` workload is beta-weighted: it never enters the exact-by-weight
+  routing (LEDGER #172), which runs inside the per-cell prepares on workers.
+  `SAIGE_TSAN_WORKLOADS="region_atom region_atom_skato"` (goldens P69 and P71's
+  commands) are the workloads that do; clean and plant both measured 2026-09-29.**
   **Run the `region` workload after ANY change to region threading.** It was
   in the default list from the start but not in the levers' gate list, and the
   first run after the 2026-09-12 cell-pool work found a real worker-vs-worker

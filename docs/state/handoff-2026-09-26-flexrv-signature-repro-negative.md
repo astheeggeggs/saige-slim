@@ -758,3 +758,5 @@ the sidecar (selftest case `ew`). Commit `a08fb295` (gate green twice, pushed); 
 `astheeggeggs/saige-slim:1.5.2-dev-a08fb295`. Next: the AoU rerun of the binary
 FlexRV arm on IMG9 (recipe `aou_spa_rerun.md` section 9; sas first). Raised separately
 for the owner: dropping pinned samples from every saddlepoint vector.
+
+**#172, ThreadSanitizer (2026-09-29, after the fix commit).** The stock `region` workload never enters the routed body (beta weights), so `harness/tsan.sh` gained `region_atom` and `region_atom_skato` (P69 and P71's commands): clean arm races=0 at 1/4/8 threads, bytes identical to serial, 24 and 10 cells routed in every run; plant arm races 61-202 or died at 4 and 8 threads. CI on Linux (numeric) is green on the fix's tree.

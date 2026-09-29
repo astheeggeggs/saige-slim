@@ -230,6 +230,18 @@ tsan_run() { # tsan_run <workload> <threads>
     region)        model=example_binary_sparseGRM
       args="$SG --groupFile=input/group_new_snpid.txt --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous --maxMAF_in_groupTest=0.0001,0.001,0.01 --is_fastTest=TRUE --chrom=1"
       bed="--bedFile=./input/genotype_100markers.bed --bimFile=./input/genotype_100markers.bim --famFile=./input/genotype_100markers.fam --AlleleOrder=alt-first" ;;
+    # LEDGER #172 (2026-09-29): the exact-by-weight routing runs inside the
+    # per-cell prepares, on workers. The `region` workload above is
+    # beta-weighted and never enters the routed body, so a clean run on it says
+    # nothing about that code. These two do: golden P69's command (FlexRV
+    # BURDEN, 24 routed cells through the BURDEN prepare) and golden P71's
+    # (custom weights through SKAT-O, the ultra-rare prepare).
+    region_atom)   model=example_binary_sparseGRM
+      args="$SG --groupFile=input/group_new_snpid_flexrv_atom.txt --flexRV_score=REVEL --flexRV_maxMAF=0.01 --annotation_in_groupTest=lof:missense --r.corr=1 --is_fastTest=FALSE --chrom=1"
+      bed="--bedFile=./input/genotype_100markers.bed --bimFile=./input/genotype_100markers.bim --famFile=./input/genotype_100markers.fam --AlleleOrder=alt-first" ;;
+    region_atom_skato) model=example_binary_sparseGRM
+      args="$SG --groupFile=input/group_new_snpid_withWeights_atom.txt --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous --maxMAF_in_groupTest=0.0001,0.001,0.01 --is_fastTest=FALSE --chrom=1"
+      bed="--bedFile=./input/genotype_100markers.bed --bimFile=./input/genotype_100markers.bim --famFile=./input/genotype_100markers.fam --AlleleOrder=alt-first" ;;
     rare[0-9][0-9][0-9])
       model=binary_sparseGRM_a; args=""
       local rp="$REPO/harness/work/rarefix/$wl"
@@ -237,7 +249,7 @@ tsan_run() { # tsan_run <workload> <threads>
       bed="--bedFile=$rp.bed --bimFile=$rp.bim --famFile=$rp.fam --AlleleOrder=alt-first" ;;
   esac
   local base="$RUNS/$wl.t$nt" include="" modeldir="$GOLD/step1"
-  [ "$wl" = region ] && modeldir="$REPO/extdata/output"
+  case "$wl" in region*) modeldir="$REPO/extdata/output" ;; esac
   if [ -n "$MAXMK" ]; then
     # First N variant IDs of this workload's fixture. pvar has a #CHROM header
     # and ID in column 3; bim has no header and ID in column 2.
