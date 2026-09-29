@@ -785,3 +785,25 @@ SAIGE-sim checkout's sim50k).
 **sas v7, first pass (2026-09-29).** Six binary FlexRV jobs on IMG9, unfiltered: `STAGE OK`, 0 fallbacks, ~570k-620k routed cells per trait. The wrapper did not deliver `.exactByWeight.txt.gz` (it gathers named sidecars only): one pair added to its sidecar loop and one `--output` to `submit()`, jobs resubmitted. The control for a complete rerun is `aou_spa_splice.sh` with `REGIONS=ALL FAILURES=NONE` (self-tested, cases `allok`/`allbad`), output to `flexrv_v7_checked/`; recipe in `aou_spa_rerun.md` section 9.
 
 **After the sas first pass (2026-09-29).** `aou_flexrv_summary.sh` prefers `flexrv_v7_checked/` over `_fixed` over v4 (`source` = v7) and ignores the `.exactByWeight.txt.gz` sidecar (self-test extended); LEDGER #174 OPEN raises the pinned-sample guard for the owner. Commits from `23841f01` on are LOCAL: the CI account hit its Actions limit on 2026-09-29 and documentation pushes are held until it resets.
+
+**sas v7 VERIFIED (2026-09-29).** Second pass with the wrapper and `submit()`
+naming `exactByWeight`: `STAGE OK`, 0 fallbacks, six sidecars delivered, and the
+routed-cell counts identical to the first pass trait by trait (an unplanned
+reproducibility check). Control (`aou_spa_splice.sh`, `REGIONS=ALL
+FAILURES=NONE`, baseline the spliced files) on all six traits: no refusal, no
+`ROWS` line, row counts identical in every file, `.pooledTests` unchanged, no
+change needing the unobservable-cell or the MAC <= 4 rule. Routed cells /
+routed cells whose p changed: Asth 573,990 / 21,298; BenIntNeo 581,068 /
+12,341; EFRMB 620,612 / 20,484; HTN 579,244 / 13,323; PAD 565,966 / 11,102;
+T2Diab 569,726 / 14,199 -- 2.0% to 3.7% of routed cells, against 3.5% in the
+N = 4,000 null simulation. Verified files: `sas/flexrv_v7_checked/`.
+
+Two defects of the control found before they cost a day, both invisible at the
+size of the filtered reruns: row counts per region took two full passes per
+REGION (a day at 18,000 regions; now one pass per file, 240 s on a synthetic
+trait of 1.8 M rows), and the routed list's header was taken with `head -1`
+(SIGPIPE under pipefail once the list is long: exit 141 at the last step).
+The first submission was cancelled. The pinned-sample scan had the same
+closed-pipe trap in its gates detection and read each log twice; fixed before
+its results were used. Lesson recorded in memory: time a tool at the scale it
+will run at before handing it over.
