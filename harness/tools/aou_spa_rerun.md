@@ -503,3 +503,65 @@ the six sas binary traits must read `none_reported` with gates `on_or_unknown`
 (measured the same day from the v7 logs). If the eas row reads `none_reported`,
 the logs of that prefix predate the gates or ran with them off: use the prefix
 of a later run (`fxv5-`, `fxv7-`).
+
+## 11. Where do the models' fitted values sit? (LEDGER #174/#175, 2026-09-29)
+
+The pinned-sample guard's threshold was set at 1e-8 on the assumption that a
+separated group is fitted below it. The bundled fixture says it is not: the
+group is left wherever glm stopped, and straddles the threshold. The step-2
+logs report only the count at or below 1e-8 (section 10), so this reads the
+models themselves.
+
+`aou_mu_decades.sh` runs on the SAIGE image (it needs R and nothing else).
+dsub localizes the models inside the workspace, so nothing is egressed. The
+table has one row per binary model: the number of samples in each decade of
+flip probability, the count and the mass at or below 1e-8, 1e-7, 1e-6 and
+1e-5, and the widest run of empty decades. Every count from 1 to 19 is
+written `<20` and the mass that goes with it `masked`. It is safe to paste.
+
+Upload `aou_mu_decades.sh`, then:
+
+```python
+MODEL_DIR = {a: "nullglmm_v4" for a in ["afr", "eas", "eur", "sas"]}
+MODEL_DIR["amr"] = "nullglmm_v4_rc0.125"
+
+def submit_mu_decades(anc, image=IMG9):
+    src = f"{BUCKET}/SAIGE_SLIM_TESTING/{anc}/{MODEL_DIR[anc]}"
+    args = ["aou_dsub", "--name", f"mudec-{anc}", "--image", image,
+            "--input-recursive", f"MODELS={src}", "--env", f"TAG={anc}",
+            "--output-recursive", f"OUT_DIR={BUCKET}/SAIGE_SLIM_TESTING/mu_decades",
+            "--machine-type", "n2-standard-4", "--disk-size", "100", "--script", "aou_mu_decades.sh"]
+    script = "source /home/jupyter/aou_dsub.bash\n" + " ".join(shlex.quote(a) for a in args)
+    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=os.environ)
+    print((r.stdout or r.stderr).strip().splitlines()[-1])
+
+# check the directory first: this prints a number of files and nothing else
+for anc in ["eas"]:
+    n = subprocess.run(["bash", "-lc", f"gcloud storage ls '{BUCKET}/SAIGE_SLIM_TESTING/{anc}/{MODEL_DIR[anc]}/*.rda' | wc -l"],
+                       capture_output=True, text=True).stdout.strip()
+    print(anc, "model files:", n)
+# submit_mu_decades("eas")
+```
+
+Start with eas: it is the smallest and holds two of the seven models. Reading
+the result:
+
+```python
+t = load(f"{BUCKET}/SAIGE_SLIM_TESTING/mu_decades/mu_decades.eas.tsv.gz")
+cols = ["model", "N", "n_le_1e-08", "n_le_1e-07", "n_le_1e-06", "n_le_1e-05",
+        "mass_le_1e-08", "mass_le_1e-06", "empty_decades_in_widest_gap"]
+print(t[cols].to_string(index=False))
+```
+
+What to read:
+
+- **`n_le_1e-06` against `n_le_1e-08`.** Equal: the model's separated samples
+  are all below the shipped threshold and the guard is complete for it. Larger:
+  the group straddles the threshold, as on the fixture, and the guard is partial.
+- **A model with `n_le_1e-08` of 0 and `n_le_1e-06` above 0.** A separated group
+  that the log scan could not see (LEDGER #175).
+- **`empty_decades_in_widest_gap`.** Three or more empty decades between the
+  lowest group and the rest is what separation looks like; a smooth tail down
+  to 1e-6 is a model that really does assign tiny probabilities, and those
+  samples are not separated.
+- **`mass_le_1e-06`.** The most any one test could leave out at that threshold.
