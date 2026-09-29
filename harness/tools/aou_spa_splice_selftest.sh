@@ -78,7 +78,9 @@ for tag, (res, sa) in plants.items():
     os.makedirs(f"in/{tag}", exist_ok=True); w(f"in/{tag}/fxv5-test.txt.gz", res); w(f"in/{tag}/fxv5-test.singleAssoc.txt.gz", sa)
     gzip.open(f"in/{tag}/fxv5-test.pooledTests.txt.gz", "wt").write("# placeholder\n")
 w("in/ew/fxv5-test.exactByWeight.txt.gz", ["Kind\tRegion\tGroup\tmax_MAF\tWeight\tMAC\tn_eff\tn_material", "burden\tR2\tgrp\t0.001\tW1\t7\t1.0000012\t1"])
-w("in/allok/fxv5-test.exactByWeight.txt.gz", ["Kind\tRegion\tGroup\tmax_MAF\tWeight\tMAC\tn_eff\tn_material", "burden\tR2\tgrp\t0.001\tW1\t7\t1.0000012\t1"])
+# a LONG list (20,000 rows of regions that are not in the table, ~1 MB): a `| head -1` on it dies of SIGPIPE under pipefail
+w("in/allok/fxv5-test.exactByWeight.txt.gz", ["Kind\tRegion\tGroup\tmax_MAF\tWeight\tMAC\tn_eff\tn_material", "burden\tR2\tgrp\t0.001\tW1\t7\t1.0000012\t1"]
+  + [f"burden\tZ{i:05d}\tgrp\t0.001\tAM_sbeta20_unw\t30\t1.0000001\t1" for i in range(20000)])
 for tag in ("allok", "allbad"):   # a complete rerun discloses the same pooled rows as the old run
     w(f"in/{tag}/fxv5-test.pooledTests.txt.gz", ["Region\tRows\tRefused\tRule", "R1\t3\t0\tbonferroni", "R3\t1\t0\tcauchy"])
 w("in/regions.txt", ["R1", "R2", "R4", "R5", "R6", "R7"], gz=False)
@@ -106,6 +108,8 @@ expect(){ local tag="$1" want="$2" pat="$3"; local got; got=$(run "${tag}")
   if [[ ${got} != "${want}" ]] || ! grep -q -- "${pat}" "${tag}.log"; then echo "FAIL ${tag}: exit ${got} (want ${want}), pattern '${pat}' $(grep -q -- "${pat}" "${tag}.log" && echo found || echo MISSING)"; fail=1; else echo "ok   ${tag}: exit ${got}, '${pat}'"; fi; }
 expect ok   0 "unobservable burden cells (Number_rare > 0) accepted at region level: 2 (p rose in 2, fell in 0)"
 expect ew   0 "cells routed to the exact test by weight (LEDGER #172): 1"
+grep -q "ROWS .pooledTests.txt.gz: R1 old 1 new 0 (a region with nothing to disclose" ok.log && echo "ok   row counts per region: the ROWS line of the ok case" || { echo "FAIL the ROWS line is missing from ok.log"; fail=1; }
+grep -c "^ROWS " allok.log >/dev/null 2>&1 || true
 grep -q "pseudo-marker rows explained by their own exact-test eligibility (LEDGER #166, count <= 4): 4" ok.log || { echo "FAIL ok: pseudo-marker count"; fail=1; }
 grep -q "real-marker rows: 4 rerun marker(s), 4 old row(s) replaced by 4 new, 2 old cop(y/ies) kept" <(tr -s ' ' < ok.log) || { echo "FAIL ok: real-marker accounting"; fail=1; }
 [[ $(gzip -dc out/ok/fxv4-test.singleAssoc.txt.gz | grep -c "chr1:500") -eq 3 ]] || { echo "FAIL ok: shared marker copies"; fail=1; }
@@ -116,6 +120,7 @@ expect dup  1 "ERROR .singleAssoc.txt.gz"
 expect ur   1 "ERROR .singleAssoc.txt.gz"
 expect twin 1 "ERROR .singleAssoc.txt.gz"
 expectall allok  allok  0 "cells routed to the exact test by weight (LEDGER #172): 1"
+grep -q ".exactByWeight.txt.gz: 1 routed cell(s) in the spliced regions, carried over" allok.log && [[ $(gzip -dc out/allok/fxv4-test.exactByWeight.txt.gz | wc -l) -eq 2 ]] && echo "ok   a 20,000-row routed list is carried over restricted to the table's regions" || { echo "FAIL the routed list carry-over"; fail=1; }
 expectall allbad allbad 1 "ERROR .txt.gz"
 # stage checker
 bash "${HERE}/aou_spa_stagecheck.sh" stage/null > sc_null.log 2>&1 && grep -q "STAGE OK" sc_null.log && echo "ok   stagecheck null" || { echo "FAIL stagecheck null"; fail=1; }

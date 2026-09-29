@@ -196,14 +196,18 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
   # #127's convention; since #164 a saddlepoint failure above 13 carriers
   # yields such a row), so a rerun region can come back with FEWER rows than
   # it had. Print every region whose count changed, so the drop is visible.
-  for r in $(cat regions.txt); do
-    no=$(awk -F'\t' -v R="$r" 'FNR>1 && ('"${rule}"')==R' old.tsv | wc -l); nn=$(awk -F'\t' -v R="$r" 'FNR>1 && ('"${rule}"')==R' new.tsv | wc -l)
-    if [[ ${no} -ne ${nn} ]]; then
-      if [[ ${sfx} == ".pooledTests.txt.gz" ]]; then why="a region with nothing to disclose -- plain Cauchy, no refused cell -- writes no pooled row (LEDGER #127)"
-      else why="NA rows are not written on the region path; a WHOLE region missing is a lost chromosome, read chrStatus (LEDGER #170)"; fi
-      echo "ROWS ${sfx}: ${r} old ${no} new ${nn} (${why})"
-    fi
-  done
+  # Row counts per region, old against new, in ONE pass per file. This used to
+  # be two full passes per REGION, which a filtered rerun of tens of regions
+  # never noticed and a complete rerun (REGIONS=ALL, ~18,000 regions against
+  # million-row files) would have spent a day on (2026-09-29).
+  local why
+  if [[ ${sfx} == ".pooledTests.txt.gz" ]]; then why="a region with nothing to disclose -- plain Cauchy, no refused cell -- writes no pooled row (LEDGER #127)"
+  else why="NA rows are not written on the region path; a WHOLE region missing is a lost chromosome, read chrStatus (LEDGER #170)"; fi
+  awk -F'\t' -v sfx="${sfx}" -v why="${why}" '
+    FILENAME=="regions.txt"{keep[$1]=1; next}
+    FNR==1{next}
+    { reg=('"${rule}"'); if(!(reg in keep)) next; if(FILENAME=="old.tsv") o[reg]++; else n[reg]++ }
+    END{ for(r in keep) if((o[r]+0) != (n[r]+0)) print "ROWS " sfx ": " r " old " o[r]+0 " new " n[r]+0 " (" why ")" }' regions.txt old.tsv new.tsv | sort
   if (( single )); then
     awk -F'\t' 'NR==FNR{nm[$1]=$2; next} FNR>1 && '"${isreal}"' && ($3 in nm){ seen[$3]++; if(seen[$3] <= nm[$3]) rep++; else kept++ } END{print rep+0"\t"kept+0}' newmarkers.txt old.tsv > rm.tmp
     echo "${sfx}: real-marker rows: $(wc -l < newmarkers.txt) rerun marker(s), $(cut -f1 rm.tmp) old row(s) replaced by $(awk -F'\t' 'FNR>1 && '"${isreal}"'' new.tsv | wc -l) new, $(cut -f2 rm.tmp) old cop(y/ies) kept for regions not rerun"
@@ -224,8 +228,9 @@ if exists "${OLD_PREFIX}.pooledTests.txt.gz"; then
   splice_one ".pooledTests.txt.gz" '$1'
 fi
 if exists "${NEW_PREFIX}.exactByWeight.txt.gz"; then   # LEDGER #172: the routed cells of the spliced regions travel with the file
-  { cat_any "${NEW_PREFIX}.exactByWeight.txt.gz" | head -1
-    cat_any "${NEW_PREFIX}.exactByWeight.txt.gz" | awk -F'\t' 'NR==FNR{keep[$1]=1; next} FNR>1 && ($2 in keep)' regions.txt -; } > "${OUT_DIR}/${pre}.exactByWeight.txt"
+  # one pass that reads the whole stream: `| head -1` on a list of 1e5 rows closes
+  # the pipe under the writer, and pipefail makes that SIGPIPE fatal (exit 141)
+  cat_any "${NEW_PREFIX}.exactByWeight.txt.gz" | awk -F'\t' 'NR==FNR{keep[$1]=1; next} FNR==1{print; next} ($2 in keep)' regions.txt - > "${OUT_DIR}/${pre}.exactByWeight.txt"
   gzip -f "${OUT_DIR}/${pre}.exactByWeight.txt"
   echo ".exactByWeight.txt.gz: $(( $(gzip -dc "${OUT_DIR}/${pre}.exactByWeight.txt.gz" | wc -l) - 1 )) routed cell(s) in the spliced regions, carried over"
 fi
