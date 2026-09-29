@@ -9,7 +9,9 @@
 #   anc  trait  job  status  pinned  N  percent  min_fitted  max_fitted
 # status = warning (the line was found), none_reported (no such line: no pinned
 # sample at 1e-8, or a run with the gates off / an image older than the gates --
-# `gates` says which the log suggests), no_log.
+# `gates` is `off` when the log carries the gates' own "eligibility gates
+# DISABLED" line), no_log. A quantitative trait has no such check and always
+# reads none_reported.
 # Runs INSIDE a dsub job (gcr.io/google.com/cloudsdktool/google-cloud-cli:slim).
 # A count from 1 to MASK-1 is written as "<MASK" and its percentage as "masked":
 # the table is safe to read and to keep. Env:
@@ -40,14 +42,21 @@ while read -r job; do
   [[ -n ${job} ]] || continue
   rest="${job#"${PREFIX}"}"; anc="${rest%%-*}"; trait="${rest#*-}"; trait="${trait%-b[0-9]*}"
   line=""; gates="on_or_unknown"; seen=0
+  # this job's logs only (grep, not a shell loop over every log of every job)
   while IFS=$'\t' read -r j f; do
-    [[ ${j} == "${job}" ]] || continue
     seen=1
-    # the pattern, then (only if absent) whether the log says the gates were off
-    line=$(catf "${f}" 2>/dev/null | grep -m1 -E 'fitted values \([^)]*\) at the 0/1 boundary' || true)
-    if [[ -n ${line} ]]; then break; fi
-    if catf "${f}" 2>/dev/null | grep -m1 -q -E 'SAIGE_FIT_GATES=0|fit gates are OFF|gates are off'; then gates="off"; fi
-  done < joblogs.tsv
+    # ONE pass per file: the boundary warning (stop at the first), and whether the
+    # run said its gates were off (R/FitGates.R: "eligibility gates DISABLED by
+    # SAIGE_FIT_GATES="). The result is captured with `|| true`: awk's exit
+    # closes the pipe under the reader, and under pipefail that SIGPIPE would
+    # otherwise read as "no match" on exactly the large logs that matter.
+    res=$(catf "${f}" 2>/dev/null | awk '
+      /fitted values \([^)]*\) at the 0\/1 boundary/ { print "W\t" $0; found=1; exit }
+      /eligibility gates DISABLED by SAIGE_FIT_GATES=/ { g=1 }
+      END { if(!found && g) print "G" }' || true)
+    if [[ ${res} == W* ]]; then line="${res#W$'\t'}"; break; fi
+    [[ ${res} == "G" ]] && gates="off"
+  done < <(awk -F'\t' -v J="${job}" '$1==J' joblogs.tsv)
   if (( ! seen )); then
     printf '%s\t%s\t%s\tno_log\tNA\tNA\tNA\tNA\tNA\tNA\n' "${anc}" "${trait}" "${job}" >> "${out}"; continue
   fi

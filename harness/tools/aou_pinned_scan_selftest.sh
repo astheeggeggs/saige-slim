@@ -17,7 +17,17 @@ mk logs/fxv4-xx-traitd/u/20260901/100000/j-task-None.log "start" "$(W traitd 900
 mk logs/fxv4-xx-traitd/u/20260902/110000/j-task-None.log "start" "$(W traitd 30 9000 0.333 1e-16 0.9)" "end"    # the newest wins
 mk logs/fxv4-yy-traite-b0/u/20260901/100000/j-task-None.log "start" "$(W traite 40 50000 0.08 1e-15 0.5)" "end"
 mk logs/fxv4-yy-traite-b1/u/20260901/100000/j-task-None.log "start" "$(W traite 40 50000 0.08 1e-15 0.5)" "end"
-mk logs/fxv4-yy-traitf/u/20260901/100000/j-task-None.log "start" "WARNING: SAIGE_FIT_GATES=0 -- the fit gates are OFF" "end"
+mk logs/fxv4-yy-traitf/u/20260901/100000/j-task-None.log "start" "WARNING: eligibility gates DISABLED by SAIGE_FIT_GATES=0 -- case-count, covariate-cell, separation and convergence checks are NOT being applied to this fit." "end"
+# LARGE logs (~6 MB each): an early match closes the pipe under the reader, and
+# under pipefail that must not read as "no match"
+python3 - <<'PY'
+import os
+pad = ("[1] \"Analyzing Region ENSG00000000000 (1/1).\"\n" * 120000)
+os.makedirs("logs/fxv4-zz-traitg/u/20260901/100000", exist_ok=True)
+open("logs/fxv4-zz-traitg/u/20260901/100000/j-task-None.log", "w").write("start\nWarning message: the null model in /x/traitg.rda has 25 of 72000 fitted values (0.0347%) at the 0/1 boundary (range 1e-15 .. 0.8). That is what separation\n" + pad)
+os.makedirs("logs/fxv4-zz-traith/u/20260901/100000", exist_ok=True)
+open("logs/fxv4-zz-traith/u/20260901/100000/j-task-None.log", "w").write("WARNING: eligibility gates DISABLED by SAIGE_FIT_GATES=0 -- case-count\n" + pad)
+PY
 mk logs/skv4-xx-traita/u/20260901/100000/j-task-None.log "start" "$(W traita 77 4089 1.88 2.22e-16 0.41)"       # another prefix: not read
 LOGS="${T}/logs" OUT_DIR="${T}/out" bash "${HERE}/aou_pinned_scan.sh" > run.log 2>&1 || { cat run.log; echo "SELFTEST FAILED: script exited non-zero"; exit 1; }
 gzip -dc out/pinned.v4.tsv.gz > out.tsv
@@ -30,7 +40,9 @@ check 'NR>1 && $2=="traitd" && $6=="30"' "the newest log of a resubmitted job wi
 check 'NR>1 && $1=="yy" && $2=="traite" && $6=="40"' "a binned trait is parsed"
 [[ $(awk -F'\t' 'NR>1 && $2=="traite"' out.tsv | wc -l) -eq 1 ]] && echo "ok   the bins of one trait are one row" || { echo "FAIL bins not collapsed"; fail=1; }
 check 'NR>1 && $2=="traitf" && $4=="none_reported" && $5=="off"' "a gates-off log is flagged"
-[[ $(($(wc -l < out.tsv) - 1)) -eq 6 ]] && echo "ok   6 models (the other prefix is not read)" || { echo "FAIL row count $(wc -l < out.tsv)"; fail=1; }
-grep -q "models: 6; with pinned samples: 4 (of which masked below 20: 1); none reported: 2" run.log && echo "ok   summary line" || { echo "FAIL summary line: $(tail -3 run.log | head -1)"; fail=1; }
+check 'NR>1 && $1=="zz" && $2=="traitg" && $4=="warning" && $6=="25" && $7=="72000"' "an early warning in a 6 MB log is found (the closed pipe is not a miss)"
+check 'NR>1 && $1=="zz" && $2=="traith" && $4=="none_reported" && $5=="off"' "a 6 MB gates-off log is flagged off"
+[[ $(($(wc -l < out.tsv) - 1)) -eq 8 ]] && echo "ok   8 models (the other prefix is not read)" || { echo "FAIL row count $(wc -l < out.tsv)"; fail=1; }
+grep -q "models: 8; with pinned samples: 5 (of which masked below 20: 1); none reported: 3" run.log && echo "ok   summary line" || { echo "FAIL summary line: $(tail -3 run.log | head -1)"; fail=1; }
 ! grep -q $'\t5\t9000' out.tsv && echo "ok   the masked count appears nowhere in the table" || { echo "FAIL masked count leaked"; fail=1; }
-[[ ${fail} -eq 0 ]] && echo "selftest OK: 10 checks" || { echo "SELFTEST FAILED"; cat out.tsv; exit 1; }
+[[ ${fail} -eq 0 ]] && echo "selftest OK: 12 checks" || { echo "SELFTEST FAILED"; cat out.tsv; exit 1; }
