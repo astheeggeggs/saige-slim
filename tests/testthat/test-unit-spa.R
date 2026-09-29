@@ -460,3 +460,57 @@ test_that("#172 control: a VR above 1 leaves the score inside the atom and the p
   expect_gt(p, 1e-3)
   expect_lt(p, 5e-2)
 })
+
+# LEDGER #172, mechanism B (2026-09-29, the eas MatHem dump): a PINNED sample --
+# fitted probability at machine epsilon, a control -- carrying the weight-1
+# variant among tiny-weight carriers. Its CGF term mu*(e^{g t} - 1) is invisible
+# for small t and explosive past t ~ 35; the root finder stops where that phantom
+# term alone equals the score (t ~ 27), the Legendre cost is tiny (w ~ 0.06)
+# while v/w ~ 3.7, and Lugannani-Rice's log(v/w)/w returns Z ~ 20: 3e-93 where
+# the tail, carried by carriers of weight ~1e-4 (MAC <20), is ~0.07. The variance ratio is
+# 1 to 6e-7 here, so this is not mechanism A. Dropping the pinned sample from
+# the vector (its Y is deterministic under the null) puts the p in the right
+# decade. Characterization -- pins today's arithmetic; invert when fixed.
+spa_pinned_case <- function() {
+  set.seed(5)
+  N <- 4089
+  mu <- plogis(rnorm(N, qlogis(0.10), 0.8))
+  y <- rbinom(N, 1, mu)
+  pin <- 1
+  mu[pin] <- 2.22e-16
+  y[pin] <- 0
+  others <- 2:7
+  g <- numeric(N)
+  g[pin] <- 1
+  g[others] <- c(9.5e-5, 9.5e-5, 1.1e-5, 9.8e-6, 1.4e-6, 2e-7)
+  mu[others] <- c(0.035, 0.035, 0.2, 0.1, 0.1, 0.1)
+  y[others] <- c(1, 0, 0, 0, 0, 0)
+  W <- mu * (1 - mu)
+  centre <- function(v) v - sum(W * v) / sum(W)
+  Tstat <- sum(centre(g) * (y - mu))
+  list(mu = mu, W = W, g = g, pin = pin, Tstat = Tstat,
+       var2 = sum(W * centre(g)^2), centre = centre)
+}
+spa_p_of <- function(d, g) {
+  tol <- .Machine$double.eps^0.25
+  gt <- d$centre(g)
+  m1 <- sum(d$mu * gt)
+  q <- d$Tstat + m1
+  p_na <- 2 * pnorm(-abs(d$Tstat / sqrt(d$var2)))
+  SPA_pval(d$mu, gt, q, 2 * m1 - q, p_na, tol, FALSE, "binary", FALSE)
+}
+
+test_that("#172 B characterization: a pinned control at the weight-1 atom makes the saddlepoint collapse", {
+  d <- spa_pinned_case()
+  expect_lt(d$mu[d$pin], 1e-12)
+  expect_lt(spa_p_of(d, d$g), 1e-80)                 # 4.3e-89 today; the tail is ~0.05
+})
+
+test_that("#172 B control: the same vector without the pinned sample is in the right decade", {
+  d <- spa_pinned_case()
+  g2 <- d$g
+  g2[d$pin] <- 0
+  p <- spa_p_of(d, g2)
+  expect_gt(p, 5e-3)
+  expect_lt(p, 0.2)                                   # 2.2e-2 today against a Monte Carlo 0.053
+})

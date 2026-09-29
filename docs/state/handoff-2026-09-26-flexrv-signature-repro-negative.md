@@ -728,3 +728,14 @@ something changed a saddlepoint that v4 accepted -- its singleAssoc row and
 fallback sidecar are the next read.
 
 **Correction (2026-09-29):** the eas pair is MatHem x `ENSG00000128607`; an earlier note carried `ENSG00000136802`, a gene id copied from a splice-count line, and the first IMG8 eas run tested that wrong gene (it reproduced v4 trivially, empty dump). Every mention above is corrected; the eas rerun on the right gene is the next step.
+
+**#172 mechanism B (2026-09-29, the eas MatHem x ENSG00000128607 dump, 3.45e-93
+reproduced on IMG8 with 9 dumps).** The weight-1 atom is a PINNED sample
+(mu 2.2e-16; MAC <20, observed in controls). Its CGF term is a phantom exponential: the root finder
+stops at t = 26.6 where it alone equals the score, w = 0.064 with v/w = 3.7,
+and Lugannani-Rice's log(v/w)/w = 20.6 gives Z = 20.7. Monte Carlo tail 0.067.
+Planted locally (test-unit-spa.R #172 B): 4.3e-89 with the pinned control,
+2.2e-2 without, reference 0.053. So: A = the variance-ratio rescaling across a
+dominant atom (amr, both genes); B = a pinned sample's phantom atom (eas). The
+exact test by weighted effective carrier count answers both; dropping pinned
+samples from every SPA vector is a general guard to raise as its own row.
