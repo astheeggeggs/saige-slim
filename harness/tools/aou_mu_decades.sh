@@ -13,12 +13,15 @@
 # how many samples sit just above it. This reads the models.
 #
 # Runs INSIDE a dsub job on the SAIGE image (it needs R, nothing else). The
-# models are localized by dsub (--input-recursive MODELS=gs://.../step1/<anc>),
+# models are localized by dsub (--input MODELS=gs://.../nullglmm_v4/<anc>_*.rda),
 # so nothing leaves the workspace; the table holds counts per decade with
 # every count from 1 to MASK-1 written as "<MASK" and the masses that go with
 # a masked count written as "masked". Safe to read and to keep. Env:
-#   MODELS   a directory searched recursively for *.rda (per-chromosome LOCO
-#            files `_chr<j>.rda` are skipped: the model's own file is read)
+#   MODELS   a directory searched recursively for *.rda, OR a file pattern such
+#            as /path/eas_*.rda -- which is what dsub sets the variable to for
+#            `--input MODELS=gs://.../nullglmm_v4/eas_*.rda`, the form to use
+#            when one directory holds every ancestry's models. Per-chromosome
+#            LOCO files `_chr<j>.rda` are skipped: the model's own file is read.
 #   OUT_DIR  local dir dsub delocalizes (--output-recursive)
 #   TAG      label for the output file, default models
 #   MASK     default 20
@@ -27,8 +30,13 @@
 set -euo pipefail
 : "${MODELS:?}"; : "${OUT_DIR:?}"; TAG="${TAG:-models}"; MASK="${MASK:-20}"; RSCRIPT="${RSCRIPT:-Rscript}"
 mkdir -p "${OUT_DIR}"
-find "${MODELS}" -type f -name '*.rda' ! -name '*_chr[0-9]*.rda' | sort > models.list
-echo "models found: $(awk 'END{print NR}' models.list)"
+if [[ -d ${MODELS} ]]; then root="${MODELS}"; pat='*.rda'; else root="$(dirname "${MODELS}")"; pat="$(basename "${MODELS}")"; fi
+[[ -d ${root} ]] || { echo "ERROR: no such directory: ${root} (MODELS=${MODELS})"; exit 1; }
+find "${root}" -type f -name "${pat}" -name '*.rda' ! -name '*_chr[0-9]*.rda' | sort > models.list
+nfound=$(awk 'END{print NR}' models.list)
+echo "models found: ${nfound} (directory ${root}, pattern ${pat})"
+# nothing to read is an error, not an empty table: a wrong path must not look like a clean result
+(( nfound > 0 )) || { echo "ERROR: no model file matched"; exit 1; }
 cat > mu_decades.R <<'RS'
 args <- commandArgs(trailingOnly = TRUE)
 files <- readLines(args[1]); out <- args[2]; mask <- as.integer(args[3])

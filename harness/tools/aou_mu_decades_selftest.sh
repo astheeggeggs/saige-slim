@@ -47,5 +47,21 @@ check "masked: the log prints none either" "${badlog}" "0"
 # positive control of the check itself: the UNMASKED table trips it
 tripped=$(awk -F'\t' 'NR==1{for(i=1;i<=NF;i++) if($i ~ /^(n_le_|le1e|1e-|gt1e|contradicting)/) c[i]=1; next} {for(i in c) if($i ~ /^[0-9]+$/ && $i+0 > 0 && $i+0 < 20) n++} END{print (n+0 > 0) ? "yes" : "no"}' "${W}/t1.tsv")
 check "the masking check detects an unmasked table" "${tripped}" "yes"
+# MODELS as a file pattern, the form dsub hands over for a wildcard --input: one
+# directory holding several ancestries' models, of which one prefix is wanted
+mkdir -p "${W}/flat"
+cp "${G}/binary_sparseGRM_pinned.rda" "${W}/flat/eas_TraitA.rda"
+cp "${G}/binary_sparseGRM_pinned_planted.rda" "${W}/flat/eas_TraitB.rda"
+cp "${G}/binary_sparseGRM_a.rda" "${W}/flat/sas_TraitA.rda"
+MODELS="${W}/flat/eas_*.rda" OUT_DIR="${W}/o3" TAG=t MASK=1 RSCRIPT="${RS}" bash "${REPO}/harness/tools/aou_mu_decades.sh" > "${W}/log3" 2>&1 || { cat "${W}/log3"; exit 1; }
+gunzip -c "${W}/o3/mu_decades.t.tsv.gz" > "${W}/t3.tsv"
+check "pattern: only the prefix asked for is read" "$(awk 'NR>1{print $1}' "${W}/t3.tsv" | sort | tr '\n' ' ')" "eas_TraitA.rda eas_TraitB.rda "
+# a path that matches nothing is an error with a message, and writes no table
+set +e
+MODELS="${W}/flat/amr_*.rda" OUT_DIR="${W}/o4" TAG=t RSCRIPT="${RS}" bash "${REPO}/harness/tools/aou_mu_decades.sh" > "${W}/log4" 2>&1; rc=$?
+set -e
+check "no match: non-zero exit" "$(( rc != 0 ))" "1"
+check "no match: says so" "$(grep -c 'ERROR: no model file matched' "${W}/log4")" "1"
+check "no match: no table written" "$(ls "${W}/o4" 2>/dev/null | grep -c . || true)" "0"
 echo "${checks} checks, ${fails} failed"
 exit $(( fails > 0 ))

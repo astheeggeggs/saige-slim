@@ -519,29 +519,44 @@ flip probability, the count and the mass at or below 1e-8, 1e-7, 1e-6 and
 1e-5, and the widest run of empty decades. Every count from 1 to 19 is
 written `<20` and the mass that goes with it `masked`. It is safe to paste.
 
-Upload `aou_mu_decades.sh`, then:
+Upload `aou_mu_decades.sh`. The models of four ancestries share ONE directory,
+`data/saige/run/nullglmm_v4/<anc>_<TRAIT>.rda`, and amr's are in
+`nullglmm_v4_rc0.125/` (`docs/state/aou-saige-parameters.md`); they are NOT
+under `SAIGE_SLIM_TESTING/`, which is where the first version of this recipe
+looked and found nothing. So the job takes a file pattern, and dsub localizes
+that ancestry's models only. Locate them first; this prints counts and nothing
+else:
 
 ```python
-MODEL_DIR = {a: "nullglmm_v4" for a in ["afr", "eas", "eur", "sas"]}
-MODEL_DIR["amr"] = "nullglmm_v4_rc0.125"
+MODEL_DIR = {a: f"{BUCKET}/data/saige/run/nullglmm_v4" for a in ["afr", "eas", "eur", "sas"]}
+MODEL_DIR["amr"] = f"{BUCKET}/data/saige/run/nullglmm_v4_rc0.125"
+try:
+    print("the notebook's STEP1:", str(STEP1).replace(BUCKET, "<bucket>"))
+except NameError:
+    print("STEP1 is not defined in this session")
+for anc in ["eas", "sas", "afr", "eur", "amr"]:
+    n = subprocess.run(["bash", "-lc", f"gcloud storage ls '{MODEL_DIR[anc]}/{anc}_*.rda' 2>/dev/null | wc -l"],
+                       capture_output=True, text=True).stdout.strip()
+    print(anc, "model files:", n, "(expected 25 / 15 / 42 / 43 / 42 for eas / sas / afr / eur / amr)")
+```
 
+If a count is 0 and `STEP1` names another directory, put that directory in
+`MODEL_DIR`. Then:
+
+```python
 def submit_mu_decades(anc, image=IMG9):
-    src = f"{BUCKET}/SAIGE_SLIM_TESTING/{anc}/{MODEL_DIR[anc]}"
     args = ["aou_dsub", "--name", f"mudec-{anc}", "--image", image,
-            "--input-recursive", f"MODELS={src}", "--env", f"TAG={anc}",
+            "--input", f"MODELS={MODEL_DIR[anc]}/{anc}_*.rda", "--env", f"TAG={anc}",
             "--output-recursive", f"OUT_DIR={BUCKET}/SAIGE_SLIM_TESTING/mu_decades",
             "--machine-type", "n2-standard-4", "--disk-size", "100", "--script", "aou_mu_decades.sh"]
     script = "source /home/jupyter/aou_dsub.bash\n" + " ".join(shlex.quote(a) for a in args)
     r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=os.environ)
     print((r.stdout or r.stderr).strip().splitlines()[-1])
-
-# check the directory first: this prints a number of files and nothing else
-for anc in ["eas"]:
-    n = subprocess.run(["bash", "-lc", f"gcloud storage ls '{BUCKET}/SAIGE_SLIM_TESTING/{anc}/{MODEL_DIR[anc]}/*.rda' | wc -l"],
-                       capture_output=True, text=True).stdout.strip()
-    print(anc, "model files:", n)
-# submit_mu_decades("eas")
+submit_mu_decades("eas")
 ```
+
+The job fails, with `ERROR: no model file matched` in its log, if the pattern
+matches nothing: a wrong path cannot look like a clean result.
 
 Start with eas: it is the smallest and holds two of the seven models. Reading
 the result:
