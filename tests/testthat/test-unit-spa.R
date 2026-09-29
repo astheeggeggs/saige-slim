@@ -413,7 +413,9 @@ test_that("#169: S at its maximum (every carrier a case) is still the exact test
 # only way past it under the kernel's model is the remainder, whose sd is
 # ~1e-4: the excess costs it ~100 nats and a ~1e-3 event prints as 1e-50.
 # Not the kernel: both kernels agree, and the same vector with VR = 1 is sane.
-# Characterization -- pins today's arithmetic; invert when #172 is fixed.
+# A fact about the saddlepoint on such a vector, kept as such: #172 was FIXED
+# 2026-09-29 by ROUTING one-atom weighted sets to the exact test
+# (test-step2-exact-by-weight.R), not by changing this arithmetic.
 spa_atom_case <- function(seed = 3, N = 33434, prevalence = 0.12, n_tiny = 22) {
   set.seed(seed)
   mu <- plogis(rnorm(N, qlogis(prevalence), 0.9))
@@ -445,7 +447,7 @@ test_that("#172: the raw score sits inside the dominant atom; the saddlepoint is
   expect_lt(p1, 5e-2)            # the reference for this vector is ~3.6e-3
 })
 
-test_that("#172 characterization: a VR below 1 lifts the score above the atom; p collapses", {
+test_that("#172 kernel fact: a VR below 1 lifts the score above the atom; p collapses", {
   d <- spa_atom_case()
   for (vr in c(0.9893, 0.98)) {                       # the AoU band ratio, and a rounder one
     expect_gt(d$Tstat / sqrt(vr), max(d$gt))          # the crossing
@@ -470,7 +472,8 @@ test_that("#172 control: a VR above 1 leaves the score inside the atom and the p
 # the tail, carried by carriers of weight ~1e-4 (MAC <20), is ~0.07. The variance ratio is
 # 1 to 6e-7 here, so this is not mechanism A. Dropping the pinned sample from
 # the vector (its Y is deterministic under the null) puts the p in the right
-# decade. Characterization -- pins today's arithmetic; invert when fixed.
+# decade. A fact about the saddlepoint on such a vector; the #172 fix routes
+# these cells to the exact test (test-step2-exact-by-weight.R).
 spa_pinned_case <- function() {
   set.seed(5)
   N <- 4089
@@ -500,7 +503,7 @@ spa_p_of <- function(d, g) {
   SPA_pval(d$mu, gt, q, 2 * m1 - q, p_na, tol, FALSE, "binary", FALSE)
 }
 
-test_that("#172 B characterization: a pinned control at the weight-1 atom makes the saddlepoint collapse", {
+test_that("#172 B kernel fact: a pinned control at the weight-1 atom makes the saddlepoint collapse", {
   d <- spa_pinned_case()
   expect_lt(d$mu[d$pin], 1e-12)
   expect_lt(spa_p_of(d, d$g), 1e-80)                 # 4.3e-89 today; the tail is ~0.05

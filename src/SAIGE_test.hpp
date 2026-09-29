@@ -62,7 +62,20 @@ struct TestContext {
         double varRatioVal = 0.0;   // the variance ratio selected for this marker
         bool useSparseGRM = false;  // was m_flagSparseGRM_cur
         bool noadjCov = false;      // was the t_isnoadjCov argument / m_isnoadjCov_cur
+        // LEDGER #172 (2026-09-29): the cell was routed to the exact test because
+        // one atom carries its weight; the exact test then enumerates the MATERIAL
+        // carriers only (those at or above the tie epsilon after the #167 scaling).
+        bool exactByWeight = false;
 };
+
+// LEDGER #172: how many atoms carry a vector's weight. Kish's effective count
+// (sum v)^2 / sum v^2 over the carriers' values -- the allele count for equal
+// weights, ~1 when one entry dominates -- and the number of MATERIAL carriers,
+// those whose value reaches t_eps x the largest (the exact test's tie
+// epsilon, 1e-6 absolute after its scaling to a largest entry of 1).
+void atomDominance(const arma::vec & t_vals, double t_eps, double & t_neff, unsigned int & t_material);
+const double kExactByWeightTieEps = 1e-6;
+const unsigned int kExactByWeightCarriers = 13;   // the enumeration regime (LEDGER #164/#165)
 
 class SAIGEClass
 {

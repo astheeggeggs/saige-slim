@@ -144,6 +144,20 @@ static const double kSparsePCGRelTol = 1e-8;
 
 namespace SAIGE {
 
+// LEDGER #172: see SAIGE_test.hpp.
+void atomDominance(const arma::vec & t_vals, double t_eps, double & t_neff, unsigned int & t_material){
+  double s1 = 0.0, s2 = 0.0, vmax = 0.0;
+  for(arma::uword i = 0; i < t_vals.n_elem; i++){
+    const double a = std::fabs(t_vals(i));
+    s1 += a; s2 += a * a; if(a > vmax) vmax = a;
+  }
+  t_neff = (s2 > 0.0) ? (s1 * s1) / s2 : 0.0;
+  t_material = 0;
+  if(vmax > 0.0){
+    for(arma::uword i = 0; i < t_vals.n_elem; i++){ if(std::fabs(t_vals(i)) >= t_eps * vmax) t_material++; }
+  }
+}
+
 // See the declaration in SAIGE_test.hpp for why this is a named function.
 double qnormTwoSidedLogP(double t_logp){
   return R::qnorm(t_logp - std::log(2.0), 0, 1, false, true);
@@ -859,6 +873,27 @@ if((StdStat > m_SPA_Cutoff || std::isnan(StdStat)) && m_traitType != "quantitati
       for(arma::uword e = 0; e < iIndex.n_elem; e++){ zmax = std::max(zmax, std::fabs(t_GVec(iIndex(e)))); }
       if(zmax > 0.0 && zmax < 1.0){ Z_er.col(0) /= zmax; }
     }
+    // LEDGER #172 (2026-09-29): routed here because one atom carries the set's
+    // weight, the exact test enumerates the MATERIAL carriers only -- those
+    // whose scaled value reaches the tie epsilon (1e-6 absolute, the
+    // ComputeExact m_epsilon of #167). A carrier below it cannot change any
+    // configuration's rank, so this is the tie rule applied before the
+    // enumeration instead of inside it, and it keeps the enumeration in its
+    // exact regime (a weighted set can carry tens of negligible carriers).
+    // The score, BETA and var of the row are untouched: only the exact test's
+    // index and vector are reduced. Every other exact test is byte-identical.
+    arma::uvec iIndexMaterial;
+    arma::uvec * idxPtr = &iIndex;
+    if(t_ctx.exactByWeight){
+      std::vector<arma::uword> keep;
+      for(arma::uword e = 0; e < iIndex.n_elem; e++){
+        if(std::fabs(Z_er(iIndex(e), 0)) >= SAIGE::kExactByWeightTieEps){ keep.push_back(iIndex(e)); }
+        else { Z_er(iIndex(e), 0) = 0.0; }
+      }
+      iIndexMaterial = arma::conv_to<arma::uvec>::from(keep);
+      idxPtr = &iIndexMaterial;
+    }
+    arma::uvec & idxER = *idxPtr;
     arma::vec res_er = m_res;
     arma::vec pi1_er = m_mu;
     arma::vec resout_er = m_resout;
@@ -878,17 +913,18 @@ if((StdStat > m_SPA_Cutoff || std::isnan(StdStat)) && m_traitType != "quantitati
     // built it in. A caller that still materialises it is used as is.
     arma::uvec iIndexComLocal;
     arma::uvec * iIndexComPtr = &iIndexComVec;
-    if(iIndexComVec.n_elem == 0 && iIndex.n_elem < (arma::uword)m_n){
-      iIndexComLocal.set_size((arma::uword)m_n - iIndex.n_elem);
+    if((iIndexComVec.n_elem == 0 || t_ctx.exactByWeight) && idxER.n_elem < (arma::uword)m_n){
+      // (#172: a reduced index needs its own complement, whatever the caller handed over)
+      iIndexComLocal.set_size((arma::uword)m_n - idxER.n_elem);
       arma::uword* out = iIndexComLocal.memptr();
-      const arma::uword* nz = iIndex.memptr();
+      const arma::uword* nz = idxER.memptr();
       std::size_t kk = 0, o = 0;
       for(arma::uword i = 0; i < (arma::uword)m_n; i++){
-        if(kk < iIndex.n_elem && nz[kk] == i){ kk++; }else{ out[o++] = i; }
+        if(kk < idxER.n_elem && nz[kk] == i){ kk++; }else{ out[o++] = i; }
       }
       iIndexComPtr = &iIndexComLocal;
     }
-    double pval_ER =  SKATExactBin_Work(Z_er, res_er, pi1_er, m_n_case, iIndex, *iIndexComPtr, resout_er, t_nResampling, 1e+4, 1e-6, 1);
+    double pval_ER =  SKATExactBin_Work(Z_er, res_er, pi1_er, m_n_case, idxER, *iIndexComPtr, resout_er, t_nResampling, 1e+4, 1e-6, 1);
     char pValueBuf_ER[100];
     sprintf(pValueBuf_ER, "%.6E", pval_ER);
     std::string buffAsStdStr_ER = pValueBuf_ER;
@@ -1761,4 +1797,12 @@ Rcpp::List erExactTestInCPP(arma::vec t_Z, arma::vec t_y, arma::vec t_mu, int t_
   SKATExactBin_ComputProb_New(idx, idxComp, t_mu, (uint32_t)t_Z.n_elem, ncase, t_nResampling, 1e+4, 1, 2, prob, IsExactVec, n_total_k, n_total, isExact);
   return Rcpp::List::create(Rcpp::Named("pval") = p, Rcpp::Named("probK") = prob,
                             Rcpp::Named("carriers") = (int)k, Rcpp::Named("exact") = isExact);
+}
+
+// LEDGER #172: the atom-dominance measure, exported for the unit tests.
+// [[Rcpp::export]]
+Rcpp::List atomDominanceInCPP(arma::vec t_vals, double t_eps){
+  double neff = 0.0; unsigned int material = 0;
+  SAIGE::atomDominance(t_vals, t_eps, neff, material);
+  return Rcpp::List::create(Rcpp::Named("n_eff") = neff, Rcpp::Named("n_material") = (double)material);
 }

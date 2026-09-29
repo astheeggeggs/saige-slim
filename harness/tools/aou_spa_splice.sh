@@ -100,6 +100,14 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
   fi
   cat_any "${FAILURES}" | awk -F'\t' -v f="${pre}" 'NR>1 && $1==f {n=split($2,a,":"); if(!(n>=2 && a[2] ~ /^[0-9]+$/)) print a[1]"|"a[n]}' | sort -u > failcells.txt
   cat_any "${FAILURES}" | awk -F'\t' -v f="${pre}" 'NR>1 && $1==f {n=split($2,a,":"); if(n>=2 && a[2] ~ /^[0-9]+$/) print $2}' | sort -u > failmarkers.txt
+  # LEDGER #172 (2026-09-29): a cell the rerun routed to the exact test because
+  # one atom carries its weight is named in the rerun's own
+  # `.exactByWeight.txt.gz` (Kind Region Group max_MAF Weight MAC n_eff
+  # n_material); its change is explained by that listing, Region|Weight.
+  : > ewcells.txt
+  if exists "${NEW_PREFIX}.exactByWeight.txt.gz"; then
+    cat_any "${NEW_PREFIX}.exactByWeight.txt.gz" | awk -F'\t' 'NR>1 {print $2"|"$5}' | sort -u > ewcells.txt
+  fi
   # changed rows = old rows the rerun replaces (listed regions' rows; for the
   # singleAssoc also the rerun markers' rows) that do not appear verbatim in new, and vice versa
   awk -F'\t' -v rule="${rule}" -v single="${single}" 'FILENAME=="regions.txt"{keep[$1]=1; next} FILENAME=="newmarkers.txt"{nm[$1]=$2; next} FNR==1{next} { if(single && '"${isreal}"'){ if($3 in nm){ seen[$3]++; if(seen[$3] <= nm[$3]) print } next } reg=('"${rule}"'); if(reg in keep) print }' regions.txt newmarkers.txt old.tsv | sort > o.all
@@ -123,17 +131,20 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
         FILENAME=="markermac.tsv"{mmac[$1]=$2; next}
         FILENAME=="urown.tsv"{uown[$1]=$2; next}
         FILENAME=="okregions.txt"{okr[$1]=1; next}
+        FILENAME=="ewcells.txt"{ew[$1]=1; next}
         FNR==1 && FILENAME=="changed.rows"{pass++}
         pass==1 {
           if(sfx==".pooledTests.txt.gz" || $2=="Cauchy") next
           ok=0; unobs=0
           if(single && '"${isreal}"'){ key=$3; reg=""; if(key in fm) ok=1; if((key in mmac) && mmac[key]+0 <= '"${ERMAC}"') ok=1 }
           else if(single){ id=$3; n=split(id,a,":"); key=a[1]"|"a[n]; reg=a[1]; if(key in fc) ok=1; if((key in mac) && mac[key]+0 <= '"${ERMAC}"') ok=1
+                           if(!ok && (key in ew)){ ok=1; ewcell[key]=1 }
                            if(!ok){ # the 0/1-weight twin with the same zero pattern collapses the same markers (or a superset): lof stays lof, any other score -> unw; MACk stays, any other MAF -> unw
                              w=a[n]; m=split(w,f,"_"); if(m>=3){ sc=f[m-1]; mf=f[m]; pre=f[1]; for(i=2;i<=m-2;i++) pre=pre"_"f[i]
                                twin=a[1]"|"pre"_"((sc=="lof")?"lof":"unw")"_"((mf ~ /^MAC[0-9]+$/)?mf:"unw")
                                if((twin in uown) && uown[twin]+0 <= '"${ERMAC}"'){ ok=1; urer[key]=1 } } } }
           else { key=$1"|"$4; reg=$1; if(key in fc) ok=1; if((key in mac) && mac[key]+0 <= '"${ERMAC}"') ok=1
+                 if(!ok && (key in ew)){ ok=1; ewcell[key]=1 }
                  if(!ok && nri>0 && $nri+0 > 0){ ok=1; unobs=1; ucell[key]=1 } }
           if(ok){ if(reg!="") okr[reg]=1 } else { bad++; if(bad<=5) print "  unexplained change: " substr($0,1,120) > "/dev/stderr" }
           next }
@@ -143,8 +154,9 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
           if(!ok){ bad++; if(bad<=5) print "  unexplained change: " substr($0,1,120) > "/dev/stderr" } }
         END{ for(k in ucell) print k > "ukeys.tmp"
              nu=0; for(k in urer) nu++; if(nu>0) print "  pseudo-marker rows explained by their own exact-test eligibility (LEDGER #166, count <= '"${ERMAC}"'): " nu > "/dev/stderr"
+             ewn=0; for(k in ewcell) ewn++; if(ewn>0) print "  cells routed to the exact test by weight (LEDGER #172): " ewn > "/dev/stderr"
              for(r in okr) print r > "okregions.tmp"
-             print bad+0 }' failcells.txt failmarkers.txt cellmac.tsv markermac.tsv urown.tsv okregions.txt changed.rows changed.rows > nbad.txt
+             print bad+0 }' failcells.txt failmarkers.txt cellmac.tsv markermac.tsv urown.tsv okregions.txt ewcells.txt changed.rows changed.rows > nbad.txt
   nbad=$(cat nbad.txt); [[ -f okregions.tmp ]] && { cat okregions.tmp >> okregions.txt; rm -f okregions.tmp; sort -u -o okregions.txt okregions.txt; }
   if [[ -s ukeys.tmp ]]; then   # direction from the old and new tables themselves
     awk -F'\t' -v pci="${pci}" 'FILENAME=="ukeys.tmp"{u[$1]=1; next} FILENAME=="o.all"{k=$1"|"$4; if(k in u) po[k]=$pci+0; next} {k=$1"|"$4; if(k in u) pn[k]=$pci+0}
@@ -152,8 +164,8 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
               print "  unobservable burden cells (Number_rare > 0) accepted at region level: " n " (p rose in " up+0 ", fell in " down+0 ")" }' ukeys.tmp o.all n.all >&2
     rm -f ukeys.tmp
   fi
-  if [[ ${nbad} -gt 0 ]]; then echo "ERROR ${sfx}: ${nbad} changed row(s) are neither a recorded failure nor a MAC <= ${ERMAC} cell/marker -- splice refused" >&2; exit 1; fi
-  echo "${sfx}: $(wc -l < changed.rows) changed row(s), all explained (failed saddlepoint or MAC <= ${ERMAC})"
+  if [[ ${nbad} -gt 0 ]]; then echo "ERROR ${sfx}: ${nbad} changed row(s) are neither a recorded failure nor a MAC <= ${ERMAC} cell/marker nor an exact-by-weight cell -- splice refused" >&2; exit 1; fi
+  echo "${sfx}: $(wc -l < changed.rows) changed row(s), all explained (failed saddlepoint, MAC <= ${ERMAC}, or exact test by weight)"
   # CONTROL 2: every recorded failure must have changed. The recorded failure
   # is the PSEUDO-MARKER's own single test (the scan reads the singleAssoc),
   # so it is checked exactly in the singleAssoc; in the results file the
@@ -197,6 +209,12 @@ if exists "${OLD_PREFIX}.singleAssoc.txt.gz"; then
 fi
 if exists "${OLD_PREFIX}.pooledTests.txt.gz"; then
   splice_one ".pooledTests.txt.gz" '$1'
+fi
+if exists "${NEW_PREFIX}.exactByWeight.txt.gz"; then   # LEDGER #172: the routed cells of the spliced regions travel with the file
+  { cat_any "${NEW_PREFIX}.exactByWeight.txt.gz" | head -1
+    cat_any "${NEW_PREFIX}.exactByWeight.txt.gz" | awk -F'\t' 'NR==FNR{keep[$1]=1; next} FNR>1 && ($2 in keep)' regions.txt -; } > "${OUT_DIR}/${pre}.exactByWeight.txt"
+  gzip -f "${OUT_DIR}/${pre}.exactByWeight.txt"
+  echo ".exactByWeight.txt.gz: $(( $(gzip -dc "${OUT_DIR}/${pre}.exactByWeight.txt.gz" | wc -l) - 1 )) routed cell(s) in the spliced regions, carried over"
 fi
 { echo "spliced $(date -u +%Y-%m-%dT%H:%M:%SZ)"; echo "old: ${OLD_PREFIX}"; echo "new: ${NEW_PREFIX}"
   echo "regions replaced: $(wc -l < regions.txt)"; echo "regions with failed saddlepoints: $(wc -l < failregions.txt)"

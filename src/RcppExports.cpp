@@ -38,6 +38,25 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// resetExactByWeightRecordsInCPP
+void resetExactByWeightRecordsInCPP();
+RcppExport SEXP _SAIGE_resetExactByWeightRecordsInCPP() {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    resetExactByWeightRecordsInCPP();
+    return R_NilValue;
+END_RCPP
+}
+// getExactByWeightRecordsInCPP
+Rcpp::List getExactByWeightRecordsInCPP();
+RcppExport SEXP _SAIGE_getExactByWeightRecordsInCPP() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(getExactByWeightRecordsInCPP());
+    return rcpp_result_gen;
+END_RCPP
+}
 // resetSpaFallbackRecordsInCPP
 void resetSpaFallbackRecordsInCPP();
 RcppExport SEXP _SAIGE_resetSpaFallbackRecordsInCPP() {
@@ -1926,6 +1945,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// atomDominanceInCPP
+Rcpp::List atomDominanceInCPP(arma::vec t_vals, double t_eps);
+RcppExport SEXP _SAIGE_atomDominanceInCPP(SEXP t_valsSEXP, SEXP t_epsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type t_vals(t_valsSEXP);
+    Rcpp::traits::input_parameter< double >::type t_eps(t_epsSEXP);
+    rcpp_result_gen = Rcpp::wrap(atomDominanceInCPP(t_vals, t_eps));
+    return rcpp_result_gen;
+END_RCPP
+}
 // SPA
 void SPA(const arma::vec& mu, const arma::vec& g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, double& pval, bool& isSPAConverge);
 RcppExport SEXP _SAIGE_SPA(SEXP muSEXP, SEXP gSEXP, SEXP qSEXP, SEXP qinvSEXP, SEXP pval_noadjSEXP, SEXP tolSEXP, SEXP logpSEXP, SEXP traitTypeSEXP, SEXP pvalSEXP, SEXP isSPAConvergeSEXP) {
@@ -2228,6 +2259,8 @@ END_RCPP
 static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_CCT_cpp", (DL_FUNC) &_SAIGE_CCT_cpp, 1},
     {"_SAIGE_flexrvWeightsInCPP", (DL_FUNC) &_SAIGE_flexrvWeightsInCPP, 6},
+    {"_SAIGE_resetExactByWeightRecordsInCPP", (DL_FUNC) &_SAIGE_resetExactByWeightRecordsInCPP, 0},
+    {"_SAIGE_getExactByWeightRecordsInCPP", (DL_FUNC) &_SAIGE_getExactByWeightRecordsInCPP, 0},
     {"_SAIGE_resetSpaFallbackRecordsInCPP", (DL_FUNC) &_SAIGE_resetSpaFallbackRecordsInCPP, 0},
     {"_SAIGE_getSpaFallbackRecordsInCPP", (DL_FUNC) &_SAIGE_getSpaFallbackRecordsInCPP, 0},
     {"_SAIGE_resetBurdenMemoInCPP", (DL_FUNC) &_SAIGE_resetBurdenMemoInCPP, 0},
@@ -2376,6 +2409,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_set_Diagof_StdGeno_LOCO", (DL_FUNC) &_SAIGE_set_Diagof_StdGeno_LOCO, 0},
     {"_SAIGE_setminMAC_VarianceRatio", (DL_FUNC) &_SAIGE_setminMAC_VarianceRatio, 3},
     {"_SAIGE_erExactTestInCPP", (DL_FUNC) &_SAIGE_erExactTestInCPP, 5},
+    {"_SAIGE_atomDominanceInCPP", (DL_FUNC) &_SAIGE_atomDominanceInCPP, 2},
     {"_SAIGE_SPA", (DL_FUNC) &_SAIGE_SPA, 10},
     {"_SAIGE_SPA_fast", (DL_FUNC) &_SAIGE_SPA_fast, 16},
     {"_SAIGE_SPA_pval", (DL_FUNC) &_SAIGE_SPA_pval, 9},

@@ -390,3 +390,45 @@ output, egress-safe as a count per ancestry x trait, is rows with `Is.SPA
 true` and `log10(p.value.NA) - log10(p.value) > 3`; the BenCervUterNeo
 shape (p between the normal p and the truth) is not screenable, so the
 measurement after the fix is a full binary FlexRV rerun diffed against v6.
+
+## 9. LEDGER #172 FIXED: the AoU rerun of the binary FlexRV arm (2026-09-29)
+
+Both mechanisms are on the row; the fix routes a custom or transform set whose
+weight one atom carries to the exact test (Kish effective carrier count at or
+below `--max_MAC_for_ER`, at most 13 material carriers), and every routed cell
+is named in `<prefix>.exactByWeight.txt`. Which v6 cells were wrong cannot be
+read off the output (mechanism A leaves a p between the normal p and the truth),
+so the population is measured by rerunning and diffing, not screened:
+
+1. **Image**: the one built from the fix commit (IMG9, tag on the handoff), on
+   gcr for the workers.
+2. **Rerun every binary trait's FlexRV job of every ancestry, unfiltered** (no
+   `REGIONS`): the atom-dominated cells are wherever a gene has one high-score
+   rare variant, which is everywhere. Quantitative traits never touch the
+   saddlepoint and are not rerun. Output directory `flexrv_v7/`. The wrapper
+   needs no change; the new sidecar is delivered like `.spaFallbacks.txt.gz`
+   if the wrapper globs `<prefix>.*` for its deliveries -- check one job's
+   listing for `.exactByWeight.txt.gz` before launching the rest.
+3. **Stage check** as in section 6: `SPA fallbacks: 0` everywhere, no lost
+   chromosome, and now `Exact test by weight: N cell(s)` per job; the sum over
+   jobs of N is the affected population, egress-safe as a count.
+4. **Splice** over `flexrv_v4_fixed/` into `flexrv_v4_fixed2/` (or replace):
+   `aou_spa_splice.sh` accepts a changed cell when the rerun's
+   `.exactByWeight.txt.gz` lists it (Region|Weight), carries the sidecar
+   restricted to the spliced regions, and prints
+   `cells routed to the exact test by weight (LEDGER #172): N`. With an
+   UNFILTERED rerun, `REGIONS` is every region of the trait (`cut -f1` of the
+   v4 file minus `Cauchy`), and the control's other rules apply as before. Any
+   refusal is read, not re-submitted.
+5. **Controls**: (a) a routed cell's new p must sit in the decade of its own
+   `lof`-only or `unw` twin when that twin took the exact test by MAC -- the
+   set IS that atom; (b) the three cells that opened the row: BenCervUterNeo
+   and BenIntNeo (amr), MatHem x ENSG00000128607 (eas) -- their sbeta10/sbeta20
+   rows must now read ~1e-3 (amr) and ~1e-1 (eas), not 1e-53/1e-47/1e-93;
+   (c) `Exact test by weight: 0` on every quantitative job if any is rerun by
+   mistake (the routing is binary-only).
+6. Then the summary and QQ jobs of section 7 over the spliced files.
+
+`SAIGE_EXACT_BY_WEIGHT=0` in a job's env restores the pre-#172 routing for an
+A/B on one trait, which is how to measure the population on a sample before
+committing to all of it.

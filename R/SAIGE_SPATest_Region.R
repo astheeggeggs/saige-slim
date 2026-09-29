@@ -970,6 +970,7 @@ SAIGE.Region <- function(mu,
   cat("Region marker loop will use ", nThreads, " in-process threads.\n", sep = "")
   skatFailureReset() # LEDGER #57: per-run accounting, R/SkatFailures.R
   resetSpaFallbackRecordsInCPP() # LEDGER #164: per-run accounting, R/SpaFallbacks.R
+  resetExactByWeightRecordsInCPP() # LEDGER #172: per-run accounting, R/ExactByWeight.R
   skatoDedupeReset() # identical cells evaluated once: per-run counts, R/SkatoParallel.R
   burdenMemoReset() # identical BURDEN cells evaluated once: per-run counts, R/BurdenMemo.R
   pooledReset() # LEDGER #127: pooled-row provenance, R/PooledRow.R
@@ -1945,6 +1946,7 @@ SAIGE.Region <- function(mu,
   # beside the FIRST model's file (the per-cell record has no model column).
   skatFailureSummary(OutputFile)
   spaFallbackSummary(OutputFile) # LEDGER #164
+  exactByWeightSummary(OutputFile) # LEDGER #172
   skatoDedupeSummary()
   burdenMemoSummary()
   # LEDGER #127: how each region's pooled (Cauchy) row was formed -- cells

@@ -1,0 +1,11 @@
+Kind	Region	Group	max_MAF	Weight	MAC	n_eff	n_material
+burden	GENE1	lof	0.001		5	1.00000080000012	1
+burden	GENE1	lof	0.01		98	1.00001940009304	1
+burden	GENE1	missense;lof	0.001		10	1.00000180000072	1
+burden	GENE1	missense;lof	0.01		119	1.00002360013796	1
+burden	GENE1	missense;lof;synonymous	0.001		10	1.00000180000072	1
+burden	GENE1	missense;lof;synonymous	0.01		119	1.00002360013796	1
+burden	GENE2	missense;lof	0.001		15	2.00000260000071	2
+burden	GENE2	missense;lof	0.01		77	2.0000150000273	2
+burden	GENE2	missense;lof;synonymous	0.001		15	2.00000260000071	2
+burden	GENE2	missense;lof;synonymous	0.01		77	2.0000150000273	2

@@ -304,6 +304,66 @@ static void recordSpaFallback(const std::string & t_kind, const std::string & t_
   std::lock_guard<std::mutex> lock(g_spaFallbackMutex);
   g_spaFallbacks.push_back(rec);
 }
+// LEDGER #172 (2026-09-29): every cell of a weighted set routed to the exact
+// test because one atom carries its weight -- Kish's effective carrier count on
+// the vector the test sees at or below --max_MAC_for_ER, with at most
+// kExactByWeightCarriers material carriers -- although its allele count is
+// above the cutoff. Recorded once per cell (the vector is model-independent);
+// read by R at the end of the run (R/ExactByWeight.R: the summary line and
+// the `<SAIGEOutputFile>.exactByWeight.txt` sidecar, which the AoU splice
+// control reads as its acceptance list). SAIGE_EXACT_BY_WEIGHT=0 is the kill
+// switch that restores the pre-#172 routing (the saddlepoint on such cells).
+struct ExactByWeightRecord {
+  std::string kind, region, group, maxMAF, weight;
+  double MAC = 0.0, neff = 0.0;
+  unsigned int material = 0;
+};
+static std::vector<ExactByWeightRecord> g_exactByWeight;
+static std::mutex g_exactByWeightMutex;
+static void recordExactByWeight(const std::string & t_kind, const std::string & t_region,
+                                const std::string & t_group, const std::string & t_maxMAF,
+                                const std::string & t_weight, double t_MAC, double t_neff, unsigned int t_material){
+  ExactByWeightRecord rec;
+  rec.kind = t_kind; rec.region = t_region; rec.group = t_group; rec.maxMAF = t_maxMAF; rec.weight = t_weight;
+  rec.MAC = t_MAC; rec.neff = t_neff; rec.material = t_material;
+  std::lock_guard<std::mutex> lock(g_exactByWeightMutex);
+  g_exactByWeight.push_back(rec);
+}
+static bool exactByWeightEnabled(){
+  static const bool on = [](){ const char* v = std::getenv("SAIGE_EXACT_BY_WEIGHT"); return !(v != nullptr && std::string(v) == "0"); }();
+  return on;
+}
+// the measure over a dense vector's values at the given carriers
+static void atomDominanceAt(const arma::vec & t_dense, const arma::uvec & t_idx, double & t_neff, unsigned int & t_material){
+  arma::vec vals(t_idx.n_elem);
+  for(arma::uword k = 0; k < t_idx.n_elem; k++){ vals(k) = t_dense(t_idx(k)); }
+  SAIGE::atomDominance(vals, SAIGE::kExactByWeightTieEps, t_neff, t_material);
+}
+
+// [[Rcpp::export]]
+void resetExactByWeightRecordsInCPP(){
+  std::lock_guard<std::mutex> lock(g_exactByWeightMutex);
+  g_exactByWeight.clear();
+}
+
+// [[Rcpp::export]]
+Rcpp::List getExactByWeightRecordsInCPP(){
+  std::lock_guard<std::mutex> lock(g_exactByWeightMutex);
+  const unsigned int n = g_exactByWeight.size();
+  std::vector<std::string> kind(n), region(n), group(n), maxMAF(n), weight(n);
+  Rcpp::NumericVector MAC(n), neff(n), material(n);
+  for(unsigned int k = 0; k < n; k++){
+    const ExactByWeightRecord & r = g_exactByWeight[k];
+    kind[k] = r.kind; region[k] = r.region; group[k] = r.group; maxMAF[k] = r.maxMAF; weight[k] = r.weight;
+    MAC[k] = r.MAC; neff[k] = r.neff; material[k] = (double)r.material;
+  }
+  return Rcpp::List::create(Rcpp::Named("count") = (double)n,
+                            Rcpp::Named("kind") = kind, Rcpp::Named("region") = region,
+                            Rcpp::Named("group") = group, Rcpp::Named("maxMAF") = maxMAF,
+                            Rcpp::Named("weight") = weight, Rcpp::Named("MAC") = MAC,
+                            Rcpp::Named("n_eff") = neff, Rcpp::Named("n_material") = material);
+}
+
 // the max-MAF label exactly as the ultra-rare row names print it
 static std::string maxMAFLabel(double t_x){
   std::string str = std::to_string(t_x);
@@ -3960,6 +4020,23 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
         SAIGE::TestContext ctx = model.contextForMAC(MAC_nw);
         cm.ctx = ctx;
         cm.isER = (MAC_nw <= g_cfg.MACCutoffforER && W[km].traitType == "binary" && sets[r].erAllowed);
+        // LEDGER #172: a weighted set whose weight one atom carries takes the
+        // exact test on its material carriers, whatever its allele count says
+        // (the pseudo-marker is the vector the test sees on this path).
+        if(!cm.isER && W[km].traitType == "binary" && sets[r].erAllowed && exactByWeightEnabled() &&
+           (sets[r].kind == SET_CUSTOM || sets[r].kind == SET_TRANSFORM)){
+          double neff = 0.0; unsigned int material = 0;
+          atomDominanceAt(genoURVec, indexForNonZero, neff, material);
+          if(neff <= g_cfg.MACCutoffforER && material <= SAIGE::kExactByWeightCarriers){
+            cm.isER = true;
+            cm.ctx.exactByWeight = true;
+            if(km == 0){
+              const unsigned int jU = jmr / (q_maf * q_weight), mU = (jmr / q_weight) % q_maf;
+              recordExactByWeight("ultra_rare", regionName, annoStringVec.at(jU), maxMAFLabel(maxMAFVec.at(mU)),
+                                  (q_weight > 1) ? t_weightNames.at(r) : std::string(""), MAC_nw, neff, material);
+            }
+          }
+        }
       }
 
 
@@ -4388,6 +4465,22 @@ if(t_regionTestType == "BURDEN"){
       SAIGE::TestContext ctx = model.contextForMAC(MAC);   // the shared rule (E1)
             cm.ctx = ctx;
             cm.isER = (MAC <= g_cfg.MACCutoffforER && W[km].traitType == "binary" && sets[r].erAllowed);
+            // LEDGER #172: as at the ultra-rare site, on the burden vector.
+            if(!cm.isER && W[km].traitType == "binary" && sets[r].erAllowed && exactByWeightEnabled() &&
+               (sets[r].kind == SET_CUSTOM || sets[r].kind == SET_TRANSFORM)){
+              arma::vec vals(indexNonZeroVec_arma.n_elem);
+              for(arma::uword k = 0; k < indexNonZeroVec_arma.n_elem; k++){ vals(k) = cs.sumAt(cs.slotOf[indexNonZeroVec_arma(k)], jmr); }
+              double neff = 0.0; unsigned int material = 0;
+              SAIGE::atomDominance(vals, SAIGE::kExactByWeightTieEps, neff, material);
+              if(neff <= g_cfg.MACCutoffforER && material <= SAIGE::kExactByWeightCarriers){
+                cm.isER = true;
+                cm.ctx.exactByWeight = true;
+                if(km == 0){
+                  recordExactByWeight("burden", regionName, annoStringVec.at(j), maxMAFLabel(maxMAFVec.at(m)),
+                                      (q_weight > 1) ? t_weightNames.at(r) : std::string(""), MAC, neff, material);
+                }
+              }
+            }
           }
           BurdenCell & c = burdenCells[jmr];
           c.tested = true;

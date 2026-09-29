@@ -9,6 +9,14 @@ flexrvWeightsInCPP <- function(t_table, t_score, t_isLof, t_MAF, t_MAC, t_maxMAF
     .Call('_SAIGE_flexrvWeightsInCPP', PACKAGE = 'SAIGE', t_table, t_score, t_isLof, t_MAF, t_MAC, t_maxMAF)
 }
 
+resetExactByWeightRecordsInCPP <- function() {
+    invisible(.Call('_SAIGE_resetExactByWeightRecordsInCPP', PACKAGE = 'SAIGE'))
+}
+
+getExactByWeightRecordsInCPP <- function() {
+    .Call('_SAIGE_getExactByWeightRecordsInCPP', PACKAGE = 'SAIGE')
+}
+
 resetSpaFallbackRecordsInCPP <- function() {
     invisible(.Call('_SAIGE_resetSpaFallbackRecordsInCPP', PACKAGE = 'SAIGE'))
 }
@@ -599,6 +607,10 @@ setminMAC_VarianceRatio <- function(t_minMACVarRatio, t_maxMACVarRatio, t_isVari
 
 erExactTestInCPP <- function(t_Z, t_y, t_mu, t_nResampling, t_normalise) {
     .Call('_SAIGE_erExactTestInCPP', PACKAGE = 'SAIGE', t_Z, t_y, t_mu, t_nResampling, t_normalise)
+}
+
+atomDominanceInCPP <- function(t_vals, t_eps) {
+    .Call('_SAIGE_atomDominanceInCPP', PACKAGE = 'SAIGE', t_vals, t_eps)
 }
 
 SPA <- function(mu, g, q, qinv, pval_noadj, tol, logp, traitType, pval, isSPAConverge) {

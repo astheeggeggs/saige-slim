@@ -1614,6 +1614,53 @@ run step2_plink_group_urmixed_burden_gate1500.log R2 step2_SPAtests.R \
 # extra *_pgen files here are simply not looked at by it. This block is what
 # stops that being a silent gap. tests/testthat/test-step1-pgen.R makes the same
 # assertion from the test suite, against the committed PLINK goldens.)
+# P69-P71 (2026-09-29, LEDGER #172): a weighted set whose weight ONE ATOM
+# carries takes the exact test on its material carriers, whatever its allele
+# count says. input/group_new_snpid_flexrv_atom.txt is the FlexRV fixture with
+# one marker per gene at score 1 (rs44, a singleton; rs56, a doubleton) and
+# every other marker at 0.2, so the sbeta10/sbeta20 sets are one atom in weight
+# and tens of alleles in count; input/group_new_snpid_withWeights_atom.txt is the
+# custom-weights fixture with the same atoms at weight 1 and 1e-7 elsewhere
+# (1e-9 makes SKAT's decomposition of the near-rank-one lof cell fail with the
+# routing on OR off -- a conditioning artefact of the span, not the routing's).
+# The `.exactByWeight.txt` sidecar names the routed cells and the run prints
+# `Exact test by weight: N cell(s)`. SAIGE_EXACT_BY_WEIGHT=0 restores the
+# saddlepoint on these cells: 1.8e-3 where the exact test (and P1's own row for
+# rs44) says 3.2e-2 for the singleton atom. tests/testthat/test-step2-exact-by-weight.R.
+# P69: FlexRV BURDEN on the atom fixture -- 24 routed cells, all sbeta10/sbeta20
+run step2_plink_group_flexrv_atom.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_flexrv_atom.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid_flexrv_atom.txt \
+  --flexRV_score=REVEL --flexRV_maxMAF=0.01 \
+  --annotation_in_groupTest=lof:missense \
+  --r.corr=1 --is_fastTest=FALSE
+
+# P70: the custom-weights atom fixture on the BURDEN path (sidecar kind "burden")
+run step2_plink_group_customweight_atom_burden.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_customweight_atom_burden.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid_withWeights_atom.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --r.corr=1 --is_fastTest=FALSE
+
+# P71: the same fixture through SKAT-O (sidecar kind "ultra_rare": the
+# pseudo-marker pass routes; the rare markers' rows are untouched)
+run step2_plink_group_customweight_atom_skato.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_customweight_atom_skato.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid_withWeights_atom.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --is_fastTest=FALSE
+
 echo "### byte identity: PGEN reader vs PLINK reader (step0/step1)"
 PGEN_IDENTITY_FAILS=0
 check_identical() { # check_identical <plink-file> <pgen-file>

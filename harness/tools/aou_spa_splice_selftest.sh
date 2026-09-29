@@ -63,6 +63,7 @@ plants = {
   "dup":  (new_res, variant(new_sa, shared, rm(500,20,"0.71","0.7","false"))),                                     # shared marker's rerun row differs
   "ur":   (new_res, variant(new_sa, ur("R6","AM_cbrt0.2_unw","0.6","0.2","0.02","true"), ur("R6","AM_cbrt0.2_unw","0.6","0.25","0.02","true"))),  # weighted set, maximal count 9
   "twin": (new_res, variant(new_sa, ur("R7","AM_lof_mafbeta2","8.1","0.3","0.02","true"), ur("R7","AM_lof_mafbeta2","8.1","0.31","0.02","true"))),  # lof x mafbeta, twin count 9
+  "ew":   ([l if not l.startswith("R2\tgrp\t0.001\tW1\t") else row("R2","W1","0.31",7) for l in new_res], new_sa),  # the "obs" change, listed by the rerun's exactByWeight sidecar (LEDGER #172)
 }
 os.makedirs("in", exist_ok=True)
 w("in/fxv4-test.txt.gz", old_res); w("in/fxv4-test.singleAssoc.txt.gz", old_sa)
@@ -70,6 +71,7 @@ w("in/fxv4-test.pooledTests.txt.gz", ["Region\tRows\tRefused\tRule", "R1\t3\t0\t
 for tag, (res, sa) in plants.items():
     os.makedirs(f"in/{tag}", exist_ok=True); w(f"in/{tag}/fxv5-test.txt.gz", res); w(f"in/{tag}/fxv5-test.singleAssoc.txt.gz", sa)
     gzip.open(f"in/{tag}/fxv5-test.pooledTests.txt.gz", "wt").write("# placeholder\n")
+w("in/ew/fxv5-test.exactByWeight.txt.gz", ["Kind\tRegion\tGroup\tmax_MAF\tWeight\tMAC\tn_eff\tn_material", "burden\tR2\tgrp\t0.001\tW1\t7\t1.0000012\t1"])
 w("in/regions.txt", ["R1", "R2", "R4", "R5", "R6", "R7"], gz=False)
 w("in/failures.tsv", ["file\tMarkerID\tRegion\tCHR\tp.value\tp.value.NA\tIs.SPA",
                       "fxv4-test\tR1:grp:0.001:W1\tR1\t1\t1e-100\t1e-100\tfalse",
@@ -90,6 +92,7 @@ fail=0
 expect(){ local tag="$1" want="$2" pat="$3"; local got; got=$(run "${tag}")
   if [[ ${got} != "${want}" ]] || ! grep -q -- "${pat}" "${tag}.log"; then echo "FAIL ${tag}: exit ${got} (want ${want}), pattern '${pat}' $(grep -q -- "${pat}" "${tag}.log" && echo found || echo MISSING)"; fail=1; else echo "ok   ${tag}: exit ${got}, '${pat}'"; fi; }
 expect ok   0 "unobservable burden cells (Number_rare > 0) accepted at region level: 2 (p rose in 2, fell in 0)"
+expect ew   0 "cells routed to the exact test by weight (LEDGER #172): 1"
 grep -q "pseudo-marker rows explained by their own exact-test eligibility (LEDGER #166, count <= 4): 4" ok.log || { echo "FAIL ok: pseudo-marker count"; fail=1; }
 grep -q "real-marker rows: 4 rerun marker(s), 4 old row(s) replaced by 4 new, 2 old cop(y/ies) kept" <(tr -s ' ' < ok.log) || { echo "FAIL ok: real-marker accounting"; fail=1; }
 [[ $(gzip -dc out/ok/fxv4-test.singleAssoc.txt.gz | grep -c "chr1:500") -eq 3 ]] || { echo "FAIL ok: shared marker copies"; fail=1; }
@@ -104,4 +107,4 @@ bash "${HERE}/aou_spa_stagecheck.sh" stage/null > sc_null.log 2>&1 && grep -q "S
 if bash "${HERE}/aou_spa_stagecheck.sh" stage/pos > sc_pos.log 2>&1; then echo "FAIL stagecheck pos: exit 0"; fail=1; else grep -q "NA 1" sc_pos.log && echo "ok   stagecheck NA flagged" || { echo "FAIL stagecheck pos"; fail=1; }; fi
 if bash "${HERE}/aou_spa_stagecheck.sh" stage/chr > sc_chr.log 2>&1; then echo "FAIL stagecheck chr: exit 0"; fail=1; else grep -q "CHROMOSOME FAILED" sc_chr.log && echo "ok   stagecheck lost chromosome flagged" || { echo "FAIL stagecheck chr"; fail=1; }; fi
 if (( fail )); then echo "SELFTEST FAILED"; exit 1; fi
-echo "selftest OK: 1 positive control, 6 planted refusals, 3 stage-checker cases"
+echo "selftest OK: 2 positive controls (one via the exactByWeight sidecar), 6 planted refusals, 3 stage-checker cases"

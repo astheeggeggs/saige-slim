@@ -466,7 +466,16 @@ with every closed form and every resolved ambiguity
 `docs/design/flexrv-design.md` (the MAF beta transform is DECREASING,
 `(1 - MAF/M)^(b-1)`, zero at and above M; read A1 before touching it).
 Custom-set semantics throughout: weighted ultra-rare collapse, `w0 = 1` on
-the pseudo-marker; EVERY set is eligible for the exact test at MAC <= `--max_MAC_for_ER` since 2026-09-26 (LEDGER #166; it used to be `unw_unw` alone, on a premise #166 falsified), the vector is scaled to a largest entry of 1 before that test (LEDGER #167: its tie epsilon is absolute), and a set whose saddlepoint fails above the cutoff falls back to the exact test at up to 200 carriers, counted in the `SPA fallbacks:` line and named with the reason in `<SAIGEOutputFile>.spaFallbacks.txt`; `--weights.beta` is inert on them.
+the pseudo-marker; EVERY set is eligible for the exact test at MAC <= `--max_MAC_for_ER` since 2026-09-26 (LEDGER #166; it used to be `unw_unw` alone, on a premise #166 falsified), the vector is scaled to a largest entry of 1 before that test (LEDGER #167: its tie epsilon is absolute), and a set whose saddlepoint fails above the cutoff falls back to the exact test at up to 200 carriers, counted in the `SPA fallbacks:` line and named with the reason in `<SAIGEOutputFile>.spaFallbacks.txt`; `--weights.beta` is inert on them. **And since 2026-09-29 (LEDGER #172) a custom or transform set whose weight ONE ATOM carries takes the exact
+test whatever its allele count**: Kish's effective carrier count on the vector the test sees at or below
+`--max_MAC_for_ER`, at most 13 material carriers (at or above the tie epsilon), enumerated over the material
+carriers only. On AoU the saddlepoint had converged to 1e-53..1e-93 on such cells where ~1e-3 was right, by two
+mechanisms: the variance-ratio rescaling of the score pushing it past the atom, and a pinned sample's phantom atom.
+Every routed cell is named in `<SAIGEOutputFile>.exactByWeight.txt` and counted in `Exact test by weight:`;
+`SAIGE_EXACT_BY_WEIGHT=0` restores the old routing. The bundled REVEL scores never make one atom dominate above
+the cutoff, so the routing is drilled on its own fixtures (goldens P69-P71; `test-step2-exact-by-weight.R`); the
+exact test reports the MID-p, upstream's convention. A SKAT-O cell whose custom weights span 1e-9 fails in SKAT's
+decomposition with the routing on or off (a conditioning artefact, counted by #57).
 
 The run: `--flexRV_score=NAME --flexRV_maxMAF=M --annotation_in_groupTest=<ONE
 group> --r.corr=1`, optionally `--flexRV_scoreTransforms` /
@@ -732,7 +741,8 @@ declarations sit at the top of `src/Main.cpp`.
   `SAIGE_SPA_DUMP_BELOW=<p>` ALSO writes every CONVERGED saddlepoint whose p
   is below `<p>` (`spaBelow_*.tsv`; LEDGER #172, 2026-09-28: three AoU FlexRV
   cells converged to 1e-53..1e-93 where ~1e-3 is right, which no failure dump
-  can see). Every dump carries a second header line (kernel, both roots,
+  can see; FIXED 2026-09-29 by routing one-atom weighted sets to the exact
+  test, see the FlexRV section). Every dump carries a second header line (kernel, both roots,
   NAmu/NAsigma, the reported p) and the columns `nz` (carrier flag) and `g`
   (raw vector), so `harness/tools/aou_spa_dumpcheck.sh` replays the run's
   own kernel; `test-step2-spa-dump.R` pins that the switch moves no byte and

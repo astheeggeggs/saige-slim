@@ -739,3 +739,20 @@ Planted locally (test-unit-spa.R #172 B): 4.3e-89 with the pinned control,
 dominant atom (amr, both genes); B = a pinned sample's phantom atom (eas). The
 exact test by weighted effective carrier count answers both; dropping pinned
 samples from every SPA vector is a general guard to raise as its own row.
+
+**#172 FIXED (2026-09-29).** Owner's decision: one-atom weighted sets go to the
+exact test. Routing on both region sites for custom and transform sets (Kish
+effective carrier count at or below `--max_MAC_for_ER`, at most 13 material
+carriers), the exact test enumerating the material carriers only
+(`TestContext::exactByWeight`); named in `<SAIGEOutputFile>.exactByWeight.txt`,
+counted in `Exact test by weight:`; `SAIGE_EXACT_BY_WEIGHT=0` restores the old
+routing. No existing golden moves (the bundled scores never make one atom
+dominate above the cutoff: P58 byte-identical with 0 routed cells), so three
+goldens on new fixtures pin it (P69 FlexRV atom: 24 routed cells; P70/P71
+custom weights on both arms), each byte-reproducible twice; every routed p
+reconciles with an R enumeration of the exact test (mid-p, upstream's
+convention) to 4e-4..4e-3, against saddlepoints up to 18x off. The splice
+control accepts cells listed in the rerun's `.exactByWeight.txt.gz` and carries
+the sidecar (selftest case `ew`). Next: gate, image IMG9, then the AoU rerun of
+the binary FlexRV arm (recipe `aou_spa_rerun.md` section 9). Raised separately
+for the owner: dropping pinned samples from every saddlepoint vector.
