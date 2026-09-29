@@ -400,8 +400,8 @@ is named in `<prefix>.exactByWeight.txt`. Which v6 cells were wrong cannot be
 read off the output (mechanism A leaves a p between the normal p and the truth),
 so the population is measured by rerunning and diffing, not screened:
 
-1. **Image**: the one built from the fix commit (IMG9, tag on the handoff), on
-   gcr for the workers.
+1. **Image**: IMG9 = `gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-a08fb295` (the fix
+   commit; the same bytes on Docker Hub as `astheeggeggs/saige-slim:1.5.2-dev-a08fb295`).
 2. **Rerun every binary trait's FlexRV job of every ancestry, unfiltered** (no
    `REGIONS`): the atom-dominated cells are wherever a gene has one high-score
    rare variant, which is everywhere. Quantitative traits never touch the

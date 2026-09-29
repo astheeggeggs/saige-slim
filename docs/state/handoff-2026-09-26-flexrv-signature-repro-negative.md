@@ -753,6 +753,8 @@ custom weights on both arms), each byte-reproducible twice; every routed p
 reconciles with an R enumeration of the exact test (mid-p, upstream's
 convention) to 4e-4..4e-3, against saddlepoints up to 18x off. The splice
 control accepts cells listed in the rerun's `.exactByWeight.txt.gz` and carries
-the sidecar (selftest case `ew`). Next: gate, image IMG9, then the AoU rerun of
-the binary FlexRV arm (recipe `aou_spa_rerun.md` section 9). Raised separately
+the sidecar (selftest case `ew`). Commit `a08fb295` (gate green twice, pushed); **IMG9** =
+`gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-a08fb295` = Docker Hub
+`astheeggeggs/saige-slim:1.5.2-dev-a08fb295`. Next: the AoU rerun of the binary
+FlexRV arm on IMG9 (recipe `aou_spa_rerun.md` section 9; sas first). Raised separately
 for the owner: dropping pinned samples from every saddlepoint vector.
