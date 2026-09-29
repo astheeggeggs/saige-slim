@@ -637,3 +637,118 @@ What each answer looks like:
   shape, whatever the decade table's gap column said.
 - **`(no covariate: random effect)` carries the gap**: the tail is the random
   effect's doing, and the covariates are not the story.
+
+## 13. The eas answer, and the four checks it sets up (2026-09-29)
+
+Section 12's three jobs came back. `age` and `age2` carry **99.8 %** of the
+tail's gap on eas FemInf (63.3 + 36.5) and **100.0 %** on eas MatHem
+(50.1 + 49.9); no PC exceeds 0.2 %, the random effect contributes -0.1 %, no
+categorical column appears, and `sex` entered neither fit. BreastCanc -- the
+control: same twelve covariates, same female-only cohort, N 4,074 against 4,054
+and 4,089 -- has a tail of **0**. So the `[ASSUMPTION: the tail is a steep age
+effect. Not measured.]` of `handoff-2026-09-29-step-back.md` is MEASURED, and
+the covariate design, the PC set and the sex restriction are all ruled out as
+the cause: what differs is the trait's relationship with age. FemInf and MatHem
+can only occur in reproductive-age women and the model puts everyone else at
+~0; breast-cancer risk rises monotonically, so nobody is put at ~0.
+
+It reconciles two ways, which is the check to make before believing it.
+FemInf's case fraction is 103/4,054 = 2.54 %, logit -3.65; minus the 13.12 gap
+that is `exp(-16.8)` = 5.6e-8. MatHem: -3.66 - 13.0 -> 5.8e-8. Both land
+between the 1e-8 and 1e-6 rungs, which is where section 11's table put 62/175
+and 77/244 samples.
+
+**This IS separation, on a CONTINUOUS covariate** -- what `R/FitGates.R:249`
+says the mu check exists to catch. What is absent is the CATEGORICAL shape, so
+the covariate-cell scan is not the relevant half and the fixture's
+cluster-with-a-gap is not what real data does here.
+
+**The census that produced "the seven" is at the wrong threshold.** It is
+section 10's pinned scan, whose count is the gate's own `eps = 1e-8`
+(`checkMuSeparation`), and the measured tails sit ABOVE that: only 62 of
+FemInf's 175 tail samples are below 1e-8. A model with a slightly shallower age
+effect keeps its whole tail between 1e-8 and 1e-6 and never appears in the
+seven. Section 11's decade scan, which counts at 1e-5 too, has been run for
+**eas only**.
+
+### 13a. Recount, the other four ancestries (do this first)
+
+One `mudec-<anc>` job per ancestry, model-only, no genotype pass, nothing
+egressed. `submit_mu_decades` is section 11's.
+
+```python
+for anc in ["sas", "afr", "eur", "amr"]:
+    submit_mu_decades(anc)
+```
+
+Flag every model whose count at or below **1e-6** is not `<20`, not just those
+with something at 1e-8. A trait that is flagged at 1e-6 and absent from the
+seven is the finding this section exists for.
+
+### 13b. Pre-registered prediction (written 2026-09-29, BEFORE 13a was run)
+
+The susceptibility rule the eas answer implies: a trait is susceptible when its
+probability falls to ~0 over part of the cohort's OWN age range, steeply enough
+to reach 1e-6. "Sex-specific" is not enough and neither is "age-dependent" --
+BreastCanc is both and has no tail, because its risk is monotone rather than
+confined to a window.
+
+- FemInf and MatHem: age-driven tail in EVERY ancestry they were fitted in.
+- amr AMD: age-driven with the **sign reversed** -- its tail should be the
+  YOUNG, since AMD risk climbs with age.
+  `[ASSUMPTION: AMD is age-related macular degeneration, read from the
+  abbreviation, not verified against the phenotype definition.]`
+- Any other pregnancy- or childbirth-confined trait in the list: tail.
+- Monotone sex-specific traits of BreastCanc's shape: NO tail.
+
+A flagged trait that is on none of those lines falsifies the rule, and that is
+the outcome worth having.
+
+### 13c. The gate's own record -- ALREADY MEASURED, one number still to read
+
+No new job: section 10's warning IS `checkMuSeparation`'s, so the gate already
+recorded this at fit time and the pinned table holds it. Its control line
+reads eas/mathem at **77 of 4,089** with a smallest fitted value of 2.22e-16 --
+1.88 %, below `--separationMaxFraction=0.02`, hence a WARNING and not a
+refusal. **Prediction for the row not yet quoted: eas FemInf reads 62 of 4,054
+= 1.53 %, also a warning.** If it reads anything else, the arithmetic above is
+wrong and 13a's reading needs redoing. Both models passed by a whisker; counted
+at 1e-6 they are 4.3 % and 6.0 % and both would be refused -- which is LEDGER
+#175 exercised by real data, not by the fixture.
+
+A stricter threshold would NOT have been the fix: `FitGates.R` refuses the
+whole fit, so there is no per-gene or per-sample granularity -- it would have
+cost each affected trait entirely, all 22 chromosomes, and a `stop()` takes a
+multi-phenotype batch with it.
+
+### 13d. Which weight sets drive an extreme gene
+
+Weight concentration is the standing explanation for why the SKAT-O arm is
+quiet while FlexRV is not: the hazard needs a tiny-mu carrier AND enough weight
+on that one carrier for the root to pass `-log(mu)`, and beta(1,25) mask
+weights never concentrate that far (which is why the beta-weighted `region`
+TSAN workload never enters the #172 routing). It predicts WHICH rows are
+extreme, and the per-set rows are already in the FlexRV output -- no rerun.
+
+```python
+d = load(f"{BUCKET}/SAIGE_SLIM_TESTING/<anc>/flexrv_v4/<file>")
+g = d[d.Region == "<GENE>"].sort_values("Pvalue_Burden")
+print(g[["Weight", "Pvalue_Burden", "BETA_Burden", "SE_Burden", "MAC",
+         "Number_rare", "Number_ultra_rare"]].head(20).to_string(index=False))
+```
+
+**Prediction: the extreme rows are the CONCENTRATED sets** -- `sbeta20`, the
+steep `cbrt` rungs, and the `MAC1`/`MAC3` sets on cells whose `Number_rare` is
+0 (the collapsed pseudo-marker alone). If `unw_unw` and the gentle beta sets
+are extreme too, weight concentration is not the whole story and the
+discordance signature should not be leaned on for the other four ancestries.
+
+### 13e. The damage check needs no special rerun
+
+Whether the seven actually produced bad results is section 9's gene-level
+comparison on the IMG9 rerun, and amr/afr/eur are **not started**. Run them for
+ALL traits, not a susceptible subset: the #172 fix moves results wherever a
+one-atom set exists, so the rerun is needed regardless, and it delivers the
+damage check for the seven as a by-product. A subset rerun would cost a second
+pass later and would also make the comparison's denominator a chosen set rather
+than the whole arm.

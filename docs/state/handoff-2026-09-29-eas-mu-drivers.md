@@ -1,0 +1,110 @@
+# Handoff 2026-09-29 (late): what the eas tails are, and what that costs
+
+Read `handoff-2026-09-29-step-back.md` first; it still says what to drop. This
+file adds one measurement and four checks. The recipe cells are section 13 of
+`harness/tools/aou_spa_rerun.md`.
+
+No count from real data below 20 appears in this file.
+
+## The measurement
+
+The three `mudrv-eas-*` jobs of section 12 came back.
+
+| model | N | cases | tail at or below 1e-6 | what carries the gap |
+|---|---|---|---|---|
+| eas FemInf | 4,054 | 103 | 175 | `age2` 63.3 % + `age` 36.5 % = 99.8 % |
+| eas MatHem | 4,089 | 102 | 244 | `age` 50.1 % + `age2` 49.9 % = 100.0 % |
+| eas BreastCanc | 4,074 | 174 | 0 | -- (control) |
+
+No PC exceeds 0.2 % of the gap, the random effect contributes -0.1 %, no
+categorical column appears, and `sex` entered none of the three fits. The gap
+is -13.12 and -13.00 log-odds.
+
+**The control is what makes this conclusive.** BreastCanc has the same twelve
+covariates, the same female-only cohort and N within 20 of the other two, and
+no tail at all. So the tail is not produced by the covariate design, the PC set
+or the sex restriction. It is the trait's relationship with age: FemInf and
+MatHem can only occur in reproductive-age women, so the model puts everyone
+else at ~0 and is right to; breast-cancer risk is monotone in age, so nobody is
+put at ~0.
+
+**It reconciles two ways.** 103/4,054 = 2.54 %, logit -3.65, minus 13.12 is
+`exp(-16.8)` = 5.6e-8; MatHem gives 5.8e-8. Both sit between the 1e-8 and 1e-6
+rungs of section 11's decade table, where the counts are 62/175 and 77/244.
+
+## What it changes
+
+1. **The `[ASSUMPTION: steep age effect. Not measured.]` of the step-back
+   handoff is measured and confirmed.** The competing hypothesis -- a separated
+   categorical level, the fixture's shape -- is refuted for these two models.
+2. **It IS separation, on a continuous covariate**, which `R/FitGates.R:249`
+   says the mu check exists to catch. Only the CATEGORICAL shape is absent, so
+   the covariate-cell scan is not the relevant half of the gate.
+3. **LEDGER #175 is exercised by real data, not only by the fixture.** The gate
+   counts at `eps = 1e-8`: 62 of 4,054 = 1.53 % and 77 of 4,089 = 1.88 %
+   against a 2 % limit, so both models passed with a WARNING by a whisker. The
+   tails actually sit at ~5.6e-8; counted at 1e-6 they are 4.3 % and 6.0 % and
+   both would be refused.
+4. **The census that produced "the seven" is at that same 1e-8.** A model with
+   a shallower age effect keeps its whole tail between 1e-8 and 1e-6 and never
+   appears in it. Section 11's decade scan, which counts at 1e-5 too, has been
+   run for eas only.
+5. **A stricter gate is the wrong fix.** `FitGates.R` refuses the whole fit:
+   no per-gene, no per-sample granularity, so it would cost each affected trait
+   entirely, all 22 chromosomes, and a `stop()` takes a multi-phenotype batch
+   with it. The defect is who is in the cohort, not whether the trait can be
+   analysed. Restricting to the plausibly-at-risk age window keeps the analysis,
+   fixes the estimand, and removes the numerical hazard as a side effect.
+
+## Why the SKAT-O arm is quiet, and why that is not reassurance
+
+The hazard needs a tiny-mu carrier AND enough weight on that one carrier for
+the saddlepoint root to pass `-log(mu)` (16 to 37 here). beta(1,25) mask
+weights never concentrate that far -- which is why the beta-weighted `region`
+TSAN workload never enters the #172 routing and `region_atom` had to be built.
+FlexRV's transforms concentrate by design, and its Cauchy pooling is
+approximately a minimum, so one pathological set contaminates the gene's
+pooled p. Both arms share the same null model, so SKAT-O's good behaviour is
+DIAGNOSTIC (it is what makes the discordance signature usable) and not evidence
+that the models are sound.
+
+## The four checks, cheapest first (section 13 has the cells)
+
+1. **13a, the recount**: `submit_mu_decades` for sas, afr, eur, amr -- one
+   model-only job each. Flag every model whose count at or below 1e-6 is not
+   `<20`. This replaces guessing which traits are susceptible.
+2. **13b** is a pre-registered prediction of what 13a will flag, written before
+   it ran: FemInf and MatHem in every ancestry, amr AMD with the sign reversed
+   (its tail should be the young), any other pregnancy-confined trait, and NO
+   tail for monotone sex-specific traits of BreastCanc's shape. A flagged trait
+   on none of those lines falsifies the rule.
+3. **13c** is already measured except one number: the pinned table's eas/mathem
+   control reads 77 of 4,089 at 2.22e-16. Prediction for the unquoted row: eas
+   FemInf reads 62 of 4,054 = 1.53 %.
+4. **13d**: the per-set rows of an extreme gene, from output already in the
+   bucket. Prediction: the extreme rows are the concentrated sets (`sbeta20`,
+   steep `cbrt`, `MAC1`/`MAC3` where `Number_rare` is 0). If `unw_unw` and the
+   gentle beta sets are extreme too, weight concentration is not the whole
+   story and the discordance signature should not be leaned on elsewhere.
+5. **13e**: the damage check needs no special rerun. It is section 9's
+   gene-level comparison on the IMG9 rerun of amr/afr/eur, which is needed
+   regardless and should cover ALL traits -- a susceptible subset would cost a
+   second pass and make the comparison's denominator a chosen set.
+
+## Still the owner's, now better informed
+
+For the seven: caveat, exclude, or refit on a restricted cohort? The evidence
+points at restriction, and 13e says whether it matters at all.
+
+## Local state
+
+- Branch `strip` pushed to `slim/strip` at `8932505f` ; local and remote equal. The pre-push
+  gate ran green on that tree at `SAIGE_COMPARE_MODE=both`. **CI says nothing
+  about it**: both jobs died in 3-4 s on the account's Actions billing limit
+  (runs 36615578049 `tests`, 36615577980 `docs`). `gh run rerun` when billing
+  is fixed; until then every push burns a failed pair.
+- The #174 guard null sweep (`harness/work/null4k-20260929/pinned100/`) stopped
+  on its own during replicate 69 of 100 -- no error logged, cause not
+  established. All 68 completed replicates read `off=0 / e8=0 / e6=0 / drop=0`,
+  every arm agreeing. Left dead by decision; the guard is frozen and in no
+  image.
