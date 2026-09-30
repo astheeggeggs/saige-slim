@@ -925,6 +925,35 @@ stderr (`pseudo-marker rows accepted on STATISTIC IDENTITY ALONE`), written to
 being invisible. A refusal now also prints `columns that differ old -> new`,
 which is what turned this diagnosis from guesswork into one line.
 
+#### PRE-REGISTERED: what the re-splice of the four blocked prefixes must report
+
+Written 2026-09-30, BEFORE the four are re-spliced, so the result can falsify it.
+
+CONTROL 1c is the LAST tier: it only ever sees rows that no named rule
+explained. On amr `pancreat-b0` and `stroke-b0` that set was exactly **140
+rows**. So each of those two prefixes must splice clean with
+
+    rows accepted on statistic identity alone (CONTROL 1c, the weaker tier): 140
+
+in `<pre>.splice.txt`, and 140 MarkerIDs in `<pre>.spliceStatId.txt`.
+
+- **Exactly 140, clean splice** -- the gap was the control's, as diagnosed.
+- **FEWER than 140, still refused** -- this is the outcome to hope for and to
+  read carefully. It means some of those rows move `BETA`, `var` or
+  `AC_Allele2`, which the exact test never touches, so they are a REAL
+  discrepancy in that data and not a control gap at all. The refusal now prints
+  `columns that differ old -> new` for the first five; read that line before
+  proposing any cause.
+- **MORE than 140** -- impossible unless the tier order is wrong (1c runs after
+  every named rule). Treat it as a bug in the control, not a finding.
+
+afr `Asth` and `VTE` have no recorded refusal count, so they are observation
+rather than prediction; note whatever they report, since a count far above ~140
+would say the gap is wider than the two amr prefixes suggested.
+
+Whatever the four report, the honest statement for a row accepted here is **"no
+statistic moved"**, NOT "the row is explained" -- see the limit stated above.
+
 #### The exact fix, SPECIFIED and NOT built (owner's call, 2026-09-30)
 
 CONTROL 1c is a backstop. The exact fix is for the RUN to disclose the #166
