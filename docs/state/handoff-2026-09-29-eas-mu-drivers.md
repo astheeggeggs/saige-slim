@@ -150,6 +150,55 @@ the sets the fix rescued are exactly the concentrated ones. And it quantifies
 why the SKAT-O arm was quiet throughout -- beta(1,25) mask weights never come
 near `n_eff` of 4.
 
+## eas is VERIFIED at the file level (2026-09-30)
+
+The rule at the top of this file is about PARTICIPANT counts; the counts below
+are of tests and rows, which are not individual-level data.
+
+Chain run on IMG9's `flexrv_v7`: tool checksums, sidecar-delivery gate, positive
+control, stage check, splice control. Every step passed.
+
+- **Sidecar gate**: all 15 binary traits delivered `.exactByWeight.txt.gz`
+  (2.4-3.4 MB). The wrapper edits of section 9 were in when eas ran, so nothing
+  needed resubmitting -- unlike the first sas pass.
+- **Stage check**: `STAGE OK`, 15 sidecars, fallbacks 0, NA 0, traits with a
+  failed chromosome 0. So no saddlepoint failed under IMG9, no cell went NA and
+  vanished, and no chromosome was lost (#170).
+- **Splice control** (`REGIONS=ALL`, `FAILURES=NONE`, 18,401 regions per trait):
+  **15 of 15 clean**. Every suffix `all explained`, every row count identical
+  old/new/spliced, zero refusals, no `ROWS` line, no `WARNING` or `NOTE`.
+  `FAILURES=NONE` is legitimate because all 15 old sides are the
+  `flexrv_v4_fixed/` copies of the #163-#168 round.
+
+**The measured blast radius of #172 on eas.** ~2.41 M cells routed to the exact
+test over the 15 traits (4,821,029 carried-over rows, which double-count the
+`ultra_rare` and `burden` kinds); **120,923 cells actually changed, 3.2 % to
+7.8 % per trait**; 400,146 changed rows in the results files, the remainder
+being `MAC <= 4` updates to regions the earlier FILTERED rerun never touched.
+So the fix is overwhelmingly a no-op and bites only where the saddlepoint was
+wrong.
+
+**Two predictions made before the 14 jobs ran, both confirmed.**
+
+- Real-marker rows split on cohort size: non-zero for all NINE both-sex traits
+  (6,699-6,874) and exactly zero for all FIVE female-specific ones. That is the
+  `2*N*maxMAF > 10` boundary at N ~ 5,000, over 14 independent jobs.
+- The unobservable-burden-cell rule -- the only one accepting at REGION rather
+  than cell level -- fires only where `Number_rare > 0` cells exist, i.e. on
+  both-sex traits. It fired on three (AFib 1 cell, CRF 2, T2Diab 1) out of
+  2.41 M cells, three rising and one falling, so nothing systematic.
+
+Two more quantities track cohort size the same way, which is why the picture
+looks coherent rather than coincidental: routed cells carried over run
+405 k-419 k on the female-specific traits against 306 k-315 k on the both-sex
+ones, and pooled-test rows 54-60 against 21-24. Smaller cohort, more cells under
+the ER cap, more to disclose.
+
+**What eas still needs**: the section 7 summary and QQ jobs over
+`flexrv_v7_checked/`, then the gene-level read of FemInf and MatHem for a FlexRV
+pooled p that is extreme while SKAT-O is nominal. That is the damage check for
+two of the seven, and it needs no further compute beyond those jobs.
+
 ## The four checks, cheapest first (section 13 has the cells)
 
 1. **13a, the recount**: `submit_mu_decades` for sas, afr, eur, amr -- one
