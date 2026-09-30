@@ -944,3 +944,16 @@ coincidences: repeated `VMs not functioning within the time window 1080 seconds`
 followed by requeues, and `CODE_GCE_ZONE_RESOURCE_POOL_EXHAUSTED` on jobs that had
 scheduled cleanly earlier in the day. **So purge BEFORE a large campaign, not
 after it stalls.**
+
+**REPLICATED on afr (2026-09-30, same evening).** `check7-afr-asth-b0` and
+`check7-afr-vte-b0` refuse with the identical signature -- 168 unexplained
+`.singleAssoc` rows, `.txt.gz` passing, one gene (`ENSG00000277224`, a DIFFERENT
+gene from amr's) and the same `AM_cbrt0.2 x MAC25/MAC50/MAC100` family, whose
+pseudo-marker's own count is at or below `--max_MAC_for_ER` (written `<20`) while
+its `AM_unw_*` twin's is far larger. So this is **NOT amr-specific**: four
+prefixes, two ancestries, two genes, one mechanism, and it will recur on any
+ancestry whose genes have rare variants largely unscored by AlphaMissense. Both
+afr and amr therefore land at 122 of 124 spliced, with two traits each left
+mixed-provenance until the awk change is made. That raises the value of making it:
+it is one rule, it unblocks four prefixes now, and it removes a recurring refusal
+from every future rollout.
