@@ -802,3 +802,27 @@ size-balanced, INTERLEAVED chromosome batches (`b0` = 1, 6, 9, 13, 15; `b2` = 2,
 3, 5, 8, 20, 21 -- so a min-max summary of a batch is misleading). 113 prefixes
 have a fixed copy; the other 11 are all benign, so **afr takes `FAILURES=NONE`
 like eas**.
+
+### 14a. `submit_check_v7`'s `has_fixed` fallback is LOAD-BEARING off eas (2026-09-30)
+
+Section 9's `submit_check_v7` chooses its old side as `flexrv_v4_fixed/<pre>` when
+that file exists and `flexrv_v4/<pre>` otherwise. **On eas that branch never
+fires** -- all 15 prefixes have a fixed copy -- so a simplified version that
+hardcodes `flexrv_v4_fixed/` passes the entire eas chain and then dies on
+localization for every prefix the earlier round found nothing to rerun in.
+
+Measured: **130 of 444 check jobs failed that way** (122 of eur's 320, 6 of amr's
+124; afr's 11 had not been submitted yet), every one of them a prefix with no
+fixed copy and NONE failing for any other reason. The share is what makes this
+bite off eas: a finely batched ancestry has many batches with nothing to rerun
+(eur is split ~10 ways per trait against eas's 1), so 38 % of eur's prefixes take
+the fallback.
+
+`FAILURES=NONE` stays correct for exactly these prefixes -- they are the benign
+ones, with no regions file and no row in `failures.tsv`, so the raw `flexrv_v4/`
+file already carries the #163-#168 state.
+
+The failure signature is a job dead in under 60 s with a missing-input message,
+which is the dsub localization signature generally. Diagnose by joining the
+failed job names back to `RUNS` and testing for the fixed copy: if every failure
+lacks one, it is this and nothing else.
