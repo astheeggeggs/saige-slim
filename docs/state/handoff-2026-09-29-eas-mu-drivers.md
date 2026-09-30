@@ -256,6 +256,56 @@ extrapolation does not. Until that is run, the eleven should be read as four
 AMD-shaped models whose status is unknown and seven separation-shaped ones, of
 which the two tested are demonstrably harmless.
 
+## ROLLOUT COMPLETE: five ancestries read, and both questions settled (2026-09-30)
+
+sas, eas, amr (122 of 124 spliced), eur (320 of 320) and afr (122 of 124) are
+rerun on IMG9, stage-checked, spliced and read. All five summaries rebuilt today
+with a verified `K v7` count.
+
+### The tail question is UNANIMOUS
+
+Every flagged model tested reads calibrated or concordant:
+
+| model | reading |
+|---|---|
+| eas FemInf / MatHem | min p at the null median, mid-pack among 15 traits |
+| amr AMD / FemInf / MatHem | ratio 2.91 / 1.32 / 0.378 |
+| eur AMD | extreme but CONCORDANT with SKAT-O (0.83 orders) -- a real signal |
+| afr FemInf / MatHem | P(min <= obs) 0.63 and 0.031 -- one trait near 3 % in 31 is a uniform draw |
+
+So the age tails cost nothing once LEDGER #172 is fixed, at cohort sizes from
+~4,000 to ~170,000 and at tails up to a quarter of a cohort. **No sample-exclusion
+method is needed**; #174's guard stays frozen with its motivation now empirically
+absent rather than merely unproven.
+
+### LEDGER #176 does NOT replicate outside amr
+
+eur refuted the N-scaling prediction (milder, not worse; steep-set correlation
+absent). afr now adds a second failure to replicate: its largest genuine
+discordance is AMD at 4.9 orders, on `AM_cbrt0.5_MAC50` -- a MILD transform, not
+the steep `sbeta` shape. **amr-specific is the leading explanation**, and amr is
+the ancestry with prior form.
+
+### A METRIC TRAP in the discordance read, found on afr
+
+`log10(p_skato / p_flexrv)` is contaminated when `p_skato` SATURATES. afr MatHem
+reads 5.77 orders and Gout 3.95 purely because their `p_skato` is 0.994 and
+exactly 1.0 -- SKAT-O returning exactly 1 once its smallest per-rho p exceeds
+~0.78, which is LEDGER #86. **Exclude or flag rows with `p_skato` above ~0.9
+before ranking by discordance**; otherwise the most null cells in the arm sort to
+the top as if they were the most suspicious.
+
+### Loose ends, all recorded and none blocking
+
+- afr and amr each sit at 122 of 124, blocked on the splice control's twin-rule
+  gap (section 14b of `aou_spa_rerun.md`); Asth, VTE, Pancreat and Stroke are
+  mixed-provenance until one awk change is made.
+- afr AMD's top gene at 7.4e-8 (P(min <= obs) 0.0014, past a genome-wide
+  threshold, `p_skato` 5.8e-3, mild set) is worth checking against known AMD loci
+  before anything else -- it does not have #176's shape.
+- The old-versus-new comparisons are run for eas only; sas, amr, eur and afr are
+  outstanding and need no new compute.
+
 ## The old-vs-new comparison: the tails' harmlessness is CONDITIONAL on #172's fix (2026-09-30)
 
 `aou_flexrv_summary.sh` run twice on eas -- once on `flexrv_v7_checked/` and once
