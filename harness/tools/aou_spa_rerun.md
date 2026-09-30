@@ -752,3 +752,53 @@ one-atom set exists, so the rerun is needed regardless, and it delivers the
 damage check for the seven as a by-product. A subset rerun would cost a second
 pass later and would also make the comparison's denominator a chosen set rather
 than the whole arm.
+
+## 14. The scan stamp is PER ANCESTRY, and a wrong one reads as clean (2026-09-30)
+
+Cost most of an hour on afr. The notebook's `STAMP` is a SCALAR holding one
+ancestry's stamp; the scans were minted in a submission loop seconds apart, so
+afr's is `20260926-170525` while `STAMP` held `20260926-170535` -- **ten seconds
+and one digit apart**.
+
+**Every check downstream of it then returns "clean" from an empty directory.**
+`regions_for` runs `gcloud storage cat` and returns `[]` on failure, and `[]`
+means "nothing to rerun", i.e. BENIGN. A `gcloud storage cat` of a non-existent
+`failures.tsv` likewise gives 0 rows through `awk`. So a one-digit stamp error
+reported eleven confident BENIGN verdicts and zero failure rows, and nothing in
+the output looked wrong.
+
+**Derive the stamp, never trust the variable**, and make the count a hard gate:
+
+```python
+def stamp_for(anc, arm="flexrv_v4"):
+    p = f"{BUCKET}/SAIGE_SLIM_TESTING/spa_scan/{anc}/{arm}/"
+    out = subprocess.run(["bash", "-lc", f"gcloud storage ls '{p}'"],
+                         capture_output=True, text=True).stdout.split()
+    st = sorted(x.rstrip("/").rsplit("/", 1)[-1] for x in out if x.startswith("gs://"))
+    if len(st) != 1: print(f"  WARNING {anc}: {len(st)} stamps {st} -- using the latest")
+    return st[-1] if st else None
+```
+
+then `assert` that `rerun/*.regions.txt` is non-empty and that `failures.tsv`
+parses to a non-zero row count BEFORE classifying anything. The tell that the
+path was wrong on afr was `regions files: 0 of 124` while 113 of 124 prefixes
+HAD a `flexrv_v4_fixed/` copy -- copies that only a splice reading a regions list
+could have produced.
+
+**What the classification is for.** `submit_check_v7` hardcodes `FAILURES=NONE`,
+which is only legitimate when the old side already carries the #163-#168 fixes.
+A prefix WITHOUT a `flexrv_v4_fixed/` copy is benign only if it has BOTH no
+regions file and no row in `failures.tsv`; either present means the earlier round
+had work there and did not finish it, and that prefix needs its `failures.tsv`
+passed instead of `NONE`.
+
+**Why "no regions file" is trustworthy as a signal**: the rerun list is failures
+UNION tail regions (hence `tail_regions.tsv` beside `failures.tsv`), so on afr
+`failures.tsv` covers 95 prefixes while 155 have regions files. A prefix with no
+regions file therefore had neither.
+
+**Measured on afr (2026-09-30)**: 124 binary jobs over 31 traits in 4
+size-balanced, INTERLEAVED chromosome batches (`b0` = 1, 6, 9, 13, 15; `b2` = 2,
+3, 5, 8, 20, 21 -- so a min-max summary of a batch is misleading). 113 prefixes
+have a fixed copy; the other 11 are all benign, so **afr takes `FAILURES=NONE`
+like eas**.
