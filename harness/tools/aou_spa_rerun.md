@@ -838,14 +838,14 @@ the control working, and the gap is in the control, not the data.**
 Same gene in both traits (`ENSG00000226314`), same count (140), same sets --
 `AM_cbrt0.2_MAC100`, `AM_cbrt0.2_MAC50`, `AM_cbrt0.2_mafbeta2`.
 
-**The mechanism.** The refused rows are ultra-rare pseudo-markers with
-`AC_Allele2 = 4`, i.e. at `--max_MAC_for_ER`, so their change IS explained by
+**The mechanism.** The refused rows are ultra-rare pseudo-markers whose
+own `AC_Allele2` is at or below `--max_MAC_for_ER` (written `<20`), so their change IS explained by
 LEDGER #166. But the singleAssoc rule cannot read a pseudo-marker's own count
 directly; it infers it from the "0/1-weight twin with the same zero pattern",
 here `AM_unw_MAC100`, **whose count is 119**. The twin bounds the set's count
 from ABOVE, which is what the script's comment correctly says -- but the rule
 then uses the twin as a proxy for "is this set at or below 4", which only works
-when the twin is itself small. A set at 4 under a twin at 119 is legitimately
+when the twin is itself small. A set at or below the cap under a twin at 119 is legitimately
 #166-eligible and is refused anyway.
 
 **Why the two counts differ so much, and it is NOT a score threshold.** From
@@ -855,14 +855,14 @@ every `s > 0`; line 342 records that 0 and 1 are fixed points of every
 transform. So a nonlinear score transform drops only markers whose score is
 EXACTLY 0 -- and in these group files a 0 means ABSENT FROM AlphaMissense, not
 benign. This gene's ultra-rare markers are mostly unscored, so `unw` keeps all
-119 alleles while every nonlinear transform keeps the 4 from scored markers.
+119 alleles while every nonlinear transform keeps only the scored markers' alleles (`<20`).
 Expect this wherever a gene's rare variants are largely unscored.
 
 **The fix, not yet made.** The row already carries what the rule needs:
 `AC_Allele2` on a pseudo-marker IS the unweighted collapse of the markers the
 set keeps (LEDGER #118, `genoURMat_noweights`). The script's comment says a
 weighted set's `AC_Allele2` is unusable because it is "a weighted sum", which
-looks to predate #118 -- the value here is an exact integer 4. So the rule
+looks to predate #118 -- the value here is an exact integer at or below the cap. So the rule
 should read the row's own folded `AC_Allele2`, as `markermac.tsv` already does
 for REAL markers, instead of inferring via the twin. One awk change, and it
 needs the selftest's planted refusals re-run plus a check that no previously
