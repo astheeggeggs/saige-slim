@@ -97,6 +97,59 @@ pooled p. Both arms share the same null model, so SKAT-O's good behaviour is
 DIAGNOSTIC (it is what makes the discordance signature usable) and not evidence
 that the models are sound.
 
+## The #172 routing's dose-response, measured (2026-09-30)
+
+eas MatHem x ENSG00000128607 -- the cell that opened the row at 1e-93 -- read
+off `flexrv_v7`'s `.exactByWeight.txt.gz` on IMG9. Counts of material carriers
+are withheld here as `<20` under this file's own rule; `n_eff` is Kish's
+effective carrier count on the vector the test sees, a derived scale-free
+statistic, and it is the finding:
+
+| score transform | n_eff | n_material |
+|---|---|---|
+| cbrt0.4 | 3.309 | `<20` |
+| cbrt0.5 | 2.722 | `<20` |
+| cbrt0.6 | 2.421 | `<20` |
+| cbrt0.7 | 2.239 | `<20` |
+| cbrt0.8 | 2.128 | `<20` |
+| cbrt0.9 | 2.079 | `<20` |
+| sbeta3 | 2.107 | `<20` |
+| sbeta5 | 1.097 | `<20` |
+| sbeta10 | 1.00043 | `<20` |
+| sbeta20 | 1.0000000131 | `<20` |
+
+`n_eff` falls monotonically as the score transform steepens and reaches 1 to
+eight decimal places at `sbeta20`: ONE carrier holds the whole weight. That is
+the row's "one atom", measured on real data rather than on a fixture, and it is
+a better argument for the fix than any p-value.
+
+The outcome moved with it. `sbeta10` and `sbeta20` now read `Pvalue_Burden`
+5.000000E-01 and 8.529162E-01 against 1e-93 in v4 -- the control of section 9
+step 5(b), passed. The exact 0.5 is the MID-p of a degenerate enumeration
+(nothing more or less extreme was reachable), not a failure. `BETA_Burden`
+stays absurd at 1.2e+07, with `SE_Burden` tracking it to |Z| ~ 0.19, which is
+the effect-size question parked on LEDGER #131 and is unaffected by this fix:
+do not quote those betas.
+
+**Three internal consistency checks pass**, which is what makes it more than
+one number moving:
+
+- `n_eff` is IDENTICAL across all six MAF transforms of each score transform.
+  It must be: `Number_rare` is 0, so the cell is the pseudo-marker alone, every
+  collapsed marker sits at essentially one MAF, the MAF transform is therefore a
+  near-constant multiplier, and Kish's count is scale-invariant.
+- The `ultra_rare` and `burden` rows carry identical `n_eff`. Also required:
+  with no rare non-collapsed marker the burden vector IS the pseudo-marker.
+- `unw`, `lof`, `cbrt0.2` and `cbrt0.3` are ABSENT from the listing, as the
+  routing's own boundary requires -- it fires at `n_eff` at or below
+  `--max_MAC_for_ER` (4), and `cbrt0.4` at 3.309 is the steepest set that gets
+  under it. The gentler sets took the saddlepoint as before.
+
+This is also direct support for the 13d prediction ahead of the per-set read:
+the sets the fix rescued are exactly the concentrated ones. And it quantifies
+why the SKAT-O arm was quiet throughout -- beta(1,25) mask weights never come
+near `n_eff` of 4.
+
 ## The four checks, cheapest first (section 13 has the cells)
 
 1. **13a, the recount**: `submit_mu_decades` for sas, afr, eur, amr -- one
