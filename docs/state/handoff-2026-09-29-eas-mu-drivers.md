@@ -189,6 +189,73 @@ tail in 52,000 is a different regime from a 6 % tail in 4,089. **So AMD is the
 priority within the amr/afr/eur reruns** -- a change from "all traits, order
 immaterial", and the recount is what identified where the risk concentrates.
 
+## Three results of 2026-09-30, and the distinction that changes the remedy
+
+### The whole eas arm is calibrated, not just the two flagged models
+
+The damage read extended to all 15 binary traits. Reading `P_ge` = P(min >= obs),
+which is uniform under a clean null, the 15 values run 0.005 to 0.929 and skew
+CONSERVATIVE (7 below 0.25 against 3.75 expected, 3 above 0.75) -- consistent
+with the saddlepoint tail's 5-12 % conservatism and the exact test's mid-p. The
+most extreme trait is Asth at P(min <= obs) = 0.071, which is what one expects of
+one trait in fifteen. **No trait is inflated.**
+
+**FemInf (ratio 1.03) and MatHem (3.69) sit MID-PACK, indistinguishable from the
+thirteen unflagged traits.** The tails leave no footprint in the extreme
+p-values.
+
+### LEDGER #175's arithmetic confirmed, and its blind spot observed in production
+
+eas FemInf reads **62 of 4,054 = 1.53 %** in the pinned table, exactly as this
+file predicted; eas MatHem matches its recorded control at 77 of 4,089 with
+`min_fitted` 2.22e-16.
+
+**And `amr MatHem` and `eur FemInf` read `none_reported`** -- the shipped gate
+emitted NO warning at all -- while the decade table gives them 44 and 38
+participants at 1e-6. The blind spot is no longer a derivation from the fixture;
+it is an observation on production models.
+
+### One mechanism, with the control holding
+
+| model | tail at 1e-6 | gap (log-odds) | age + age2 share of it |
+|---|---|---|---|
+| eur AMD | 2,827 | -8.03 | 99.4 % |
+| eur FemInf | 38 | -9.34 | 99.2 % |
+| amr MatHem | 44 | -11.28 | 98.2 % |
+| afr AMD | `<20` | withheld | -- |
+| eas EFRMB (control) | 0 | withheld | no tail |
+
+`[ASSUMPTION: AMD's tail being the YOUNG rather than the old is inferred from the
+negative age contribution plus AMD risk rising with age; aou_mu_drivers.sh
+reports contributions, not covariate means, so the direction is not read off
+directly.]`
+
+### THE DISTINCTION: artefact or honest extrapolation
+
+**The two AMD models do not fit the separation story, and both break the
+`mu_rest ~ 1.6e-8 x H(p)/f` formula in the SAME direction.** It predicted 7.2e-8
+for eur AMD, whose mass mostly lies between 1e-6 and 1e-5; it predicted 4.7e-9
+for amr AMD, of whose group only 1.8 % falls below 1e-8. Two misses, same sign.
+
+`min_fitted` sharpens it. eas FemInf and MatHem bottom out at **2.22e-16**,
+machine-epsilon territory and unmistakably an artefact of where `glm` stopped.
+The larger cohorts stop at 1e-9..1e-11. AMD's tail sits three to seven decades
+shallower again.
+
+So **AMD's tail may not be separation at all**: it may be the HONEST fitted risk
+of a young person under a steep age curve, since a 25-year-old's AMD probability
+genuinely is of order 1e-6. If so nothing is broken -- those participants carry
+little information because they genuinely are near-zero risk -- and the remedy is
+not a guard or a refit but noting that the effective N is below the nominal one.
+A post-menopausal woman's maternal-haemorrhage probability of 2.22e-16 is a
+different thing entirely.
+
+**The distinction is checkable and decides the remedy**: an artefact's fitted
+values MOVE when `--tol` is tightened or the fit is iterated further; an honest
+extrapolation does not. Until that is run, the eleven should be read as four
+AMD-shaped models whose status is unknown and seven separation-shaped ones, of
+which the two tested are demonstrably harmless.
+
 ## THE SEVEN IS ELEVEN (recount, 2026-09-30)
 
 `aou_mu_decades.sh` run over all five ancestries -- 115 binary models. The
