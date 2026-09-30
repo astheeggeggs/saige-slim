@@ -32,7 +32,8 @@ import re, sys, pathlib
 REPO = pathlib.Path(__file__).resolve().parents[2]
 
 # The current-state surfaces. Anything dated or historical stays out.
-SCANNED = ["CLAUDE.md", "docs/state/next.md", "R/*.R", "man/*.Rd", "extdata/*.R"]
+SCANNED = ["CLAUDE.md", "docs/state/next.md", "R/*.R", "man/*.Rd", "extdata/*.R",
+           "harness/tools/aou_spa_rerun.md"]
 
 ALLOW = "docdrift-allow"
 
@@ -318,6 +319,23 @@ RULES = [
         evidence="harness/goldens/step2/plink_group_flexrv_burden.txt: 112 non-Cauchy rows per "
                  "gene and no _MAC(25|50|100|200|500) name; R/FlexRV.R flexrvTransformTable(N = )",
         canary="the goldens P58-P61 pin it, and there `MAC25`..`MAC500` are duplicates of `unw`",
+    ),
+    # 2026-09-30: written wrongly in aou_spa_rerun.md section 14b and nearly
+    # implemented as an anticonservative loosening of the splice control.
+    dict(
+        id="177-pseudo-ac-is-weighted",
+        pattern=r"AC_Allele2[^.]{0,120}?\bIS the unweighted collapse",
+        why="a pseudo-marker's AC_Allele2 is the WEIGHTED collapse -- altCounts = "
+            "cs.paritySumDense(genoURVec) at src/Main.cpp:3888, where genoURVec is "
+            "max_m(w_r(m) g_m). LEDGER #118 left it weighted DELIBERATELY (its STATUS: 'the UR "
+            "pseudo-marker's OWN single-variant test context still reads the weighted MAC ... "
+            "that is why every *.singleAssoc.txt is byte-identical'). Only a 0/1-weight set "
+            "reports an integer there, which is why the splice control's twin rule exists",
+        evidence="harness/goldens/step2/plink_group_flexrv_skato.txt: GENE1's four weight sets "
+                 "have identical MAC 183 / Number_rare 6 / Number_ultra_rare 17 (all per-set "
+                 "since #118) and pseudo AC_Allele2 54, 50.47, 47.85, 44.4398",
+        canary="the row already carries what the rule needs: AC_Allele2 on a pseudo-marker "
+               "IS the unweighted collapse of the markers the set keeps",
     ),
 ]
 

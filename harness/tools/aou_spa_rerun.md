@@ -827,7 +827,7 @@ which is the dsub localization signature generally. Diagnose by joining the
 failed job names back to `RUNS` and testing for the fixed copy: if every failure
 lacks one, it is this and nothing else.
 
-### 14b. The splice control's pseudo-marker twin rule has a gap (2026-09-30, FIRST refusal of the rollout)
+### 14b. The splice control's pseudo-marker twin rule has a gap (2026-09-30, FIRST refusal of the rollout; FIXED 2026-09-30, and the first proposed fix was WRONG)
 
 `aou_spa_splice.sh` refused two amr prefixes -- `pancreat-b0` and `stroke-b0` --
 with `140 changed row(s) are neither a recorded failure nor a MAC <= 4
@@ -838,15 +838,16 @@ the control working, and the gap is in the control, not the data.**
 Same gene in both traits (`ENSG00000226314`), same count (140), same sets --
 `AM_cbrt0.2_MAC100`, `AM_cbrt0.2_MAC50`, `AM_cbrt0.2_mafbeta2`.
 
-**The mechanism.** The refused rows are ultra-rare pseudo-markers whose
-own `AC_Allele2` is at or below `--max_MAC_for_ER` (written `<20`), so their change IS explained by
-LEDGER #166. But the singleAssoc rule cannot read a pseudo-marker's own count
-directly; it infers it from the "0/1-weight twin with the same zero pattern",
-here `AM_unw_MAC100`, **whose count is 119**. The twin bounds the set's count
-from ABOVE, which is what the script's comment correctly says -- but the rule
-then uses the twin as a proxy for "is this set at or below 4", which only works
-when the twin is itself small. A set at or below the cap under a twin at 119 is legitimately
-#166-eligible and is refused anyway.
+**The mechanism.** The refused rows are ultra-rare pseudo-markers whose change IS
+explained by LEDGER #166. But #166 eligibility is `MAC_nw <= --max_MAC_for_ER`,
+the set's UNWEIGHTED collapse count (`src/Main.cpp:4132-4134`), and **that number
+is in no delivered file** when the cell has non-collapsed rare markers: the
+results `MAC` column is `MAC_nw` PLUS the kept rare markers' MACs, and
+`.markerList.txt` is per CELL, not per SET. So the rule infers it from the
+"0/1-weight twin with the same zero pattern", here `AM_unw_MAC100`, **whose count
+is 119**. The twin bounds the set's count from ABOVE, which is what the script's
+comment correctly says -- but the rule then uses the twin as a proxy for "is this
+set at or below the cutoff", which only works when the twin is itself small.
 
 **Why the two counts differ so much, and it is NOT a score threshold.** From
 `docs/design/flexrv-design.md:85`, `cbrt_t(s) = (sign(s-t)|s-t|^(1/3) +
@@ -855,22 +856,126 @@ every `s > 0`; line 342 records that 0 and 1 are fixed points of every
 transform. So a nonlinear score transform drops only markers whose score is
 EXACTLY 0 -- and in these group files a 0 means ABSENT FROM AlphaMissense, not
 benign. This gene's ultra-rare markers are mostly unscored, so `unw` keeps all
-119 alleles while every nonlinear transform keeps only the scored markers' alleles (`<20`).
-Expect this wherever a gene's rare variants are largely unscored.
+119 alleles while every nonlinear transform keeps only the scored markers'
+alleles. Expect this wherever a gene's rare variants are largely unscored.
 
-**The fix, not yet made.** The row already carries what the rule needs:
-`AC_Allele2` on a pseudo-marker IS the unweighted collapse of the markers the
-set keeps (LEDGER #118, `genoURMat_noweights`). The script's comment says a
-weighted set's `AC_Allele2` is unusable because it is "a weighted sum", which
-looks to predate #118 -- the value here is an exact integer at or below the cap. So the rule
-should read the row's own folded `AC_Allele2`, as `markermac.tsv` already does
-for REAL markers, instead of inferring via the twin. One awk change, and it
-needs the selftest's planted refusals re-run plus a check that no previously
-accepted change becomes accepted for a different reason.
+#### The fix this section first proposed is WRONG. Do not implement it.
 
-**Do not `--force` past it.** Two prefixes of 444 are blocked; nothing wrong was
-written, and this is the only refusal in the whole rollout across sas, eas, afr,
-amr and eur.
+The original text said, quoted here on purpose:
+<!-- docdrift-allow: the next sentence is the false claim this section refutes -->
+`AC_Allele2` on a pseudo-marker IS the unweighted collapse (LEDGER #118), so the
+rule should read the row's own folded `AC_Allele2` instead of inferring via the
+twin -- one awk change. **Both halves of that are false**, checked 2026-09-30
+against the source and against a committed golden.
+
+A pseudo-marker's `AC_Allele2` is the **WEIGHTED** collapse:
+`altCounts = cs.paritySumDense(genoURVec.memptr())` at `src/Main.cpp:3888`, where
+`genoURVec` is `max_m(w_r(m) g_m)`. #118 left it weighted DELIBERATELY -- its own
+STATUS says "the UR pseudo-marker's OWN single-variant test context still reads
+the weighted MAC, because that row tests the weighted pseudo-marker; that is why
+every `*.singleAssoc.txt` is byte-identical". The comment does not predate #118;
+it survived it on purpose.
+
+MEASURED on the committed golden `harness/goldens/step2/plink_group_flexrv_skato.txt`.
+GENE1's four weight sets have **identical per-set unweighted composition** -- all
+three columns are per-set since #118 -- yet their pseudo-marker rows disagree:
+
+| Region\|Weight | MAC | Number_rare | Number_ultra_rare | pseudo `AC_Allele2` |
+|---|---|---|---|---|
+| `REVEL_unw_unw` | 183 | 6 | 17 | **54** |
+| `REVEL_unw_mafbeta2@0.02` | 183 | 6 | 17 | **47.85** |
+| `REVEL_sbeta2_unw` | 183 | 6 | 17 | **50.47** |
+| `REVEL_sbeta2_mafbeta2@0.02` | 183 | 6 | 17 | **44.4398** |
+
+Same markers, same alleles; `AC_Allele2` spans 44.44-54 purely on the weights
+(GENE2 is worse: 24.517 against 41). The 0/1 set reports an integer, which is
+*why* the twin rule works and why the row's own value cannot replace it.
+Comparing that against an allele-count cutoff is **LEDGER #134's defect** -- the
+SCALE of a group file's weights choosing the statistical treatment -- moved into
+the control, and it is **ANTICONSERVATIVE**: every down-scaling transform
+(`cbrt0.2`, `mafbeta2`, i.e. precisely the refused sets) reads low, so the
+control would have accepted rows that are not #166-eligible, on every ancestry,
+silently.
+
+#### What landed instead: CONTROL 1c, statistic identity (2026-09-30)
+
+A last tier, singleAssoc PSEUDO-MARKER rows only, reached only after every named
+rule above has failed: **accept a changed row iff `SE` and `p.value` are the only
+columns that moved.** Measured on `input/group_new_snpid_withWeights_atom.txt`,
+no AoU data needed:
+
+| arm | rows moved | columns that moved |
+|---|---|---|
+| POSITIVE, #166 (`--max_MAC_for_ER` 0 -> 50) | 8 | `SE`, `p.value` |
+| POSITIVE, #172 (`SAIGE_EXACT_BY_WEIGHT` 0 -> 1) | 10 | `SE`, `p.value` |
+| NEGATIVE, variance ratio perturbed 0.1% | 14 | `BETA`, `SE`, `p.value`, `p.value.NA`, `var` |
+
+`BETA` and `Tstat` are the score statistic, `var` its variance, `AC_Allele2` the
+genotype summary, and the exact test re-derives `SE` from the new p. **`var` is
+the discriminating column, not `Tstat`** -- the score does not depend on the
+variance ratio, so `Tstat` alone would have passed the negative control.
+
+**The limit, and why A still follows.** This is a FINGERPRINT, not a REASON. It
+says the statistic is untouched and only the p-value method moved; it does NOT
+say the method chosen was right, so a cell that switched methods WRONGLY
+(LEDGER #176's shape) would pass. Every accepted row is therefore counted on
+stderr (`pseudo-marker rows accepted on STATISTIC IDENTITY ALONE`), written to
+`<pre>.spliceStatId.txt` beside the spliced file, and totalled in
+`<pre>.splice.txt`, so the weaker provenance travels with the data instead of
+being invisible. A refusal now also prints `columns that differ old -> new`,
+which is what turned this diagnosis from guesswork into one line.
+
+#### The exact fix, SPECIFIED and NOT built (owner's call, 2026-09-30)
+
+CONTROL 1c is a backstop. The exact fix is for the RUN to disclose the #166
+routing, as `.exactByWeight.txt` and `.spaPinned.txt` already do for #172 and
+#174 -- that asymmetry is the whole reason this gap exists, since those two
+explanations are read from a sidecar and only #166 is inferred.
+
+**It must NOT be always-on, and that is a measurement, not a preference.**
+On `harness/goldens/step2/plink_group_flexrv_burden.txt`, 32 of 224 cells
+(**14.3 %**) are ultra-rare-only at MAC <= 4, i.e. exactly what such a sidecar
+would list. Scaled to an AoU FlexRV run (~18,000 genes x 112-192 sets per gene)
+that is millions of rows per trait x chromosome -- plausibly larger than the
+results file it documents, on a pipeline that already watches its egress.
+
+**Shape: env-gated, default OFF**, the precedent being `SAIGE_SPA_DUMP_DIR`:
+
+- `SAIGE_EXACT_TEST_LOG=<path>`; unset writes nothing, so **no golden moves**
+  and the gate is a proof of INERTNESS rather than a re-baseline. That is the
+  cheapest correct shape available and is why it is the recommended one.
+- Two call sites, both in `src/Main.cpp`, and both already compute the number:
+  the ultra-rare pseudo-marker's own single test (`cm.isER = (MAC_nw <=
+  g_cfg.MACCutoffforER && ...)`, ~`:4134`) and the BURDEN emitter's twin
+  (~`:4585`). `recordExactByWeight` is the working model for the writer.
+- Schema, mirroring `.exactByWeight.txt` so one reader serves both:
+  `Kind  Region  Group  max_MAF  Weight  MarkerID  MAC_nw  Reason`, with
+  `Reason` = `mac` here (`weight` is #172's file). `MarkerID` is what keys a
+  pseudo-marker row in the singleAssoc, so the splice control can join directly.
+- Turn it on for any rerun that will be SPLICED; that is the only situation
+  needing it, and it is decided at submit time.
+
+**Then in `aou_spa_splice.sh`**: read `<NEW_PREFIX>.exactTestCells.txt.gz` if it
+exists, key `MarkerID`, and accept a listed row as a NAMED explanation ahead of
+CONTROL 1c -- the same tier structure `ewcells.txt` and `pncells.txt` already
+use. 1c stays as the fallback for files produced without the log, which is every
+file delivered before this lands, including the four blocked prefixes.
+
+**What this does NOT fix:** LEDGER #176. A cell that switched methods WRONGLY is
+still explained by its own listing. #176 needs the counter for concentrated
+cells above the 13-carrier enumeration cap, which is a different instrument and
+is item (1) of `docs/state/next.md`'s blocking list.
+
+Drilled in `aou_spa_splice_selftest.sh`: the `ur` and `twin` plants (which move
+`p.value` alone) flipped from planted refusals to positive controls for the new
+tier, and three new plants -- `sidvar`, `sidbeta`, `sidac` -- are the same rows
+with `var`, `BETA` or `AC_Allele2` moved as well and must still be refused.
+`sidvar` differs from the accepted `ur` in exactly one column, which is the A/B
+that shows the tier discriminates rather than waving everything through.
+
+**Do not `--force` past a refusal.** Nothing wrong was written; a refusal is the
+control doing its job, and the four blocked prefixes were the only ones in the
+whole rollout across sas, eas, afr, amr and eur.
 
 ### 14c. The `summary_v4/` tables were STALE, and sas's "quiet" verdict rested on one (2026-09-30)
 

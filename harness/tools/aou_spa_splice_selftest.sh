@@ -74,6 +74,19 @@ plants["pnur"]   = (new_res, plants["ur"][1])      # the "ur" pseudo-marker row,
 full_res = [l if not l.startswith("R2\tgrp\t0.001\tW1\t") else row("R2","W1","0.31",7) for l in old_res]
 full_res = [l if l != cau("R2","0.3") else cau("R2","0.31") for l in full_res]
 full_sa  = [l if l != ur("R2","W1",5,"0.3","0.3","false") else ur("R2","W1",5,"0.31","0.3","true") for l in old_sa]
+# CONTROL 1c (2026-09-30): statistic identity. "ur" and "twin" above move p.value
+# ALONE, which is the measured signature of a p-value-method change (#166/#172) --
+# they are now ACCEPTED by that tier and are its positive controls. These three are
+# the negative controls: the same rows with a column the exact test never touches
+# moved as well, which must still be refused. `var` is the discriminating one (a
+# perturbed variance ratio moves var, BETA and p.value.NA but NOT Tstat).
+def urvar(p_, var_="1", beta="1"):  # R6 AM_cbrt0.2_unw with var/BETA overridden
+    return f"UR\tUR\tR6:grp:0.001:AM_cbrt0.2_unw\tUR\tUR\t0.6\t0.0001\t0\t{beta}\t1\t1\t{var_}\t{p_}\t0.02\ttrue"
+base_ur = ur("R6","AM_cbrt0.2_unw","0.6","0.2","0.02","true")
+plants["sidvar"]  = (new_res, variant(new_sa, base_ur, urvar("0.25", var_="1.001")))   # var moved too
+plants["sidbeta"] = (new_res, variant(new_sa, base_ur, urvar("0.25", beta="1.001")))   # BETA moved too
+plants["sidac"]   = (new_res, variant(new_sa, base_ur,                                  # AC_Allele2 moved too
+    "UR\tUR\tR6:grp:0.001:AM_cbrt0.2_unw\tUR\tUR\t0.61\t0.0001\t0\t1\t1\t1\t1\t0.25\t0.02\ttrue"))
 plants["allok"]  = (full_res, full_sa)   # the sidecar lists R2|W1: accepted
 plants["allbad"] = (full_res, full_sa)   # no sidecar: the same change is unexplained
 os.makedirs("in", exist_ok=True)
@@ -127,8 +140,15 @@ expect real 1 "ERROR .singleAssoc.txt.gz"
 expect out  1 "new rows outside the region list"
 expect obs  1 "ERROR .txt.gz"
 expect dup  1 "ERROR .singleAssoc.txt.gz"
-expect ur   1 "ERROR .singleAssoc.txt.gz"
-expect twin 1 "ERROR .singleAssoc.txt.gz"
+expect ur   0 "pseudo-marker rows accepted on STATISTIC IDENTITY ALONE"
+expect twin 0 "pseudo-marker rows accepted on STATISTIC IDENTITY ALONE"
+grep -q "columns that differ old -> new" ur.log && { echo "FAIL ur: a row accepted on statistic identity must not be reported as unexplained"; fail=1; } || echo "ok   ur: accepted without an unexplained-change diagnostic"
+[[ -s out/ur/fxv4-test.spliceStatId.txt ]] && echo "ok   the statistic-identity list travels with the spliced file" || { echo "FAIL ur: .spliceStatId.txt missing"; fail=1; }
+grep -q "rows accepted on statistic identity alone (CONTROL 1c, the weaker tier): 1" out/ur/fxv4-test.splice.txt || { echo "FAIL ur: manifest count"; fail=1; }
+expect sidvar  1 "ERROR .singleAssoc.txt.gz"
+expect sidbeta 1 "ERROR .singleAssoc.txt.gz"
+expect sidac   1 "ERROR .singleAssoc.txt.gz"
+grep -q "columns that differ old -> new: var" sidvar.log || { echo "FAIL sidvar: the refusal must name the differing column"; fail=1; }
 expect pn     0 "cells in which pinned samples were left out of the saddlepoint (LEDGER #174): 1"
 grep -q ".spaPinned.txt.gz: 1 guarded test(s) in the spliced regions, carried over" pn.log && echo "ok   the pinned sidecar is carried over restricted to the spliced regions (R3 is not one)" || { echo "FAIL pn: sidecar carry-over"; fail=1; }
 expect pnref  1 "ERROR .txt.gz"
@@ -142,4 +162,4 @@ bash "${HERE}/aou_spa_stagecheck.sh" stage/null > sc_null.log 2>&1 && grep -q "S
 if bash "${HERE}/aou_spa_stagecheck.sh" stage/pos > sc_pos.log 2>&1; then echo "FAIL stagecheck pos: exit 0"; fail=1; else grep -q "NA 1" sc_pos.log && echo "ok   stagecheck NA flagged" || { echo "FAIL stagecheck pos"; fail=1; }; fi
 if bash "${HERE}/aou_spa_stagecheck.sh" stage/chr > sc_chr.log 2>&1; then echo "FAIL stagecheck chr: exit 0"; fail=1; else grep -q "CHROMOSOME FAILED" sc_chr.log && echo "ok   stagecheck lost chromosome flagged" || { echo "FAIL stagecheck chr"; fail=1; }; fi
 if (( fail )); then echo "SELFTEST FAILED"; exit 1; fi
-echo "selftest OK: 6 positive controls (two via the exactByWeight sidecar, three via the spaPinned sidecar, one a complete rerun), 8 planted refusals (one a guard that refused), 3 stage-checker cases"
+echo "selftest OK: 8 positive controls (two via the exactByWeight sidecar, three via the spaPinned sidecar, two on statistic identity, one a complete rerun), 9 planted refusals (one a guard that refused, three moving a statistic the exact test never touches), 3 stage-checker cases"

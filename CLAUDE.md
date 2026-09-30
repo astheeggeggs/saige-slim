@@ -620,7 +620,18 @@ was written down. The rule, and the one deliberate exception:
    any output, and its only consumers are the two `dbeta()` calls in
    `R/SAIGE_SPATest_Region.R` (`:324`, `:430`) -- i.e. the BETA weight. The
    pseudo-marker's only reported frequency is `AF_Allele2` in the single-variant
-   file, which is `altFreq` and already raw. Making MAF raw would change the
+   file, which is `altFreq` and already raw. **"Raw" there means UNFOLDED, not
+   unweighted**, and the distinction has cost a session (2026-09-30): the
+   pseudo-marker's `AC_Allele2`/`AF_Allele2` are the WEIGHTED collapse
+   (`paritySumDense(genoURVec)`, `src/Main.cpp:3888`, where `genoURVec` is
+   `max_m(w_r(m) g_m)`), which #118 left weighted deliberately -- that is why
+   every `.singleAssoc.txt` was byte-identical through it. Only a 0/1-weight set
+   reports an integer there; on `plink_group_flexrv_skato.txt` four sets with
+   identical per-set composition (MAC 183, `Number_rare` 6, `Number_ultra_rare`
+   17) print `AC_Allele2` 54, 50.47, 47.85 and 44.4398. The UNWEIGHTED count is
+   `MAC_nw`, which feeds the variance-ratio band and the ER predicate (#134) and
+   reaches output only inside the results `MAC` column, i.e. recoverable only
+   when `Number_rare == 0`. Making MAF raw would change the
    WEIGHTING, not the reporting: measured, it left every p-value byte-identical
    and blew `BETA_Burden` up to `-1.01393e+13`, because `dbeta(0.778,1,25)` =
    5.1e-15. Whether `dbeta` should see a collapse's CARRIER frequency at all is

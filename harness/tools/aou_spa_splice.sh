@@ -142,6 +142,64 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
   awk -F'\t' -v rule="${rule}" -v single="${single}" 'FILENAME=="regions.txt"{keep[$1]=1; next} FILENAME=="newmarkers.txt"{nm[$1]=$2; next} FNR==1{next} { if(single && '"${isreal}"'){ if($3 in nm){ seen[$3]++; if(seen[$3] <= nm[$3]) print } next } reg=('"${rule}"'); if(reg in keep) print }' regions.txt newmarkers.txt old.tsv | sort > o.all
   awk -F'\t' 'FNR>1' new.tsv | sort > n.all
   comm -3 o.all n.all | sed 's/^\t//' > changed.rows
+  # CONTROL 1c (2026-09-30): STATISTIC IDENTITY -- the LAST tier, a deliberately
+  # WEAKER claim than every rule above, and singleAssoc PSEUDO-MARKER rows only.
+  #
+  # Why it exists. #166 eligibility is `MAC_nw <= ER_MAC`, the set's UNWEIGHTED
+  # collapse count (src/Main.cpp:4132-4134). That number is in NO delivered
+  # file when the cell has non-collapsed rare markers: the results `MAC` column
+  # is MAC_nw PLUS the kept rare markers' MACs, and `.markerList.txt` is per
+  # CELL, not per SET. The twin rule above bounds it from above and the bound is
+  # loose exactly when the twin keeps markers the set drops -- a gene whose rare
+  # variants are largely unscored by AlphaMissense, where `unw` keeps every
+  # allele and a nonlinear transform keeps only the scored ones. That refused
+  # four prefixes of the 2026-09-30 rollout (amr Pancreat/Stroke, afr Asth/VTE).
+  #
+  # DO NOT "FIX" THAT BY READING THE ROW'S OWN AC_Allele2. A pseudo-marker's
+  # AC_Allele2 is the WEIGHTED collapse (`paritySumDense(genoURVec)`,
+  # src/Main.cpp:3888), which #118 deliberately left weighted -- that is why
+  # every `.singleAssoc.txt` was byte-identical through that fix. MEASURED on
+  # the committed golden `plink_group_flexrv_skato.txt`: GENE1's four sets have
+  # identical per-set unweighted composition (MAC 183, Number_rare 6,
+  # Number_ultra_rare 17 -- all per-set since #118) and report AC_Allele2 54,
+  # 50.47, 47.85 and 44.4398. Comparing that against an allele-count cutoff is
+  # LEDGER #134's defect (the SCALE of the weights choosing the statistical
+  # treatment) moved into the control, and it is ANTICONSERVATIVE: every
+  # down-scaling transform reads low, so it would accept rows that are not
+  # #166-eligible. The 0/1 twin reads an integer, which is why the twin works.
+  #
+  # What this tier asserts instead, MEASURED (2026-09-30) on
+  # input/group_new_snpid_withWeights_atom.txt:
+  #   POSITIVE, #166 arm  (--max_MAC_for_ER 0 -> 50):     8 rows move, columns {SE, p.value}
+  #   POSITIVE, #172 arm  (SAIGE_EXACT_BY_WEIGHT 0 -> 1): 10 rows move, columns {SE, p.value}
+  #   NEGATIVE, variance ratio perturbed by 0.1%:         14 rows move, columns {BETA, SE, p.value, p.value.NA, var}
+  # So a routing change moves SE and p.value and NOTHING else: BETA and Tstat
+  # are the score statistic, `var` its variance, AC_Allele2/AF_Allele2 the
+  # genotype summary, and the exact test re-derives SE from the new p (the
+  # eas/T2Diab reading, "same BETA, SE re-derived from the new p"). A change in
+  # the DATA or the MODEL moves `var` -- note Tstat alone does NOT discriminate,
+  # since the score does not depend on the variance ratio.
+  #
+  # THE LIMIT, stated so it is not mistaken for the rules above: this is a
+  # FINGERPRINT, not a REASON. It says the statistic is untouched and only the
+  # p-value method moved; it does NOT say the method chosen was the right one,
+  # so a cell that switched methods WRONGLY (LEDGER #176's shape) would pass.
+  # Every row it accepts is counted, named on stderr and written to
+  # `<pre>.spliceStatId.txt` beside the spliced file. The exact fix is a sidecar
+  # from the RUN naming every #166-routed row with its MAC_nw, as
+  # `.exactByWeight.txt` and `.spaPinned.txt` already do for #172 and #174.
+  : > rowdiff.tsv; : > statid.txt
+  if (( single )); then
+    awk -F'\t' '
+      FILENAME=="hdr.old"{ for(i=1;i<=NF;i++) nm[i]=$i; nf=NF; next }
+      FILENAME=="o.all"{ if(!('"${isreal}"')) o[$3]=$0; next }
+      { if('"${isreal}"') next; if(!($3 in o)) next
+        split(o[$3], a, "\t"); d=""
+        for(i=1;i<=nf;i++) if(a[i] != $i) d = (d=="" ? nm[i] : d","nm[i])
+        if(d!="") print $3"\t"d }' hdr.old o.all n.all > rowdiff.tsv
+    awk -F'\t' '{ n=split($2,c,","); keep=1; for(i=1;i<=n;i++) if(c[i]!="SE" && c[i]!="p.value") keep=0
+                  if(keep) print $1 }' rowdiff.tsv | sort -u > statid.txt
+  fi
   # A burden cell with rare, NON-collapsed markers (Number_rare > 0) is a test
   # the scan could not observe: its vector is w*(real markers) + pseudo-marker
   # and its saddlepoint can fail while every component's own single test
@@ -163,6 +221,8 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
         FILENAME=="ewcells.txt"{ew[$1]=1; next}
         FILENAME=="pncells.txt"{pn[$1]=1; next}
         FILENAME=="pnmarkers.txt"{pnm[$1]=1; next}
+        FILENAME=="statid.txt"{sid[$1]=1; next}
+        FILENAME=="rowdiff.tsv"{rd[$1]=$2; next}
         FNR==1 && FILENAME=="changed.rows"{pass++}
         pass==1 {
           if(sfx==".pooledTests.txt.gz" || $2=="Cauchy") next
@@ -175,12 +235,15 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
                            if(!ok){ # the 0/1-weight twin with the same zero pattern collapses the same markers (or a superset): lof stays lof, any other score -> unw; MACk stays, any other MAF -> unw
                              w=a[n]; m=split(w,f,"_"); if(m>=3){ sc=f[m-1]; mf=f[m]; pre=f[1]; for(i=2;i<=m-2;i++) pre=pre"_"f[i]
                                twin=a[1]"|"pre"_"((sc=="lof")?"lof":"unw")"_"((mf ~ /^MAC[0-9]+$/)?mf:"unw")
-                               if((twin in uown) && uown[twin]+0 <= '"${ERMAC}"'){ ok=1; urer[key]=1 } } } }
+                               if((twin in uown) && uown[twin]+0 <= '"${ERMAC}"'){ ok=1; urer[key]=1 } } }
+                           if(!ok && ($3 in sid)){ ok=1; sidrow[$3]=1 } }
           else { key=$1"|"$4; reg=$1; if(key in fc) ok=1; if((key in mac) && mac[key]+0 <= '"${ERMAC}"') ok=1
                  if(!ok && (key in ew)){ ok=1; ewcell[key]=1 }
                  if(!ok && (key in pn)){ ok=1; pncell[key]=1 }
                  if(!ok && nri>0 && $nri+0 > 0){ ok=1; unobs=1; ucell[key]=1 } }
-          if(ok){ if(reg!="") okr[reg]=1 } else { bad++; if(bad<=5) print "  unexplained change: " substr($0,1,120) > "/dev/stderr" }
+          if(ok){ if(reg!="") okr[reg]=1 } else { bad++
+            if(bad<=5){ print "  unexplained change: " substr($0,1,120) > "/dev/stderr"
+                        if(single && ($3 in rd)) print "    columns that differ old -> new: " rd[$3] > "/dev/stderr" } }
           next }
         pass==2 {
           if(!(sfx==".pooledTests.txt.gz" || $2=="Cauchy")) next
@@ -191,17 +254,22 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
              ewn=0; for(k in ewcell) ewn++; if(ewn>0) print "  cells routed to the exact test by weight (LEDGER #172): " ewn > "/dev/stderr"
              pnn=0; for(k in pncell) pnn++; if(pnn>0) print "  cells in which pinned samples were left out of the saddlepoint (LEDGER #174): " pnn > "/dev/stderr"
              pmn=0; for(k in pnmark) pmn++; if(pmn>0) print "  real markers in which pinned samples were left out of the saddlepoint (LEDGER #174): " pmn > "/dev/stderr"
+             sdn=0; for(k in sidrow){ sdn++; print k > "statid.accepted" }
+             if(sdn>0) print "  pseudo-marker rows accepted on STATISTIC IDENTITY ALONE (only SE and p.value moved; BETA, Tstat, var and AC_Allele2 byte-identical -- the cell was NOT named, see CONTROL 1c): " sdn > "/dev/stderr"
              for(r in okr) print r > "okregions.tmp"
-             print bad+0 }' failcells.txt failmarkers.txt cellmac.tsv markermac.tsv urown.tsv okregions.txt ewcells.txt pncells.txt pnmarkers.txt changed.rows changed.rows > nbad.txt
+             print bad+0 }' failcells.txt failmarkers.txt cellmac.tsv markermac.tsv urown.tsv okregions.txt ewcells.txt pncells.txt pnmarkers.txt statid.txt rowdiff.tsv changed.rows changed.rows > nbad.txt
   nbad=$(cat nbad.txt); [[ -f okregions.tmp ]] && { cat okregions.tmp >> okregions.txt; rm -f okregions.tmp; sort -u -o okregions.txt okregions.txt; }
+  if [[ -f statid.accepted ]]; then   # provenance travels with the file, not just the log
+    sort -u statid.accepted >> "${OUT_DIR}/${pre}.spliceStatId.txt"; rm -f statid.accepted
+  fi
   if [[ -s ukeys.tmp ]]; then   # direction from the old and new tables themselves
     awk -F'\t' -v pci="${pci}" 'FILENAME=="ukeys.tmp"{u[$1]=1; next} FILENAME=="o.all"{k=$1"|"$4; if(k in u) po[k]=$pci+0; next} {k=$1"|"$4; if(k in u) pn[k]=$pci+0}
          END{ n=0; for(k in u){ n++; if((k in po) && (k in pn)){ if(pn[k]>po[k]) up++; else if(pn[k]<po[k]) down++ } }
               print "  unobservable burden cells (Number_rare > 0) accepted at region level: " n " (p rose in " up+0 ", fell in " down+0 ")" }' ukeys.tmp o.all n.all >&2
     rm -f ukeys.tmp
   fi
-  if [[ ${nbad} -gt 0 ]]; then echo "ERROR ${sfx}: ${nbad} changed row(s) are neither a recorded failure nor a MAC <= ${ERMAC} cell/marker nor an exact-by-weight cell nor a pinned-sample test -- splice refused" >&2; exit 1; fi
-  echo "${sfx}: $(wc -l < changed.rows) changed row(s), all explained (failed saddlepoint, MAC <= ${ERMAC}, exact test by weight, or pinned samples left out)"
+  if [[ ${nbad} -gt 0 ]]; then echo "ERROR ${sfx}: ${nbad} changed row(s) are neither a recorded failure nor a MAC <= ${ERMAC} cell/marker nor an exact-by-weight cell nor a pinned-sample test nor a statistic-identical pseudo-marker row -- splice refused" >&2; exit 1; fi
+  echo "${sfx}: $(wc -l < changed.rows) changed row(s), all explained (failed saddlepoint, MAC <= ${ERMAC}, exact test by weight, pinned samples left out, or statistic identity)"
   # CONTROL 2: every recorded failure must have changed. The recorded failure
   # is the PSEUDO-MARKER's own single test (the scan reads the singleAssoc),
   # so it is checked exactly in the singleAssoc; in the results file the
@@ -264,5 +332,6 @@ if exists "${NEW_PREFIX}.spaPinned.txt.gz"; then   # LEDGER #174: the guarded te
 fi
 { echo "spliced $(date -u +%Y-%m-%dT%H:%M:%SZ)"; echo "old: ${OLD_PREFIX}"; echo "new: ${NEW_PREFIX}"
   echo "regions replaced: $(wc -l < regions.txt)"; echo "regions with failed saddlepoints: $(wc -l < failregions.txt)"
+  echo "rows accepted on statistic identity alone (CONTROL 1c, the weaker tier): $( [[ -f "${OUT_DIR}/${pre}.spliceStatId.txt" ]] && awk 'END{print NR}' "${OUT_DIR}/${pre}.spliceStatId.txt" || echo 0 )"
   echo "--- regions:"; cat regions.txt; } > "${OUT_DIR}/${pre}.splice.txt"
 echo done
