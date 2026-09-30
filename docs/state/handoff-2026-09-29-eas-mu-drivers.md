@@ -150,6 +150,67 @@ the sets the fix rescued are exactly the concentrated ones. And it quantifies
 why the SKAT-O arm was quiet throughout -- beta(1,25) mask weights never come
 near `n_eff` of 4.
 
+## THE SEVEN IS ELEVEN (recount, 2026-09-30)
+
+`aou_mu_decades.sh` run over all five ancestries -- 115 binary models. The
+counts below are of PARTICIPANTS and are all at or above 20 except where written
+`<20`.
+
+**Seven models have a sample at or below 1e-8, and that set IS "the seven"**,
+which confirms the pinned scan's census was exactly the gate's `eps`. At 1e-6 it
+is **ELEVEN**. Four models are invisible at 1e-8:
+
+| model | N | cases | at 1e-8 | at 1e-6 | at 1e-5 |
+|---|---|---|---|---|---|
+| eur AMD | 170,540 | 2,407 | **0** | 2,827 | 16,505 |
+| amr MatHem | 34,466 | 2,207 | 0 | 44 | 222 |
+| eur FemInf | 102,504 | 1,853 | 0 | 38 | 483 |
+| afr AMD | 60,499 | 158 | 0 | `<20` | 1,573 |
+
+And the gate's percentage understates the group by one to two orders of
+magnitude where it did fire: **amr AMD** reads 74 at 1e-8 (0.14 %, a warning far
+under the 2 % limit) against 4,146 at 1e-6 and **12,469 at 1e-5, 23.9 % of the
+cohort**. **eur AMD** produced no warning at all.
+
+The full eleven: AMD in afr, amr and eur; FemInf and MatHem in afr, amr, eas and
+eur. sas has none of the three (its six binary traits are Asth, BenIntNeo,
+EFRMB, HTN, PAD, T2Diab).
+
+**The 13b predictions held, including the negative half.** Only three trait
+types are flagged in 115 models and nothing unpredicted appeared. FemInf and
+MatHem are flagged in EVERY ancestry that fitted them. AMD is the sign-reversed
+case, its tail being the young.
+
+**Two columns say the mechanism is the same everywhere.**
+`empty_decades_in_widest_gap` is **0 on all eleven**, so every case is a
+continuum and the fixture's separated-cluster shape does not occur in real data
+at all; and `contradicting` is 0 throughout, so no boundary sample has an
+outcome that argues against its fitted value.
+
+**EFRMB is the row that matters for the method.** Female-specific, reproductive,
+fitted in both sas and eas, and flagged NOWHERE. So neither "female-specific"
+nor "reproductive" is the predictor: what matters is whether the fitted age
+curve actually collapses to zero over part of the cohort, which is empirical.
+A biology-first list would have flagged EFRMB and been wrong. **The census is
+what to trust; the a priori rule is a weak guide that happened to have no false
+positives here.**
+
+**On the `mu_rest ~ 1.6e-8 x H(p)/f` derivation of #175**: the ordering is
+supported on 10 of the 11 -- eur FemInf and amr MatHem at a predicted ~3e-6 have
+nothing below 1e-8, eas FemInf and MatHem at ~4e-8 have 35 % and 32 % of their
+group below it. **amr AMD is a genuine exception**: predicted lowest at 4.7e-9,
+yet only 1.8 % of its group sits below 1e-8.
+`[ASSUMPTION: at f = 7.9 % the separated group is no longer the small
+perturbation to the deviance that the derivation assumes, and the calculation
+used null rather than residual deviance. Not established.]` Supported ordering,
+one clear miss, NOT a confirmation.
+
+**What this changes.** The owner's decision is about ELEVEN models, not seven,
+and the two with the largest tails (eur and amr AMD) are ones the gate never
+named. NEXT: the driver scan on the four newly flagged models -- AMD above all,
+to test that its tail is the YOUNG -- then the same caveat/exclude/refit
+question over the eleven.
+
 ## eas is VERIFIED at the file level (2026-09-30)
 
 The rule at the top of this file is about PARTICIPANT counts; the counts below
