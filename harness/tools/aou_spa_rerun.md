@@ -898,3 +898,49 @@ overwrites one stale table with another.
 count -- and the table's own `source` column, which must be `v7` for every binary
 trait. Note both when a summary is built; after the fact the file is
 indistinguishable.
+
+### 14d. A long dsub campaign stalls on accumulated Batch job records (2026-09-30)
+
+dsub never deletes the Batch job it creates, so a production campaign accumulates
+records until submissions stop working. **Measured on 2026-09-30: 5,310 Batch jobs
+in `us-central1`**, of which 3,524 were pre-today SUCCEEDED, after a day of ~570
+reruns plus ~570 splice controls plus summaries.
+
+**The symptom is a HANG, not an error.** `submit()` blocked with no output and the
+notebook's interrupt could not clear it, because the block was inside
+`subprocess.run` on a `create_job` the client was retrying. `gcloud batch jobs
+list` hung in a terminal too -- it pages the whole registry. One resubmission was
+silently lost this way and had to be re-issued.
+
+**Diagnosis, from a terminal (the kernel may be wedged):**
+
+```sh
+ps aux | grep -E "dsub|gcloud" | grep -v grep | head
+gcloud batch jobs list --location us-central1 --format='value(name)' | wc -l
+```
+
+**The purge. Deleting a Batch job removes only the job RECORD** -- delivered
+outputs in the bucket and the dsub logs under `dsub/logs/` are untouched. Keep the
+CURRENT day in every state, because `dstat --full` on those records is the only
+history of the day's diagnostics and deleting them makes it unrecoverable.
+
+```sh
+nohup bash -c '
+  gcloud batch jobs list --location us-central1 \
+    --filter="status.state=SUCCEEDED AND createTime<\"YYYY-MM-DDT00:00:00Z\"" \
+    --format="value(name)" > /tmp/purge.list
+  echo "to delete: $(wc -l < /tmp/purge.list)"
+  xargs -n1 -P8 -I{} gcloud batch jobs delete {} --location us-central1 --quiet \
+    < /tmp/purge.list
+  echo DONE
+' > /tmp/purge.log 2>&1 &
+```
+
+Detached, because it is one API call per job and takes tens of minutes. Repeat
+with `status.state=FAILED` and `CANCELLED` for more headroom.
+
+**Two other things the same evening are probably the same cause**, not
+coincidences: repeated `VMs not functioning within the time window 1080 seconds`
+followed by requeues, and `CODE_GCE_ZONE_RESOURCE_POOL_EXHAUSTED` on jobs that had
+scheduled cleanly earlier in the day. **So purge BEFORE a large campaign, not
+after it stalls.**
