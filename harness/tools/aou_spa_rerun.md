@@ -871,3 +871,30 @@ accepted change becomes accepted for a different reason.
 **Do not `--force` past it.** Two prefixes of 444 are blocked; nothing wrong was
 written, and this is the only refusal in the whole rollout across sas, eas, afr,
 amr and eur.
+
+### 14c. The `summary_v4/` tables were STALE, and sas's "quiet" verdict rested on one (2026-09-30)
+
+`aou_flexrv_summary.sh` writes `summary_v4/<anc>.flexrv_vs_skato.v4.tsv.gz`
+whatever it read -- the filename and `RUNTAG` are identical for a pre-fix and a
+post-fix build -- so an existing file looks like a completed step and says
+nothing about which inputs went into it.
+
+Measured on 2026-09-30, object timestamps: afr, amr, eur and **sas** all dated
+**2026-09-28**, i.e. BEFORE the #172 reruns; only eas was rebuilt (that day,
+11:35). sas's table reads `{'v4': 163347, 'fixed': 109589}` -- **not one `v7`
+row**.
+
+**So the step-back handoff's record of sas as "done, quiet" for summary and
+comparison was drawn from PRE-FIX data.** sas's stage check and splice control
+are independent of the summary and stand; it is only the GENE-LEVEL verdict that
+is unverified, and `submit_summary("sas")` must be re-run before it can be
+claimed. The same applies to afr, amr and eur: their 09-28 tables are pre-fix and
+must be rebuilt AFTER their splices complete, not before -- a rebuild over an
+incomplete `flexrv_v7_checked/` silently falls back to the pre-fix files and
+overwrites one stale table with another.
+
+**Two checks that distinguish them, and nothing else does.** The job log's
+`flexrv: N v4 files, M fixed, K v7` line -- `K` must equal the ancestry's job
+count -- and the table's own `source` column, which must be `v7` for every binary
+trait. Note both when a summary is built; after the fact the file is
+indistinguishable.
