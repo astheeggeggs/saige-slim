@@ -150,6 +150,45 @@ the sets the fix rescued are exactly the concentrated ones. And it quantifies
 why the SKAT-O arm was quiet throughout -- beta(1,25) mask weights never come
 near `n_eff` of 4.
 
+## The damage check: eas FemInf and MatHem are CLEAN (2026-09-30)
+
+`aou_flexrv_summary.sh` on eas, verified to have read the post-fix files
+(`flexrv: 25 v4 files, 15 fixed, 15 v7`; 459,932 (trait, gene) pairs over 25
+traits, 18,397 genes each against the splice's 18,401 regions, 458,709 with both
+arms).
+
+Under a clean null the smallest of ~18,350 p-values has a median of 3.78e-5.
+
+| trait | smallest `p_flexrv` | ratio to null median | P(min >= obs) |
+|---|---|---|---|
+| FemInf | 3.90e-5 | 1.03 | 0.49 |
+| MatHem | 1.39e-4 | 3.68 | 0.078 |
+
+FemInf sits on the null median; MatHem is on the CONSERVATIVE side. Nothing
+resembling the 1e-53..1e-93 that opened LEDGER #172.
+
+Three further signs the pathology is gone rather than less visible:
+`set_best` is SCATTERED across the transform ladder (`cbrt0.2`, `cbrt0.3`,
+`cbrt0.9`, `sbeta1.5`, `sbeta2`, `sbeta20`), which is what a null gives and the
+opposite of 13d's failure mode; the worst FlexRV-vs-SKAT-O discordance is ~1,900x
+(FemInf ENSG00000134285, 4.0e-4 against 0.77), an ordinary consequence of a
+differently weighted test rather than the bug's 100-order gap; and `n_sets` reads
+90-96, not 112, which is #142's rung dropping at N ~ 4,050 behaving correctly
+(16 score transforms x 6 surviving MAF transforms, 90 where a score transform
+keeps no marker).
+
+**What this settles**: for these two models the age tails cost nothing
+measurable, so the cohort question is about the ESTIMAND, not correctness. A
+caveat would be honest; a refit would be an improvement, not a repair.
+
+**What it does NOT settle, and must not be read as settling.** These are the two
+SMALLEST cohorts of the eleven (N ~ 4,050) and the models with by far the largest
+tails are untested: eur AMD (2,827 participants at 1e-6) and amr AMD (4,146 at
+1e-6, 23.9 % of the cohort at 1e-5) have not been rerun on IMG9 at all. A 24 %
+tail in 52,000 is a different regime from a 6 % tail in 4,089. **So AMD is the
+priority within the amr/afr/eur reruns** -- a change from "all traits, order
+immaterial", and the recount is what identified where the risk concentrates.
+
 ## THE SEVEN IS ELEVEN (recount, 2026-09-30)
 
 `aou_mu_decades.sh` run over all five ancestries -- 115 binary models. The
