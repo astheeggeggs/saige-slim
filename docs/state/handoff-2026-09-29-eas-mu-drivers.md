@@ -256,6 +256,69 @@ extrapolation does not. Until that is run, the eleven should be read as four
 AMD-shaped models whose status is unknown and seven separation-shaped ones, of
 which the two tested are demonstrably harmless.
 
+## RESOLVED: nine of the eleven are honest extrapolation, not separation (2026-09-30)
+
+The decade columns of `mu_decades` answer the artefact-versus-extrapolation
+question with no further compute, and they split the eleven by COHORT SIZE, not
+by trait.
+
+| | le1e-15 | 1e-15_1e-12 | 1e-12_1e-10 | 1e-10_1e-9 | 1e-9_1e-8 | 1e-8_1e-7 | 1e-7_1e-6 | 1e-6_1e-5 |
+|---|---|---|---|---|---|---|---|---|
+| amr AMD | 0 | 0 | 0 | `<20` | 73 | 1,096 | 2,976 | 8,323 |
+| eur AMD | 0 | 0 | 0 | 0 | 0 | `<20` | 2,823 | 13,678 |
+| afr AMD | 0 | 0 | 0 | 0 | 0 | 0 | `<20` | 1,571 |
+| eur FemInf | 0 | 0 | 0 | 0 | 0 | 0 | 38 | 445 |
+| amr MatHem | 0 | 0 | 0 | 0 | 0 | `<20` | 37 | 178 |
+| eur MatHem | 0 | 0 | 0 | 0 | 28 | 210 | 771 | 2,738 |
+| afr FemInf | 0 | 0 | `<20` | `<20` | 43 | 97 | 291 | 714 |
+| amr FemInf | 0 | 0 | `<20` | `<20` | `<20` | 80 | 185 | 476 |
+| afr MatHem | 0 | 0 | `<20` | `<20` | 33 | 90 | 286 | 729 |
+| **eas FemInf** | `<20` | `<20` | `<20` | `<20` | 28 | 41 | 72 | 135 |
+| **eas MatHem** | `<20` | `<20` | `<20` | 23 | 28 | 64 | 103 | 150 |
+
+**Nine of eleven have nothing below 1e-9 or 1e-12 and a monotone rise toward
+1e-5** -- amr AMD tripling to fifteen-folding per decade. That is the density of
+a population under a smooth age-risk gradient: no floor, no pile.
+
+**Only the two eas models have mass at machine epsilon**, fewer than 20 people
+per decade, and their `min_fitted` of 2.22e-16 is exactly `2^-52`, double
+precision's epsilon, IDENTICAL in both. A fitted value sitting precisely on the
+floating-point floor is a numerical artefact, not an estimate.
+
+### CORRECTION to this file's earlier claim
+
+An earlier section of this file says the eas tails "IS separation, on a
+CONTINUOUS covariate". **That is largely wrong and is corrected here.**
+Separation means the likelihood is maximised at infinite coefficients. What nine
+of these eleven have is finite, well-estimated coefficients extrapolating a steep
+age effect across a wide age range -- a 25-year-old's AMD risk genuinely being of
+order 1e-6, which is the model being RIGHT. Only the two eas models show the
+`glm` stopping signature at all, and marginally.
+
+### What it costs, and what it does not
+
+There is **no correctness problem in any of the eleven**. What the tails cost is
+EFFECTIVE SAMPLE SIZE -- such a participant contributes ~`mu(1-mu)`, i.e. nothing,
+to the score -- and they shift the ESTIMAND toward a population that includes
+people who cannot have the outcome. Both real, neither a bug.
+
+- **Caveat** is adequate for all eleven on correctness grounds.
+- A **restricted-cohort refit** is still the better ANALYSIS for the pregnancy
+  traits, because their estimand is genuinely wrong -- an improvement, not a
+  repair.
+- The **#174 guard loses its last motivation on this data**: with nine models
+  holding nothing below 1e-9 there is no pinned group to guard, and in the two
+  that do it is a handful of people with no measurable effect. It stays frozen.
+- The **`--tol` refit is NOT needed**; this table answered it for free.
+
+### LEDGER #175's framing, softened
+
+The row's statistic complaint stands -- the check reported `none_reported` for
+models with thousands of participants at 1e-6. But its premise that a SEPARATED
+GROUP rests somewhere is not what production data show. What the gate misses is a
+smooth low-risk TAIL, which is a different and less alarming thing, and the
+`mu_rest ~ 1.6e-8 x H/f` derivation describes only the two smallest cohorts.
+
 ## THE SEVEN IS ELEVEN (recount, 2026-09-30)
 
 `aou_mu_decades.sh` run over all five ancestries -- 115 binary models. The
