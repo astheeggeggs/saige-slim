@@ -256,6 +256,66 @@ extrapolation does not. Until that is run, the eleven should be read as four
 AMD-shaped models whose status is unknown and seven separation-shaped ones, of
 which the two tested are demonstrably harmless.
 
+## The old-vs-new comparison: the tails' harmlessness is CONDITIONAL on #172's fix (2026-09-30)
+
+`aou_flexrv_summary.sh` run twice on eas -- once on `flexrv_v7_checked/` and once
+with `FLEXRV_V7_DIR` pointed at a directory that does not exist, so it falls back
+to `flexrv_v4_fixed/` and tags rows `source = fixed`. Output directories
+`summary_v4/` and `summary_v4_prefix/`; 458,709 (trait, gene) pairs joined.
+
+**The fix is surgical, not a broad shift.** Of the 275,519 BINARY genes (the
+183,190 `v4` rows are quantitative traits, identical in both tables by
+construction and not to be counted):
+
+| | |
+|---|---|
+| identical `p_FlexRV` | 258,455 = **93.8 %** |
+| moved at all | 17,064 = 6.2 % |
+| moved more than 2x | 92 genes |
+| moved more than 2x DOWNWARD | 46 genes |
+| median ratio | 1.0000 |
+
+**But every one of the ten largest increases is FemInf or MatHem**, out of
+fifteen traits -- chance would put about 1.3 of them there. Seven genes moved
+from a `p_FlexRV` between 3.3e-91 and 8.4e-9 to a nominal value:
+
+| trait | gene | v4 | v7 | best set |
+|---|---|---|---|---|
+| MatHem | ENSG00000128607 | 3.3e-91 | 1.000000 | `AM_cbrt0.3_unw` |
+| MatHem | ENSG00000171136 | 3.6e-37 | 0.996 | `AM_cbrt0.6_MACsparse` |
+| MatHem | ENSG00000181722 | 3.7e-14 | 0.033 | `AM_sbeta5_MACsparse` |
+| FemInf | ENSG00000146374 | 2.4e-12 | 0.998 | `AM_unw_MACsparse` |
+| FemInf | ENSG00000135040 | 1.0e-9 | 0.051 | `AM_cbrt0.7_MACsparse` |
+| MatHem | ENSG00000135040 | 1.6e-9 | 0.033 | `AM_cbrt0.7_MACsparse` |
+| MatHem | ENSG00000187474 | 8.4e-9 | 0.0052 | `AM_sbeta1.5_MACsparse` |
+
+### QUALIFICATION of "the tails cost nothing measurable"
+
+The damage-check section above says the eas tails "cost nothing measurable, so
+the cohort question is about the ESTIMAND, not correctness". **That is true only
+AFTER the fix.** Before it, those two models were the ONLY ones in the arm
+carrying spurious hits. So the tails are not harmless in themselves; they are
+harmless **conditional on LEDGER #172's routing**. The damaging thing is the
+COMBINATION -- a weighted cell whose weight one atom carries, where that atom is
+a carrier with a tiny fitted probability. The tails supply the tiny
+probabilities; the transforms supply the concentration. Neither alone did it.
+
+### Consequences
+
+- **The AMD read is now the important one, not a formality.** eur and amr AMD
+  carry the largest tails of the eleven -- 2,827 and 4,146 participants at 1e-6
+  against eas's 175 and 244 -- and NEITHER has ever run on IMG9. On this evidence
+  their v4 results plausibly hold spurious hits of the same kind, and nobody has
+  looked.
+- **The reruns are not purely hygiene for the tail models.** Anyone who read v4
+  FlexRV results for eas FemInf or MatHem saw seven genes that are not real.
+- The downward tail is benign: the largest decrease is 0.84 -> 0.011, of no
+  consequence after 18,000 genes.
+- Method note for the comparison: both tables carry the same filename and
+  `RUNTAG`, so a self-comparison is easy to produce by accident and would show a
+  median ratio of exactly 1.0000 -- which is ALSO the right answer here. Assert
+  on the `source` columns (`fixed` against `v7`) before reading anything.
+
 ## RESOLVED: nine of the eleven are honest extrapolation, not separation (2026-09-30)
 
 The decade columns of `mu_decades` answer the artefact-versus-extrapolation
