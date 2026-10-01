@@ -1136,6 +1136,42 @@ would say the gap is wider than the two amr prefixes suggested.
 Whatever the four report, the honest statement for a row accepted here is **"no
 statistic moved"**, NOT "the row is explained" -- see the limit stated above.
 
+#### OUTCOME, 2026-10-01: all four spliced clean, and the prediction was 2x out
+
+| prefix | rows accepted on statistic identity |
+|---|---|
+| `fxv4-amr-pancreat-b0` | **70** |
+| `fxv4-amr-stroke-b0` | **70** |
+| `fxv4-afr-asth-b0` | **84** |
+| `fxv4-afr-vte-b0` | **84** |
+
+All four wrote `.splice.txt`, which is only reached after every `splice_one`
+succeeds -- so none refused. amr and afr are now 124/124.
+
+**The prediction of 140 was right in substance and wrong by exactly a factor of
+two, and the reason is in this script.** `changed.rows` is
+`comm -3 o.all n.all`, which emits the lines unique to EACH side, so one modified
+row appears TWICE -- its old version and its new version. The refusal message
+counts LINES (`bad++` per line) and said 140; CONTROL 1c counts distinct
+MarkerIDs (`sidrow[$3]`) and says 70. **When comparing a refusal count against an
+acceptance count, halve the refusal count first.**
+
+**Three structural signatures now support 14b's account**, none of which was
+predicted and all of which would be odd coincidences otherwise:
+1. All four refusals are the SAME batch, `b0` = `chr1_6_9_13_15`, in both
+   ancestries.
+2. The two amr traits give the SAME count (70) and the two afr traits give the
+   SAME count (84) -- same genotypes and group file, different phenotype, so the
+   affected rows are fixed by the ANNOTATION STRUCTURE and not by the trait.
+3. The counts differ BETWEEN ancestries (70 vs 84), which is what differing
+   variant sets after per-ancestry QC should give.
+
+That is consistent with "a gene whose rare variants are largely unscored by
+AlphaMissense, so `unw` keeps every allele while every nonlinear transform keeps
+only the scored ones" -- the mechanism 14b names. It remains an account of WHY
+the twin bound is loose, not proof that each row's new p is right; CONTROL 1c
+says only that no statistic moved.
+
 #### The exact fix, SPECIFIED and NOT built (owner's call, 2026-09-30)
 
 CONTROL 1c is a backstop. The exact fix is for the RUN to disclose the #166
