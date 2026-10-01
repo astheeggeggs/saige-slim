@@ -400,10 +400,34 @@ new = pd.read_csv(f"{BUCKET}/.../summary_v4/{anc}.flexrv_vs_skato.v4.tsv.gz", se
 old = pd.read_csv(f"{BUCKET}/.../summary_v4_prefix/{anc}.flexrv_vs_skato.v4.tsv.gz", sep="\t")
 j = new.merge(old, on=["anc", "trait", "gene"], suffixes=("_new", "_old"))
 assert (j.source_new == "v7").any() and (j.source_old == "fixed").any(), "self-comparison"
-b = j[(j.source_new == "v7") & (j.source_old == "fixed")]        # BINARY genes only
-# the v4-sourced rows are quantitative, identical in both tables BY CONSTRUCTION
-# and must not be counted -- on eas they were 183,190 of 458,709
+b = j[(j.source_new == "v7") & (j.source_old.isin(["fixed", "v4"]))]   # BINARY genes
 ```
+
+**`source_old == "fixed"` ALONE IS A BIASED SUBSET -- do not use it** (found
+2026-10-01, after it had already produced a verdict). `flexrv_v4_fixed/` holds
+only the chromosomes the EARLIER filtered rerun (#164/#166) touched; everywhere
+else the summary falls back to `flexrv_v4/` and tags the row `source = v4`. So
+that filter silently restricts the comparison to those chromosomes, and they were
+selected by RECORDED SPA FAILURES -- a criterion ORTHOGONAL to #172's damage,
+which is converged-but-wrong and was never recorded as a failure. Measured: it
+cost eur 38 % of its genes (366,633 of 590,081, per-trait median 11,339 against a
+max of 18,441) while leaving amr almost untouched, so it degrades one ancestry's
+verdict and not another's. Both directories are pre-#172 states and both are valid
+old sides; accepting either recovers full coverage. `source_new == "v7"` is what
+identifies a binary trait, so quantitative rows stay out without naming them.
+
+**Check the coverage before reading any verdict**, because the deficit is
+invisible in the ratio:
+
+```python
+g = b.groupby("trait").size()
+print(len(b), "genes | per-trait min", g.min(), "median", int(g.median()), "max", g.max())
+```
+
+A per-trait minimum far below the median means some traits are short. The NEW
+side should be flat (the #172 rerun was `REGIONS=ALL`): eur reads 18,435-18,441.
+A short NEW side would be a lost chromosome instead (LEDGER #170, read
+`chrStatus`); a short OLD side is this.
 
 Then: the identical fraction, the count moved more than 2x in each direction,
 the median ratio, and the ten largest INCREASES with their `set_best`. On eas
