@@ -131,6 +131,9 @@ ReadModel <- function(GMMATmodelFile = "", chrom = "", LOCO = TRUE, is_Firth_bet
   # The eligibility gates (R/FitGates.R), before any work is done on the model.
   checkModelEligibility(modglmm, GMMATmodelFile, minCaseCount, separationCheck,
                         convergenceCheck, separationMaxFraction)
+  # LEDGER #175 repair (b): a DIAGNOSTIC, reported whatever the fit-gate
+  # settings say, because it refuses nothing and changes no p-value.
+  reportEffectiveN(modglmm$mu, modglmm$traitType, basename(GMMATmodelFile))
   tau <- modglmm$theta
   N <- length(modglmm$mu)
   if (modglmm$traitType == "binary") {

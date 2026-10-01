@@ -456,3 +456,60 @@ test_that("#175: a separated group straddling 1e-8 is reported as the part below
   expect_warning(SAIGE:::checkMuSeparation(mu, "sixty.rda", "error"),
                  "has 13 of 1000 fitted values")
 })
+
+# LEDGER #175, repair (b) (2026-10-01): the effective sample size implied by a
+# binary model's fitted values. sum(mu(1-mu)) IS the Fisher information the
+# score tests divide by, so the ratio to what a cohort of the same size at the
+# same prevalence would carry is the effective-N fraction. It replaces counting
+# fitted values below an arbitrary floor: dimensionless, no threshold to tune,
+# and stable under prevalence, group size and N.
+#
+# It is a DIAGNOSTIC -- it refuses nothing and changes no p-value -- so its
+# validation is a hand computation plus the invariants, not a null sweep.
+
+test_that("LEDGER #175(b): effective N matches a hand computation", {
+  f <- SAIGE:::effectiveSampleSize
+  # a balanced, perfectly flat model: every mu equal, so no information is lost
+  mu <- rep(0.3, 1000)
+  e <- f(mu)
+  expect_equal(e$n, 1000L)
+  expect_equal(e$neff, 1000, tolerance = 1e-12)
+  expect_equal(e$frac, 1, tolerance = 1e-12)
+
+  # a hand case: half at 0.5, half at 0.1
+  mu <- c(rep(0.5, 100), rep(0.1, 100))
+  e <- f(mu)
+  info <- 100 * 0.25 + 100 * 0.09          # 34
+  pbar <- 0.3
+  expect_equal(e$info, info, tolerance = 1e-12)
+  expect_equal(e$pbar, pbar, tolerance = 1e-12)
+  expect_equal(e$neff, info / (pbar * (1 - pbar)), tolerance = 1e-12)
+  expect_lt(e$frac, 1)                      # dispersion always costs information
+})
+
+test_that("LEDGER #175(b): a pinned group costs exactly its share of the information", {
+  f <- SAIGE:::effectiveSampleSize
+  base <- rep(0.4, 900)
+  # 100 samples pinned at ~0 contribute ~0 to sum(mu(1-mu))
+  e_pin  <- f(c(base, rep(1e-12, 100)))
+  e_none <- f(base)
+  # the pinned samples add to n but almost nothing to the information
+  expect_equal(e_pin$info, e_none$info, tolerance = 1e-8)
+  expect_equal(e_pin$n, 1000L)
+  expect_lt(e_pin$frac, e_none$frac)
+  # and the loss is visible as a fraction without any threshold being chosen
+  expect_lt(e_pin$frac, 0.95)
+})
+
+test_that("LEDGER #175(b): it is scale-free in N and defined only for binary", {
+  f <- SAIGE:::effectiveSampleSize
+  # the same mu spectrum at 10x the size gives the same FRACTION
+  spec <- c(rep(0.5, 10), rep(0.05, 10))
+  expect_equal(f(spec)$frac, f(rep(spec, 10))$frac, tolerance = 1e-12)
+  # degenerate inputs return NULL rather than NaN
+  expect_null(f(numeric(0)))
+  expect_null(f(rep(0, 100)))               # pbar = 0, denominator vanishes
+  expect_null(f(rep(1, 100)))
+  # quantitative traits report nothing at all
+  expect_null(SAIGE:::reportEffectiveN(spec, "quantitative", "lbl"))
+})

@@ -362,6 +362,65 @@ checkMuSeparation <- function(mu, label, action, maxFraction = 0.02) {
 #                          more complete than step 1's covariate-cell scan --
 #                          that scan sees only dummy columns, so it cannot see
 #                          a zero-case reference level, while this can.
+# LEDGER #175, repair (b) (2026-10-01). What a covariate model that extrapolates
+# steeply costs is EFFECTIVE SAMPLE SIZE, not validity -- measured on the AoU
+# arm, where the flagged models read calibrated or concordant with SKAT-O, so no
+# correctness defect is attached to the row. The old check counts fitted values
+# below an arbitrary floating-point floor, which answers "how many people sit
+# under 1e-8" when the question is "how much of this study's information has
+# evaporated".
+#
+# `sum(mu (1 - mu))` IS the Fisher information the score tests divide by, so the
+# ratio to what a cohort of the same size at the same prevalence would carry is
+# the effective-N fraction:
+#
+#   N_eff = sum(mu (1 - mu)) / (pbar (1 - pbar)),   pbar = mean(mu)
+#
+# Dimensionless, needs NO threshold on a fitted value (the defect both other
+# candidate repairs inherit -- a fitted-value cut is calibrated against glm's own
+# stopping tolerance, an implementation detail), and stable under prevalence,
+# group size and N, so it scales to thousands of traits without calibration.
+#
+# It is a DIAGNOSTIC, not a gate: it is reported unconditionally, changes no
+# p-value and refuses nothing. A printed line cannot move a golden (the goldens
+# are output files), which is why this needs no re-baseline.
+effectiveSampleSize <- function(mu) {
+  mu <- mu[is.finite(mu)]
+  n <- length(mu)
+  if (n == 0L) {
+    return(NULL)
+  }
+  pbar <- mean(mu)
+  denom <- pbar * (1 - pbar)
+  if (!is.finite(denom) || denom <= 0) {
+    return(NULL)
+  }
+  info <- sum(mu * (1 - mu))
+  neff <- info / denom
+  list(n = n, pbar = pbar, info = info, neff = neff, frac = neff / n)
+}
+
+#' Report the effective sample size implied by a binary model's fitted values.
+#' Quantitative traits have no mu(1 - mu), so nothing is reported for them.
+#' @noRd
+reportEffectiveN <- function(mu, traitType, label) {
+  if (!identical(traitType, "binary")) {
+    return(invisible(NULL))
+  }
+  e <- effectiveSampleSize(mu)
+  if (is.null(e)) {
+    return(invisible(NULL))
+  }
+  cat("Effective sample size (", label, "): ", signif(e$neff, 6), " of ",
+      e$n, " (", signif(100 * e$frac, 4), "% of nominal; sum mu(1-mu) = ",
+      signif(e$info, 6), ", mean fitted = ", signif(e$pbar, 4),
+      "). LEDGER #175: this is the information the score tests divide by, so a ",
+      "value well below nominal means a covariate model that extrapolates ",
+      "steeply has taken real power -- it is not a validity problem and nothing ",
+      "is refused on it.\n", sep = "")
+  invisible(e)
+}
+
 checkModelEligibility <- function(modglmm, modelFile, minCaseCount,
                                   separationCheck, convergenceCheck = "error",
                                   separationMaxFraction = 0.02) {
