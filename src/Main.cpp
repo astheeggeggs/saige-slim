@@ -320,6 +320,19 @@ struct ExactByWeightRecord {
 };
 static std::vector<ExactByWeightRecord> g_exactByWeight;
 static std::mutex g_exactByWeightMutex;
+// LEDGER #176 (2026-10-01): the cells the routing above WANTED but could not
+// take -- concentrated enough that one atom carries the weight (Kish's
+// effective carrier count at or below --max_MAC_for_ER) but with MORE than
+// kExactByWeightCarriers material carriers, so the exact test cannot enumerate
+// them. They fall through to the saddlepoint, which is the kernel #172 found
+// converging to a confident wrong answer in exactly this regime, and until now
+// NOTHING said so: the AoU run that produced #176's unexplained BETA/SE
+// contradiction reported zero fallbacks, passed every stage check and had its
+// output accepted by the splice control. This is OBSERVATION ONLY -- no test,
+// no p-value and no routing decision changes -- and it is the instrument the
+// next order of magnitude in trait count needs, since #176 was found by a human
+// putting two ancestries side by side.
+static std::vector<ExactByWeightRecord> g_exactByWeightAboveCap;
 static void recordExactByWeight(const std::string & t_kind, const std::string & t_region,
                                 const std::string & t_group, const std::string & t_maxMAF,
                                 const std::string & t_weight, double t_MAC, double t_neff, unsigned int t_material){
@@ -328,6 +341,17 @@ static void recordExactByWeight(const std::string & t_kind, const std::string & 
   rec.MAC = t_MAC; rec.neff = t_neff; rec.material = t_material;
   std::lock_guard<std::mutex> lock(g_exactByWeightMutex);
   g_exactByWeight.push_back(rec);
+}
+// The same record for a cell the cap excluded; same mutex, since the two are
+// written from the same worker pool at the same two call sites.
+static void recordExactByWeightAboveCap(const std::string & t_kind, const std::string & t_region,
+                                        const std::string & t_group, const std::string & t_maxMAF,
+                                        const std::string & t_weight, double t_MAC, double t_neff, unsigned int t_material){
+  ExactByWeightRecord rec;
+  rec.kind = t_kind; rec.region = t_region; rec.group = t_group; rec.maxMAF = t_maxMAF; rec.weight = t_weight;
+  rec.MAC = t_MAC; rec.neff = t_neff; rec.material = t_material;
+  std::lock_guard<std::mutex> lock(g_exactByWeightMutex);
+  g_exactByWeightAboveCap.push_back(rec);
 }
 // LEDGER #174 (2026-09-29): every test in which pinned samples were left out
 // of the saddlepoint's vector, or would have been but for the budget, with the
@@ -372,6 +396,7 @@ static void atomDominanceAt(const arma::vec & t_dense, const arma::uvec & t_idx,
 void resetExactByWeightRecordsInCPP(){
   std::lock_guard<std::mutex> lock(g_exactByWeightMutex);
   g_exactByWeight.clear();
+  g_exactByWeightAboveCap.clear();   // LEDGER #176: the two are reset together
 }
 
 // [[Rcpp::export]]
@@ -382,6 +407,27 @@ Rcpp::List getExactByWeightRecordsInCPP(){
   Rcpp::NumericVector MAC(n), neff(n), material(n);
   for(unsigned int k = 0; k < n; k++){
     const ExactByWeightRecord & r = g_exactByWeight[k];
+    kind[k] = r.kind; region[k] = r.region; group[k] = r.group; maxMAF[k] = r.maxMAF; weight[k] = r.weight;
+    MAC[k] = r.MAC; neff[k] = r.neff; material[k] = (double)r.material;
+  }
+  return Rcpp::List::create(Rcpp::Named("count") = (double)n,
+                            Rcpp::Named("kind") = kind, Rcpp::Named("region") = region,
+                            Rcpp::Named("group") = group, Rcpp::Named("maxMAF") = maxMAF,
+                            Rcpp::Named("weight") = weight, Rcpp::Named("MAC") = MAC,
+                            Rcpp::Named("n_eff") = neff, Rcpp::Named("n_material") = material);
+}
+
+// LEDGER #176: the same list for the cells the cap excluded. A separate export
+// rather than a column on the one above, so the existing sidecar's schema --
+// which the AoU splice control reads as its acceptance list -- does not move.
+// [[Rcpp::export]]
+Rcpp::List getExactByWeightAboveCapRecordsInCPP(){
+  std::lock_guard<std::mutex> lock(g_exactByWeightMutex);
+  const unsigned int n = g_exactByWeightAboveCap.size();
+  std::vector<std::string> kind(n), region(n), group(n), maxMAF(n), weight(n);
+  Rcpp::NumericVector MAC(n), neff(n), material(n);
+  for(unsigned int k = 0; k < n; k++){
+    const ExactByWeightRecord & r = g_exactByWeightAboveCap[k];
     kind[k] = r.kind; region[k] = r.region; group[k] = r.group; maxMAF[k] = r.maxMAF; weight[k] = r.weight;
     MAC[k] = r.MAC; neff[k] = r.neff; material[k] = (double)r.material;
   }
@@ -4147,6 +4193,12 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
               recordExactByWeight("ultra_rare", regionName, annoStringVec.at(jU), maxMAFLabel(maxMAFVec.at(mU)),
                                   (q_weight > 1) ? t_weightNames.at(r) : std::string(""), MAC_nw, neff, material);
             }
+          }else if(neff <= g_cfg.MACCutoffforER && km == 0){
+            // LEDGER #176: concentrated, but above the enumeration cap. Counted,
+            // not routed -- the test that follows is unchanged.
+            const unsigned int jU = jmr / (q_maf * q_weight), mU = (jmr / q_weight) % q_maf;
+            recordExactByWeightAboveCap("ultra_rare", regionName, annoStringVec.at(jU), maxMAFLabel(maxMAFVec.at(mU)),
+                                        (q_weight > 1) ? t_weightNames.at(r) : std::string(""), MAC_nw, neff, material);
           }
         }
       }
@@ -4597,6 +4649,11 @@ if(t_regionTestType == "BURDEN"){
                   recordExactByWeight("burden", regionName, annoStringVec.at(j), maxMAFLabel(maxMAFVec.at(m)),
                                       (q_weight > 1) ? t_weightNames.at(r) : std::string(""), MAC, neff, material);
                 }
+              }else if(neff <= g_cfg.MACCutoffforER && km == 0){
+                // LEDGER #176: concentrated, above the enumeration cap. See the
+                // ultra-rare site; observation only.
+                recordExactByWeightAboveCap("burden", regionName, annoStringVec.at(j), maxMAFLabel(maxMAFVec.at(m)),
+                                            (q_weight > 1) ? t_weightNames.at(r) : std::string(""), MAC, neff, material);
               }
             }
           }

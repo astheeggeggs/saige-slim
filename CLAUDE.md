@@ -488,7 +488,15 @@ test whatever its allele count**: Kish's effective carrier count on the vector t
 carriers only. On AoU the saddlepoint had converged to 1e-53..1e-93 on such cells where ~1e-3 was right, by two
 mechanisms: the variance-ratio rescaling of the score pushing it past the atom, and a pinned sample's phantom atom.
 Every routed cell is named in `<SAIGEOutputFile>.exactByWeight.txt` and counted in `Exact test by weight:`;
-`SAIGE_EXACT_BY_WEIGHT=0` restores the old routing. The bundled REVEL scores never make one atom dominate above
+`SAIGE_EXACT_BY_WEIGHT=0` restores the old routing. **A cell the routing WANTS and cannot take -- concentrated
+but above the 13-carrier enumeration cap -- is counted in `Concentrated cells above the exact test's enumeration
+cap:` and named in `<SAIGEOutputFile>.exactByWeightAboveCap.txt`** (LEDGER #176, 2026-10-01; goldens P77/P78,
+`input/group_new_snpid_withWeights_abovecap.txt`). That is OBSERVATION ONLY -- no test, no p-value and no routing
+decision moves -- and it exists because the AoU run carrying #176 reported zero fallbacks, passed every stage
+check and was accepted by the splice control, so a human comparing two ancestries was the only instrument.
+**The atom fixtures CANNOT drill it**: their non-atom weight is `1e-7`, below `kExactByWeightTieEps` (1e-6), so
+every non-atom carrier is immaterial and `n_material` is 1 or 2 -- the routing branch only. The above-cap fixture
+is that file with the one value raised to 0.01. The bundled REVEL scores never make one atom dominate above
 the cutoff, so the routing is drilled on its own fixtures (goldens P69-P71; `test-step2-exact-by-weight.R`); the
 exact test reports the MID-p, upstream's convention. A SKAT-O cell whose custom weights span 1e-9 fails in SKAT's
 decomposition with the routing on or off (a conditioning artefact, counted by #57).

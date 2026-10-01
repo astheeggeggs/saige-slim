@@ -1,0 +1,4 @@
+Kind	Region	Group	max_MAF	Weight	MAC	n_eff	n_material
+ultra_rare	GENE1	lof	0.001		5	1.08116753298681	5
+ultra_rare	GENE1	missense;lof	0.001		10	1.18703167149565	10
+ultra_rare	GENE1	missense;lof;synonymous	0.001		10	1.18703167149565	10

@@ -17,6 +17,10 @@ getExactByWeightRecordsInCPP <- function() {
     .Call('_SAIGE_getExactByWeightRecordsInCPP', PACKAGE = 'SAIGE')
 }
 
+getExactByWeightAboveCapRecordsInCPP <- function() {
+    .Call('_SAIGE_getExactByWeightAboveCapRecordsInCPP', PACKAGE = 'SAIGE')
+}
+
 getSpaPinnedModelInCPP <- function(t_modelIndex) {
     .Call('_SAIGE_getSpaPinnedModelInCPP', PACKAGE = 'SAIGE', t_modelIndex)
 }

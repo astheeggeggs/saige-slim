@@ -1776,6 +1776,61 @@ run step2_plink_marker_pinned_planted.log R2 step2_SPAtests.R \
   $PINP_MODEL \
   --is_output_moreDetails=TRUE
 
+# P77-P78 (2026-10-01, LEDGER #176): the cells the #172 routing WANTS and CANNOT
+# TAKE. The exact test enumerates over the material carriers, so the routing is
+# capped at kExactByWeightCarriers = 13; a cell that is concentrated (Kish's
+# effective carrier count at or below --max_MAC_for_ER) but has MORE than 13
+# material carriers falls back to the saddlepoint -- the kernel #172 found
+# converging to a confident wrong answer in exactly that regime -- and until
+# this counter NOTHING reported it. The run now prints
+# `Concentrated cells above the exact test's enumeration cap: N ...` and, when
+# N > 0, writes `<out>.exactByWeightAboveCap.txt`. OBSERVATION ONLY: no test, no
+# p-value and no routing decision changes, so no earlier golden moves.
+#
+# input/group_new_snpid_withWeights_abovecap.txt is P70/P71's atom fixture with
+# ONE value changed: the non-atom weight 1e-7 -> 0.01. That is the whole point.
+# 1e-7 is BELOW kExactByWeightTieEps (1e-6), so on the atom fixture every
+# non-atom carrier is immaterial and `n_material` is 1 or 2 -- which is why
+# P69-P71 can only ever exercise the branch that ROUTES, never the one that
+# gives up, and why a counter written against them alone would have shipped
+# reading 0 everywhere with no way to tell correct from dead. At 0.01 the
+# non-atom carriers are material while the atom still dominates the weight, so
+# `n_eff` stays low and `n_material` crosses the cap.
+#
+# PREDICTED from the genotypes before the first run (docs/state/prediction-176-counter.md),
+# at the default --max_MAC_for_ER=4, decoding the bed and applying the collapse:
+#   GENE2 missense;lof 0.001   n_eff 2.27  n_material 15   <- just over the cap
+#   GENE1 lof          0.01    n_eff 2.06  n_material 45   (ultra_rare site)
+#   GENE1 missense;lof 0.01    n_eff 2.33  n_material 54
+#   GENE2 missense;lof 0.01    n_eff 2.85  n_material 41
+# and still ROUTING (material at or below 13, so they stay in .exactByWeight.txt):
+#   GENE1 lof 0.001 n_eff 1.08 material 5; GENE1 missense;lof 0.001 n_eff 1.19 material 10
+# The same model reproduces P69-P71's committed sidecar (material 1 and 2) on the
+# 1e-7 fixture, which is the control that says the arithmetic is right.
+# tests/testthat/test-step2-exact-by-weight.R drills all three outcomes.
+
+# P77: SKAT-O, so the ultra-rare pass routes (sidecar kind "ultra_rare")
+run step2_plink_customweight_abovecap_skato.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_customweight_abovecap_skato.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid_withWeights_abovecap.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --r.corr=0 --is_fastTest=FALSE
+
+# P78: the same fixture on the BURDEN path (sidecar kind "burden")
+run step2_plink_customweight_abovecap_burden.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_customweight_abovecap_burden.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid_withWeights_abovecap.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --r.corr=1 --is_fastTest=FALSE
+
 echo "### byte identity: PGEN reader vs PLINK reader (step0/step1)"
 PGEN_IDENTITY_FAILS=0
 check_identical() { # check_identical <plink-file> <pgen-file>

@@ -57,6 +57,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// getExactByWeightAboveCapRecordsInCPP
+Rcpp::List getExactByWeightAboveCapRecordsInCPP();
+RcppExport SEXP _SAIGE_getExactByWeightAboveCapRecordsInCPP() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(getExactByWeightAboveCapRecordsInCPP());
+    return rcpp_result_gen;
+END_RCPP
+}
 // getSpaPinnedModelInCPP
 Rcpp::List getSpaPinnedModelInCPP(unsigned int t_modelIndex);
 RcppExport SEXP _SAIGE_getSpaPinnedModelInCPP(SEXP t_modelIndexSEXP) {
@@ -2319,6 +2329,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_flexrvWeightsInCPP", (DL_FUNC) &_SAIGE_flexrvWeightsInCPP, 6},
     {"_SAIGE_resetExactByWeightRecordsInCPP", (DL_FUNC) &_SAIGE_resetExactByWeightRecordsInCPP, 0},
     {"_SAIGE_getExactByWeightRecordsInCPP", (DL_FUNC) &_SAIGE_getExactByWeightRecordsInCPP, 0},
+    {"_SAIGE_getExactByWeightAboveCapRecordsInCPP", (DL_FUNC) &_SAIGE_getExactByWeightAboveCapRecordsInCPP, 0},
     {"_SAIGE_getSpaPinnedModelInCPP", (DL_FUNC) &_SAIGE_getSpaPinnedModelInCPP, 1},
     {"_SAIGE_recordSpaPinnedInCPP", (DL_FUNC) &_SAIGE_recordSpaPinnedInCPP, 9},
     {"_SAIGE_resetSpaPinnedRecordsInCPP", (DL_FUNC) &_SAIGE_resetSpaPinnedRecordsInCPP, 0},

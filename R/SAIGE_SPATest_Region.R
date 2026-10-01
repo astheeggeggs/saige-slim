@@ -1956,6 +1956,7 @@ SAIGE.Region <- function(mu,
   skatFailureSummary(OutputFile)
   spaFallbackSummary(OutputFile) # LEDGER #164
   exactByWeightSummary(OutputFile) # LEDGER #172
+  exactByWeightAboveCapSummary(OutputFile) # LEDGER #176: observation only
   spaPinnedSummary(OutputFile) # LEDGER #174
   skatoDedupeSummary()
   burdenMemoSummary()

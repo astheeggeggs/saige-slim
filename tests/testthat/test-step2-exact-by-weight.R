@@ -194,3 +194,98 @@ test_that("P70/P71: the custom-weights atom fixture routes on both region paths"
     if (!burden) expect_length(grep("^SKAT failures: 0", log, value = TRUE), 1L)
   }
 })
+
+# LEDGER #176 (2026-10-01): the counter for cells the routing WANTS and cannot
+# take. The exact test enumerates over the material carriers, so the routing is
+# capped at 13 of them; a cell that is concentrated (Kish's effective carrier
+# count at or below --max_MAC_for_ER) but has MORE than 13 material carriers
+# falls back to the saddlepoint -- the kernel #172 found converging to a
+# confident wrong answer in exactly that regime -- and nothing reported it.
+# Observation only: no test, no p-value and no routing decision changes.
+#
+# P69-P71 CANNOT drill this and that is why the fixture exists. Their non-atom
+# weight is 1e-7, BELOW kExactByWeightTieEps (1e-6), so every non-atom carrier
+# is immaterial and n_material is 1 or 2 -- the ROUTING branch only. The
+# above-cap fixture is P70/P71's file with that one value raised to 0.01, so the
+# non-atom carriers become material while the atom still carries the weight.
+# Predictions for every cell below were computed from the genotypes BEFORE the
+# first run (docs/state/prediction-176-counter.md) and all matched.
+
+abovecap_args <- function(out, burden) {
+  c(common_args, paste0("--SAIGEOutputFile=", out),
+    "--groupFile=./input/group_new_snpid_withWeights_abovecap.txt",
+    "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+    "--maxMAF_in_groupTest=0.0001,0.001,0.01",
+    if (burden) "--r.corr=1" else character())
+}
+abovecap_line <- function(log) {
+  grep("^Concentrated cells above the exact test's enumeration cap: ", log, value = TRUE)
+}
+abovecap_count <- function(log) {
+  as.integer(sub("^Concentrated cells above the exact test's enumeration cap: ([0-9]+).*$",
+                 "\\1", abovecap_line(log)))
+}
+
+test_that("P77/P78: the above-cap fixture counts the cells the routing cannot take", {
+  for (burden in c(FALSE, TRUE)) {
+    g <- if (burden) "plink_group_customweight_abovecap_burden.txt"
+         else        "plink_group_customweight_abovecap_skato.txt"
+    out <- tempfile(fileext = ".txt")
+    st <- run_saige_cli("step2_SPAtests.R", abovecap_args(out, burden))
+    expect_cli_ok(st)
+    log <- readLines(attr(st, "log"), warn = FALSE)
+    expect_output_matches_golden(gold(g), out)
+
+    # the run REPORTS it -- a counter that fails to arrive would otherwise pass
+    # as green (the LEDGER #30 shape)
+    expect_length(abovecap_line(log), 1L)
+    side <- read_sidecar(paste0(out, ".exactByWeightAboveCap.txt"))
+    expect_identical(abovecap_count(log), nrow(side))
+    expect_gt(nrow(side), 0)
+
+    # every recorded cell is in the gap, on BOTH conditions
+    expect_true(all(side$n_eff <= 4))
+    expect_true(all(side$n_material > 13))
+    expect_true(all(side$Kind == if (burden) "burden" else "ultra_rare"))
+
+    # the two sidecars PARTITION the concentrated cells: a cell is routed or
+    # counted, never both, and the cap is what separates them
+    routed <- read_sidecar(paste0(out, ".exactByWeight.txt"))
+    expect_gt(nrow(routed), 0)                 # the fixture still drills routing
+    expect_true(all(routed$n_material <= 13))
+    key <- function(d) paste(d$Region, d$Group, d$max_MAF, d$Weight, sep = "|")
+    expect_length(intersect(key(side), key(routed)), 0L)
+
+    # the sharp cell: just two carriers over the cap, so the fixture pins the
+    # boundary rather than clearing it by miles
+    expect_true(any(side$n_material == 15))
+  }
+})
+
+test_that("LEDGER #176: the counter is observation only -- the kill switch silences it", {
+  # SAIGE_EXACT_BY_WEIGHT=0 skips the whole block, so the counter must read 0 on
+  # the very fixture that makes it 7: the switch still means "the pre-#172
+  # build", and it covers the observation as well as the routing.
+  out <- tempfile(fileext = ".txt")
+  st <- run_saige_cli("step2_SPAtests.R", abovecap_args(out, FALSE),
+                      env = c(SAIGE_EXACT_BY_WEIGHT = "0"))
+  expect_cli_ok(st)
+  log <- readLines(attr(st, "log"), warn = FALSE)
+  expect_identical(abovecap_count(log), 0L)
+  expect_identical(routed_count(log), 0L)
+  expect_false(file.exists(paste0(out, ".exactByWeightAboveCap.txt")))
+})
+
+test_that("LEDGER #176: the existing atom fixture routes as before and counts nothing", {
+  # The drill that says the counter is not firing on everything: P70/P71's
+  # fixture differs only in the non-atom weight, routes the same 10 cells it did
+  # before the counter existed, and has NO cell above the cap.
+  out <- tempfile(fileext = ".txt")
+  st <- run_saige_cli("step2_SPAtests.R", custom_args(out, FALSE))
+  expect_cli_ok(st)
+  log <- readLines(attr(st, "log"), warn = FALSE)
+  expect_gt(routed_count(log), 0L)
+  expect_identical(abovecap_count(log), 0L)
+  side <- read_sidecar(paste0(out, ".exactByWeight.txt"))
+  expect_true(all(side$n_material <= 2))   # 1e-7 is below the tie epsilon
+})
