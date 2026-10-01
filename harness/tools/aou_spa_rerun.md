@@ -336,6 +336,70 @@ def submit_qq(anc, image="gcr.io/weighty-elf-452116-c7/pyplot:20260928"):
     print(r.stdout[-300:] or r.stderr[-500:])
 ```
 
+### 7a. The old-vs-new comparison, per ancestry (2026-10-01)
+
+Measures what LEDGER #172's fix actually moved. Run on eas 2026-09-30 and the
+most informative read of that day; sas, amr, eur and afr are still owed one.
+The handoff called this `submit_summary_prefix`, which is not a function that
+exists -- it is `submit_summary` run a SECOND time with two env vars changed.
+
+**How the two sides are produced.** `aou_flexrv_summary.sh` tags each row's
+`source`: `v7` when the trait's file came from `flexrv_v7_checked/`, `fixed`
+when it came from `flexrv_v4_fixed/`, `v4` when nothing was rerun (every
+quantitative trait). Pointing `FLEXRV_V7_DIR` at a directory that does NOT
+exist empties `fx7.list` (`:37`, `:42`) and the script falls back to the fixed
+files -- so the same script produces the OLD side with no special mode.
+
+```python
+def submit_summary_prefix(anc, image="gcr.io/google.com/cloudsdktool/google-cloud-cli:slim"):
+    args = ["aou_dsub", "--name", f"sumpre-{anc}", "--image", image,
+            "--env", f"ANC={anc}", "--env", f"BASE={BUCKET}/SAIGE_SLIM_TESTING", "--env", "RUNTAG=v4",
+            "--env", "FLEXRV_V7_DIR=__does_not_exist__",      # forces the fallback to flexrv_v4_fixed/
+            "--output-recursive", f"OUT_DIR={BUCKET}/SAIGE_SLIM_TESTING/summary_v4_prefix",
+            "--machine-type", "n2-standard-2", "--disk-size", "20", "--script", "aou_flexrv_summary.sh"]
+    script = "source /home/jupyter/aou_dsub.bash\n" + " ".join(shlex.quote(a) for a in args)
+    print(subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=os.environ).stdout[-300:])
+for anc in ["sas", "amr", "eur", "afr"]: submit_summary_prefix(anc)
+```
+
+**Read the job log's `flexrv: N v4 files, M fixed, K v7` line before using the
+output.** On a PREFIX run `K` must be **0** -- a non-zero K means the directory
+name resolved after all and you have built the new side twice. On the NEW side
+`K` must equal the ancestry's job count (14c). This is the only thing that
+distinguishes the two tables: same filename, same `RUNTAG`, different directory.
+
+**The comparison, with the assert that makes it mean anything.** A
+self-comparison gives a median ratio of exactly 1.0000 -- and so does the
+correct comparison, because the fix is surgical. The number cannot tell them
+apart, so assert on the `source` columns first and never skip it.
+
+```python
+new = pd.read_csv(f"{BUCKET}/.../summary_v4/{anc}.flexrv_vs_skato.v4.tsv.gz", sep="\t")
+old = pd.read_csv(f"{BUCKET}/.../summary_v4_prefix/{anc}.flexrv_vs_skato.v4.tsv.gz", sep="\t")
+j = new.merge(old, on=["anc", "trait", "gene"], suffixes=("_new", "_old"))
+assert (j.source_new == "v7").any() and (j.source_old == "fixed").any(), "self-comparison"
+b = j[(j.source_new == "v7") & (j.source_old == "fixed")]        # BINARY genes only
+# the v4-sourced rows are quantitative, identical in both tables BY CONSTRUCTION
+# and must not be counted -- on eas they were 183,190 of 458,709
+```
+
+Then: the identical fraction, the count moved more than 2x in each direction,
+the median ratio, and the ten largest INCREASES with their `set_best`. On eas
+93.8 % were identical, 92 genes moved more than 2x, and every one of the ten
+largest increases was FemInf or MatHem out of fifteen traits -- chance would put
+about 1.3 there -- which is how the seven spurious genes were found. **Rank by
+the ratio, not by `p_skato / p_flexrv`**, and if you do use the latter exclude
+`p_skato` above ~0.9 first: SKAT-O returns exactly 1 once its smallest per-rho p
+exceeds ~0.78 (LEDGER #86), so the most NULL cells sort to the top as the most
+suspicious.
+
+**What a clean result means.** Identical everywhere is the expected outcome for
+an ancestry with no tail models; it says the fix was surgical there, NOT that
+the arm was never at risk. The damage needs the COMBINATION of a tiny fitted
+probability and a weight one atom carries, so an ancestry whose models have no
+tail has nothing for the transforms to concentrate on.
+
+
 ## 8. Converged-but-wrong saddlepoints: `SPA_DUMP_BELOW` (2026-09-28, LEDGER #172)
 
 The scan (section 1) flags FAILED saddlepoints (`Is.SPA FALSE`); a saddlepoint
