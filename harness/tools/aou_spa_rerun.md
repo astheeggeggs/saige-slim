@@ -446,6 +446,72 @@ probability and a weight one atom carries, so an ancestry whose models have no
 tail has nothing for the transforms to concentrate on.
 
 
+### 7b. The FlexRV-vs-SKAT-O discordance screen (2026-10-01)
+
+Built and validated against a known positive; full result in
+`docs/state/handoff-2026-10-01-flexrv-skato-discordance-screen.md`. Reads the two
+gene-level summaries only -- no per-trait file, no new compute.
+
+**The comparator is SKAT-O's `burden:` p at `@0.001`, not `skato:`, and not the
+summary's `p_skato`.** FlexRV runs `--r.corr=1`, so it is a burden test at ONE max
+MAF; `p_skato` pools all 18 cells including 0.01 and 0.0001, and `skato:` is a
+variance-component test. Either mismatch manufactures discordance legitimately.
+
+**The CCT must carry its tail branch.** A naive `0.5 - atan(S)/pi` floors at
+`2^-54 = 5.551115e-17` and fabricates discordance wherever the comparator is
+genuinely significant -- which, because quantitative traits have far more such
+genes, produced a fake 20-vs-0 binary/quantitative asymmetry that read like a new
+artefact. **If `5.551115e-17` appears in any CCT output in this repo, that is the
+bug and not a p-value.**
+
+```python
+EPS = 1e-320
+def cct(row):
+    p = np.asarray(row, float); p = p[np.isfinite(p)]
+    if p.size == 0: return np.nan
+    p = np.clip(p, EPS, 1 - 1e-16)
+    t = np.where(p < 1e-15, 1.0/(p*np.pi), np.tan((0.5 - p)*np.pi))
+    S = t.mean()
+    return 1.0/(np.pi*S) if S > 1e15 else 0.5 - np.arctan(S)/np.pi
+
+MASKS = {"tight3": ["pLoF","damaging_missense","pLoF;damaging_missense"],
+         "tight4": ["pLoF","damaging_missense","other_missense","pLoF;damaging_missense"]}
+# cols are burden:<mask>@0.001 in <anc>.skato_cells.v4.tsv.gz; SAIGE writes
+# combined masks with ';' although the command line takes ':'. ASSERT the column
+# match: a wrong separator gives an empty list, NaN everywhere, and reads as
+# "no discordance" rather than as a bug.
+```
+
+Then `orders = log10(p_burden_cauchy) - log10(p_flexrv)`, with **`p_burden > 0.9`
+excluded** (LEDGER #86: SKAT-O returns exactly 1 once its smallest per-rho p
+exceeds ~0.78, so the most NULL genes otherwise sort to the top as the most
+suspicious). Report tight3, tight4 and the `min` over the same cells together; if
+the flagged set moves between them the screen is too fragile to act on (found in
+exactly one place: eur VTE `ENSG00000115718`, 4.89 on tight4 against 11.25 on
+tight3).
+
+**Two controls, and run them first.**
+- POSITIVE: `amr EFRMB ENSG00000213030` (`p_flexrv` 2.81e-16, above the
+  13-carrier cap, LEDGER #176) MUST appear at the top of amr. It reads 13.91 /
+  13.78 / 13.34 on tight4 / tight3 / min. If it does not flag, fix the screen
+  before believing anything else it says.
+- NEGATIVE: the quantitative arm, which cannot carry the #172 artefact
+  (`traitType == "binary"` gates the routing and the saddlepoint is binary-only).
+  **CONFOUNDED BY POWER** -- quantitative traits are far better powered, so
+  genuine FlexRV wins are commoner, and on this data the confound was the whole
+  story. Do not read a binary-minus-quantitative difference as the artefact's
+  footprint without checking what the quantitative hits ARE.
+
+**What a real signal looks like, so a future run can tell them apart.** eur's
+twenty most discordant quantitative genes are the canonical ones for their traits
+-- GPT for ALT, GOT1 for AST, LDLR/APOB/PCSK9 for LDLC and TChol,
+ABCA1/LCAT/APOA1 for HDLC, APOC3/ANGPTL3 for TG -- with `min` above 10 orders for
+all twenty, only 4 of 20 on a pseudo-marker-only set, across seven traits. A
+genuine FlexRV win is spread, survives the `min`, and names a gene that belongs
+to the trait. An artefact concentrates, and LEDGER #176's case sits at 13.9
+orders in a single gene of 1.65 million.
+
+
 ## 8. Converged-but-wrong saddlepoints: `SPA_DUMP_BELOW` (2026-09-28, LEDGER #172)
 
 The scan (section 1) flags FAILED saddlepoints (`Is.SPA FALSE`); a saddlepoint
