@@ -147,6 +147,19 @@ Standing facts that have each cost at least one session. One line of why each.
   step-0 comparison that bypasses the CLI measures the RNG.
 - **The sparse step-1 goldens read a frozen `.mtx` from `extdata/output`** that
   the harness does not regenerate and that still carries the #53 `geno2` bug.
+- **A real-data count below 20 is never written down; a SYNTHETIC one is fine**
+  (confirmed by the owner 2026-10-01). All of Us forbids reporting counts of
+  people, alleles or carriers below 20 from real data, so those are written
+  `<20` and the mass beside them `masked` -- the AoU tooling does this itself
+  (`aou_mu_decades.sh`, the scan and splice summaries). The rule governs REAL
+  DATA ONLY. The bundled fixture is 1,000 SIMULATED samples, so GENE1/GENE2's
+  `MAC 15`, `Number_rare 6` and `n_material 5` are ordinary numbers and must NOT
+  be masked -- masking them would gut the prediction documents and every golden
+  in `harness/goldens/` already contains them. Code constants
+  (`kExactByWeightCarriers = 13`, `--max_MAC_for_ER=4`) are thresholds, not
+  counts, and are likewise unaffected. Check before writing, not after. A count of ROWS, CELLS or REGIONS is not a
+  count of people and is not covered -- amr Pancreat's 140 changed rows is
+  reportable, as is the 119-allele twin count, both being at or above 20 anyway.
 
 ## Rules of this branch
 
