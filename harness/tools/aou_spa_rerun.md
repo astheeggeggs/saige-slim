@@ -512,6 +512,49 @@ to the trait. An artefact concentrates, and LEDGER #176's case sits at 13.9
 orders in a single gene of 1.65 million.
 
 
+### 7c. Per-trait calibration as a COLUMN (2026-10-01)
+
+`harness/tools/aou_flexrv_calibration.py` -- the third of the three
+detectability instruments `docs/state/next.md` calls blocking. The null-median
+check used by hand on 2026-09-30 is three lines, which is why it was a notebook
+cell and why it was only ever run on the traits someone thought to look at.
+
+```sh
+python3 aou_flexrv_calibration.py {anc}.flexrv_vs_skato.v4.tsv.gz ... > calib.tsv
+```
+
+One row per (ancestry, trait, ARM) -- both `p_flexrv` and `p_skato` -- with
+`n_genes`, `min_p`, the gene and set/cell it came from, and:
+
+| column | meaning |
+|---|---|
+| `null_median` | `1 - 0.5**(1/m)`, the median of the smallest of m uniforms |
+| `ratio` | `min_p / null_median`; 1.0 is exactly on the null, <1 extreme, >1 conservative |
+| `p_cal` | `P(min <= obs) = 1 - (1-min_p)**m`, the calibration p-value |
+
+**Why the MINIMUM and not a QQ slope or a lambda.** Every FlexRV defect found so
+far (#163/#164, #172, #176) produces ONE absurd gene while leaving the bulk
+untouched -- which a slope or a genomic-control factor averages away. The
+minimum is the statistic that sees exactly that shape. (Separately, lambda is
+invalid here anyway: burden p-values have atoms.)
+
+**The discriminator, and the reason both arms are computed.** A real association
+also gives a small minimum. One arm extreme with the other null is the shape all
+three known defects had; BOTH arms extreme on the same gene is probably biology.
+The table makes that readable without recomputation.
+
+**A flagged trait is not wrong, it is worth looking at.** Apply multiplicity to
+`p_cal` across traits before acting -- at a thousand traits, 0.1 %% of them below
+`p_cal` 0.001 is the expectation, not a finding.
+
+Self-test `aou_flexrv_calibration_selftest.sh` on fabricated summaries: the
+closed forms at a RELATIVE tolerance (the table is 6 significant figures, and
+the first version compared at 1e-12 absolute and failed for that reason alone),
+20 NULL traits x 2 arms as the negative control, a planted FlexRV-only gene that
+must fire on one arm and stay quiet on the other, and a planted concordant gene
+that must fire on both.
+
+
 ## 8. Converged-but-wrong saddlepoints: `SPA_DUMP_BELOW` (2026-09-28, LEDGER #172)
 
 The scan (section 1) flags FAILED saddlepoints (`Is.SPA FALSE`); a saddlepoint
