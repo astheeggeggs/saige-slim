@@ -7,6 +7,7 @@
 \usetheme{metropolis}
 \usepackage{booktabs}
 \usepackage{xcolor}
+\usepackage{graphicx}
 \definecolor{acc}{HTML}{1F5673}
 \definecolor{good}{HTML}{2E6F40}
 \setbeamercolor{frametitle}{bg=acc}
@@ -32,20 +33,27 @@ Same tests. Same answers. Considerably less compute and far less data movement.
         SKAT-O p-value kernel.
   \item \win{Multi-threaded} step 2, and \win{many phenotypes / many null models
         in one pass} --- so the genotypes are read once, not once per trait.
-  \item \win{Two default flags worth turning off}, together worth roughly another
-        $2\times$ on binary scans.
+  \item \win{Two default flags worth turning off} --- one of them $1.23\times$
+        faster \emph{and} statistically cleaner.
   \item \win{It refuses bad runs up front} instead of burning a day and
         producing a model you can't use.
 \end{itemize}
 
 \medskip
-Everything here is gated on \textbf{byte-identical output} against a committed
-reference set, so ``faster'' never means ``different''.
+\textbf{Two kinds of change, and the difference matters.} The engineering --- the
+PGEN reader, sparse decode, threading, carrier-space gene tests --- is gated on
+\textbf{byte-identical output} against a committed reference set, so none of it
+can move a result. The statistical changes (the SKAT-O kernel, and the two flags)
+\emph{do} change numbers, deliberately and for the better --- and each has a flag
+that recovers the old behaviour exactly, so you can verify the difference
+yourself rather than take it on trust.
 \end{frame}
 
 % ---------------------------------------------------------------------------
 \begin{frame}{PGEN: the one that surprised us}
-Real numbers, AoU chromosome 20 exome, 79,956 samples, coding variants only:
+Real numbers, AoU chromosome 20 exome, 79,956 samples, coding variants only ---
+on a file \textbf{already filtered} to AF\,$<$\,1\,\% with popmax\,$<$\,1\,\%, i.e.\
+rare in \emph{every} population:
 
 \medskip
 \begin{center}
@@ -69,8 +77,28 @@ stores the carriers instead, so the file scales with signal rather than with
 cohort size.
 
 \medskip
-The ratio grows as you filter harder on MAF. For MAF\,$<$\,1\,\% coding data this
-is the difference between moving gigabytes and moving megabytes.
+\textbf{The ratio is set by how rare your variants are}, which is why it is worth
+filtering before you store:
+
+\medskip
+\begin{center}\small
+\begin{tabular}{lr}
+\toprule
+Unfiltered whole chromosome {\footnotesize (simulated, $N=50{,}000$)} & $6.4\times$ \\
+\quad {\footnotesize 2509\,MB \texttt{.bed} $\to$ 389\,MB \texttt{.pgen}} & \\
+Coding \emph{and} pre-filtered to AF\,$<$\,1\,\% {\footnotesize (AoU, above)} & \win{$\sim$180$\times$} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\medskip
+\textbf{Read the two honestly.} $6.4\times$ is what you get on an unfiltered
+file; $\sim$180$\times$ needs a file already restricted to rare variants, which
+is what a rare-variant analysis uses but is not a general bed-to-pgen ratio.
+Expect somewhere between the two, nearer the top end the harder you filter.
+{\footnotesize (The AoU \texttt{.bed} sizes are computed exactly from the record
+size and variant count, against a measured \texttt{.pgen}; same variant set both
+sides.)}
 \end{frame}
 
 \begin{frame}{Why that matters more than any decode benchmark}
@@ -191,6 +219,10 @@ unreliable --- so this is not a speed/accuracy trade.}
 \begin{itemize}
   \item Approximate-Firth is \textbf{56\,\% of CPU} on a binary single-variant
         scan (17.5\,ms per marker it fires on).
+  \item \textbf{This reaches your gene-test runs too.} A SKAT-O run
+        (\texttt{--r.corr=0}) always emits single-variant results for the markers
+        in each group, so it contains a single-variant scan whether you asked for
+        one or not.
   \item It refines \textbf{effect-size estimates only}. Your p-values do not
         depend on it.
   \item Already our default; upstream pipeline wrappers commonly set it on.
@@ -206,8 +238,10 @@ unreliable --- so this is not a speed/accuracy trade.}
         \texttt{--pval\_cutoff\_for\_fastTest} re-tested properly, and the second
         result reported.
   \item So \textbf{a reported p-value near the cutoff depends on the cutoff}.
-  \item The speed it existed for now comes from the SKAT-O kernel change instead
-        --- which changes no p-value at all. Strictly better trade.
+  \item \alert{And measured, it is a net LOSS to leave on}: $1.23\times$ faster
+        with it off, because when many cells fall below the re-test cutoff you pay
+        for \emph{both} passes.
+  \item So this is not a speed-versus-rigour trade --- off is both.
 \end{itemize}
 
 \medskip
@@ -322,61 +356,117 @@ against a variance ratio that describes a different GRM. Our wrapper requires it
 explicitly.
 \end{frame}
 
-\begin{frame}{Putting it together: versus your current run}
-Switch to PGEN, turn Firth off, keep everything else the same. Compute only ---
-\textbf{localization excluded}, as it is additional and usually dominant.
+\begin{frame}{Same answers: gene tests against upstream, $N=50{,}000$}
+\begin{center}
+\includegraphics[width=0.92\textwidth]{figs/gene_own_firthoff.png}
+\end{center}
+\vspace{-0.3em}
+{\footnotesize 3,338 shared gene-test cells per trait. Pearson $r$ on $-\log_{10}p$
+= \textbf{0.99997} (binary), \textbf{1.0000} (quantitative).}
+\end{frame}
+
+\begin{frame}{What the handful of departures are}
+Every point off the diagonal is attributed, not tolerated. The comparator tags each
+one with a cause and reconciles it; \texttt{UNPREDICTED} means ``stop and explain''.
+
+\medskip
+\textbf{The 20 binary departures are \emph{us} correcting \emph{upstream}.}
+LEDGER \#104/\#105: upstream's binary burden variance is inflated. Re-running our
+code with those fixes reverted gives:
 
 \medskip
 \begin{center}\small
-\begin{tabular}{lcc}
+\begin{tabular}{lrr}
 \toprule
- & \textbf{rare-variant scan} & \textbf{SKAT-O gene tests} \\
- & {\footnotesize MAF\,$<$\,1\,\% coding} & \\
+ & \texttt{UNPREDICTED} & max $|\Delta\log_{10}p|$ \\
 \midrule
-Upstream, \texttt{.bed}, Firth on & $1\times$ & $1\times$ \\
-\addlinespace
-\quad turn off approximate-Firth & $\times 2.3$ & --- {\footnotesize (variant path only)} \\
-\quad PGEN + sparse decode & $\times 6.1$ {\footnotesize binary} & $\times 1.13$ \\
- & $\times 10.4$ {\footnotesize quantitative} & \\
-\quad new SKAT-O p-value kernel & --- & $\times 2.14$ \\
-\midrule
-\textbf{Approximate total} & \win{$\sim$10--14$\times$} & \win{$\sim$2--2.5$\times$} \\
+Our build, binary gene tests & 20 & 0.26 \\
+\quad with the fixes reverted & \win{0} & \win{0.018} \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \medskip
-\textbf{On top of that, and not in the table:} \texttt{--nThreads} (scales to
-$\sim$4 threads), many null models in one genotype pass (amortises across every
-trait on the cohort), and the localization saving --- 2.3\,GiB $\to$ 13\,MB per
-task.
-\end{frame}
-
-\begin{frame}{How much to trust that table}
-\textbf{Read it as an order of magnitude, not a benchmark.} Three things to hold
-in mind:
+So the agreement is exact once the deliberate corrections are removed --- which is
+the strongest form of this claim available: we can reproduce upstream's numbers on
+demand, and we can say precisely why we don't.
 
 \medskip
-\begin{itemize}
-  \item \textbf{It composes separately-measured figures} --- each measured at
-        $N=50{,}000$, 1 thread, warm cache, but not all in one run. We checked the
-        binary composition two ways (component product, and time-budget
-        accounting) and both give $\sim$14$\times$; it is not double-counting, but
-        it is still arithmetic over three benchmarks.
-  \item \textbf{Turning \texttt{fastTest} off is \emph{not} counted as a gain ---
-        and it may cost you some speed.} It is an accuracy choice: we recommend it
-        because a reported p-value should not depend on a cutoff. Its cost has not
-        been measured, so the gene-test column is if anything optimistic.
-  \item \textbf{Your mix decides which column you live in.} A rare coding scan
-        sees the big numbers; a SKAT-O-only workflow sees $\sim$2--2.5$\times$ of
-        compute, and most of its real saving in data movement instead.
-\end{itemize}
+{\footnotesize Comparison predates the new SKAT-O kernel, so it isolates the
+\emph{engineering}. The kernel change is covered separately --- it moves p-values
+on purpose, below $10^{-5}$ and above $0.05$.}
+\end{frame}
+
+\begin{frame}{Measured: versus your current run}
+One fixture, one build, flags only --- the SKAT-O kernel is flag-controlled, so
+the ``old kernel'' arm reproduces upstream's kernel byte for byte and every term
+below is isolated rather than confounded.
+
+\medskip
+{\footnotesize Simulated chr20, $N=50{,}000$, binary trait, 6 masks $\times$ 3 max MAFs,
+single-variant results on, 1 thread. Genotype localization excluded.}
+
+\medskip
+\begin{center}\small
+\begin{tabular}{llr}
+\toprule
+\textbf{Your current run} & bed, Firth on, fastTest on, old kernel & 218.4\,s \\
+\textbf{Recommended} & pgen, Firth off, fastTest off, new kernel & \win{77.9\,s} \\
+\midrule
+ & \textbf{speedup} & \win{$\mathbf{2.80\times}$} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\medskip
+Each term measured separately, same way:
+
+\medskip
+\begin{center}\small
+\begin{tabular}{lr}
+\toprule
+New SKAT-O p-value kernel & \win{$2.04\times$} \\
+\texttt{--is\_fastTest=FALSE} & \win{$1.23\times$} \\
+PGEN + sparse decode & \win{$1.13\times$} \\
+\texttt{--is\_Firth\_beta=FALSE} & $1.005\times$ {\footnotesize --- nothing, see note} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\medskip
+Before \texttt{--nThreads} (scales to $\sim$4 threads) and before the
+localization saving, 2.3\,GiB $\to$ 13\,MB per task.
+\end{frame}
+
+\begin{frame}{Two things that measurement changed}
+\textbf{1.\quad\texttt{fastTest} off is \emph{faster}, not a trade.}
+We expected turning it off to cost speed --- it buys a cheap first pass, after
+all. Measured, it is a \win{$1.23\times$ net loss} to leave on: when a large share
+of cells fall below its $p=0.05$ re-test cutoff you pay for \emph{both} passes.
 
 \medskip
 \begin{center}
-What is \emph{not} approximate: every one of these changes is gated on
-byte-identical output.
+So \texttt{--is\_fastTest=FALSE} is faster \emph{and} removes a cutoff-dependent
+p-value. Not a trade at all.
 \end{center}
+
+\medskip
+\textbf{2.\quad Firth costs nothing on a gene-test run.}
+The $56\,\%$-of-CPU figure is a genome-wide \emph{scan} number and does not
+transfer: inside gene tests the single-variant markers are few and rare, so Firth
+barely fires. It did fire here --- 1069 single-variant rows moved --- and the
+gene-level results were \textbf{byte-identical}, confirming it touches effect
+sizes only.
+
+\medskip
+\alert{So gene-level \texttt{BETA\_Burden} is never Firth-corrected,} whichever
+way you set the flag. Turn it off for your variant scans; for gene tests it costs
+you nothing either way.
+
+\medskip
+{\footnotesize Repeat spread across arms: 1.9--3.5\,\%, so the $1.005\times$ is a
+real null rather than an effect hidden by noise. The decomposition reconciles two
+ways ($2.48\times1.13$ and $1.375\times2.04$, both giving $2.80$).}
 \end{frame}
 
 \begin{frame}[standout]
