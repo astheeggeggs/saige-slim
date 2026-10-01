@@ -469,8 +469,14 @@ def submit_check_v7(v4name, image="gcr.io/google.com/cloudsdktool/google-cloud-c
 
 The log's lines to read: `cells routed to the exact test by weight (LEDGER
 #172): N`, the unobservable-cell line with its direction counts, and the
-absence of `ERROR`. The notebook's `aou_spa_splice.sh` must be the repo's
-current version (self-test: 3 positive controls, 7 planted refusals).
+absence of `ERROR`, and -- since 2026-09-30 -- `rows accepted on statistic
+identity alone (CONTROL 1c, the weaker tier): N` in `<pre>.splice.txt`, which
+is NOT a pass but a count of rows whose cell the control could not name (14b).
+The notebook's `aou_spa_splice.sh` must be the repo's current version; its
+self-test prints what it ran, so compare that line rather than a number
+remembered from here (it was 3 positive controls and 7 planted refusals before
+2026-09-30, and 8 and 9 after -- a stale count in this file is exactly the
+trap section 14c describes).
 
 `SAIGE_EXACT_BY_WEIGHT=0` in a job's env restores the pre-#172 routing for an
 A/B on one trait, which is how to measure the population on a sample before
