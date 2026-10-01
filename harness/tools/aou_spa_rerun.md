@@ -314,7 +314,8 @@ def submit_summary(anc, image="gcr.io/google.com/cloudsdktool/google-cloud-cli:s
             "--output-recursive", f"OUT_DIR={BUCKET}/SAIGE_SLIM_TESTING/summary_v4",
             "--machine-type", "n2-standard-2", "--disk-size", "20", "--script", "aou_flexrv_summary.sh"]
     script = "source /home/jupyter/aou_dsub.bash\n" + " ".join(shlex.quote(a) for a in args)
-    print(subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=os.environ).stdout[-300:])
+    out = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=os.environ)
+    print(anc, "rc =", out.returncode, "|", ((out.stdout or "") + (out.stderr or "")).strip()[-400:])
 for anc in ANCS: submit_summary(anc)
 ```
 
@@ -358,9 +359,17 @@ def submit_summary_prefix(anc, image="gcr.io/google.com/cloudsdktool/google-clou
             "--output-recursive", f"OUT_DIR={BUCKET}/SAIGE_SLIM_TESTING/summary_v4_prefix",
             "--machine-type", "n2-standard-2", "--disk-size", "20", "--script", "aou_flexrv_summary.sh"]
     script = "source /home/jupyter/aou_dsub.bash\n" + " ".join(shlex.quote(a) for a in args)
-    print(subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=os.environ).stdout[-300:])
+    out = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=os.environ)
+    print(anc, "rc =", out.returncode, "|", ((out.stdout or "") + (out.stderr or "")).strip()[-400:])
 for anc in ["sas", "amr", "eur", "afr"]: submit_summary_prefix(anc)
 ```
+
+**A submit cell MUST print stderr and the return code.** `submit_summary`
+printed `.stdout` alone for its whole life, so a submit that never launched
+anything printed an empty-looking result and read as success -- observed
+2026-10-01, when all four prefix jobs printed `[]` and the cause was on stderr.
+`submit_check_v7` had it right (`out.stdout or out.stderr`); the two summary
+cells did not, and now do.
 
 **Read the job log's `flexrv: N v4 files, M fixed, K v7` line before using the
 output.** It is printed by `aou_flexrv_summary.sh:43` to STDOUT, so it is in the
