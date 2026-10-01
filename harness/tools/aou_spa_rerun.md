@@ -363,7 +363,20 @@ for anc in ["sas", "amr", "eur", "afr"]: submit_summary_prefix(anc)
 ```
 
 **Read the job log's `flexrv: N v4 files, M fixed, K v7` line before using the
-output.** On a PREFIX run `K` must be **0** -- a non-zero K means the directory
+output.** It is printed by `aou_flexrv_summary.sh:43` to STDOUT, so it is in the
+job's log file, not in the output TSV. The provider on this project is
+**`google-batch`** (`google-cls-v2` is rejected by the installed dsub, which
+offers only `local`, `google-batch`, `test-fails`):
+
+```sh
+dstat --provider google-batch --project "$GOOGLE_PROJECT" --location us-central1 \
+      --names sumpre-<anc> --full          # the record, including its `logging` path
+gcloud storage cat <logging-path>/sumpre-<anc>.log | grep '^flexrv:'
+```
+
+The merge's `assert (j.source_old == "fixed").any()` catches the same failure
+from the other end, at the point where it would mislead, so the log line is the
+cheaper check rather than the only one. On a PREFIX run `K` must be **0** -- a non-zero K means the directory
 name resolved after all and you have built the new side twice. On the NEW side
 `K` must equal the ancestry's job count (14c). This is the only thing that
 distinguishes the two tables: same filename, same `RUNTAG`, different directory.
