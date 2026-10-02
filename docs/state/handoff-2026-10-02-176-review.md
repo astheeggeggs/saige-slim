@@ -41,7 +41,7 @@ nothing below 20 is written.
 | contrast cell 183_130: "p 2.1e-3" | that is the Monte Carlo value; the run reported 9.4e-3 |
 | "the `Concentrated cells above ... cap` line is in every v7 job log" | false: no `fxv7-` log prints it, the image predates the counter. Only jobs on `1.5.2-dev-7b7b447a` do |
 | Fix 1 "measured at 0.2%" | measured on a kernel that does not exist in the repo (one-sided convolution on `gtilde` plus a remainder). `SKATExactBin_Work` is two-sided on Q, mid-p, on raw `G`, with no remainder. Fix 1 needs new kernel code either way |
-| `fasttest="auto"` is what v4 used (`aou_spa_rerun.md:70`, `submit_abovecap`) | amr and eur production records read `fasttest FALSE` |
+| `fasttest="auto"` is what v4 used (`aou_spa_rerun.md`, `submit_abovecap`) | literally false, no effect: amr and eur records read `fasttest FALSE`, and on a group run the wrapper's `auto` passes no flag, so the commands are the same. Recipe wording corrected in the follow-up commit |
 
 The mechanism survives all of these. The two contrast cells were offered as discriminating
 evidence and each quoted the reference in place of the reported p.

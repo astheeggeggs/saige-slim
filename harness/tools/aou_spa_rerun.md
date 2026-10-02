@@ -67,8 +67,14 @@ def submit_rerun(anc, pheno, pre, stamp, image, trait="binary", **kw):
 
 Use exactly the v4 job's masks, MAXMAF, model, cutoff **and `geno`** (copy them
 from `RUNS["fxv4-..."]`) -- the only differences must be the image, `REGIONS`,
-and the output directory. `fasttest="auto"` is what v4 used (group runs get no
---is_fastTest).
+and the output directory. **The v4 records carry `fasttest` `FALSE`, not `auto`**
+(read from `RUNS["fxv4-<anc>-<trait>-b0"]` for amr and eur, 2026-10-02; the launch
+set `FASTTEST="FALSE"`, `docs/state/aou-saige-parameters.md`). On a GROUP run the two
+are the same command: the wrapper's `auto` gives `--is_fastTest=TRUE` to variant
+tests only, so `fasttest="auto"` in the cells here passes no flag. Prefer
+`fasttest=r["fasttest"]` from the record, as the diagnostic cell in section 4 does:
+it stays right if a cell is ever reused for a variant run, where `auto` and `FALSE`
+differ.
 
 **`submit()` DEFAULTS `geno` TO `bed`, AND EVERY PRODUCTION JOB USES PGEN.**
 Measured 2026-10-01, the hard way: a cell that did not pass `geno` ran for 61 s
