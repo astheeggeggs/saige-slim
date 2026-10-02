@@ -119,9 +119,14 @@ for a saddlepoint, chosen because it is the broken one, so these ratios are not 
 grouping is by how much of the weight the largest term holds; the values, and anything about
 the carriers behind them, are deliberately not written here.
 
-**To check**: dumps 0 and 60 ran on the DENSE kernel with a NEGATIVE `NAsigma` (-9.7e-4,
--2.8e-4). CLAUDE.md says the #173 negative-remainder fallback has never been observed. The
-`fxcap-amr-efrmb` log's `SPA remainder:` line says whether it fired.
+**Checked, and it did NOT fire**: dumps 0 and 60 ran on the DENSE kernel with a NEGATIVE
+`NAsigma` (-9.7e-4, -2.8e-4), which looked like LEDGER #173's negative-remainder fallback.
+The `fxcap-amr-efrmb` log (one gene, 144 cells, the run the dumps came from) finished, prints
+`SPA fallbacks: 0 ...` and has NO `SPA remainder:` line, which is printed only when the count
+is above zero. So CLAUDE.md's "never observed" stands. Why those two cells were dense is not
+confirmed; the likely reason is that they sit in the low-MAC band that uses the sparse GRM
+(their `varRatio` is 0.999999), where the dense kernel always runs and the dumped `NAsigma`
+is computed but never read.
 
 ## Evidence 4: synthetic cells, with the real table as the control
 
