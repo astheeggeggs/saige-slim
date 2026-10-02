@@ -678,6 +678,25 @@ names. Two edits fix that, then the jobs are resubmitted into the same
 - `submit()`, the sidecars block gains
   `"--output", f"OUT_FILE_EXACTBYWEIGHT={od}/{pre}.exactByWeight.txt.gz",`.
 
+**LEDGER #176's counter needs the SAME two lines and does not have them
+(2026-10-02).** `.exactByWeightAboveCap.txt` is written by the run but was NOT
+delocalized on the first production job, because `submit()` declares no
+`OUT_FILE_EXACTBYWEIGHTABOVECAP` and the wrapper's deliver loop has no pair for
+it. A counter nobody can read is the defect it was built to fix, so wire it:
+
+- `submit()`:
+  `"--output", f"OUT_FILE_EXACTBYWEIGHTABOVECAP={od}/{pre}.exactByWeightAboveCap.txt.gz",`
+- the wrapper: `OUT_FILE_EXACTBYWEIGHTABOVECAP="${OUT_FILE_EXACTBYWEIGHTABOVECAP:-}"`
+  in the defaults, and `"exactByWeightAboveCap:${OUT_FILE_EXACTBYWEIGHTABOVECAP:-}"`
+  in the `for pair in ...` deliver loop.
+
+The file is written ONLY when the count is non-zero, so the loop must tolerate
+its absence the way `.pooledTests` already does. Until that lands, the COUNT is
+still in the job log (`Concentrated cells above the exact test's enumeration
+cap: N`) and the per-cell `n_eff`/`n_material` can be had instead from a rerun
+with `SPA_DUMP=1` and `SPA_DUMP_BELOW`, computing Kish's count from the dumped
+vector in the workbench -- the dump is individual-level and does not leave.
+
 **The control for a COMPLETE rerun** is the splice tool in its all-regions
 mode: `REGIONS=ALL` (every region of the new results file, derived inside the
 job) and `FAILURES=NONE` (the old side already carries the earlier fixes). It
