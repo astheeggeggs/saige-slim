@@ -679,10 +679,19 @@ names. Two edits fix that, then the jobs are resubmitted into the same
   `"--output", f"OUT_FILE_EXACTBYWEIGHT={od}/{pre}.exactByWeight.txt.gz",`.
 
 **LEDGER #176's counter needs the SAME two lines and does not have them
-(2026-10-02).** `.exactByWeightAboveCap.txt` is written by the run but was NOT
-delocalized on the first production job, because `submit()` declares no
-`OUT_FILE_EXACTBYWEIGHTABOVECAP` and the wrapper's deliver loop has no pair for
-it. A counter nobody can read is the defect it was built to fix, so wire it:
+(2026-10-02).** `submit()` declares no `OUT_FILE_EXACTBYWEIGHTABOVECAP` and the
+wrapper's deliver loop has no pair for it -- read in the source, so the wiring is
+certainly absent and will bite the moment a count IS non-zero.
+
+**What is NOT established: that anything was lost on the first job.** The sidecar
+did not appear in that run's outputs, and the file is written ONLY when the count
+is non-zero, so its absence is consistent with EITHER the missing wiring OR a
+count of ZERO -- and a zero would be a FINDING about #176, not a plumbing fault.
+The counter fires only when BOTH `n_eff <= --max_MAC_for_ER` AND
+`n_material > 13`; a cell with 21 material carriers but `n_eff` of 8 is not
+concentrated by that test and is correctly not counted, which is exactly the
+"two different tests, so different p-values are right" outcome. **The job log
+distinguishes them in one line and nothing else does.** Wire it anyway:
 
 - `submit()`:
   `"--output", f"OUT_FILE_EXACTBYWEIGHTABOVECAP={od}/{pre}.exactByWeightAboveCap.txt.gz",`
