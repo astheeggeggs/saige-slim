@@ -35,6 +35,19 @@ struct KernelWorkspace {
         unsigned int spaPinnedDropped = 0;
         double spaPinnedMass = 0.0;
         bool spaPinnedRefused = false;
+        // LEDGER #176 (2026-10-02): the stretch gate, OBSERVATION ONLY. Set by
+        // getMarkerPval when the context asked for it and the binary
+        // saddlepoint ran (cleared at every entry). gateValue is the stretch
+        // the variance ratio puts on the score, |Tstat| |1/sqrt(VR) - 1|, over
+        // the sd of everything but the heaviest carrier's term; gateZ the score
+        // over its independent-Bernoulli sd; gatePSpa what the saddlepoint
+        // returned (NaN when it failed). The four below are filled only in
+        // shadow mode: the exact convolution at the UNSTRETCHED score, its
+        // bracket, and the milliseconds it took. None of them reaches a result.
+        bool gateEvaluated = false;
+        double gateValue = 0.0, gateZ = 0.0, gatePSpa = 0.0;
+        double gatePExact = 0.0, gateLo = 0.0, gateHi = 0.0, gateMs = 0.0;
+        bool gateShadow = false;
         arma::mat x, XW2, Q, R;
         arma::vec pi_0, pi, W2, h, ypih;
         void ensureFirth(arma::uword n) {
@@ -104,7 +117,23 @@ struct TestContext {
         // one atom carries its weight; the exact test then enumerates the MATERIAL
         // carriers only (those at or above the tie epsilon after the #167 scaling).
         bool exactByWeight = false;
+        // LEDGER #176: evaluate the stretch gate if the binary saddlepoint runs
+        // (a weighted set's cell). Observation only: no p-value reads it.
+        bool stretchGate = false;
 };
+
+// LEDGER #176 (2026-10-02): q = Tstat/sqrt(VR) + m1 is compared against a CGF
+// on the unscaled vector, so the variance ratio STRETCHES the score off the
+// lattice it can attain. Where everything but the heaviest carrier varies by
+// much more than the stretch that is the intended relatedness correction;
+// where it does not, the saddlepoint is asked for a tail the cell can only
+// reach by a freak excursion (amr EFRMB: 1e-17 where ~6e-3 is right). The gate
+// is the ratio of the two. Each switch is read once per process:
+//   SAIGE_STRETCH_GATE=0        nothing is evaluated, printed or written
+//   SAIGE_EXACT_CONV_SHADOW=1   also compute the exact convolution (ExactConv.hpp)
+const double kStretchGateThreshold = 0.5;   // the band the summary line counts as "over"
+bool stretchGateEnabled();
+bool exactConvShadow();
 
 // LEDGER #172: how many atoms carry a vector's weight. Kish's effective count
 // (sum v)^2 / sum v^2 over the carriers' values -- the allele count for equal

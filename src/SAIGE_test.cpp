@@ -14,6 +14,8 @@
 #include "ER_binary_func.hpp"
 #include "Binary_global.hpp"   // SKATMainThread::NeedsMainThread (LEDGER #164)
 #include "UTIL.hpp"
+#include "ExactConv.hpp"       // LEDGER #176: the stretch gate's shadow kernel
+#include <chrono>
 #include <thread>         // std::this_thread::sleep_for
 #include <atomic>
 #include <mutex>
@@ -191,6 +193,16 @@ static const int kSparsePCGMaxIter = 100;
 static const double kSparsePCGRelTol = 1e-8;
 
 namespace SAIGE {
+
+// LEDGER #176: see SAIGE_test.hpp.
+bool stretchGateEnabled(){
+  static const bool on = [](){ const char* v = std::getenv("SAIGE_STRETCH_GATE"); return !(v != nullptr && std::string(v) == "0"); }();
+  return on;
+}
+bool exactConvShadow(){
+  static const bool on = [](){ const char* v = std::getenv("SAIGE_EXACT_CONV_SHADOW"); return v != nullptr && std::string(v) == "1"; }();
+  return on;
+}
 
 // LEDGER #172: see SAIGE_test.hpp.
 void atomDominance(const arma::vec & t_vals, double t_eps, double & t_neff, unsigned int & t_material){
@@ -821,6 +833,7 @@ void SAIGEClass::getMarkerPval(arma::vec & t_GVec,
   ws().spaFallback = false;   // LEDGER #164: cleared at every entry
   ws().spaFallbackNote.clear();
   ws().spaPinnedDropped = 0; ws().spaPinnedMass = 0.0; ws().spaPinnedRefused = false;   // LEDGER #174
+  ws().gateEvaluated = false; ws().gateShadow = false;   // LEDGER #176
   //arma::vec adjGVec = getadjGFast(t_GVec);
   std::string t_pval_str;
   double t_var2, t_SPApval;
@@ -1135,6 +1148,41 @@ if(!t_isER){
 		//std::cout << "SPA" << std::endl;
 		SPA_ws(m_mu, *gSPA, q, qinv, pval_noadj, tol1, ispvallog, m_traitType, t_SPApval, t_isSPAConverge, ws().spa);	
 	}
+
+    // LEDGER #176: the stretch gate, OBSERVATION ONLY -- nothing below reads
+    // what this block computes. The vector is the one the saddlepoint just saw
+    // (pinned samples already left out); the variance is the independent-
+    // Bernoulli one the CGF is built on, not var2, so on the dense kernel it is
+    // summed over every sample.
+    if(t_ctx.stretchGate && m_traitType == "binary"){
+      const arma::vec & gv = *gSPA;
+      double varCar = 0.0, sumCar = 0.0, heavy = -1.0, heavyTerm = 0.0;
+      for(arma::uword e = 0; e < iIndex.n_elem; e++){
+        const arma::uword i = iIndex(e);
+        const double gi = gv(i), mui = m_mu(i), term = mui * (1.0 - mui) * gi * gi;
+        varCar += term; sumCar += gi * mui;
+        if(std::fabs(gi) > heavy){ heavy = std::fabs(gi); heavyTerm = term; }
+      }
+      double varRest = fastKernel ? NAsigma : (arma::dot(m_mu % (1.0 - m_mu), arma::square(gv)) - varCar);
+      if(!(varRest > 0.0)) varRest = 0.0;
+      const double varInd = varRest + varCar;
+      const double sdRest = std::sqrt(std::max(varInd - heavyTerm, 0.0));
+      const double delta = std::fabs(t_Tstat) * std::fabs(1.0 / std::sqrt(t_var1 / t_var2) - 1.0);
+      KernelWorkspace & w = ws();
+      w.gateEvaluated = true;
+      w.gateValue = (sdRest > 0.0) ? delta / sdRest : (delta > 0.0 ? std::numeric_limits<double>::infinity() : 0.0);
+      w.gateZ = (varInd > 0.0) ? std::fabs(t_Tstat) / std::sqrt(varInd) : 0.0;
+      w.gatePSpa = t_isSPAConverge ? (ispvallog ? std::exp(t_SPApval) : t_SPApval) : std::numeric_limits<double>::quiet_NaN();
+      if(exactConvShadow()){
+        std::vector<double> gc(iIndex.n_elem), mc(iIndex.n_elem);
+        for(arma::uword e = 0; e < iIndex.n_elem; e++){ gc[e] = gv(iIndex(e)); mc[e] = m_mu(iIndex(e)); }
+        const auto t0 = std::chrono::steady_clock::now();
+        const ExactConv::Result r = ExactConv::twoSided(gc.data(), mc.data(), gc.size(), m1 - sumCar, std::sqrt(varRest),
+                                                        t_Tstat + m1, m1 - t_Tstat, 200000, true);
+        w.gateMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        w.gatePExact = r.p; w.gateLo = r.lo; w.gateHi = r.hi; w.gateShadow = true;
+      }
+    }
 
     boost::math::normal ns;
     double t_qval;
@@ -1951,6 +1999,16 @@ Rcpp::List erExactTestInCPP(arma::vec t_Z, arma::vec t_y, arma::vec t_mu, int t_
   SKATExactBin_ComputProb_New(idx, idxComp, t_mu, (uint32_t)t_Z.n_elem, ncase, t_nResampling, 1e+4, 1, 2, prob, IsExactVec, n_total_k, n_total, isExact);
   return Rcpp::List::create(Rcpp::Named("pval") = p, Rcpp::Named("probK") = prob,
                             Rcpp::Named("carriers") = (int)k, Rcpp::Named("exact") = isExact);
+}
+
+// LEDGER #176: the exact convolution, exported for the unit tests
+// (tests/testthat/test-step2-stretch-gate.R reconciles it with enumeration).
+// [[Rcpp::export]]
+Rcpp::List exactConvTwoSidedInCPP(arma::vec t_g, arma::vec t_mu, double t_rm, double t_rs, double t_q, double t_qinv, int t_grid){
+  const ExactConv::Result r = ExactConv::twoSided(t_g.memptr(), t_mu.memptr(), t_g.n_elem, t_rm, t_rs, t_q, t_qinv,
+                                                  (std::size_t)t_grid, true);
+  return Rcpp::List::create(Rcpp::Named("pval") = r.p, Rcpp::Named("lo") = r.lo, Rcpp::Named("hi") = r.hi,
+                            Rcpp::Named("step") = r.step);
 }
 
 // LEDGER #172: the atom-dominance measure, exported for the unit tests.

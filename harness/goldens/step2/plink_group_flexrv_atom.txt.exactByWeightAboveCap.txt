@@ -1,0 +1,17 @@
+Kind	Region	Group	max_MAF	Weight	MAC	n_eff	n_material
+burden	GENE1	lof;missense	0.01	REVEL_cbrt0.8_MAC3	19	3.82269813288988	19
+burden	GENE1	lof;missense	0.01	REVEL_cbrt0.9_MAC3	19	3.71115857319725	19
+burden	GENE1	lof;missense	0.01	REVEL_sbeta3_MAC3	19	2.87558320373251	19
+burden	GENE1	lof;missense	0.01	REVEL_sbeta5_unw	119	1.41278249943059	114
+burden	GENE1	lof;missense	0.01	REVEL_sbeta5_mafbeta2@0.01	99	1.18014486636618	97
+burden	GENE1	lof;missense	0.01	REVEL_sbeta5_mafbeta5@0.01	99	1.08402432349729	80
+burden	GENE1	lof;missense	0.01	REVEL_sbeta5_MAC3	19	1.05838066981873	19
+burden	GENE1	lof;missense	0.01	REVEL_sbeta5_MAC5	39	1.12518718179096	39
+burden	GENE1	lof;missense	0.01	REVEL_sbeta5_MAC10	54	1.17663139465237	54
+burden	GENE2	lof;missense	0.01	REVEL_sbeta3_MAC3	21	3.75177304964539	21
+burden	GENE2	lof;missense	0.01	REVEL_sbeta5_unw	77	2.24696703445785	74
+burden	GENE2	lof;missense	0.01	REVEL_sbeta5_mafbeta2@0.01	77	2.16586065197656	74
+burden	GENE2	lof;missense	0.01	REVEL_sbeta5_mafbeta5@0.01	77	2.09281050655101	74
+burden	GENE2	lof;missense	0.01	REVEL_sbeta5_MAC3	21	2.06121195132534	21
+burden	GENE2	lof;missense	0.01	REVEL_sbeta5_MAC5	34	2.1036245555382	34
+burden	GENE2	lof;missense	0.01	REVEL_sbeta5_MAC10	41	2.12664071809535	41

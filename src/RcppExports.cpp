@@ -57,6 +57,25 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// resetStretchGateRecordsInCPP
+void resetStretchGateRecordsInCPP();
+RcppExport SEXP _SAIGE_resetStretchGateRecordsInCPP() {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    resetStretchGateRecordsInCPP();
+    return R_NilValue;
+END_RCPP
+}
+// getStretchGateRecordsInCPP
+Rcpp::List getStretchGateRecordsInCPP();
+RcppExport SEXP _SAIGE_getStretchGateRecordsInCPP() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(getStretchGateRecordsInCPP());
+    return rcpp_result_gen;
+END_RCPP
+}
 // getExactByWeightAboveCapRecordsInCPP
 Rcpp::List getExactByWeightAboveCapRecordsInCPP();
 RcppExport SEXP _SAIGE_getExactByWeightAboveCapRecordsInCPP() {
@@ -2013,6 +2032,23 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// exactConvTwoSidedInCPP
+Rcpp::List exactConvTwoSidedInCPP(arma::vec t_g, arma::vec t_mu, double t_rm, double t_rs, double t_q, double t_qinv, int t_grid);
+RcppExport SEXP _SAIGE_exactConvTwoSidedInCPP(SEXP t_gSEXP, SEXP t_muSEXP, SEXP t_rmSEXP, SEXP t_rsSEXP, SEXP t_qSEXP, SEXP t_qinvSEXP, SEXP t_gridSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type t_g(t_gSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t_mu(t_muSEXP);
+    Rcpp::traits::input_parameter< double >::type t_rm(t_rmSEXP);
+    Rcpp::traits::input_parameter< double >::type t_rs(t_rsSEXP);
+    Rcpp::traits::input_parameter< double >::type t_q(t_qSEXP);
+    Rcpp::traits::input_parameter< double >::type t_qinv(t_qinvSEXP);
+    Rcpp::traits::input_parameter< int >::type t_grid(t_gridSEXP);
+    rcpp_result_gen = Rcpp::wrap(exactConvTwoSidedInCPP(t_g, t_mu, t_rm, t_rs, t_q, t_qinv, t_grid));
+    return rcpp_result_gen;
+END_RCPP
+}
 // atomDominanceInCPP
 Rcpp::List atomDominanceInCPP(arma::vec t_vals, double t_eps);
 RcppExport SEXP _SAIGE_atomDominanceInCPP(SEXP t_valsSEXP, SEXP t_epsSEXP) {
@@ -2329,6 +2365,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_flexrvWeightsInCPP", (DL_FUNC) &_SAIGE_flexrvWeightsInCPP, 6},
     {"_SAIGE_resetExactByWeightRecordsInCPP", (DL_FUNC) &_SAIGE_resetExactByWeightRecordsInCPP, 0},
     {"_SAIGE_getExactByWeightRecordsInCPP", (DL_FUNC) &_SAIGE_getExactByWeightRecordsInCPP, 0},
+    {"_SAIGE_resetStretchGateRecordsInCPP", (DL_FUNC) &_SAIGE_resetStretchGateRecordsInCPP, 0},
+    {"_SAIGE_getStretchGateRecordsInCPP", (DL_FUNC) &_SAIGE_getStretchGateRecordsInCPP, 0},
     {"_SAIGE_getExactByWeightAboveCapRecordsInCPP", (DL_FUNC) &_SAIGE_getExactByWeightAboveCapRecordsInCPP, 0},
     {"_SAIGE_getSpaPinnedModelInCPP", (DL_FUNC) &_SAIGE_getSpaPinnedModelInCPP, 1},
     {"_SAIGE_recordSpaPinnedInCPP", (DL_FUNC) &_SAIGE_recordSpaPinnedInCPP, 9},
@@ -2483,6 +2521,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_set_Diagof_StdGeno_LOCO", (DL_FUNC) &_SAIGE_set_Diagof_StdGeno_LOCO, 0},
     {"_SAIGE_setminMAC_VarianceRatio", (DL_FUNC) &_SAIGE_setminMAC_VarianceRatio, 3},
     {"_SAIGE_erExactTestInCPP", (DL_FUNC) &_SAIGE_erExactTestInCPP, 5},
+    {"_SAIGE_exactConvTwoSidedInCPP", (DL_FUNC) &_SAIGE_exactConvTwoSidedInCPP, 7},
     {"_SAIGE_atomDominanceInCPP", (DL_FUNC) &_SAIGE_atomDominanceInCPP, 2},
     {"_SAIGE_SPA", (DL_FUNC) &_SAIGE_SPA, 10},
     {"_SAIGE_SPA_fast", (DL_FUNC) &_SAIGE_SPA_fast, 16},

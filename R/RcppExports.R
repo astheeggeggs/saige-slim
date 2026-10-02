@@ -17,6 +17,14 @@ getExactByWeightRecordsInCPP <- function() {
     .Call('_SAIGE_getExactByWeightRecordsInCPP', PACKAGE = 'SAIGE')
 }
 
+resetStretchGateRecordsInCPP <- function() {
+    invisible(.Call('_SAIGE_resetStretchGateRecordsInCPP', PACKAGE = 'SAIGE'))
+}
+
+getStretchGateRecordsInCPP <- function() {
+    .Call('_SAIGE_getStretchGateRecordsInCPP', PACKAGE = 'SAIGE')
+}
+
 getExactByWeightAboveCapRecordsInCPP <- function() {
     .Call('_SAIGE_getExactByWeightAboveCapRecordsInCPP', PACKAGE = 'SAIGE')
 }
@@ -631,6 +639,10 @@ setminMAC_VarianceRatio <- function(t_minMACVarRatio, t_maxMACVarRatio, t_isVari
 
 erExactTestInCPP <- function(t_Z, t_y, t_mu, t_nResampling, t_normalise) {
     .Call('_SAIGE_erExactTestInCPP', PACKAGE = 'SAIGE', t_Z, t_y, t_mu, t_nResampling, t_normalise)
+}
+
+exactConvTwoSidedInCPP <- function(t_g, t_mu, t_rm, t_rs, t_q, t_qinv, t_grid) {
+    .Call('_SAIGE_exactConvTwoSidedInCPP', PACKAGE = 'SAIGE', t_g, t_mu, t_rm, t_rs, t_q, t_qinv, t_grid)
 }
 
 atomDominanceInCPP <- function(t_vals, t_eps) {

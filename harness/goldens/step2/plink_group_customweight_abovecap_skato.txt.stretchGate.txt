@@ -1,0 +1,4 @@
+Model	Kind	Region	Group	max_MAF	Weight	gate	z	p_spa
+1	ultra_rare	GENE1	lof	0.01		1.07856	3.73515	0.0437529
+1	ultra_rare	GENE1	missense;lof	0.01		1.02314	3.73328	0.0458694
+1	ultra_rare	GENE1	missense;lof;synonymous	0.01		1.02314	3.73328	0.0458694
