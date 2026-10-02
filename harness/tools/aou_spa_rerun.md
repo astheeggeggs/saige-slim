@@ -65,10 +65,26 @@ def submit_rerun(anc, pheno, pre, stamp, image, trait="binary", **kw):
                        "RCORR": "1", "REGIONS": ",".join(regs)}, **kw)
 ```
 
-Use exactly the v4 job's masks, MAXMAF, model and cutoff (copy them from
-`RUNS["fxv4-..."]["masks"]`, `["env"]`) -- the only differences must be the
-image, `REGIONS`, and the output directory. `fasttest="auto"` is what v4
-used (group runs get no --is_fastTest).
+Use exactly the v4 job's masks, MAXMAF, model, cutoff **and `geno`** (copy them
+from `RUNS["fxv4-..."]`) -- the only differences must be the image, `REGIONS`,
+and the output directory. `fasttest="auto"` is what v4 used (group runs get no
+--is_fastTest).
+
+**`submit()` DEFAULTS `geno` TO `bed`, AND EVERY PRODUCTION JOB USES PGEN.**
+Measured 2026-10-01, the hard way: a cell that did not pass `geno` ran for 61 s
+and exited 1, because the coding subsets exist only as
+`...cod.{pgen,pvar,psam}` and there is no `.bed/.bim/.fam` at that prefix. The
+failure is NOT distinctive -- Batch reports "exit code 1" and the duration looks
+like a localization problem -- so the cheapest check on any new submit cell is
+`RUNS[name]["geno"]` after submitting, which should read `pgen`.
+
+PGEN is also what you want on cost grounds, and for a reason that is not decode
+speed: a dsub worker LOCALIZES THE WHOLE GENOTYPE FILE before the script starts,
+and the AoU coding subsets are ~180x smaller as PGEN (2.3 GiB -> 13 MB on chr20
+afr). The compute difference on a gene test is only 1.13x; the data movement is
+the win. **Pass `geno="pgen"` explicitly in every new cell**, or better, change
+the notebook's default -- the current one is a footgun that costs a job and ~60 s
+to discover.
 
 ## 3. Splice + controls (in-cloud, `aou_spa_splice.sh`)
 
