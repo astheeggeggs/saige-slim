@@ -121,6 +121,16 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
   if exists "${NEW_PREFIX}.exactByWeight.txt.gz"; then
     cat_any "${NEW_PREFIX}.exactByWeight.txt.gz" | awk -F'\t' 'NR>1 {print $2"|"$5}' | sort -u > ewcells.txt
   fi
+  # LEDGER #176 (FIXED 2026-10-03): a cell the stretch gate sent to the exact
+  # convolution is named in the rerun's own `.stretchGate.txt.gz` (Model Kind
+  # Region Group max_MAF Weight gate z p_spa p_exact reported ...). Only a row
+  # whose `reported` reads `exact` explains a change: `saddlepoint` means the
+  # cell was evaluated and listed (at or above the floor) but the p is the one
+  # it always was. Region|Weight, as the routed cells.
+  : > sgcells.txt
+  if exists "${NEW_PREFIX}.stretchGate.txt.gz"; then
+    cat_any "${NEW_PREFIX}.stretchGate.txt.gz" | awk -F'\t' 'NR==1{for(i=1;i<=NF;i++)h[$i]=i; next} ($h["reported"]=="exact") {print $3"|"$6}' | sort -u > sgcells.txt
+  fi
   # LEDGER #174 (2026-09-29): a test in which pinned samples were left out of
   # the saddlepoint's vector is named in the rerun's own `.spaPinned.txt.gz`
   # (Model Kind Region Group max_MAF Weight MarkerID n_dropped dropped_mass
@@ -219,6 +229,7 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
         FILENAME=="urown.tsv"{uown[$1]=$2; next}
         FILENAME=="okregions.txt"{okr[$1]=1; next}
         FILENAME=="ewcells.txt"{ew[$1]=1; next}
+        FILENAME=="sgcells.txt"{sg[$1]=1; next}
         FILENAME=="pncells.txt"{pn[$1]=1; next}
         FILENAME=="pnmarkers.txt"{pnm[$1]=1; next}
         FILENAME=="statid.txt"{sid[$1]=1; next}
@@ -231,6 +242,7 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
                                        if(!ok && (key in pnm)){ ok=1; pnmark[key]=1 } }
           else if(single){ id=$3; n=split(id,a,":"); key=a[1]"|"a[n]; reg=a[1]; if(key in fc) ok=1; if((key in mac) && mac[key]+0 <= '"${ERMAC}"') ok=1
                            if(!ok && (key in ew)){ ok=1; ewcell[key]=1 }
+                           if(!ok && (key in sg)){ ok=1; sgcell[key]=1 }
                            if(!ok && (key in pn)){ ok=1; pncell[key]=1 }
                            if(!ok){ # the 0/1-weight twin with the same zero pattern collapses the same markers (or a superset): lof stays lof, any other score -> unw; MACk stays, any other MAF -> unw
                              w=a[n]; m=split(w,f,"_"); if(m>=3){ sc=f[m-1]; mf=f[m]; pre=f[1]; for(i=2;i<=m-2;i++) pre=pre"_"f[i]
@@ -239,6 +251,7 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
                            if(!ok && ($3 in sid)){ ok=1; sidrow[$3]=1 } }
           else { key=$1"|"$4; reg=$1; if(key in fc) ok=1; if((key in mac) && mac[key]+0 <= '"${ERMAC}"') ok=1
                  if(!ok && (key in ew)){ ok=1; ewcell[key]=1 }
+                 if(!ok && (key in sg)){ ok=1; sgcell[key]=1 }
                  if(!ok && (key in pn)){ ok=1; pncell[key]=1 }
                  if(!ok && nri>0 && $nri+0 > 0){ ok=1; unobs=1; ucell[key]=1 } }
           if(ok){ if(reg!="") okr[reg]=1 } else { bad++
@@ -252,12 +265,13 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
         END{ for(k in ucell) print k > "ukeys.tmp"
              nu=0; for(k in urer) nu++; if(nu>0) print "  pseudo-marker rows explained by their own exact-test eligibility (LEDGER #166, count <= '"${ERMAC}"'): " nu > "/dev/stderr"
              ewn=0; for(k in ewcell) ewn++; if(ewn>0) print "  cells routed to the exact test by weight (LEDGER #172): " ewn > "/dev/stderr"
+             sgn=0; for(k in sgcell) sgn++; if(sgn>0) print "  cells reported by the exact convolution at the stretch gate (LEDGER #176): " sgn > "/dev/stderr"
              pnn=0; for(k in pncell) pnn++; if(pnn>0) print "  cells in which pinned samples were left out of the saddlepoint (LEDGER #174): " pnn > "/dev/stderr"
              pmn=0; for(k in pnmark) pmn++; if(pmn>0) print "  real markers in which pinned samples were left out of the saddlepoint (LEDGER #174): " pmn > "/dev/stderr"
              sdn=0; for(k in sidrow){ sdn++; print k > "statid.accepted" }
              if(sdn>0) print "  pseudo-marker rows accepted on STATISTIC IDENTITY ALONE (only SE and p.value moved; BETA, Tstat, var and AC_Allele2 byte-identical -- the cell was NOT named, see CONTROL 1c): " sdn > "/dev/stderr"
              for(r in okr) print r > "okregions.tmp"
-             print bad+0 }' failcells.txt failmarkers.txt cellmac.tsv markermac.tsv urown.tsv okregions.txt ewcells.txt pncells.txt pnmarkers.txt statid.txt rowdiff.tsv changed.rows changed.rows > nbad.txt
+             print bad+0 }' failcells.txt failmarkers.txt cellmac.tsv markermac.tsv urown.tsv okregions.txt ewcells.txt sgcells.txt pncells.txt pnmarkers.txt statid.txt rowdiff.tsv changed.rows changed.rows > nbad.txt
   nbad=$(cat nbad.txt); [[ -f okregions.tmp ]] && { cat okregions.tmp >> okregions.txt; rm -f okregions.tmp; sort -u -o okregions.txt okregions.txt; }
   if [[ -f statid.accepted ]]; then   # provenance travels with the file, not just the log
     sort -u statid.accepted >> "${OUT_DIR}/${pre}.spliceStatId.txt"; rm -f statid.accepted
@@ -324,6 +338,11 @@ if exists "${NEW_PREFIX}.exactByWeight.txt.gz"; then   # LEDGER #172: the routed
   cat_any "${NEW_PREFIX}.exactByWeight.txt.gz" | awk -F'\t' 'NR==FNR{keep[$1]=1; next} FNR==1{print; next} ($2 in keep)' regions.txt - > "${OUT_DIR}/${pre}.exactByWeight.txt"
   gzip -f "${OUT_DIR}/${pre}.exactByWeight.txt"
   echo ".exactByWeight.txt.gz: $(( $(gzip -dc "${OUT_DIR}/${pre}.exactByWeight.txt.gz" | wc -l) - 1 )) routed cell(s) in the spliced regions, carried over"
+fi
+if exists "${NEW_PREFIX}.stretchGate.txt.gz"; then   # LEDGER #176: the gated cells of the spliced regions travel with the file
+  cat_any "${NEW_PREFIX}.stretchGate.txt.gz" | awk -F'\t' 'NR==FNR{keep[$1]=1; next} FNR==1{print; next} ($3 in keep)' regions.txt - > "${OUT_DIR}/${pre}.stretchGate.txt"
+  gzip -f "${OUT_DIR}/${pre}.stretchGate.txt"
+  echo ".stretchGate.txt.gz: $(gzip -dc "${OUT_DIR}/${pre}.stretchGate.txt.gz" | awk -F'\t' 'NR==1{for(i=1;i<=NF;i++)h[$i]=i; next} $h["reported"]=="exact"{n++} END{print n+0}') gated cell(s) in the spliced regions, carried over"
 fi
 if exists "${NEW_PREFIX}.spaPinned.txt.gz"; then   # LEDGER #174: the guarded tests of the spliced regions travel with the file
   cat_any "${NEW_PREFIX}.spaPinned.txt.gz" | awk -F'\t' 'NR==FNR{keep[$1]=1; next} FNR==1{print; next} ($3 in keep)' regions.txt - > "${OUT_DIR}/${pre}.spaPinned.txt"

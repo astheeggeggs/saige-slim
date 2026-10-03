@@ -68,6 +68,9 @@ plants = {
 # LEDGER #174: the same two changes, explained (or not) by the rerun's spaPinned sidecar
 plants["pn"]     = (plants["obs"][0], new_sa)      # the "obs" cell, listed as a guarded burden test: accepted
 plants["pnref"]  = (plants["obs"][0], new_sa)      # listed, but the guard REFUSED (over the budget): nothing was left out, so nothing is explained
+# LEDGER #176: the same change, explained (or not) by the rerun's stretchGate sidecar
+plants["sg"]     = (plants["obs"][0], new_sa)      # the "obs" cell, listed with reported = exact: accepted
+plants["sgspa"]  = (plants["obs"][0], new_sa)      # listed (above the floor) but reported = saddlepoint: nothing is explained
 plants["pnreal"] = (new_res, plants["real"][1])    # the "real" marker, listed as a guarded single test: accepted
 plants["pnur"]   = (new_res, plants["ur"][1])      # the "ur" pseudo-marker row, listed as a guarded ultra_rare test: accepted
 # a COMPLETE rerun (REGIONS=ALL, FAILURES=NONE; LEDGER #172): every region of the old table, one routed cell changed
@@ -100,6 +103,9 @@ PH = "Model\tKind\tRegion\tGroup\tmax_MAF\tWeight\tMarkerID\tn_dropped\tdropped_
 w("in/pn/fxv5-test.spaPinned.txt.gz",     [PH, "1\tburden\tR2\tgrp\t0.001\tW1\t\t41\t4.1e-11\tapplied", "1\tburden\tR3\tgrp\t0.001\tW1\t\t41\t4.1e-11\tapplied"])
 w("in/pnref/fxv5-test.spaPinned.txt.gz",  [PH, "1\tburden\tR2\tgrp\t0.001\tW1\t\t0\t1.1e-06\trefused"])
 w("in/pnreal/fxv5-test.spaPinned.txt.gz", [PH, "1\tsingle_in_group\tR1\t\t\t\tchr1:300:A:G\t22\t2.2e-11\tapplied"])
+SG = "Model\tKind\tRegion\tGroup\tmax_MAF\tWeight\tgate\tz\tp_spa\tp_exact\treported"
+w("in/sg/fxv5-test.stretchGate.txt.gz",    [SG, "1\tburden\tR2\tgrp\t0.001\tW1\t1.61\t3.8\t0.3\t0.31\texact", "1\tburden\tR3\tgrp\t0.001\tW1\t0.84\t3.6\t0.5\t0.51\texact"])
+w("in/sgspa/fxv5-test.stretchGate.txt.gz", [SG, "1\tburden\tR2\tgrp\t0.001\tW1\t0.12\t2.3\t0.3\tNA\tsaddlepoint"])
 w("in/pnur/fxv5-test.spaPinned.txt.gz",   [PH, "1\tultra_rare\tR6\tgrp\t0.001\tAM_cbrt0.2_unw\tR6:grp:0.001:AM_cbrt0.2_unw\t26\t2.6e-11\tapplied"])
 # a LONG list (20,000 rows of regions that are not in the table, ~1 MB): a `| head -1` on it dies of SIGPIPE under pipefail
 w("in/allok/fxv5-test.exactByWeight.txt.gz", ["Kind\tRegion\tGroup\tmax_MAF\tWeight\tMAC\tn_eff\tn_material", "burden\tR2\tgrp\t0.001\tW1\t7\t1.0000012\t1"]
@@ -152,6 +158,9 @@ grep -q "columns that differ old -> new: var" sidvar.log || { echo "FAIL sidvar:
 expect pn     0 "cells in which pinned samples were left out of the saddlepoint (LEDGER #174): 1"
 grep -q ".spaPinned.txt.gz: 1 guarded test(s) in the spliced regions, carried over" pn.log && echo "ok   the pinned sidecar is carried over restricted to the spliced regions (R3 is not one)" || { echo "FAIL pn: sidecar carry-over"; fail=1; }
 expect pnref  1 "ERROR .txt.gz"
+expect sg     0 "cells reported by the exact convolution at the stretch gate (LEDGER #176): 1"
+grep -q ".stretchGate.txt.gz: 1 gated cell(s) in the spliced regions, carried over" sg.log && echo "ok   the stretch-gate sidecar is carried over restricted to the spliced regions (R3 is not one)" || { echo "FAIL sg: sidecar not carried"; fail=1; }
+expect sgspa  1 "ERROR .txt.gz"
 expect pnreal 0 "real markers in which pinned samples were left out of the saddlepoint (LEDGER #174): 1"
 expect pnur   0 "cells in which pinned samples were left out of the saddlepoint (LEDGER #174): 1"
 expectall allok  allok  0 "cells routed to the exact test by weight (LEDGER #172): 1"
@@ -162,4 +171,4 @@ bash "${HERE}/aou_spa_stagecheck.sh" stage/null > sc_null.log 2>&1 && grep -q "S
 if bash "${HERE}/aou_spa_stagecheck.sh" stage/pos > sc_pos.log 2>&1; then echo "FAIL stagecheck pos: exit 0"; fail=1; else grep -q "NA 1" sc_pos.log && echo "ok   stagecheck NA flagged" || { echo "FAIL stagecheck pos"; fail=1; }; fi
 if bash "${HERE}/aou_spa_stagecheck.sh" stage/chr > sc_chr.log 2>&1; then echo "FAIL stagecheck chr: exit 0"; fail=1; else grep -q "CHROMOSOME FAILED" sc_chr.log && echo "ok   stagecheck lost chromosome flagged" || { echo "FAIL stagecheck chr"; fail=1; }; fi
 if (( fail )); then echo "SELFTEST FAILED"; exit 1; fi
-echo "selftest OK: 8 positive controls (two via the exactByWeight sidecar, three via the spaPinned sidecar, two on statistic identity, one a complete rerun), 9 planted refusals (one a guard that refused, three moving a statistic the exact test never touches), 3 stage-checker cases"
+echo "selftest OK: 9 positive controls (two via the exactByWeight sidecar, three via the spaPinned sidecar, one via the stretchGate sidecar, two on statistic identity, one a complete rerun), 10 planted refusals (one a guard that refused, three moving a statistic the exact test never touches), 3 stage-checker cases"
