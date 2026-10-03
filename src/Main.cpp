@@ -392,10 +392,12 @@ struct StretchGateRecord {
   unsigned int model = 0;
   double gate = 0.0, z = 0.0, pSpa = 0.0, pExact = 0.0, lo = 0.0, hi = 0.0, ms = 0.0;
   bool shadow = false;
+  bool applied = false;   // FIXED 2026-10-03: pExact is the reported p
 };
 static std::vector<StretchGateRecord> g_stretchGate;
 static std::mutex g_stretchGateMutex;
-static unsigned long long g_stretchGateBands[5] = {0, 0, 0, 0, 0};   // evaluated, >= 0.1, >= 0.5, >= 1, >= 3
+static unsigned long long g_stretchGateBands[5] = {0, 0, 0, 0, 0};   // evaluated, >= 0.1, >= threshold, >= 1, >= 3
+static unsigned long long g_stretchGateApplied = 0;                   // cells whose reported p is the exact convolution
 static double stretchGateFloor(){
   static const double v = [](){ const char* s = std::getenv("SAIGE_STRETCH_GATE_FLOOR"); return (s != nullptr && s[0] != '\0') ? std::atof(s) : 0.1; }();
   return v;
@@ -408,15 +410,17 @@ static void recordStretchGate(const std::string & t_kind, const std::string & t_
   std::lock_guard<std::mutex> lock(g_stretchGateMutex);
   g_stretchGateBands[0] += 1;
   if(t_ws.gateValue >= 0.1) g_stretchGateBands[1] += 1;
-  if(t_ws.gateValue >= SAIGE::kStretchGateThreshold) g_stretchGateBands[2] += 1;
+  if(t_ws.gateValue >= SAIGE::stretchGateThreshold()) g_stretchGateBands[2] += 1;
   if(t_ws.gateValue >= 1.0) g_stretchGateBands[3] += 1;
   if(t_ws.gateValue >= 3.0) g_stretchGateBands[4] += 1;
-  if(!(t_ws.gateShadow || t_ws.gateValue >= stretchGateFloor())) return;
+  if(t_ws.gateApplied) g_stretchGateApplied += 1;
+  if(!(t_ws.gateApplied || t_ws.gateShadow || t_ws.gateValue >= stretchGateFloor())) return;
   StretchGateRecord rec;
   for(std::size_t km = 0; km < g_models.size(); km++){ if(g_models[km].get() == &t_model){ rec.model = (unsigned int)km + 1; break; } }
   rec.kind = t_kind; rec.region = t_region; rec.group = t_group; rec.maxMAF = t_maxMAF; rec.weight = t_weight;
   rec.gate = t_ws.gateValue; rec.z = t_ws.gateZ; rec.pSpa = t_ws.gatePSpa;
   rec.shadow = t_ws.gateShadow; rec.pExact = t_ws.gatePExact; rec.lo = t_ws.gateLo; rec.hi = t_ws.gateHi; rec.ms = t_ws.gateMs;
+  rec.applied = t_ws.gateApplied;
   g_stretchGate.push_back(rec);
 }
 static bool exactByWeightEnabled(){
@@ -461,6 +465,7 @@ void resetStretchGateRecordsInCPP(){
   std::lock_guard<std::mutex> lock(g_stretchGateMutex);
   g_stretchGate.clear();
   for(int b = 0; b < 5; b++) g_stretchGateBands[b] = 0;
+  g_stretchGateApplied = 0;
 }
 
 // [[Rcpp::export]]
@@ -469,24 +474,26 @@ Rcpp::List getStretchGateRecordsInCPP(){
   const unsigned int n = g_stretchGate.size();
   std::vector<std::string> kind(n), region(n), group(n), maxMAF(n), weight(n);
   Rcpp::NumericVector model(n), gate(n), z(n), pSpa(n), pExact(n), lo(n), hi(n), ms(n);
-  Rcpp::LogicalVector shadow(n);
+  Rcpp::LogicalVector shadow(n), applied(n);
   for(unsigned int k = 0; k < n; k++){
     const StretchGateRecord & r = g_stretchGate[k];
     kind[k] = r.kind; region[k] = r.region; group[k] = r.group; maxMAF[k] = r.maxMAF; weight[k] = r.weight;
     model[k] = (double)r.model; gate[k] = r.gate; z[k] = r.z; pSpa[k] = r.pSpa;
-    shadow[k] = r.shadow; pExact[k] = r.pExact; lo[k] = r.lo; hi[k] = r.hi; ms[k] = r.ms;
+    shadow[k] = r.shadow; pExact[k] = r.pExact; lo[k] = r.lo; hi[k] = r.hi; ms[k] = r.ms; applied[k] = r.applied;
   }
   Rcpp::NumericVector bands(5);
   for(int b = 0; b < 5; b++) bands[b] = (double)g_stretchGateBands[b];
   return Rcpp::List::create(Rcpp::Named("enabled") = SAIGE::stretchGateEnabled(),
                             Rcpp::Named("shadow_mode") = SAIGE::exactConvShadow(),
                             Rcpp::Named("floor") = stretchGateFloor(),
-                            Rcpp::Named("threshold") = SAIGE::kStretchGateThreshold,
+                            Rcpp::Named("threshold") = SAIGE::stretchGateThreshold(),
+                            Rcpp::Named("apply_mode") = SAIGE::stretchGateApply(),
+                            Rcpp::Named("applied_count") = (double)g_stretchGateApplied,
                             Rcpp::Named("bands") = bands,
                             Rcpp::Named("model") = model, Rcpp::Named("kind") = kind, Rcpp::Named("region") = region,
                             Rcpp::Named("group") = group, Rcpp::Named("maxMAF") = maxMAF, Rcpp::Named("weight") = weight,
                             Rcpp::Named("gate") = gate, Rcpp::Named("z") = z, Rcpp::Named("p_spa") = pSpa,
-                            Rcpp::Named("shadow") = shadow, Rcpp::Named("p_exact") = pExact,
+                            Rcpp::Named("shadow") = shadow, Rcpp::Named("applied") = applied, Rcpp::Named("p_exact") = pExact,
                             Rcpp::Named("lo") = lo, Rcpp::Named("hi") = hi, Rcpp::Named("ms") = ms);
 }
 

@@ -203,6 +203,14 @@ bool exactConvShadow(){
   static const bool on = [](){ const char* v = std::getenv("SAIGE_EXACT_CONV_SHADOW"); return v != nullptr && std::string(v) == "1"; }();
   return on;
 }
+bool stretchGateApply(){
+  static const bool on = [](){ const char* v = std::getenv("SAIGE_STRETCH_GATE_APPLY"); return !(v != nullptr && std::string(v) == "0"); }();
+  return on;
+}
+double stretchGateThreshold(){
+  static const double v = [](){ const char* s = std::getenv("SAIGE_STRETCH_GATE_THRESHOLD"); return (s != nullptr && s[0] != '\0') ? std::atof(s) : kStretchGateThreshold; }();
+  return v;
+}
 
 // LEDGER #172: see SAIGE_test.hpp.
 void atomDominance(const arma::vec & t_vals, double t_eps, double & t_neff, unsigned int & t_material){
@@ -833,7 +841,7 @@ void SAIGEClass::getMarkerPval(arma::vec & t_GVec,
   ws().spaFallback = false;   // LEDGER #164: cleared at every entry
   ws().spaFallbackNote.clear();
   ws().spaPinnedDropped = 0; ws().spaPinnedMass = 0.0; ws().spaPinnedRefused = false;   // LEDGER #174
-  ws().gateEvaluated = false; ws().gateShadow = false;   // LEDGER #176
+  ws().gateEvaluated = false; ws().gateShadow = false; ws().gateApplied = false;   // LEDGER #176
   //arma::vec adjGVec = getadjGFast(t_GVec);
   std::string t_pval_str;
   double t_var2, t_SPApval;
@@ -1149,11 +1157,13 @@ if(!t_isER){
 		SPA_ws(m_mu, *gSPA, q, qinv, pval_noadj, tol1, ispvallog, m_traitType, t_SPApval, t_isSPAConverge, ws().spa);	
 	}
 
-    // LEDGER #176: the stretch gate, OBSERVATION ONLY -- nothing below reads
-    // what this block computes. The vector is the one the saddlepoint just saw
-    // (pinned samples already left out); the variance is the independent-
-    // Bernoulli one the CGF is built on, not var2, so on the dense kernel it is
-    // summed over every sample.
+    // LEDGER #176, FIXED 2026-10-03: the stretch gate. The vector is the one
+    // the saddlepoint just saw (pinned samples already left out); the variance
+    // is the independent-Bernoulli one the CGF is built on, not var2, so on
+    // the dense kernel it is summed over every sample. A cell at or above the
+    // threshold reports the exact two-sided tail at the UNSTRETCHED score in
+    // place of the saddlepoint's p; below it nothing changes. Observation
+    // continues either way (the counts, the sidecar, the shadow mode).
     if(t_ctx.stretchGate && m_traitType == "binary"){
       const arma::vec & gv = *gSPA;
       double varCar = 0.0, sumCar = 0.0, heavy = -1.0, heavyTerm = 0.0;
@@ -1173,14 +1183,23 @@ if(!t_isER){
       w.gateValue = (sdRest > 0.0) ? delta / sdRest : (delta > 0.0 ? std::numeric_limits<double>::infinity() : 0.0);
       w.gateZ = (varInd > 0.0) ? std::fabs(t_Tstat) / std::sqrt(varInd) : 0.0;
       w.gatePSpa = t_isSPAConverge ? (ispvallog ? std::exp(t_SPApval) : t_SPApval) : std::numeric_limits<double>::quiet_NaN();
-      if(exactConvShadow()){
+      const bool fire = stretchGateApply() && w.gateValue >= stretchGateThreshold();
+      if(fire || exactConvShadow()){
         std::vector<double> gc(iIndex.n_elem), mc(iIndex.n_elem);
         for(arma::uword e = 0; e < iIndex.n_elem; e++){ gc[e] = gv(iIndex(e)); mc[e] = m_mu(iIndex(e)); }
         const auto t0 = std::chrono::steady_clock::now();
         const ExactConv::Result r = ExactConv::twoSided(gc.data(), mc.data(), gc.size(), m1 - sumCar, std::sqrt(varRest),
-                                                        t_Tstat + m1, m1 - t_Tstat, 200000, true);
+                                                        t_Tstat + m1, m1 - t_Tstat, 200000, exactConvShadow());
         w.gateMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
-        w.gatePExact = r.p; w.gateLo = r.lo; w.gateHi = r.hi; w.gateShadow = true;
+        w.gatePExact = r.p; w.gateLo = r.lo; w.gateHi = r.hi; w.gateShadow = exactConvShadow();
+        // the exact tail is finite and positive by construction (a Gaussian
+        // part is always present on this path); if it were not, keep the
+        // saddlepoint's answer and let the sidecar say the gate fired
+        if(fire && std::isfinite(r.p) && r.p > 0.0){
+          w.gateApplied = true;
+          t_SPApval = ispvallog ? std::log(r.p) : r.p;
+          t_isSPAConverge = true;
+        }
       }
     }
 

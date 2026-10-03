@@ -100,8 +100,25 @@ test_that("the kill switch restores the saddlepoint on the routed cells only (th
   unrouted_old <- cells & !(paste(old$Region, old$Weight) %in% routed_key)
   unrouted_new <- cells & !(paste(new$Region, new$Weight) %in% routed_key)
   expect_identical(old[unrouted_old, ], new[unrouted_new, ])
-  # the artefact in miniature: on the singleton atom the saddlepoint sits an
-  # order of magnitude below the exact test (1.8e-3 against 3.2e-2 on this fixture)
+  # LEDGER #176 (FIXED 2026-10-03): with the routing off, the routed cells fall
+  # to the saddlepoint path, where the STRETCH GATE now catches them and
+  # reports the exact convolution -- the same model as the enumeration with a
+  # Gaussian part for the non-carriers. So the second net holds them within a
+  # few percent of the first on the singleton atom (3.2e-2 on this fixture).
+  i <- which(new$Region == "GENE1" & new$Weight == "REVEL_sbeta20_unw")
+  expect_equal(as.numeric(old$Pvalue_Burden[i]), as.numeric(new$Pvalue_Burden[i]), tolerance = 5e-2)
+})
+
+test_that("the artefact in miniature needs both nets off", {
+  # LEDGER #172's routing and LEDGER #176's gate each catch the singleton atom;
+  # the saddlepoint an order of magnitude below the exact test (1.8e-3 against
+  # 3.2e-2 on this fixture) is reached only with both switched off.
+  out <- tempfile(fileext = ".txt")
+  st <- run_saige_cli("step2_SPAtests.R", flexrv_args(out),
+                      env = c(SAIGE_EXACT_BY_WEIGHT = "0", SAIGE_STRETCH_GATE_APPLY = "0"))
+  expect_cli_ok(st)
+  new <- read_saige_table(gold("plink_group_flexrv_atom.txt"))
+  old <- read_saige_table(out)
   i <- which(new$Region == "GENE1" & new$Weight == "REVEL_sbeta20_unw")
   expect_lt(as.numeric(old$Pvalue_Burden[i]) * 10, as.numeric(new$Pvalue_Burden[i]))
 })

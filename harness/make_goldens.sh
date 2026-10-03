@@ -1809,11 +1809,15 @@ run step2_plink_marker_pinned_planted.log R2 step2_SPAtests.R \
 # 1e-7 fixture, which is the control that says the arithmetic is right.
 # tests/testthat/test-step2-exact-by-weight.R drills all three outcomes.
 
-# LEDGER #176, 2026-10-02: every region run also evaluates the STRETCH GATE on its
-# weighted binary cells that reach the saddlepoint (observation only) and names the
-# cells at or above 0.1 in `<out>.stretchGate.txt`. Three runs write one -- P69 (40
-# cells, the sbeta5 ones at 1.6-1.7), P77 (3) and P78 (2) -- and they are committed
-# like any other output; every other run prints the line and writes no file. P69's
+# LEDGER #176, 2026-10-02 (FIXED 2026-10-03): every region run evaluates the STRETCH
+# GATE on its weighted binary cells that reach the saddlepoint and names the cells at
+# or above 0.1 in `<out>.stretchGate.txt`; a cell at or above 0.5 reports the exact
+# convolution at the unstretched score in place of the saddlepoint's p. Three runs
+# write a sidecar -- P69 (40 cells; its six at or above 0.5, the sbeta5 sets and
+# sbeta3_mafbeta5, moved from 0.0019-0.0303 to 0.0255-0.0343), P77 (3, all gated)
+# and P78 (2, both gated: 0.0311 -> 0.0540 and 0.0299 -> 0.0527) -- and those are
+# the only result goldens the fix moved, each predicted from the unpatched build's
+# dumps first. Every other run prints the line and writes no file. P69's
 # `.exactByWeightAboveCap.txt` is committed with them: the run has written it since
 # the counter landed on 2026-10-01 and it was never added.
 

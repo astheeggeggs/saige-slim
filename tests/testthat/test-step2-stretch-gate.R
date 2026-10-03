@@ -1,5 +1,5 @@
-# LEDGER #176 (2026-10-02): the stretch gate and its shadow kernel.
-# OBSERVATION ONLY -- the build this file gates changes no p-value.
+# LEDGER #176 (2026-10-02; FIXED 2026-10-03): the stretch gate and the exact
+# convolution it reports for the cells it catches.
 #
 # The binary saddlepoint is evaluated at q = Tstat / sqrt(varianceRatio) + m1
 # against a CGF on the unscaled vector, so the variance ratio stretches the
@@ -11,11 +11,13 @@
 #      2^n enumeration with a Gaussian part, a null control (q at the mean),
 #      and a positive control (a one-atom vector, where a 1 % stretch costs
 #      orders of magnitude and a well-spread vector costs almost nothing).
-#   2. P78/P77 (the above-cap fixture): the goldens do not move, the run
-#      REPORTS the gate, and every value was predicted from the run's own
-#      saddlepoint dumps BEFORE the C++ existed (harness/tools/spa_exact_ref.py
-#      over SAIGE_SPA_DUMP_BELOW=1 dumps of the unpatched build).
-#   3. The floor and the kill switch.
+#   2. P78/P77 (the above-cap fixture): the gated cells report the exact
+#      convolution, the run REPORTS the gate, and every value was predicted
+#      from the run's own saddlepoint dumps BEFORE the C++ existed
+#      (harness/tools/spa_exact_ref.py over SAIGE_SPA_DUMP_BELOW=1 dumps of
+#      the unpatched build); the ungated cells still print the saddlepoint.
+#   3. The floor, the observation-only switch (the saddlepoint comes back on
+#      the gated cells) and the kill switch.
 
 conv <- function(g, mu, rm, rs, q, qinv, grid = 200000L) {
   SAIGE:::exactConvTwoSidedInCPP(g, mu, rm, rs, q, qinv, as.integer(grid))
@@ -115,7 +117,7 @@ gate_side <- function(out) {
                     stringsAsFactors = FALSE)
 }
 
-test_that("P78 in shadow mode: the golden does not move and every value is the predicted one", {
+test_that("P78 in shadow mode: gated cells report the predicted exact p, the rest the SPA", {
   skip_unless_level("standard")
   out <- tempfile(fileext = ".txt")
   st <- run_saige_cli("step2_SPAtests.R", gate_args(out, TRUE),
@@ -154,11 +156,14 @@ test_that("P78 in shadow mode: the golden does not move and every value is the p
     expect_equal(row$p_exact, want$p_exact[i], tolerance = 1e-3)
     expect_lte(row$p_exact_lo, row$p_exact * (1 + 1e-6))
     expect_gte(row$p_exact_hi, row$p_exact * (1 - 1e-6))
-    # one statistic two ways: the saddlepoint p the gate recorded is the p the
-    # results file printed for that cell (6 printed digits)
+    # one statistic two ways: the results file printed the exact p for a gated
+    # cell and the saddlepoint's for the rest, and the sidecar says which
     r <- res[res$Region == want$Region[i] & res$Group == want$Group[i] &
                abs(as.numeric(res$max_MAF) - want$max_MAF[i]) < 1e-12, ]
-    expect_equal(row$p_spa, as.numeric(r$Pvalue_Burden), tolerance = 1e-5)
+    gated <- row$gate >= 0.5
+    expect_identical(row$reported, if (gated) "exact" else "saddlepoint")
+    expect_equal(if (gated) row$p_exact else row$p_spa, as.numeric(r$Pvalue_Burden),
+                 tolerance = 1e-5)
   }
   # the fixture has a cell on EACH side of the 0.5 line, and the two above it
   # are the ones whose exact p is far from the saddlepoint's
@@ -179,11 +184,36 @@ test_that("without shadow mode only the cells at or above the floor are listed",
   bands <- gate_bands(log)
   expect_true(all(side$gate >= 0.1))
   expect_identical(as.numeric(nrow(side)), bands[3])       # the ">= 0.1" band
-  expect_false("p_exact" %in% names(side))
+  expect_false("p_exact_lo" %in% names(side))              # no bracket outside shadow mode
+  expect_true(all(is.na(side$p_exact) == (side$reported == "saddlepoint")))
   expect_gt(bands[1], nrow(side))        # some evaluated cells are below the floor
+  expect_match(gate_line(log), "2 of them report the exact convolution")
 })
 
-test_that("P77: the ultra-rare pass is gated too, and its golden does not move", {
+test_that("SAIGE_STRETCH_GATE_APPLY=0 puts the saddlepoint back on the gated cells", {
+  skip_unless_level("standard")
+  out <- tempfile(fileext = ".txt")
+  st <- run_saige_cli("step2_SPAtests.R", gate_args(out, TRUE),
+                      env = c(SAIGE_STRETCH_GATE_APPLY = "0"))
+  expect_cli_ok(st)
+  log <- readLines(attr(st, "log"), warn = FALSE)
+  expect_match(gate_line(log), "Observation only")
+  res <- read_saige_table(out)
+  res <- res[res$Group != "Cauchy", ]
+  side <- gate_side(out)
+  expect_true(all(side$reported == "saddlepoint"))
+  for (i in seq_len(nrow(side))) {
+    r <- res[res$Region == side$Region[i] & res$Group == side$Group[i] &
+               abs(as.numeric(res$max_MAF) - side$max_MAF[i]) < 1e-12, ]
+    expect_equal(side$p_spa[i], as.numeric(r$Pvalue_Burden), tolerance = 1e-5)
+  }
+  # and those are the values the golden carried before the fix (6 digits)
+  r <- res[res$Region == "GENE1" & res$Group == "lof" &
+             abs(as.numeric(res$max_MAF) - 0.01) < 1e-12, ]
+  expect_equal(as.numeric(r$Pvalue_Burden), 3.110801e-02, tolerance = 1e-5)
+})
+
+test_that("P77: the ultra-rare pass is gated too, and matches its golden", {
   skip_unless_level("standard")
   out <- tempfile(fileext = ".txt")
   st <- run_saige_cli("step2_SPAtests.R", gate_args(out, FALSE),
@@ -198,14 +228,24 @@ test_that("P77: the ultra-rare pass is gated too, and its golden does not move",
   expect_equal(row$p_exact, 0.046482, tolerance = 1e-3)
 })
 
-test_that("the kill switch silences the gate and writes nothing", {
+test_that("the kill switch silences the gate, writes nothing, and restores the pre-fix output", {
   skip_unless_level("standard")
   out <- tempfile(fileext = ".txt")
   st <- run_saige_cli("step2_SPAtests.R", gate_args(out, TRUE),
                       env = c(SAIGE_STRETCH_GATE = "0"))
   expect_cli_ok(st)
   log <- readLines(attr(st, "log"), warn = FALSE)
-  expect_output_matches_golden(gate_gold(TRUE), out)
   expect_match(gate_line(log), "OFF")
   expect_false(file.exists(paste0(out, ".stretchGate.txt")))
+  res <- read_saige_table(out)
+  r <- res[res$Region == "GENE1" & res$Group == "lof" & !is.na(res$max_MAF) &
+             abs(suppressWarnings(as.numeric(res$max_MAF)) - 0.01) < 1e-12, ]
+  expect_equal(as.numeric(r$Pvalue_Burden), 3.110801e-02, tolerance = 1e-5)
+  # everything the gate does not touch is byte-identical to the golden
+  gold <- readLines(gate_gold(TRUE))
+  cand <- readLines(out)
+  expect_identical(length(gold), length(cand))
+  untouched <- !grepl("^GENE1\t(lof|missense;lof|missense;lof;synonymous)\t0.01\t", gold) &
+    !grepl("\tCauchy\t", gold)
+  expect_identical(gold[untouched], cand[untouched])
 })

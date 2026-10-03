@@ -48,6 +48,11 @@ struct KernelWorkspace {
         double gateValue = 0.0, gateZ = 0.0, gatePSpa = 0.0;
         double gatePExact = 0.0, gateLo = 0.0, gateHi = 0.0, gateMs = 0.0;
         bool gateShadow = false;
+        // FIXED 2026-10-03: the gate fired and the exact convolution at the
+        // unstretched score IS the reported p (gatePExact); gatePSpa is what the
+        // saddlepoint would have printed. gateLo/gateHi are filled only in
+        // shadow mode (the bracket is a diagnostic, three passes for one).
+        bool gateApplied = false;
         arma::mat x, XW2, Q, R;
         arma::vec pi_0, pi, W2, h, ypih;
         void ensureFirth(arma::uword n) {
@@ -128,11 +133,22 @@ struct TestContext {
 // much more than the stretch that is the intended relatedness correction;
 // where it does not, the saddlepoint is asked for a tail the cell can only
 // reach by a freak excursion (amr EFRMB: 1e-17 where ~6e-3 is right). The gate
-// is the ratio of the two. Each switch is read once per process:
-//   SAIGE_STRETCH_GATE=0        nothing is evaluated, printed or written
-//   SAIGE_EXACT_CONV_SHADOW=1   also compute the exact convolution (ExactConv.hpp)
-const double kStretchGateThreshold = 0.5;   // the band the summary line counts as "over"
+// is the ratio of the two. FIXED 2026-10-03: a cell at or above the threshold
+// reports the exact two-sided tail at the UNSTRETCHED score (ExactConv.hpp),
+// which is the exact test's model (independent Bernoullis, no relatedness
+// correction, as for a routed cell) with the tail computed instead of
+// approximated. Measured on seven AoU chromosome runs (732,374 cells): 67
+// cells at or above 0.5, 4 at or above 1 (the known gene), none between 1
+// and 3; the kernel costs ~140 ms per cell there. Each switch is read once:
+//   SAIGE_STRETCH_GATE=0            nothing is evaluated, printed or written
+//   SAIGE_STRETCH_GATE_APPLY=0      evaluate and report, but keep the saddlepoint
+//   SAIGE_STRETCH_GATE_THRESHOLD    the threshold (default kStretchGateThreshold)
+//   SAIGE_EXACT_CONV_SHADOW=1       also compute the exact convolution, with its
+//                                   bracket, for EVERY evaluated cell (slow)
+const double kStretchGateThreshold = 0.5;
 bool stretchGateEnabled();
+bool stretchGateApply();
+double stretchGateThreshold();
 bool exactConvShadow();
 
 // LEDGER #172: how many atoms carry a vector's weight. Kish's effective count

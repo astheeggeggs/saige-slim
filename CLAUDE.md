@@ -514,19 +514,27 @@ the cutoff, so the routing is drilled on its own fixtures (goldens P69-P71; `tes
 exact test reports the MID-p, upstream's convention. A SKAT-O cell whose custom weights span 1e-9 fails in SKAT's
 decomposition with the routing on or off (a conditioning artefact, counted by #57).
 
-**The stretch gate (LEDGER #176, 2026-10-02) is the instrument for the weighted cells that reach the saddlepoint,
-and it is OBSERVATION ONLY.** `q = Tstat/sqrt(varRatio) + m1` is compared against a CGF on the unscaled vector, so the
+**The stretch gate (LEDGER #176, built 2026-10-02, FIXED 2026-10-03) is the second net, for the weighted cells that
+reach the saddlepoint.** `q = Tstat/sqrt(varRatio) + m1` is compared against a CGF on the unscaled vector, so the
 variance ratio stretches the score off the lattice it can attain; the gate is that stretch over the sd of everything
 but the heaviest carrier's term, evaluated for every weighted set's binary cell whose test reaches the saddlepoint (both
-region paths; `TestContext::stretchGate`). Every region run prints `Stretch gate: N ... K at or above 0.5 (...)` and
-cells at or above 0.1 are named in `<SAIGEOutputFile>.stretchGate.txt`; `SAIGE_EXACT_CONV_SHADOW=1` also computes the
-exact convolution at the UNSTRETCHED score (`src/ExactConv.hpp`, reference `harness/tools/spa_exact_ref.py`) for every
-evaluated cell, lists all of them with the bracket and the milliseconds, and still reports the saddlepoint;
-`SAIGE_STRETCH_GATE=0` is the kill switch. No p-value reads any of it, so no result golden moved. The sidecar names
-genes and therefore carries NO carrier count and no per-carrier quantity. On the above-cap fixture the variance ratio is
-0.942 (a 3 % stretch, three times AoU's) and the gate is over 0.5 on 2 of P78's 4 evaluated cells, whose exact p is
-1.7x the saddlepoint's; every value there was predicted from the unpatched build's dumps first
-(`test-step2-stretch-gate.R`).
+region paths; `TestContext::stretchGate`). **A cell at or above 0.5 reports the exact two-sided tail at the UNSTRETCHED
+score** (`src/ExactConv.hpp`, a convolution over the carriers with a Gaussian part for everyone else -- the exact test's
+model with the tail computed instead of approximated, and like a routed cell with NO relatedness correction; reference
+`harness/tools/spa_exact_ref.py`). Every region run prints `Stretch gate: N ... K at or above 0.5 (...) K of them report
+the exact convolution ...`, cells at or above 0.1 are named in `<SAIGEOutputFile>.stretchGate.txt` with both p-values and
+which was reported; `SAIGE_STRETCH_GATE_APPLY=0` keeps the saddlepoint (the instrument alone), `SAIGE_STRETCH_GATE=0` is
+the kill switch, `SAIGE_STRETCH_GATE_THRESHOLD` moves the line, and `SAIGE_EXACT_CONV_SHADOW=1` computes the convolution
+with its bracket for EVERY evaluated cell (slow: ~140 ms a cell on AoU, 38 minutes on one chromosome). The sidecar names
+genes and therefore carries NO carrier count and no per-carrier quantity. **Measured on seven AoU chromosome runs
+(732,374 cells) before the fix was built**: 67 cells at or above 0.5, 4 at or above 1 (the known gene, all above 3), none
+between 1 and 3 -- the damage is either absorbed or catastrophic -- so the kernel runs on ~10 cells a chromosome, seconds.
+On the bundled fixtures the variance ratio is 0.942 (a 3 % stretch, three times AoU's): the fix moved exactly P69's six
+cells (the `sbeta5` sets had printed 7-14x below the exact tail in a committed golden), P77's three and P78's two, every
+value predicted from the unpatched build's dumps first (`test-step2-stretch-gate.R`). The artefact in miniature on the
+atom fixture now needs BOTH nets off (`SAIGE_EXACT_BY_WEIGHT=0 SAIGE_STRETCH_GATE_APPLY=0`). Below the gate the
+saddlepoint is still its own ~0.6x of the exact tail on cells whose heaviest term fired (the method's error, not the
+stretch's), decided left as is.
 
 The run: `--flexRV_score=NAME --flexRV_maxMAF=M --annotation_in_groupTest=<ONE
 group> --r.corr=1`, optionally `--flexRV_scoreTransforms` /
