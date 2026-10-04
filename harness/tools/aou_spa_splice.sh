@@ -127,9 +127,19 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
   # whose `reported` reads `exact` explains a change: `saddlepoint` means the
   # cell was evaluated and listed (at or above the floor) but the p is the one
   # it always was. Region|Weight, as the routed cells.
+  #
+  # The sidecar the wrapper delivers is the per-chromosome files concatenated
+  # under the FIRST file's header, and the image that ran the v8 pass
+  # (1.5.2-dev-152ffd8c) writes the `p_exact` and `reported` columns only when
+  # a chromosome had a gated cell. So the header can lack `reported` while
+  # later rows carry it in field 11 -- and an awk lookup of a missing header
+  # name is `$0`, which matches nothing, which refused 25 of afr's 124 checks
+  # on 2026-10-04. Take the column by name when the header has it and by its
+  # position when it does not; a 9-field row has no field 11 and is never
+  # accepted, which is right (it was not gated).
   : > sgcells.txt
   if exists "${NEW_PREFIX}.stretchGate.txt.gz"; then
-    cat_any "${NEW_PREFIX}.stretchGate.txt.gz" | awk -F'\t' 'NR==1{for(i=1;i<=NF;i++)h[$i]=i; next} ($h["reported"]=="exact") {print $3"|"$6}' | sort -u > sgcells.txt
+    cat_any "${NEW_PREFIX}.stretchGate.txt.gz" | awk -F'\t' 'NR==1{for(i=1;i<=NF;i++)h[$i]=i; c=("reported" in h)?h["reported"]:11; next} (NF>=c && $c=="exact") {print $3"|"$6}' | sort -u > sgcells.txt
   fi
   # LEDGER #174 (2026-09-29): a test in which pinned samples were left out of
   # the saddlepoint's vector is named in the rerun's own `.spaPinned.txt.gz`
@@ -342,7 +352,7 @@ fi
 if exists "${NEW_PREFIX}.stretchGate.txt.gz"; then   # LEDGER #176: the gated cells of the spliced regions travel with the file
   cat_any "${NEW_PREFIX}.stretchGate.txt.gz" | awk -F'\t' 'NR==FNR{keep[$1]=1; next} FNR==1{print; next} ($3 in keep)' regions.txt - > "${OUT_DIR}/${pre}.stretchGate.txt"
   gzip -f "${OUT_DIR}/${pre}.stretchGate.txt"
-  echo ".stretchGate.txt.gz: $(gzip -dc "${OUT_DIR}/${pre}.stretchGate.txt.gz" | awk -F'\t' 'NR==1{for(i=1;i<=NF;i++)h[$i]=i; next} $h["reported"]=="exact"{n++} END{print n+0}') gated cell(s) in the spliced regions, carried over"
+  echo ".stretchGate.txt.gz: $(gzip -dc "${OUT_DIR}/${pre}.stretchGate.txt.gz" | awk -F'\t' 'NR==1{for(i=1;i<=NF;i++)h[$i]=i; c=("reported" in h)?h["reported"]:11; next} (NF>=c && $c=="exact"){n++} END{print n+0}') gated cell(s) in the spliced regions, carried over"
 fi
 if exists "${NEW_PREFIX}.spaPinned.txt.gz"; then   # LEDGER #174: the guarded tests of the spliced regions travel with the file
   cat_any "${NEW_PREFIX}.spaPinned.txt.gz" | awk -F'\t' 'NR==FNR{keep[$1]=1; next} FNR==1{print; next} ($3 in keep)' regions.txt - > "${OUT_DIR}/${pre}.spaPinned.txt"
