@@ -54,6 +54,30 @@ fitGatesEnabled <- function(announce = FALSE) {
   enabled
 }
 
+# LEDGER #171 FIXED (2026-10-04). The null-model fit creates the model file and
+# the variance-ratio file at startup -- that is its writability check --
+# and fills them only after the fit. Every refusal between those points (the
+# eligibility gates, the phenotype checks, the convergence check, any error)
+# used to leave them behind at 0 bytes, which nothing downstream can tell from
+# a model: step 2 load()s the .rda blind and fails uselessly, a directory
+# listing counts them as fitted, and the AoU wrapper and notebook each grew a
+# 0-byte check to work around it. fitNULLGLMM now registers this on exit: when
+# the function did NOT reach its return, any file it created that is still
+# empty is removed, and the run says so. A successful run never gets here with
+# an empty file, so nothing it wrote is touched.
+removeEmptyOutputsOnFailure <- function(paths, succeeded) {
+  if (isTRUE(succeeded)) {
+    return(invisible(character()))
+  }
+  empty <- paths[file.exists(paths) & file.size(paths) == 0]
+  if (length(empty) > 0) {
+    unlink(empty)
+    cat("Removed ", length(empty), " empty output file(s) left by a fit that did not complete: ",
+        paste(basename(empty), collapse = ", "), " (LEDGER #171).\n", sep = "")
+  }
+  invisible(empty)
+}
+
 # Case count below which a binary fit is warned about but still run. Not an
 # option: it is the level the null study above actually measured, and it is
 # quoted in the warning so the user can see what it refers to.

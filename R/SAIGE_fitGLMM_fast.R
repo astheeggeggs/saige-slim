@@ -864,6 +864,15 @@ fitNULLGLMM <- function(plinkFile = "",
 
   modelOut <- paste0(outputPrefix, ".rda")
 
+  # LEDGER #171 FIXED: the files created below are the writability check; if
+  # this function exits by an error before it fills them, they are removed
+  # (R/FitGates.R removeEmptyOutputsOnFailure). on.exit reads both variables
+  # as they stand at exit, so the list grows as files are created and the
+  # flag flips just before the return.
+  createdOutputs <- character()
+  fitSucceeded <- FALSE
+  on.exit(removeEmptyOutputsOnFailure(createdOutputs, fitSucceeded), add = TRUE)
+
   if (skipModelFitting) {
     if (!file.exists(modelOut)) {
       stop("skipModelFitting=TRUE but ", modelOut, " does not exist\n")
@@ -873,6 +882,7 @@ fitNULLGLMM <- function(plinkFile = "",
       modelOut <- paste(c(outputPrefix, "_noLOCO.rda"), collapse = "")
     }
     file.create(modelOut, showWarnings = TRUE)
+    createdOutputs <- c(createdOutputs, modelOut)
   }
 
   # Genotype input: PLINK bed/bim/fam or PGEN pgen/pvar/psam, never both.
@@ -907,6 +917,7 @@ fitNULLGLMM <- function(plinkFile = "",
 
     if (!file.exists(varRatioFile)) {
       file.create(varRatioFile, showWarnings = TRUE)
+      createdOutputs <- c(createdOutputs, varRatioFile) # LEDGER #171
     } else {
       if (!IsOverwriteVarianceRatioFile) {
         # LEDGER #136 (6): this is a fatal refusal and says so; it used to open
@@ -1513,6 +1524,7 @@ fitNULLGLMM <- function(plinkFile = "",
     # The paths fitNULLGLMM ACTUALLY wrote, which the multi-phenotype driver
     # needs for the manifest: modelOut is reassigned under --isLowMemLOCO, and
     # outputPrefix is mutated in place by --FemaleOnly/--MaleOnly.
+    fitSucceeded <- TRUE # LEDGER #171: everything above wrote what it meant to
     return(invisible(list(
       phenoCol = phenoCol, modelOut = modelOut,
       varRatioFile = if (skipVarianceRatioEstimation) NULL else varRatioFile,

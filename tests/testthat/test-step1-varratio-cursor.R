@@ -115,11 +115,13 @@ test_that("LEDGER #75 FIXED: a fully-skipped pool is read once through, not halv
   expect_identical(r$tested, 0L)
   # The fix reads the whole pool; it does NOT invent data. With no usable marker
   # there is still no variance ratio to estimate, and the run still fails --
-  # leaving the model on disk and the variance-ratio file empty, which is the
-  # pair step 2 cannot use.
+  # leaving the (saved, non-empty) model on disk and, since LEDGER #171 FIXED
+  # (2026-10-04), NO variance-ratio file: the empty one it used to leave is
+  # removed on the way out, so step 2 cannot be handed the unusable pair.
   expect_false(identical(r$status, 0L))
   expect_true(file.exists(paste0(r$prefix, ".rda")))
-  expect_identical(file.info(paste0(r$prefix, ".varianceRatio.txt"))$size, 0)
+  expect_gt(file.size(paste0(r$prefix, ".rda")), 0)
+  expect_false(file.exists(paste0(r$prefix, ".varianceRatio.txt")))
 })
 
 test_that("LEDGER #75 FIXED: an odd pool no longer steps over the exhaustion guard", {
@@ -137,7 +139,7 @@ test_that("LEDGER #75 FIXED: an odd pool no longer steps over the exhaustion gua
   expect_false(vr_na_error(r))
   expect_false(any(grepl("genoInd == 0", r$log, fixed = TRUE)))
   expect_false(identical(r$status, 0L))
-  expect_identical(file.info(paste0(r$prefix, ".varianceRatio.txt"))$size, 0)
+  expect_false(file.exists(paste0(r$prefix, ".varianceRatio.txt")))   # LEDGER #171 FIXED
 })
 
 test_that("LEDGER #75 FIXED: a mixed pool tests every marker it was asked for", {

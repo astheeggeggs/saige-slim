@@ -167,6 +167,7 @@ test_that("an unrecognised separationCheck is an error, not a silent no-op", {
 
 fg_cli <- function(extra, phenoFile = NULL, phenoCol = "y_binary",
                    covar = "x1,x2,a9,a10", qcovar = "a9,a10") {
+  prefix <- tempfile("s1fg_")
   sg <- "output/sparseGRM_relatednessCutoff_0.125_1000_randomMarkersUsed.sparseGRM.mtx"
   if (is.null(phenoFile)) {
     phenoFile <- "./input/pheno_1000samples.txt_withdosages_withBothTraitTypes.txt"
@@ -178,10 +179,19 @@ fg_cli <- function(extra, phenoFile = NULL, phenoCol = "y_binary",
             paste0("--phenoCol=", phenoCol), paste0("--covarColList=", covar),
             paste0("--qCovarColList=", qcovar), "--sampleIDColinphenoFile=IID",
             "--traitType=binary", "--IsOverwriteVarianceRatioFile=TRUE",
-            paste0("--outputPrefix=", tempfile("s1fg_")), extra)
+            paste0("--outputPrefix=", prefix), extra)
   st <- run_saige_cli("step1_fitNULLGLMM.R", args,
                       env = c(SAIGE_FIT_GATES = "1"))
-  list(status = as.integer(st), log = readLines(attr(st, "log"), warn = FALSE))
+  list(status = as.integer(st), log = readLines(attr(st, "log"), warn = FALSE),
+       prefix = prefix)
+}
+# LEDGER #171 FIXED: a refused fit leaves NO file behind -- not the 0-byte .rda
+# and .varianceRatio.txt it used to -- and says what it removed.
+expect_no_leftovers <- function(r) {
+  expect_false(file.exists(paste0(r$prefix, ".rda")))
+  expect_false(file.exists(paste0(r$prefix, ".varianceRatio.txt")))
+  expect_true(any(grepl("empty output file(s) left by a fit that did not complete", r$log,
+                        fixed = TRUE)))
 }
 
 test_that("the shipped defaults refuse the bundled fixture, before fitting", {
@@ -195,6 +205,7 @@ test_that("the shipped defaults refuse the bundled fixture, before fitting", {
   # this fixture takes seconds, the refusal should be startup only.
   expect_false(any(grepl("Start fitting the NULL GLMM", r$log, fixed = TRUE)))
   expect_lt(proc.time()[["elapsed"]] - t0, 60)
+  expect_no_leftovers(r)
 })
 
 test_that("the covariate-cell gate refuses on its own, with the case gate off", {
@@ -204,6 +215,7 @@ test_that("the covariate-cell gate refuses on its own, with the case gate off", 
   expect_false(identical(r$status, 0L))
   expect_true(any(grepl("--minCovariateCellCount=10", r$log, fixed = TRUE)))
   expect_true(any(grepl("a10 = 2", r$log, fixed = TRUE)))
+  expect_no_leftovers(r)
 })
 
 test_that("with both gates off the same fit runs to completion", {
@@ -214,6 +226,10 @@ test_that("with both gates off the same fit runs to completion", {
   r <- fg_cli(c("--minCaseCount=0", "--minCovariateCellCount=0"))
   expect_identical(r$status, 0L)
   expect_true(any(grepl("Start fitting the NULL GLMM", r$log, fixed = TRUE)))
+  # LEDGER #171: and a fit that completes keeps everything it wrote
+  expect_gt(file.size(paste0(r$prefix, ".rda")), 0)
+  expect_gt(file.size(paste0(r$prefix, ".varianceRatio.txt")), 0)
+  expect_false(any(grepl("empty output file(s)", r$log, fixed = TRUE)))
 })
 
 # ---- the kill switch ------------------------------------------------------

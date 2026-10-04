@@ -120,12 +120,12 @@ test_that("LEDGER #141: step 1 refuses a fam with a repeated IID through the PLI
   expect_true(any(grepl("1 sample ID(s) appear more than once in the fam file", lg, fixed = TRUE)))
   expect_true(any(grepl(": 1a1.", lg, fixed = TRUE)))
   # refused before the count that #67's provenance names as the only tell,
-  # and before the fit. fitNULLGLMM pre-creates the model file EMPTY
-  # (file.create at R/SAIGE_fitGLMM_fast.R:851) before it reads anything, so
-  # the file's existence says nothing; its size does.
+  # and before the fit. fitNULLGLMM pre-creates the model file EMPTY as its
+  # writability check; LEDGER #171 FIXED (2026-10-04): a fit that does not
+  # complete removes it again, so the refusal leaves NO model file.
   expect_false(any(grepl("samples will be used for analysis", lg, fixed = TRUE)))
   expect_false(any(grepl("Start fitting the NULL GLMM", lg, fixed = TRUE)))
-  expect_identical(file.size(file.path(d, "out_plink.rda")), 0)
+  expect_false(file.exists(file.path(d, "out_plink.rda")))
 })
 
 test_that("LEDGER #141: step 1 refuses a psam with a repeated IID through the PGEN reader", {
@@ -142,5 +142,5 @@ test_that("LEDGER #141: step 1 refuses a psam with a repeated IID through the PG
   expect_true(any(grepl("1 sample ID(s) appear more than once in the psam file", lg, fixed = TRUE)))
   expect_false(any(grepl("samples will be used for analysis", lg, fixed = TRUE)))
   expect_false(any(grepl("Start fitting the NULL GLMM", lg, fixed = TRUE)))
-  expect_identical(file.size(file.path(d, "out_pgen.rda")), 0)
+  expect_false(file.exists(file.path(d, "out_pgen.rda")))   # LEDGER #171 FIXED
 })
