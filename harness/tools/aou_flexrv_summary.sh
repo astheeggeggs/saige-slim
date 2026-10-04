@@ -35,7 +35,11 @@ else
 fi
 FX="${BASE}/${ANC}/flexrv_${RUNTAG}"; FXF="${BASE}/${ANC}/flexrv_${RUNTAG}_fixed"; SK="${BASE}/${ANC}/skato_${RUNTAG}"
 FX7="${BASE}/${ANC}/${FLEXRV_V7_DIR:-flexrv_v7_checked}"
-SIDECARS='\.(singleAssoc|markerList|pooledTests|skatoMethod|skatFailures|spaFallbacks|chrStatus|exactByWeight)\.txt\.gz$'
+# every sidecar a step-2 run or the splice control can leave beside the results
+# file; a new one that is not listed here is counted as a results file and the
+# `K v7` provenance line reads STALE (2026-10-04: spaPinned, exactByWeightAboveCap
+# and stretchGate were missing once flexrv_v8_checked carried them)
+SIDECARS='\.(singleAssoc|markerList|pooledTests|skatoMethod|skatFailures|spaFallbacks|chrStatus|exactByWeight|exactByWeightAboveCap|spaPinned|stretchGate|spliceStatId|splice)\.txt(\.gz)?$'
 lsd "${FX}/*.txt.gz"  | grep -E '\.txt\.gz$' | grep -vE "${SIDECARS}" > fx.list || true
 lsd "${FXF}/*.txt.gz" | grep -E '\.txt\.gz$' | grep -vE "${SIDECARS}" > fxf.list || true
 lsd "${SK}/*.txt.gz"  | grep -E '\.txt\.gz$' | grep -vE "${SIDECARS}" > sk.list || true
