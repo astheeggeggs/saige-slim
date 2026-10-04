@@ -55,11 +55,14 @@ stretchGateSummary <- function(OutputFile) {
     gate = signif(rec$gate, 6), z = signif(rec$z, 6), p_spa = signif(rec$p_spa, 6),
     stringsAsFactors = FALSE
   )
+  # Always the same columns: the wrapper that delivers this file concatenates
+  # one per chromosome under the first file's header, and when these two were
+  # written only for a chromosome with a gated cell, a chunk whose first
+  # chromosome had none carried a 9-column header over 11-field rows (the
+  # splice control and every reader of 2026-10-04 had to work around it).
   has_exact <- rec$applied | rec$shadow
-  if (any(has_exact)) {
-    tab$p_exact <- ifelse(has_exact, signif(rec$p_exact, 6), NA)
-    tab$reported <- ifelse(rec$applied, "exact", "saddlepoint")
-  }
+  tab$p_exact <- ifelse(has_exact, signif(rec$p_exact, 6), NA)
+  tab$reported <- ifelse(rec$applied, "exact", "saddlepoint")
   if (isTRUE(rec$shadow_mode)) {
     tab$p_exact_lo <- signif(rec$lo, 6)
     tab$p_exact_hi <- signif(rec$hi, 6)
