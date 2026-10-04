@@ -145,7 +145,11 @@ CAD on chr20 (no shadow). Outputs in `<anc>/flexrv_caprate2/`; the counts come f
    wrapper now delivers `.stretchGate.txt` (the `OUT_FILE_STRETCHGATE` output in `submit()` and
    the `stretchGate:` pair in the delivery loop, added 2026-10-03 in the workbench), so every
    gated cell is named with both p-values.
-3. **LEDGER #171** is the next cheap row: step 1 creates `<prefix>.rda` and `.varianceRatio.txt`
+3. ~~**LEDGER #171**~~ -- FIXED 2026-10-04 (`on.exit` removes any created file still empty when
+   the fit exits without completing; step 2's load-time refusal measured to leave no file). The
+   sidecar writer now emits `p_exact` and `reported` always. Rows #177 (the p-scale variance ratio
+   for exact-test cells, OPEN, the owner's) and #178 (the saddlepoint's own ~0.6x error, DECIDED,
+   leave as is) record the two decisions. Original item: step 1 creates `<prefix>.rda` and `.varianceRatio.txt`
    at startup and fills them after the fit, so every refusal leaves 0-byte files. Fix: keep the
    early create (it is the writability check), register an `on.exit` that deletes any created
    file still empty when the function exits by error, set a success flag before the return.
