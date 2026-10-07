@@ -4,9 +4,10 @@ The reference for porting the AoU runs to a template elsewhere. Every value
 below names its source. **Step 2 is complete** (the wrapper
 `saige_step2_brava_main_original.sh`, the notebook's `submit()`, and the
 option dump SAIGE prints at the top of every job log, quoted from a FlexRV
-run). **Steps 0 and 1 are partial**: their wrappers live in the workbench and
-are not in this repo; what is here is what the handoffs recorded. Do not
-treat a blank in those sections as "default".
+run). **Step 1 is complete** (the wrapper `saige_step1.sh` and three of its
+job logs, read 2026-10-07). **Step 0 is partial**: its wrapper lives in the
+workbench and is not in this repo; what is here is what the handoffs recorded.
+Do not treat a blank in that section as "default".
 
 ## Images
 
@@ -34,21 +35,36 @@ Read off the GRM file names and `docs/state/handoff-2026-09-25-aou-production-st
 The `step0/` copies of the GRMs are TRUNCATED for four of five cohorts and
 must not be used (memory note `aou-sparse-grm-two-locations`).
 
-## Step 1: null models (partial)
+## Step 1: null models (complete)
 
-From `docs/state/handoff-2026-09-23-fit-gates-and-aou-refit.md` and `-09-25-`:
+From the wrapper `saige_step1.sh` and three of its v4 job logs (2026-09-24,
+each the wrapper's `=== config ===` block and SAIGE's dump of every option as
+parsed): afr/ALT (quantitative), amr/IFHern (binary) and amr/FemInf (binary,
+female-only). The two amr logs are the 0.05 jobs run before amr moved to 0.125.
 
 | flag | value | source |
 |---|---|---|
 | model directory | `<bucket>/data/saige/run/nullglmm_v4/<anc>_<TRAIT>.rda` (+ `.varianceRatio.txt`), ONE directory for afr, eas, eur and sas; amr in `<bucket>/data/saige/run/nullglmm_v4_rc0.125/`. Not under `SAIGE_SLIM_TESTING/`, which holds step-2 output only. File counts 42 / 25 / 43 / 15 / 42 for afr / eas / eur / sas / amr, read from the bucket 2026-09-29 | notebook `STEP1` (a dict: ancestry to directory and relatedness cutoff), printed 2026-09-29 |
-| `--useSparseGRMtoFitNULL` | TRUE (sparse-GRM fits; single-threaded whatever `--nThreads` says) | handoff 09-23 |
-| `--useSparseGRMforVarRatio` | TRUE: the AoU variance-ratio files carry `sparse` rows (`ratioVec_sparse 1 1` in every step-2 log), and step 2 given the GRM REFUSES a file without them | the step-2 option/VR dump |
-| `--relatednessCutoff` | 0.05; amr 0.125 (must match step 2's, nothing checks it) | handoff 09-25 |
-| `--tol` | 0.02, both trait types (the refit on `1.5.2-dev-3e61864a`) | handoff 09-23 |
-| `--traitType` | binary / quantitative per trait (`TRAIT_TYPE` in the notebook) | notebook |
-| `--invNormalize` | not recorded here | -- |
-| `--covarColList`, `--qCovarColList`, `--sampleIDColinphenoFile`, `--phenoCol` | not recorded here (the step-1 wrapper) | -- |
-| `--isCateVarianceRatio`, `--cateVarRatioMinMACVecExclude` | the VR files carry 2 `null` rows and 1 `sparse` row, consistent with `10,20.5` / `20.5` | VR files |
+| genotypes (variance ratio) | `--bedFile/--bimFile/--famFile` `data/saige/run/nullglmm/allofus_array_<anc>_for_vr.{bed,bim,fam}` | logs |
+| sparse GRM | `data/saige/run/make_sparse_grm/allofus_array_<anc>_snp_wise_relatednessCutoff_0.05_5000_randomMarkersUsed.sparseGRM.mtx` (+ `.sampleIDs.txt`); NOT the truncated `data/saige/step0/` copies | logs |
+| `--useSparseGRMtoFitNULL`, `--useSparseGRMforVarRatio` | TRUE, TRUE (the variance-ratio files carry `sparse` rows; step 2 given the GRM REFUSES a file without them) | logs; the step-2 option/VR dump |
+| `--relatednessCutoff` | 0.05; amr 0.125 (must match step 2's, nothing checks it) | logs (0.05); amr: handoff 09-25, and the rerun at 0.125 confirmed by the analyst 2026-10-07 |
+| `--phenoFile` | `data/phenotypes/brava_pilot_v1.collapsed.with_covariates.txt.gz` | logs |
+| `--sampleIDColinphenoFile` | `eid` | logs |
+| `--traitType` | binary / quantitative per trait (`TRAIT_TYPE` in the notebook) | logs; notebook |
+| `--invNormalize` | TRUE for quantitative, FALSE for binary (the wrapper derives it from the trait type) | logs (ALT TRUE; IFHern, FemInf FALSE); wrapper |
+| `--covarColList` | `age,sex,age2,age_sex,age2_sex,PC1,...,PC20` (25; 26 design columns with the intercept); sex-specific traits `age,age2,PC1,...,PC20` | logs (ALT, IFHern; FemInf) |
+| `--qCovarColList` | `sex`; none for sex-specific traits | logs |
+| sex-specific traits | `--FemaleOnly=TRUE` / `--MaleOnly=TRUE`, `--sexCol=sex`, `--FemaleCode=1` / `--MaleCode=0` (the wrapper's `IN_SEXMODE`); in this file 1 is female | log (FemInf); wrapper |
+| `--tol` | 0.02, both trait types | logs; handoff 09-23 |
+| `--LOCO` | FALSE | logs |
+| `--isCateVarianceRatio` | TRUE, with `cateVarRatioMinMACVecExclude` 10,20.5 and `cateVarRatioMaxMACVecInclude` 20.5 (defaults) | logs |
+| `--isCovariateOffset`, `--IsOverwriteVarianceRatioFile` | TRUE, TRUE | logs |
+| `--usePCGwithSparseGRM` | FALSE (the default; these jobs' wrapper did not pass it, the later one passes `IN_USE_PCG`, default FALSE) | logs; wrapper |
+| `--minCaseCount`, `--minCovariateCellCount`, `--minSampleCount` | 100, 10, 0 | logs |
+| `--separationCheck`, `--convergenceCheck`, `--separationMaxFraction` | error, error, 0.02 (defaults) | logs |
+| `--nThreads` | cores - 1 (1 or 3 here); inert, a sparse-GRM fit is single-threaded | logs |
+| everything else | build defaults, as the option dump shows | logs |
 
 ## Step 2: association tests (complete)
 
@@ -114,36 +130,30 @@ The first screen of every step-2 job log is SAIGE's dump of every option as
 parsed (`$bedFile ... $nThreads`), so a question about one run is answered by
 `fetch_log(<job>)` and reading that block, not by this page.
 
-## universal-saige (BRaVa-genetics, `main` at 8fa1aaf) against the AoU runs
+## universal-saige against the AoU runs
 
-The analyst pipeline the AoU wrapper descends from: drivers `00_step0_VR_and_GRM.sh`,
-`01_step1_fitNULLGLMM.sh`, `02_step2_SPAtests_variant_and_gene.sh`, templates under
-`templates/`, image `wzhou88/saige:1.3.6` pulled from Docker Hub by
-`download_resources.sh`, one chromosome per step-2 invocation, run through
-`run_container.sh`. Where a value below is marked "AoU ?" the AoU step-0/1
-wrapper (workbench only) has not been read; the correspondence is presumed
-from the GRM file names, not established.
+The analyst pipeline the AoU wrapper descends from (BRaVa-genetics/universal-saige).
+Its branch `saige-slim-aou-parameters` (PR #7) moved it onto this build and these
+parameters; `main` (8fa1aaf) is the earlier pipeline (`wzhou88/saige:1.3.6`, Firth
+and fastTest on, `--tol` 1e-5 for quantitative traits, no `sparse` variance-ratio
+rows, VCF input). The branch, as of 2026-10-07:
 
-| step | flag | universal-saige main | AoU v4 |
+| step | flag | universal-saige `saige-slim-aou-parameters` | AoU v4 |
 |---|---|---|---|
-| 0 | GRM markers | LD-pruned `--indep-pairwise 50 5 0.05`, `createSparseGRM.R --numRandomMarkerforSparseKin=5000 --relatednessCutoff=0.05`, `--nThreads=$(nproc)` | file name agrees (`_relatednessCutoff_0.05_5000_randomMarkersUsed`); prefix `allofus_array_<pop>_snp_wise`; amr also at 0.125; AoU ? for the pruning |
-| 0 | VR plink | 2,000 markers at 10 <= MAC < 20 plus 2,000 at MAC >= 20 from the merged array data | AoU ? |
-| 1 | GRM | `--useSparseGRMtoFitNULL=TRUE --relatednessCutoff 0.05` | same at 0.05; amr 0.125 |
-| 1 | `--tol` | 0.00001 quantitative, 0.02 binary | 0.02 BOTH (handoff 09-23) |
-| 1 | `--invNormalize` | TRUE for quantitative | AoU ? |
-| 1 | covariates | template `age,age2,age_sex,age2_sex,sex,PC1..PC10`, categorical `sex` | AoU ? |
-| 1 | `--useSparseGRMforVarRatio` | NOT passed: the VR file has no `sparse` rows, and step 2 with the GRM refuses it on the slim build (found running the drivers end to end, 2026-09-28) | TRUE (the files carry `sparse` rows) |
-| 1 | other | `--skipVarianceRatioEstimation FALSE --IsOverwriteVarianceRatioFile=TRUE --isCateVarianceRatio=TRUE --isCovariateOffset TRUE --nThreads=$(nproc)-1`, `--SampleIDIncludeFile` | AoU ?; a sparse-GRM fit is single-threaded regardless |
-| 2 | image | `wzhou88/saige:1.3.6` (Docker Hub) | `saige-slim:1.5.2-dev-f2fb24da` / `-3e92d89d` (gcr) |
-| 2 | genotypes | PLINK bed or VCF (`--vcfField=DS`) | PGEN; the slim build has NO VCF reader |
-| 2 | `--minMAC` | 0.5 for both test types | 0.5 group, 4 variant |
-| 2 | `--is_Firth_beta`, `--pCutoffforFirth` | TRUE, 0.1 | FALSE |
-| 2 | `--is_fastTest` | TRUE | FALSE |
-| 2 | `--maxMissing`, `--impute_method` | 1, mean | build defaults 0.15, best_guess |
-| 2 | `--relatednessCutoff` | not passed (moot when steps 0 and 1 share the cutoff; wrong for amr at 0.125) | passed, equal to step 1's, required by the wrapper |
-| 2 | annotations | `pLoF,damaging_missense_or_protein_altering,other_missense_or_protein_altering,synonymous,pLoF:...` (BRaVa labels) | `pLoF,damaging_missense,other_missense,synonymous,pLoF:damaging_missense,pLoF:damaging_missense:other_missense:synonymous` (the AoU annotation's labels) |
-| 2 | `--maxMAF_in_groupTest` | `0.0001,0.001,0.01` | same (SKAT-O arm); FlexRV arm 0.001 alone |
-| 2 | FlexRV | absent | the FlexRV arm (flags above) |
-| 2 | `--condition`, `--subSampleFile` | supported | not used |
-| 2 | fit gates | absent from 1.3.6 | ON in the slim build (`--minCaseCount` 100 etc.): a small cohort's trait is REFUSED, the wrapper records it as `REFUSED_BY_GATE` |
-| 2 | sidecars | none | pooledTests, skatoMethod, skatFailures, spaFallbacks, chrStatus, spaDump |
+| all | image | `astheeggeggs/saige-slim:1.5.2-dev-152ffd8c` (Docker Hub) | `f2fb24da` / `3e92d89d` / `a08fb295` (gcr) |
+| 0 | GRM | LD-pruned `--indep-pairwise 50 5 0.05`, `createSparseGRM.R --numRandomMarkerforSparseKin=5000`, `--relatednessCutoff` a flag (default 0.05) | file names agree; AoU pruning not recorded |
+| 0 | VR plink | 2,000 markers at 10 <= MAC < 20 plus 2,000 at MAC >= 20 | not recorded |
+| 1 | GRM, VR | `--useSparseGRMtoFitNULL=TRUE --useSparseGRMforVarRatio=TRUE`, `--relatednessCutoff` a flag | same |
+| 1 | `--tol`, `--invNormalize` | 0.02; TRUE quantitative, FALSE binary | same |
+| 1 | covariates | the analyst's; templates `age,age2,age_sex,age2_sex,sex,PC1..PC20`, categorical `sex` | same set |
+| 1 | sex-specific | `--sex F/M` -> `--FemaleOnly/--MaleOnly --sexCol sex`; numeric codes default 0 female, 1 male (BRaVa's coding, the opposite of this file's), checked against genetic sex | `--FemaleOnly/--MaleOnly`, `--FemaleCode=1` |
+| 1 | dense GRM | refused above 100 relatives per sample (amr at 0.05: ~644) unless `--forceDenseGRM` | amr refitted at 0.125 |
+| 2 | genotypes | PGEN or PLINK 1; no VCF | PGEN |
+| 2 | `--minMAC`, `--minMAF` | 4 variant, 0.5 group; 0 | same |
+| 2 | Firth, fastTest, `--LOCO` | FALSE, FALSE, FALSE | same (`FIRTH=FALSE`, `FASTTEST=FALSE` in the launch) |
+| 2 | `--relatednessCutoff` | passed (default 0.05) | passed, equal to step 1's |
+| 2 | `--maxMAF_in_groupTest` | `0.0001,0.001,0.01`; FlexRV 0.001 | same |
+| 2 | FlexRV | one mask, `--flexRV_maxMAF` 0.001, `--flexRV_lofAnno pLoF`, `--r.corr=1`; a score line in every region required | same |
+| 2 | annotations | BRaVa labels; every label must be in the group file | AoU labels |
+| 3 | Nglmm | `extractNglmm.R` at `--relatednessCutoff` (default 0.05); before 2026-10 its own default, 0.125 | not run |
+
