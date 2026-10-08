@@ -162,3 +162,56 @@ thing worth borrowing is the shape -- all sets' Z' from one matrix product
 (`W'S`, `diag(W' Phi W)`) rather than a loop over sets. The summary-statistic side
 of this discussion (count-based null, concentration guard, rarest-variant check)
 is recorded in `~/Repositories/genebass-burden/README.md`, where it applies.
+
+## 7. Added 2026-10-08: the cost was dead work, and it is FIXED (LEDGER #179)
+
+The screen of section 4 is NOT built, and should not be. Reading the dispatch
+inside `getMarkerPval` showed the cheap carrier-space score test already exists
+(`scoreTestFast`, O(carriers x covariates)) and already serves every BURDEN cell
+above MAC 20.5. The O(N) per cell was a tail AFTER the test -- the dense
+projected vector, `gy` and `P2Vec` for the SKAT-O path's P1/P2 and Phi rescale --
+requested because the emitter passed `is_region = m_flagSparseGRM`, upstream's
+rule since 2022, while the BURDEN writer reads only `pval`/`Beta`/`seBeta`.
+
+Measurement that located it (same arms as section 1, 1 thread, loaded box):
+
+| arm | per-set phase | wall |
+|---|---|---|
+| binary, sparse GRM, before | 13.0 s | 24.0 s |
+| binary, NO GRM (tail skipped, a different statistic for MAC <= 20.5 cells) | 0.7 s | 10.4 s |
+| binary, sparse GRM, after the fix | 6.5 s | 16.7 s |
+| quantitative, sparse GRM, before | 11.6 s | 22.2 s |
+| quantitative, NO GRM | 0.2-0.4 s | 10.2-11.3 s |
+| quantitative, sparse GRM, after the fix | 4.4 s | 13.7 s |
+
+What remains in the phase after the fix is the PCG solve for the ~12% of cells
+at MAC <= 20.5 (the sparse GRM in the variance: real work) and the escalated
+cells. The no-GRM row is the floor those cells keep the run above.
+
+Byte identity, all paths: the sim50k k192 binary output and both exact-by-weight
+sidecars `cmp`-identical to the pre-change run (30,167 cells; 1,703 past the SPA
+cutoff, 489 at MAC <= 4 on the exact test, 99 exact-by-weight, 63 above-cap;
+`harness/work/flexrv50k/vecscreen/prechange/`), two post-change reps identical
+to each other, and every golden byte-identical in both compare modes.
+
+TSAN after the fix (`SAIGE_TSAN_WORKLOADS="region_atom region_atom_skato"`, env.sh
+sourced -- without it every arm dies on the fit gate, and a stopped build leaves
+`lib/00LOCK-pkg` behind): clean races=0 at t=1/4/8 on both workloads, bytes-vs-serial
+identical, no arm died; plant 641/60 and 194/175 races at t=4/8, DIFFERS or died.
+
+For comparison, `--nThreads=4` on the OLD build: wall 16-22 s against 24-27 s,
+~1.6x CPU inflation, output byte-identical. The two compound.
+
+Not done, in order of value: (1) the per-marker prepare phase (3.9 s of the
+~12 s left) passes `is_region = true` as a literal on the BURDEN path; read what
+its results feed there before touching it. (2) At thousands of sets the
+escalated cells would dominate (each saddlepoint rebuilds the dense projected
+vector): a carrier-space saddlepoint is the lever then, the cross-set
+vectorisation only after that. (3) Wire `--nThreads` into the AoU wrapper.
+(4) Tell upstream: a one-line condition on the test type.
+
+Diagonal Phi with the collapse OFF (cutoff 0, 2026-10-04, K = 1 unweighted,
+210 cells, 45 rows per cell median, max 289): `sum(diag(Phi))/sum(Phi) - 1`
+median +1.2e-3 / +1.5e-3, min -0.239 / -0.296, 7-8 cells below -5%, Z inflated
+up to +15% / +19% (quantitative / binary). Removing the collapse does not
+rescue a diagonal variance on this fixture.

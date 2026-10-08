@@ -4818,10 +4818,28 @@ if(t_regionTestType == "BURDEN"){
          BurdenCellModel & cm = W[km].burdenOut[jmrT];
          bool is_gtilde, is_Firth, is_FirthConverge;
          bool flip = false;
-         bool isregion = model.m_flagSparseGRM;
+         // 2026-10-08: is_region was m_flagSparseGRM, upstream's rule since the
+         // 2022 BURDEN emitter (main:src/Main.cpp:1849). Inside getMarkerPval
+         // that flag requests only the SKAT-O path's by-products after the test
+         // -- the dense projected vector, gy and P2Vec (SAIGE_test.cpp, the
+         // `is_region && ...` block after the conditional branch, and the gy dot
+         // in scoreTest) -- which feed P1/P2 and the Phi rescale. This emitter
+         // runs only when keepP1P2 is false and its writer reads pval, Beta and
+         // seBeta alone, so with a sparse GRM every cell paid an O(N p)
+         // projection for a vector nothing read: 13.0 of 24.0 s wall on sim50k
+         // k192 binary, 11.6 of 22.2 quantitative (handoff-2026-10-01-
+         // vectorised-burden-screen.md, section 7). The score, the saddlepoint
+         // (which builds its own g-tilde when it fires), the exact test, Firth
+         // and the conditional block are unchanged, so every row is
+         // byte-identical by construction; the goldens pin it.
+         const bool isregion = false;
          arma::uvec nzView(c.nz.data(), c.nz.size(), false, true);
-         complementIndices(c.nz.data(), c.nz.size(), (arma::uword)t_n, sc.indexZeroVec_arma);
-         arma::uvec & zeroView = sc.indexZeroVec_arma;
+         // The zero index is read only by the exact test, which builds the
+         // complement itself from an empty vector, in this same increasing
+         // order (SAIGE_test.cpp, runExactTest; the marker path has passed an
+         // empty one since 2026-09-16). complementIndices was an O(N) pass per
+         // cell for the ~2% of cells that take the exact test.
+         arma::uvec zeroView;
          cs.scatterSum(jmrT, sc.sumScratch);
          ScratchGuard sumGuard(cs, sc.sumScratch, false);
          arma::vec & genoSumVecRef = sc.sumScratch;
