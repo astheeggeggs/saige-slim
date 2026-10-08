@@ -49,8 +49,16 @@ for side in "${SIDES[@]}"; do
   pre="${base%.singleAssoc.txt.gz}"
   res="${SCAN_DIR}/${pre}.txt.gz"
   # --- the sidecar: failing rows ---
+  # A FlexRV run with the wrapper's SINGLE_IN_GROUP=FALSE (2026-10-08) delivers a
+  # one-line '#' placeholder here: its variant results are the SKAT-O run's, so
+  # there is nothing to scan and the failure counts are 0 by construction, not
+  # by measurement. Detected inside the awk (no early exit: `| head` on a
+  # stream dies of SIGPIPE under pipefail); the tail scan of the results file
+  # below still runs.
   cat_any "${side}" | awk -F'\t' -v f="${pre}" -v OFS='\t' '
-    NR==1 { for(i=1;i<=NF;i++) h[$i]=i; next }
+    NR==1 { if ($0 ~ /^#/) { ph=1; print "NOTE " f ": single-variant file is a placeholder (SINGLE_IN_GROUP=FALSE); failure scan skipped, tail scan only" > "/dev/stderr"; next }
+            for(i=1;i<=NF;i++) h[$i]=i; next }
+    ph { next }
     { rows++; ur = ($h["CHR"]=="UR"); if(ur) urrows++
       if (tolower($h["Is.SPA"])=="false" && ($h["p.value.NA"]+0) < 0.0455) {
         id=$h["MarkerID"]; reg = ur ? substr(id, 1, index(id, ":")-1) : "-"

@@ -84,7 +84,7 @@ Common to both arms (the wrapper's fixed flags plus the notebook's `submit()` va
 | `--GMMATmodelFile`, `--varianceRatioFile` | the step-1 pair above |
 | `--sparseGRMFile`, `--sparseGRMSampleIDFile` | the step-0 GRM of the ancestry, every ancestry (the earlier "none for amr" is void) |
 | `--relatednessCutoff` | 0.05; amr 0.125 (`RELCUTOFF`, required by the wrapper when a GRM is given) |
-| `--is_single_in_groupTest` | TRUE |
+| `--is_single_in_groupTest` | TRUE in v4. **From 2026-10-08 the wrapper takes `SINGLE_IN_GROUP` (default TRUE); set FALSE for FlexRV runs**: the file was 80% of a FlexRV job (LEDGER #179; afr chr20 431/465/601 s -> 55/55/75 s with it off, gene-level rows identical), its real-marker rows are the SKAT-O run's and its pseudo-marker rows were read only by the splice control's twin rule. The wrapper then delivers a one-line placeholder; `aou_spa_scan.sh` and `aou_spa_splice.sh` recognise it. SKAT-O runs keep TRUE. |
 | `--is_output_markerList_in_groupTest` | TRUE |
 | `--subSampleFile`, `--minGroupMAC_in_BurdenTest`, `--is_no_weight_in_groupTest` | not passed (build defaults: none, 1, FALSE) |
 | machine | `n2-standard-2` (eur `n2-highmem-2`), on demand, 50 GB disk; chromosomes in size-balanced bins per job |

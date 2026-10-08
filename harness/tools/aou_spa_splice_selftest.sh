@@ -93,6 +93,10 @@ plants["sidac"]   = (new_res, variant(new_sa, base_ur,                          
     "UR\tUR\tR6:grp:0.001:AM_cbrt0.2_unw\tUR\tUR\t0.61\t0.0001\t0\t1\t1\t1\t1\t0.25\t0.02\ttrue"))
 plants["allok"]  = (full_res, full_sa)   # the sidecar lists R2|W1: accepted
 plants["allbad"] = (full_res, full_sa)   # no sidecar: the same change is unexplained
+# 2026-10-08: a complete rerun made with SINGLE_IN_GROUP=FALSE delivers the wrapper's one-line placeholder
+# instead of a single-variant file: the results splice as allok, the placeholder is NOTED and no
+# single-variant file is written (the old one's pseudo-marker rows would be stale for every rerun region)
+plants["nosingle"] = (full_res, ["# no singleAssoc output: SINGLE_IN_GROUP=FALSE (variant results come from the SKAT-O run)"])
 os.makedirs("in", exist_ok=True)
 w("in/fxv4-test.txt.gz", old_res); w("in/fxv4-test.singleAssoc.txt.gz", old_sa)
 w("in/fxv4-test.pooledTests.txt.gz", ["Region\tRows\tRefused\tRule", "R1\t3\t0\tbonferroni", "R3\t1\t0\tcauchy"])
@@ -114,7 +118,8 @@ w("in/pnur/fxv5-test.spaPinned.txt.gz",   [PH, "1\tultra_rare\tR6\tgrp\t0.001\tA
 # a LONG list (20,000 rows of regions that are not in the table, ~1 MB): a `| head -1` on it dies of SIGPIPE under pipefail
 w("in/allok/fxv5-test.exactByWeight.txt.gz", ["Kind\tRegion\tGroup\tmax_MAF\tWeight\tMAC\tn_eff\tn_material", "burden\tR2\tgrp\t0.001\tW1\t7\t1.0000012\t1"]
   + [f"burden\tZ{i:05d}\tgrp\t0.001\tAM_sbeta20_unw\t30\t1.0000001\t1" for i in range(20000)])
-for tag in ("allok", "allbad"):   # a complete rerun discloses the same pooled rows as the old run
+w("in/nosingle/fxv5-test.exactByWeight.txt.gz", ["Kind\tRegion\tGroup\tmax_MAF\tWeight\tMAC\tn_eff\tn_material", "burden\tR2\tgrp\t0.001\tW1\t7\t1.0000012\t1"])
+for tag in ("allok", "allbad", "nosingle"):   # a complete rerun discloses the same pooled rows as the old run
     w(f"in/{tag}/fxv5-test.pooledTests.txt.gz", ["Region\tRows\tRefused\tRule", "R1\t3\t0\tbonferroni", "R3\t1\t0\tcauchy"])
 w("in/regions.txt", ["R1", "R2", "R4", "R5", "R6", "R7"], gz=False)
 w("in/failures.tsv", ["file\tMarkerID\tRegion\tCHR\tp.value\tp.value.NA\tIs.SPA",
@@ -171,9 +176,11 @@ expect pnur   0 "cells in which pinned samples were left out of the saddlepoint 
 expectall allok  allok  0 "cells routed to the exact test by weight (LEDGER #172): 1"
 grep -q ".exactByWeight.txt.gz: 1 routed cell(s) in the spliced regions, carried over" allok.log && [[ $(gzip -dc out/allok/fxv4-test.exactByWeight.txt.gz | wc -l) -eq 2 ]] && echo "ok   a 20,000-row routed list is carried over restricted to the table's regions" || { echo "FAIL the routed list carry-over"; fail=1; }
 expectall allbad allbad 1 "ERROR .txt.gz"
+expectall nosingle nosingle 0 "NOTE .singleAssoc.txt.gz: the rerun had SINGLE_IN_GROUP=FALSE (placeholder); not spliced, not carried over"
+[[ ! -e out/nosingle/fxv4-test.singleAssoc.txt.gz ]] && echo "ok   nosingle: no single-variant file written for the splice" || { echo "FAIL nosingle: a single-variant file was written from a placeholder"; fail=1; }
 # stage checker
 bash "${HERE}/aou_spa_stagecheck.sh" stage/null > sc_null.log 2>&1 && grep -q "STAGE OK" sc_null.log && echo "ok   stagecheck null" || { echo "FAIL stagecheck null"; fail=1; }
 if bash "${HERE}/aou_spa_stagecheck.sh" stage/pos > sc_pos.log 2>&1; then echo "FAIL stagecheck pos: exit 0"; fail=1; else grep -q "NA 1" sc_pos.log && echo "ok   stagecheck NA flagged" || { echo "FAIL stagecheck pos"; fail=1; }; fi
 if bash "${HERE}/aou_spa_stagecheck.sh" stage/chr > sc_chr.log 2>&1; then echo "FAIL stagecheck chr: exit 0"; fail=1; else grep -q "CHROMOSOME FAILED" sc_chr.log && echo "ok   stagecheck lost chromosome flagged" || { echo "FAIL stagecheck chr"; fail=1; }; fi
 if (( fail )); then echo "SELFTEST FAILED"; exit 1; fi
-echo "selftest OK: 10 positive controls (two via the exactByWeight sidecar, three via the spaPinned sidecar, two via the stretchGate sidecar (one under a header that lacks the column), two on statistic identity, one a complete rerun), 10 planted refusals (one a guard that refused, three moving a statistic the exact test never touches), 3 stage-checker cases"
+echo "selftest OK: 11 positive controls (two via the exactByWeight sidecar, three via the spaPinned sidecar, two via the stretchGate sidecar (one under a header that lacks the column), two on statistic identity, two complete reruns -- one with the single-variant file switched off), 10 planted refusals (one a guard that refused, three moving a statistic the exact test never touches), 3 stage-checker cases"

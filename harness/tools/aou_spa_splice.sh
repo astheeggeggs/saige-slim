@@ -336,7 +336,19 @@ splice_one(){  # suffix  region-column-rule (awk expr on $0 giving the region)
   echo "${sfx}: old $(($(wc -l < old.tsv)-1)) rows, new $(($(wc -l < new.tsv)-1)) rows, spliced $(( $(gzip -dc "${out}.gz" | wc -l) - 1 )) rows"
 }
 splice_one ".txt.gz"             '$1'
-if exists "${OLD_PREFIX}.singleAssoc.txt.gz"; then
+# 2026-10-08: a rerun made with the wrapper's SINGLE_IN_GROUP=FALSE delivers a
+# one-line placeholder instead of a single-variant file (FlexRV's variant
+# results are the SKAT-O run's; LEDGER #179 made the file 80% of the job). Its
+# twin rule cannot run and the OLD file's pseudo-marker rows for the rerun
+# regions would be stale, so NO single-variant file is written for the splice:
+# say so, rather than carry over rows the rerun did not reproduce.
+nosingle=0
+if exists "${NEW_PREFIX}.singleAssoc.txt.gz"; then
+  cat_any "${NEW_PREFIX}.singleAssoc.txt.gz" | awk 'NR==1{ if($0 ~ /^# no singleAssoc output: SINGLE_IN_GROUP=FALSE/) f=1 } END{ exit !f }' && nosingle=1
+fi
+if (( nosingle )); then
+  echo "NOTE .singleAssoc.txt.gz: the rerun had SINGLE_IN_GROUP=FALSE (placeholder); not spliced, not carried over -- its variant results are the SKAT-O run's"
+elif exists "${OLD_PREFIX}.singleAssoc.txt.gz"; then
   splice_one ".singleAssoc.txt.gz" 'substr($3, 1, index($3, ":") ? index($3, ":")-1 : length($3))'
 fi
 if exists "${OLD_PREFIX}.pooledTests.txt.gz"; then
