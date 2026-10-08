@@ -243,3 +243,26 @@ the MARKER path, `handoff-2026-09-16-pgen-sparse-read.md`) is the prior.
 
 `docs/state/upstream-note-2026-10-08-burden-tail.md` is the note for the
 saigegit maintainers (not sent; owner's call).
+
+## 9. Added 2026-10-08 (later still): two more sites, reached only with single-in-group on
+
+With `--is_single_in_groupTest=TRUE` the BURDEN path runs two more tests that
+passed `is_region` as the literal `true`: the per-marker single test (675 of
+13,218 markers on sim50k, the rest collapsed) and the ultra-rare pass's test of
+each cell's pseudo-marker (one per evaluated cell, 23,498). The second was the
+cost. Same fix at both: `keepP1P2` (the predicate already guarding the P1/P2
+writes) and an empty zero index. Binary k192, PGEN input, 1 thread:
+
+| | prepare | per-marker tests | pseudo-marker tests (`urTest`) | per-set tests | C++ total | wall |
+|---|---|---|---|---|---|---|
+| single-in-group, before | 0.64 s | 1.18 s | 17.9 s | 6.7 s | 29.1 s | 34.9 s |
+| single-in-group, after | 0.12 s | 1.04 s | 10.1 s | 6.7 s | 19.6 s | 24.9 s |
+| plain BURDEN (reference) | 2.2 s | 0 | 0 | 6.4 s | 10.4 s | 15.0 s |
+
+Every output file -- results, `.singleAssoc.txt` (30,840 rows), both
+exact-by-weight sidecars -- `cmp`-identical to the pre-change run; the plain
+BURDEN run byte-identical to before the two edits. What `urTest` and `emitTest`
+keep is the PCG solve of the cells inside the sparse-GRM band and the
+escalated cells. Single-in-group still costs ~10 s over the plain run here,
+all of it real tests of 23k pseudo-markers; the AoU wrapper runs variant tests
+as separate jobs and that stays the right split.

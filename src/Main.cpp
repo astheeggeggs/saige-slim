@@ -3428,10 +3428,18 @@ Rcpp::List mainRegionInCPP(
         bool is_gtilde, is_Firth, is_FirthConverge;
         ProfileScope rpTest(rp.enabled ? &rp.test : nullptr, &rp.nTest);
         // the worker's KernelWorkspace goes in.
+        // LEDGER #179 (2026-10-08): is_region was the literal `true`. It only
+        // requests the SKAT-O by-products after the test (dense g-tilde, gy,
+        // P2Vec), which feed the P1/P2 rows written under keepP1P2 below and
+        // R's Phi rescale; on the BURDEN path (reached here only under
+        // --is_single_in_groupTest) nothing reads them, so every marker paid
+        // the O(N p) projection the emitter fix removed per cell. keepP1P2 is
+        // the predicate that already guards the writes. The conditional block
+        // builds its own g-tilde when it runs, so P62/P63 pin the rows.
         if(isERCandidate(MAC, W[km].traitType)){
-          model.getMarkerPval(sc.GVec, sc.indexNonZeroVec_arma, sc.indexZeroVec_arma, prm.Beta, prm.seBeta, prm.pval, prm.pval_noSPA, altFreq, prm.Tstat, prm.gy, prm.varT, prm.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, prm.Beta_c, prm.seBeta_c, prm.pval_c, prm.pval_noSPA_c, prm.Tstat_c, prm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx, &sc.ws);
+          model.getMarkerPval(sc.GVec, sc.indexNonZeroVec_arma, sc.indexZeroVec_arma, prm.Beta, prm.seBeta, prm.pval, prm.pval_noSPA, altFreq, prm.Tstat, prm.gy, prm.varT, prm.isSPAConverge, sc.gtildeVec, is_gtilde, keepP1P2, sc.P2Vec, isCondition, prm.Beta_c, prm.seBeta_c, prm.pval_c, prm.pval_noSPA_c, prm.Tstat_c, prm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, flip, ctx, &sc.ws);
         }else{
-          model.getMarkerPval(sc.GVec, sc.indexNonZeroVec_arma, sc.indexZeroVec_arma, prm.Beta, prm.seBeta, prm.pval, prm.pval_noSPA, altFreq, prm.Tstat, prm.gy, prm.varT, prm.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, prm.Beta_c, prm.seBeta_c, prm.pval_c, prm.pval_noSPA_c, prm.Tstat_c, prm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx, &sc.ws);
+          model.getMarkerPval(sc.GVec, sc.indexNonZeroVec_arma, sc.indexZeroVec_arma, prm.Beta, prm.seBeta, prm.pval, prm.pval_noSPA, altFreq, prm.Tstat, prm.gy, prm.varT, prm.isSPAConverge, sc.gtildeVec, is_gtilde, keepP1P2, sc.P2Vec, isCondition, prm.Beta_c, prm.seBeta_c, prm.pval_c, prm.pval_noSPA_c, prm.Tstat_c, prm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, flip, ctx, &sc.ws);
         }
         if(sc.ws.spaFallback){ // LEDGER #164
           recordSpaFallback("single_in_group", regionName, "", "", "", pr.marker, MAC, prm.pval_noSPA, prm.pval, sc.ws.spaFallbackNote);
@@ -4464,8 +4472,16 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
       // strict, non-owning views: getMarkerPval never resizes its index
       // arguments (a strict view would throw if it tried)
       arma::uvec nzView(const_cast<arma::uword*>(c.nz.data()), c.nz.size(), false, true);
-      complementIndices(c.nz.data(), c.nz.size(), (arma::uword)t_n, sc.indexZeroVec_arma);
-      arma::uvec & zeroView = sc.indexZeroVec_arma;
+      // LEDGER #179 (2026-10-08): the third site. This pass runs on the BURDEN
+      // path only under --is_single_in_groupTest, once per cell (the
+      // pseudo-marker's own single test), and passed is_region as the literal
+      // `true` plus an O(N) zero index per cell. The P1/P2 rows below are
+      // written only when the test type is not BURDEN, so on BURDEN the dense
+      // g-tilde/gy/P2Vec the flag requests were dead: measured 17.9 s of a
+      // 29.1 s C++ total on sim50k k192 binary with single-in-group on. The
+      // exact test builds its own complement from an empty vector.
+      const bool urIsRegion = (t_regionTestType != "BURDEN");
+      arma::uvec zeroView;
       cs.scatterUr(urTested[t / P], sc.urScratch);
       // the fill is always 0 since LEDGER #130, so the dense clear never fires;
       // the predicate is kept rather than hardcoded because it is the store's
@@ -4474,9 +4490,9 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
       arma::vec & genoURVecRef = sc.urScratch;   // getMarkerPval takes a non-const ref and never writes it (S3/S12)
       ProfileScope rpUrTest(rp.enabled ? &rp.urTest : nullptr, &rp.nUrTest);
       if(cm.isER){
-        model.getMarkerPval(genoURVecRef, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, c.flip, cm.ctx, &sc.ws);
+        model.getMarkerPval(genoURVecRef, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, urIsRegion, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, true, c.flip, cm.ctx, &sc.ws);
       }else{
-        model.getMarkerPval(genoURVecRef, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, true, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, c.flip, cm.ctx, &sc.ws);
+        model.getMarkerPval(genoURVecRef, nzView, zeroView, cm.Beta, cm.seBeta, cm.pval, cm.pval_noSPA, c.altFreq, cm.Tstat, cm.gy, cm.varT, cm.isSPAConverge, sc.gtildeVec, is_gtilde, urIsRegion, sc.P2Vec, isCondition, cm.Beta_c, cm.seBeta_c, cm.pval_c, cm.pval_noSPA_c, cm.Tstat_c, cm.varT_c, sc.G1tilde_P_G2tilde_Vec, is_Firth, is_FirthConverge, false, c.flip, cm.ctx, &sc.ws);
       }
       if(sc.ws.spaFallback){ // LEDGER #164
         const unsigned int jmrU = urTested[t / P];
