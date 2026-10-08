@@ -304,3 +304,38 @@ gene's Cauchy row -- and the stretch-gate sidecar lists exactly that cell with
 #176's. (The sidecar's region is column 3, after Model and Kind; a first
 attempt matched on column 1 and reported the cell as not gated.) The
 single-in-group-OFF arm (cells 4-5) is pending.
+
+## 11. Measured on All of Us, single-variant output OFF (2026-10-08): 7.8-8.5x over v4
+
+Section 15 cells 4-5 (the wrapper's new `SINGLE_IN_GROUP=FALSE`, IMG10), the
+same three records, SAIGE seconds; every gene-level file -- results, pooled
+tests, marker list -- 0 rows differ against the IMG10 run with the flag ON
+(85,905 / 85,917 / 85,942 rows), and the single-variant file is the wrapper's
+placeholder:
+
+| record | trait | v4 (IMG9, flag ON) | IMG10, flag ON | IMG10, flag OFF | overall |
+|---|---|---|---|---|---|
+| fxv4-afr-asth-b0 | binary | 431 s | 290 s | 55 s | 7.8x |
+| fxv4-afr-vte-b0 | binary | 465 s | 295 s | 55 s | 8.5x |
+| fxv4-afr-bmi-b0 | quantitative | 601 s | 391 s | 75 s | 8.0x |
+
+sim50k predicted only 1.9x for the flag (19.6 -> 10.4 s): the fixture
+under-represented the single-in-group share, not #179's. On real data each
+per-cell pseudo-marker test is costlier -- 26 covariate columns against the
+fixture's 7 in the projection a saddlepoint cell rebuilds, and real
+pseudo-markers carry far more ultra-rare carriers -- so ~235 of the 290 s on
+IMG10 were those tests. The fixture got #179's share right (1.48x predicted,
+1.49-1.58x measured) and the flag's share wrong by 4x; the lesson is the
+standing one, that a fixture bounds a phase, not a cause, and the real-data
+measurement was the cheap part.
+
+**Recommendation (owner's call): FlexRV production runs with
+`SINGLE_IN_GROUP=FALSE`.** The variant results FlexRV's file duplicated are
+the SKAT-O run's; its per-set pseudo-marker rows were read only by the splice
+control's twin rule. Prerequisites before flipping it: `aou_spa_splice.sh`
+(moot for a complete run on one image), `aou_spa_scan.sh` and
+`aou_flexrv_summary.sh` read the FlexRV single-variant file and must take the
+SKAT-O run's or none; the stage check, if it counts single-variant rows, must
+read `chrStatus` instead; `docs/state/aou-saige-parameters.md` records TRUE.
+The wrapper patch is in section 15 of the runbook and the drop-in at
+`harness/work/aou/saige_step2_brava_main_original.sh` (ignored dir).
