@@ -1438,6 +1438,7 @@ for v4name in BENCH:
 # cell 2: durations, once all have finished. Every job includes the same ~60 s of localisation.
 import json, subprocess, datetime as dt
 import re
+AGE = "3h"      # --age: the name filter is applied AFTER the listing; keep it as short as the jobs' age allows
 def job_span(name):
     """(status, dstat wall seconds, SAIGE_SECONDS from the job log): the wrapper prints T_SAIGE_START/END
     and SAIGE_SECONDS= around the SAIGE calls, so the third number excludes provisioning, localisation
@@ -1446,8 +1447,9 @@ def job_span(name):
     # --users/--status "*": dstat lists the current user's RUNNING jobs by default; --age: the name
     # filter is applied after the listing, and this project's Batch records make a wide one slow (14d)
     out = subprocess.run(["bash", "-lc", 'dstat --provider google-batch --project "${GOOGLE_CLOUD_PROJECT}" '
-                          f"--users '*' --status '*' --age 2d --names {name} --full --format json"],
-                         capture_output=True, text=True).stdout
+                          f"--users '*' --status '*' --age {AGE} --names {name} --full --format json"],
+                         capture_output=True, text=True, timeout=120).stdout   # a wide listing can hang the cell (14d);
+                         # the kernel cannot interrupt the child -- `pkill -f "dstat --provider"` from a Terminal does
     j = json.loads(out)[0]
     t = lambda k: dt.datetime.fromisoformat(j[k].replace("Z", "+00:00"))
     log = subprocess.run(["gcloud", "storage", "cat", j["logging"]], capture_output=True, text=True).stdout
@@ -1566,3 +1568,13 @@ SINGLE_IN_GROUP="${SINGLE_IN_GROUP:-TRUE}"            # TRUE | FALSE: --is_singl
     deliver "${OUTBASE}.singleAssoc.txt" "${OUT_FILE_SINGLE_ASSOC}"
   fi
 ```
+
+A job that stays RUNNING with an EMPTY log is not diagnosed by the log: dsub
+copies the task's output from Cloud Logging into the GCS log when the task
+ends, so an empty file means only "not finished". Read the record's `events`
+instead (`dstat ... --full --format json`, keys `events`, `last-update`,
+`status-message`): a `scheduled` event followed by nothing, or by a
+`CODE_GCE_ZONE_RESOURCE_POOL_EXHAUSTED` message, is the zone queue (seen
+2026-10-08 on one of three bench179 jobs, us-central1-c, three failed VM
+creations in 2.5 min; Batch keeps retrying). Cancel and resubmit if it matters;
+a fresh submission can land elsewhere.
