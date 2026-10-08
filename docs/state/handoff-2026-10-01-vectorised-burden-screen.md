@@ -215,3 +215,31 @@ Diagonal Phi with the collapse OFF (cutoff 0, 2026-10-04, K = 1 unweighted,
 median +1.2e-3 / +1.5e-3, min -0.239 / -0.296, 7-8 cells below -5%, Z inflated
 up to +15% / +19% (quantitative / binary). Removing the collapse does not
 rescue a diagonal variance on this fixture.
+
+## 8. Added 2026-10-08 (later): step 2 is not a code change; the prepare phase is the decode
+
+Pushed as `b713fb35` (`slim/strip`). The per-marker prepare on the BURDEN path
+never reaches its `is_region = true` literal: the per-marker test runs only under
+`doSingleTests`, false unless `--is_single_in_groupTest`. The 3.9 s is the
+genotype decode -- a dense N read per marker from the `.bed` plus
+`imputeGenoAndFlip` over N -- which the bed reader cannot avoid (the sparse bed
+read was measured 1.1-1.2x and dropped, branch `bed-sparse`). PGEN input takes
+the carrier-space read (`getOneMarkerSparse`) with no flag. Measured, same
+fixture converted with plink2 (`--make-pgen`, 408 MB against the 2.6 GB bed),
+binary k192, 1 thread, after the push's tier had churned the page cache (load
+avg 17-21; the bed rep 1 read cold at prepare 38 s and is discarded):
+
+| input | sparse reads | prepare | per-set tests | C++ total | wall | user CPU | peak RSS |
+|---|---|---|---|---|---|---|---|
+| bed, rep 2 | 0 of 13,218 | 4.07 s | 6.52 s | 13.2 s | 17.7 s | 14.9 s | 364 MB |
+| pgen, rep 2 | 13,218 of 13,218 | 2.24 s | 6.37 s | 10.4 s | 15.0 s | 11.1 s | 490 MB |
+
+Output byte-identical between the two. So on this fixture PGEN input halves the
+prepare phase and takes ~25% off the CPU of the whole run, at +126 MB of RSS
+(the pgenlib decode handles). If the AoU inputs are bed, converting them is the
+next lever on this path, with no code change; the carrier-space read's
+measured gain on real exomes (sim50k: quantitative scan 1.87x, binary 1.21x on
+the MARKER path, `handoff-2026-09-16-pgen-sparse-read.md`) is the prior.
+
+`docs/state/upstream-note-2026-10-08-burden-tail.md` is the note for the
+saigegit maintainers (not sent; owner's call).
