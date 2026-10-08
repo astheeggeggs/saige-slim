@@ -270,3 +270,37 @@ timeout: kill the R process and the arm is recorded as died). Single-in-group st
 costs ~10 s over the plain run here,
 all of it real tests of 23k pseudo-markers; the AoU wrapper runs variant tests
 as separate jobs and that stays the right split.
+
+## 10. Measured on All of Us (2026-10-08): 1.49-1.58x on SAIGE time, as sim50k predicted
+
+Section 15 of `harness/tools/aou_spa_rerun.md`, afr chr20, the v4 FlexRV
+configuration (single-in-group ON, PGEN, sparse GRM, `IMG9` = `a08fb295` against
+`IMG10` = `8bffa0ca`), SAIGE's own seconds from the job log
+(`SAIGE_SECONDS=`), one job per side:
+
+| record | trait | old | new | ratio |
+|---|---|---|---|---|
+| fxv4-afr-asth-b0 | binary | 431 s | 290 s | 1.49 |
+| fxv4-afr-vte-b0 | binary | 465 s | 295 s | 1.58 |
+| fxv4-afr-bmi-b0 | quantitative | 601 s | 391 s | 1.54 |
+
+sim50k's prediction for this configuration was 1.48x (29.1 -> 19.6 s, section
+9). Wall ratios are 1.34-1.39x: every job carries ~2.5 min of Batch
+provisioning and localisation (`STARTUP_AND_DELIVERY_SECONDS=1`, so the
+wrapper's own overhead is nil). The quantitative old side reproduces the
+September 591 s benchmark.
+
+**This pair is NOT a byte-identity check for #179**: IMG9 predates the LEDGER
+#176 commits (the above-cap sidecar, a 110-byte placeholder on the old side
+and 12 KB on the new; and the stretch gate, which moves gated cells' p), so
+rows may legitimately differ between the images, and gzip's header mtime makes
+every `.gz` pair DIFFERENT at equal size regardless. The identity claim rests
+on the sim50k comparison between adjacent commits (sections 7 and 9); on AoU
+the check is that every differing row is a stretch-gated cell. RUN: 85,904 /
+85,916 / 85,941 rows per trait; vte and bmi 0 rows differ; asth 2 rows, both
+ENSG00000124233 -- the `AM_sbeta10_MACsparse` cell (p 2.96e-2 -> 6.23e-2) and the
+gene's Cauchy row -- and the stretch-gate sidecar lists exactly that cell with
+`reported = exact`, p_spa 0.0296, p_exact 0.0623. So every AoU difference is
+#176's. (The sidecar's region is column 3, after Model and Kind; a first
+attempt matched on column 1 and reported the cell as not gated.) The
+single-in-group-OFF arm (cells 4-5) is pending.
