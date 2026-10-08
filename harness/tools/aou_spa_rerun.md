@@ -1417,7 +1417,7 @@ people: durations, file sizes and "identical"/"DIFFERENT" only.
 # cell 1: submit the pairs. Each v4name is a RUNS key, fxv4-<anc>-<tag(pheno)>-b<i>; the record
 # carries anc, pheno, trait, masks, geno and the GRM, so binary and quantitative need no special-casing.
 IMG9  = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-a08fb295"     # current production
-IMG10 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-58cf06ce"     # LEDGER #179 (both commits); adjust if built from a later hash
+IMG10 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-8bffa0ca"     # LEDGER #179, both sites; built and pushed 2026-10-08, P1 byte-identical in the container
 BENCH = ["fxv4-afr-asth-b0", "fxv4-afr-vte-b0", "fxv4-afr-<QUANT-TAG>-b0"]   # two binary, one quantitative
 CHRN = "20"
 def bench_names(v4name):
