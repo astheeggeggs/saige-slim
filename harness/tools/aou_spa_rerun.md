@@ -1437,37 +1437,54 @@ for v4name in BENCH:
 ```python
 # cell 2: durations, once all have finished. Every job includes the same ~60 s of localisation.
 import json, subprocess, datetime as dt
+import re
 def job_span(name):
-    out = subprocess.run(["bash", "-lc", f'dstat --provider google-batch --project "$GOOGLE_PROJECT" '
-                          f'--location us-central1 --names {name} --full --format json'],
+    """(status, dstat wall seconds, SAIGE_SECONDS from the job log): the wrapper prints T_SAIGE_START/END
+    and SAIGE_SECONDS= around the SAIGE calls, so the third number excludes provisioning, localisation
+    and delivery -- the ratio to report. dstat's span is kept as the all-in figure."""
+    # GOOGLE_CLOUD_PROJECT (not GOOGLE_PROJECT: empty in a bash -lc shell, and dstat then returns []);
+    # --users/--status "*": dstat lists the current user's RUNNING jobs by default; --age: the name
+    # filter is applied after the listing, and this project's Batch records make a wide one slow (14d)
+    out = subprocess.run(["bash", "-lc", 'dstat --provider google-batch --project "${GOOGLE_CLOUD_PROJECT}" '
+                          f"--users '*' --status '*' --age 2d --names {name} --full --format json"],
                          capture_output=True, text=True).stdout
     j = json.loads(out)[0]
     t = lambda k: dt.datetime.fromisoformat(j[k].replace("Z", "+00:00"))
-    return j["status"], (t("end-time") - t("start-time")).total_seconds()
-print(f"{'record':26s} {'trait':13s} {'old':>7s} {'new':>7s}  ratio")
+    log = subprocess.run(["gcloud", "storage", "cat", j["logging"]], capture_output=True, text=True).stdout
+    m = re.search(r"SAIGE_SECONDS=(\d+)", log)     # no ^ anchor: Batch prefixes every stdout line with [batch_task_logs]...
+    return j["status"], (t("end-time") - t("start-time")).total_seconds(), (int(m.group(1)) if m else float("nan"))
+print(f"{'record':26s} {'trait':13s} {'old wall':>9s} {'new wall':>9s} {'old SAIGE':>10s} {'new SAIGE':>10s}  ratio(SAIGE)")
 for v4name in BENCH:
     r, names = bench_names(v4name)
-    (so, old), (sn, new) = job_span(names["old"]), job_span(names["new"])
-    print(f"{v4name:26s} {r['trait']:13s} {old:7.0f} {new:7.0f}  {old / new:5.2f}   [{so}/{sn}]")
+    (so, ow, os_), (sn, nw, ns) = job_span(names["old"]), job_span(names["new"])
+    print(f"{v4name:26s} {r['trait']:13s} {ow:9.0f} {nw:9.0f} {os_:10.0f} {ns:10.0f}  {os_ / ns:5.2f}   [{so}/{sn}]")
 ```
 
 ```python
-# cell 3: byte comparison, file by file, nothing displayed but the verdict and sizes.
+# cell 3: byte comparison, file by file, nothing displayed but the verdict and sizes. The outputs are
+# named after the benchmark JOB (<job name>.<Pheno>.<anc>.chr<N>.<suffix>), not the v4 record. md5_of
+# refuses an empty read: the first version swallowed a wrong path and declared two empty strings identical.
 import hashlib
 def md5_of(path):
-    data = subprocess.run(["gcloud", "storage", "cat", path], capture_output=True).stdout
-    return hashlib.md5(data).hexdigest(), len(data)
-SFX = (".txt.gz", ".singleAssoc.txt.gz", ".pooledTests.txt.gz", ".exactByWeight.txt.gz",
-       ".exactByWeightAboveCap.txt.gz", ".spaFallbacks.txt.gz", ".markerList.txt.gz")
+    p = subprocess.run(["gcloud", "storage", "cat", path], capture_output=True)
+    if p.returncode != 0 or len(p.stdout) == 0:
+        raise FileNotFoundError(f"{path}: {p.stderr.decode()[-200:].strip() or 'empty'}")
+    return hashlib.md5(p.stdout).hexdigest(), len(p.stdout)
+SFX = (".txt.gz", ".singleAssoc.txt.gz", ".pooledTests.txt.gz", ".markerList.txt.gz",
+       ".exactByWeight.txt.gz", ".exactByWeightAboveCap.txt.gz", ".spaFallbacks.txt.gz",
+       ".spaPinned.txt.gz", ".stretchGate.txt.gz", ".skatFailures.txt.gz", ".skatoMethod.txt.gz", ".chrStatus.txt.gz")
+# not .spaDump.tgz: a tar carries mtimes, so its bytes differ even when its contents do not
+def bench_path(v4name, tag, sfx):
+    r, names = bench_names(v4name)
+    return f"{BUCKET}/SAIGE_SLIM_TESTING/{r['anc']}/bench179_{tag}/{names[tag]}.{r['pheno']}.{r['anc']}.chr{CHRN}{sfx}"
 for v4name in BENCH:
-    r, names = bench_names(v4name); anc = r["anc"]; pre = r["out_prefix"].rsplit("/", 1)[-1]
+    r, _ = bench_names(v4name)
     print("==", v4name, r["trait"])
     for sfx in SFX:
-        paths = [f"{BUCKET}/SAIGE_SLIM_TESTING/{anc}/bench179_{tag}/{pre}{sfx}" for tag in ("old", "new")]
         try:
-            (h_old, n_old), (h_new, n_new) = md5_of(paths[0]), md5_of(paths[1])
-        except Exception as e:
-            print(f"  {sfx:32s} absent on one side ({e.__class__.__name__}); fine for a sidecar written only when non-empty"); continue
+            (h_old, n_old), (h_new, n_new) = md5_of(bench_path(v4name, "old", sfx)), md5_of(bench_path(v4name, "new", sfx))
+        except FileNotFoundError as e:
+            print(f"  {sfx:32s} MISSING: {e}"); continue
         print(f"  {sfx:32s} {'identical' if h_old == h_new else 'DIFFERENT'}  {n_old} / {n_new} bytes")
 ```
 
@@ -1476,9 +1493,76 @@ while `zcat | md5sum` agrees, the compressor's header is the difference, not
 the rows: check with `gcloud storage cat <path> | zcat | md5sum` on both before
 reading a DIFFERENT as a defect.
 
-To also measure switching `--is_single_in_groupTest` OFF for FlexRV (its
-single-variant rows duplicate the SKAT-O run's; only the splice control ever
-read them), submit a third job per record on IMG10 with the wrapper's variable
-for that flag set to FALSE and compare its `.txt.gz` and `.pooledTests.txt.gz`
-against the new job's: those two must be identical, the `.singleAssoc.txt.gz`
-absent.
+```python
+# cell 4: the same records once more on IMG10 with --is_single_in_groupTest OFF. FlexRV's single-variant
+# rows duplicate the SKAT-O run's (real markers) plus one pseudo-marker row per cell that only the splice
+# control ever read, so a complete run on one image does not need them. Needs the wrapper patch below
+# this section (SINGLE_IN_GROUP, default TRUE: the flag, the OUT_FILE_SINGLE_ASSOC check, and a one-line
+# placeholder at delivery because dsub refuses to delocalize a declared output that does not exist).
+for v4name in BENCH:
+    r, names = bench_names(v4name); anc = r["anc"]
+    env = {k: v for k, v in r["env"].items() if k != "REGIONS"}; env["SINGLE_IN_GROUP"] = "FALSE"
+    nm = names["new"].replace("-new-", "-nosingle-")
+    submit(name=nm, image=IMG10, masks=r["masks"], fasttest=r["fasttest"],
+           outdir=f"{anc}/bench179_nosingle", anc=anc, pheno=r["pheno"], trait=r["trait"], firth=r["firth"], env=env,
+           geno=r["geno"], chrn=CHRN, plk=cod(int(CHRN), anc), grp=am_grp(int(CHRN)), testtype="group",
+           pooled=True, sidecars=True, sparse_grm=r["sparse_grm"])
+    print(nm, r["trait"], RUNS[nm]["geno"])
+```
+
+```python
+# cell 5: the three-way SAIGE seconds and the nosingle-vs-new byte check. Gene-level files must be identical:
+# the flag changes nothing a region test reads. .singleAssoc.txt.gz must be the wrapper's one-line
+# PLACEHOLDER; the exact-by-weight sidecars may lose their "ultra_rare" rows (that pass runs only with
+# the flag on) -- "burden" rows stay.
+print(f"{'record':26s} {'trait':13s} {'old':>7s} {'new':>7s} {'nosingle':>9s}   old/new  old/nosingle   (SAIGE seconds)")
+for v4name in BENCH:
+    r, names = bench_names(v4name)
+    (_, _, old), (_, _, new), (_, _, nos) = (job_span(names["old"]), job_span(names["new"]),
+                                             job_span(names["new"].replace("-new-", "-nosingle-")))
+    print(f"{v4name:26s} {r['trait']:13s} {old:7.0f} {new:7.0f} {nos:9.0f}   {old / new:5.2f}     {old / nos:5.2f}")
+for v4name in BENCH:
+    r, names = bench_names(v4name); anc = r["anc"]
+    nos = names["new"].replace("-new-", "-nosingle-")
+    nos_path = lambda sfx: f"{BUCKET}/SAIGE_SLIM_TESTING/{anc}/bench179_nosingle/{nos}.{r['pheno']}.{anc}.chr{CHRN}{sfx}"
+    print("==", v4name, r["trait"])
+    for sfx in (".txt.gz", ".pooledTests.txt.gz", ".markerList.txt.gz"):
+        (ha, na), (hb, nb) = md5_of(bench_path(v4name, "new", sfx)), md5_of(nos_path(sfx))
+        print(f"  {sfx:24s} {'identical' if ha == hb else 'DIFFERENT'}  {na} / {nb} bytes")
+    single = nos_path(".singleAssoc.txt.gz")
+    head = subprocess.run(["bash", "-lc", f"gcloud storage cat {single} | zcat | head -c 200"], capture_output=True, text=True).stdout
+    ok = head.startswith("# no singleAssoc output")
+    print(f"  .singleAssoc.txt.gz      {'placeholder, as it must be' if ok else 'REAL ROWS -- the flag did not reach SAIGE'}")
+```
+
+Expected from sim50k: old/new ~1.5, old/nosingle ~2.8 on SAIGE's own seconds
+(the wall includes provisioning, localisation and delivery on every side).
+
+The wrapper patch for cell 4 (`saige_step2_brava_main_original.sh`; every
+existing job is unchanged because the default is TRUE and the TRUE branches are
+the old code):
+
+```bash
+# inputs block
+SINGLE_IN_GROUP="${SINGLE_IN_GROUP:-TRUE}"            # TRUE | FALSE: --is_single_in_groupTest (group tests)
+
+# group-test checks: replace the unconditional OUT_FILE_SINGLE_ASSOC requirement
+  case "${SINGLE_IN_GROUP}" in TRUE|FALSE) ;; *) die "SINGLE_IN_GROUP must be TRUE or FALSE (got '${SINGLE_IN_GROUP}')" ;; esac
+  if [[ -z ${MULTI_MODE} && ${SINGLE_IN_GROUP} == "TRUE" ]]; then
+    [[ -n ${OUT_FILE_SINGLE_ASSOC} ]] || die "OUT_FILE_SINGLE_ASSOC not set for a group test"
+  fi
+
+# the command's group block
+    --is_single_in_groupTest="${SINGLE_IN_GROUP}"
+
+# delivery: replace the two singleAssoc lines
+  if [[ ${SINGLE_IN_GROUP} == "TRUE" ]]; then
+    catparts ".singleAssoc.txt" || die "no chromosome produced a singleAssoc file"
+    deliver "${OUTBASE}.singleAssoc.txt" "${OUT_FILE_SINGLE_ASSOC}"
+  elif [[ -n ${OUT_FILE_SINGLE_ASSOC} ]]; then
+    # declared output, so it must exist for dsub to delocalize (same reason as .pooledTests)
+    printf '# no singleAssoc output: SINGLE_IN_GROUP=FALSE (variant results come from the SKAT-O run)\n' \
+      > "${OUTBASE}.singleAssoc.txt"
+    deliver "${OUTBASE}.singleAssoc.txt" "${OUT_FILE_SINGLE_ASSOC}"
+  fi
+```
