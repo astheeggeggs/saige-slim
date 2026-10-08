@@ -1402,3 +1402,83 @@ afr and amr therefore land at 122 of 124 spliced, with two traits each left
 mixed-provenance until the awk change is made. That raises the value of making it:
 it is one rule, it unblocks four prefixes now, and it removes a recurring refusal
 from every future rollout.
+
+## 15. Timing LEDGER #179 on one chromosome (2026-10-08): old image vs new, same job
+
+For each of a few v4 FlexRV records -- two binary traits of different prevalence
+and one quantitative, since only the binary path has saddlepoint and exact-test
+cells -- two jobs identical except the image, on one chromosome; then the
+durations from dstat and a byte comparison of every output file. The expected
+result is "identical" on every file and a shorter wall on the new image; a
+different byte is a bug, not a re-baseline. Nothing below prints a count of
+people: durations, file sizes and "identical"/"DIFFERENT" only.
+
+```python
+# cell 1: submit the pairs. Each v4name is a RUNS key, fxv4-<anc>-<tag(pheno)>-b<i>; the record
+# carries anc, pheno, trait, masks, geno and the GRM, so binary and quantitative need no special-casing.
+IMG9  = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-a08fb295"     # current production
+IMG10 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-58cf06ce"     # LEDGER #179 (both commits); adjust if built from a later hash
+BENCH = ["fxv4-afr-asth-b0", "fxv4-afr-vte-b0", "fxv4-afr-<QUANT-TAG>-b0"]   # two binary, one quantitative
+CHRN = "20"
+def bench_names(v4name):
+    r = RUNS[v4name]; return r, {tag: f"bench179-{r['anc']}-{tag}-{v4name.split('-')[2]}" for tag in ("old", "new")}
+for v4name in BENCH:
+    r, names = bench_names(v4name); anc = r["anc"]
+    env = {k: v for k, v in r["env"].items() if k != "REGIONS"}      # the whole chromosome, no region list
+    assert r["geno"] == "pgen", (v4name, r["geno"])
+    for tag, img in (("old", IMG9), ("new", IMG10)):
+        submit(name=names[tag], image=img, masks=r["masks"], fasttest=r["fasttest"],
+               outdir=f"{anc}/bench179_{tag}", anc=anc, pheno=r["pheno"], trait=r["trait"], firth=r["firth"], env=env,
+               geno=r["geno"], chrn=CHRN, plk=cod(int(CHRN), anc), grp=am_grp(int(CHRN)), testtype="group",
+               pooled=True, sidecars=True, sparse_grm=r["sparse_grm"])
+        print(names[tag], r["trait"], RUNS[names[tag]]["geno"])      # geno must read pgen (section 2)
+```
+
+```python
+# cell 2: durations, once all have finished. Every job includes the same ~60 s of localisation.
+import json, subprocess, datetime as dt
+def job_span(name):
+    out = subprocess.run(["bash", "-lc", f'dstat --provider google-batch --project "$GOOGLE_PROJECT" '
+                          f'--location us-central1 --names {name} --full --format json'],
+                         capture_output=True, text=True).stdout
+    j = json.loads(out)[0]
+    t = lambda k: dt.datetime.fromisoformat(j[k].replace("Z", "+00:00"))
+    return j["status"], (t("end-time") - t("start-time")).total_seconds()
+print(f"{'record':26s} {'trait':13s} {'old':>7s} {'new':>7s}  ratio")
+for v4name in BENCH:
+    r, names = bench_names(v4name)
+    (so, old), (sn, new) = job_span(names["old"]), job_span(names["new"])
+    print(f"{v4name:26s} {r['trait']:13s} {old:7.0f} {new:7.0f}  {old / new:5.2f}   [{so}/{sn}]")
+```
+
+```python
+# cell 3: byte comparison, file by file, nothing displayed but the verdict and sizes.
+import hashlib
+def md5_of(path):
+    data = subprocess.run(["gcloud", "storage", "cat", path], capture_output=True).stdout
+    return hashlib.md5(data).hexdigest(), len(data)
+SFX = (".txt.gz", ".singleAssoc.txt.gz", ".pooledTests.txt.gz", ".exactByWeight.txt.gz",
+       ".exactByWeightAboveCap.txt.gz", ".spaFallbacks.txt.gz", ".markerList.txt.gz")
+for v4name in BENCH:
+    r, names = bench_names(v4name); anc = r["anc"]; pre = r["out_prefix"].rsplit("/", 1)[-1]
+    print("==", v4name, r["trait"])
+    for sfx in SFX:
+        paths = [f"{BUCKET}/SAIGE_SLIM_TESTING/{anc}/bench179_{tag}/{pre}{sfx}" for tag in ("old", "new")]
+        try:
+            (h_old, n_old), (h_new, n_new) = md5_of(paths[0]), md5_of(paths[1])
+        except Exception as e:
+            print(f"  {sfx:32s} absent on one side ({e.__class__.__name__}); fine for a sidecar written only when non-empty"); continue
+        print(f"  {sfx:32s} {'identical' if h_old == h_new else 'DIFFERENT'}  {n_old} / {n_new} bytes")
+```
+
+Gzip embeds no timestamp from SAIGE's writer, but if a `.txt.gz` pair differs
+while `zcat | md5sum` agrees, the compressor's header is the difference, not
+the rows: check with `gcloud storage cat <path> | zcat | md5sum` on both before
+reading a DIFFERENT as a defect.
+
+To also measure switching `--is_single_in_groupTest` OFF for FlexRV (its
+single-variant rows duplicate the SKAT-O run's; only the splice control ever
+read them), submit a third job per record on IMG10 with the wrapper's variable
+for that flag set to FALSE and compare its `.txt.gz` and `.pooledTests.txt.gz`
+against the new job's: those two must be identical, the `.singleAssoc.txt.gz`
+absent.

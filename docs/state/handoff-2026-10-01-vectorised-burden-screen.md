@@ -263,6 +263,10 @@ Every output file -- results, `.singleAssoc.txt` (30,840 rows), both
 exact-by-weight sidecars -- `cmp`-identical to the pre-change run; the plain
 BURDEN run byte-identical to before the two edits. What `urTest` and `emitTest`
 keep is the PCG solve of the cells inside the sparse-GRM band and the
-escalated cells. Single-in-group still costs ~10 s over the plain run here,
+escalated cells. TSAN after both sites (`region region_atom`): clean races=0 at t=1/4/8, bytes-vs-serial
+identical, no arm died; plant 178/145 and 262/78 races at t=4/8, every threaded arm
+died (a plant arm that segfaults leaves R on its abort prompt until the hour's
+timeout: kill the R process and the arm is recorded as died). Single-in-group still
+costs ~10 s over the plain run here,
 all of it real tests of 23k pseudo-markers; the AoU wrapper runs variant tests
 as separate jobs and that stays the right split.
