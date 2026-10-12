@@ -1578,3 +1578,65 @@ instead (`dstat ... --full --format json`, keys `events`, `last-update`,
 2026-10-08 on one of three bench179 jobs, us-central1-c, three failed VM
 creations in 2.5 min; Batch keeps retrying). Cancel and resubmit if it matters;
 a fresh submission can land elsewhere.
+
+## 16. The spliceAI rule test (2026-10-12): old and new rules in ONE SKAT-O run
+
+`~/Repositories/brava-reannotation/out/aou/spliceai_split_test/aou.chr<c>.spliceai_split_test.saige_group.txt.gz`
+(built by `build/split_spliceai_test.py`): the production variant set minus the gnomAD popmax > 0.01
+drops, same `chr:pos:ref:alt` IDs, pan-ancestry, NO score line (SKAT-O only), with the old damaging
+set split exactly three ways -- `damaging_missense` (REVEL/CADD/LOFTEE LC), `spliceai_gt05`
+(DS >= 0.5), `spliceai_02_05` (DS 0.2-0.5). `other_missense` and `non_coding` here LACK the DS
+0.2-0.5 variants (as under the old rule). On chr20: 37,429 / 6,770 / 15,878; against production's
+own labels the old set differs by ~5-9k pairs (dbNSFP 5.4a, the multi-gene spliceAI fix), so "old"
+means the old RULE inside the new pipeline. `docs/spliceai.md` in that repo has the calibration
+behind 0.5.
+
+Masks (owner, 2026-10-12), SKAT-O at the production MAF bins, ten:
+`pLoF,synonymous,damaging_missense,damaging_missense:spliceai_gt05,damaging_missense:spliceai_gt05:spliceai_02_05,pLoF:damaging_missense:spliceai_gt05,spliceai_gt05,spliceai_02_05,other_missense,pLoF:damaging_missense:spliceai_gt05:spliceai_02_05:other_missense:synonymous`.
+What each is for: `pLoF` and the all-in mask (the last) are unchanged by the rule and must
+reproduce production up to the pipeline differences (the positive control on the file and the run);
+`synonymous` is the null beside the power claim; `damaging_missense:spliceai_gt05` (new rule) against
+`damaging_missense:spliceai_gt05:spliceai_02_05` (old rule) is the claim itself, gene by gene with
+only the moved variants differing; `spliceai_02_05` alone tests the calibration -- near null if DS
+0.2-0.5 is only Supporting-level evidence, hits in known genes if the cutoff discards recall;
+`other_missense` is the old-rule version (without the DS 0.2-0.5 variants).
+
+```sh
+# upload (laptop -> bucket; uploads are free). 22 autosomes, ~380 MB.
+BUCKET=gs://<the workspace bucket>
+gcloud storage cp ~/Repositories/brava-reannotation/out/aou/spliceai_split_test/aou.chr{1..22}.spliceai_split_test.saige_group.txt.gz \
+  "$BUCKET/SAIGE_SLIM_TESTING/annotations_reannot_v1/"
+gcloud storage ls "$BUCKET/SAIGE_SLIM_TESTING/annotations_reannot_v1/" | wc -l     # 22
+```
+
+```python
+# submit: copy the production SKAT-O record (skv4-<anc>-<tag>-b<i>) and change ONLY the group file,
+# the masks and the output directory. Pilot = afr chr20, the three benchmark traits; then all.
+IMG10 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-8bffa0ca"
+SPLIT_MASKS = ("pLoF,synonymous,damaging_missense,damaging_missense:spliceai_gt05,"
+               "damaging_missense:spliceai_gt05:spliceai_02_05,pLoF:damaging_missense:spliceai_gt05,"
+               "spliceai_gt05,spliceai_02_05,other_missense,"
+               "pLoF:damaging_missense:spliceai_gt05:spliceai_02_05:other_missense:synonymous")
+split_grp = lambda c: f"{BUCKET}/SAIGE_SLIM_TESTING/annotations_reannot_v1/aou.chr{c}.spliceai_split_test.saige_group.txt.gz"
+PILOT = ["skv4-afr-asth-b0", "skv4-afr-vte-b0", "skv4-afr-bmi-b0"]; CHRN = "20"
+for v4name in PILOT:
+    r = RUNS[v4name]; anc = r["anc"]
+    assert r["geno"] == "pgen" and "RCORR" not in r["env"], v4name      # a SKAT-O record: r.corr at the build default
+    env = {k: v for k, v in r["env"].items() if k != "REGIONS"}
+    nm = v4name.replace("skv4", "sai05")
+    submit(name=nm, image=IMG10, masks=SPLIT_MASKS, fasttest=r["fasttest"],
+           outdir=f"{anc}/skato_sai05", anc=anc, pheno=r["pheno"], trait=r["trait"], firth=r["firth"], env=env,
+           geno=r["geno"], chrn=CHRN, plk=cod(int(CHRN), anc), grp=split_grp(int(CHRN)), testtype="group",
+           pooled=True, sidecars=True, sparse_grm=r["sparse_grm"])
+    print(nm, r["trait"], RUNS[nm]["geno"])
+```
+
+Reading the pilot: `pLoF` and the all-in mask against the production SKAT-O run for the same gene
+(agreement up to the pipeline differences bounds what the rule itself moves); `synonymous` on the
+null; then `damaging_missense:spliceai_gt05` against `damaging_missense:spliceai_gt05:spliceai_02_05`
+gene by gene, and `spliceai_02_05` alone. Afterwards, per mask: genes past exome-wide significance,
+replication of the known gene-trait pairs, and the inflation beside each (section 7c's calibration
+column takes these rows), so a gain is not read off an inflated tail.
+Full run: the same cell over every `skv4-*` record and `chrs=range(1, 23)` with `grp=split_grp`
+(the function, as section 2 does for multi-chromosome jobs). Single-in-group stays as the record had
+it: this arm's single-variant file IS the variant results for everything downstream.
