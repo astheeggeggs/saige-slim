@@ -1666,10 +1666,17 @@ for tag in TRAITS:
         assert r["geno"] == "pgen" and "RCORR" not in r["env"], v4name
         env = {k: v for k, v in r["env"].items() if k != "REGIONS"}
         nm = v4name.replace("skv4", "sai05")
+        # a ONE-chromosome bin (eur b0 = chr1) takes chrn and STRING plk/grp, as the production record
+        # holds them; passing functions with chrs=[1] failed every b0 in ~60 s (nothing localised,
+        # 2026-10-12). Multi-chromosome bins take chrs and the functions.
+        if len(r["chrs"]) == 1:
+            c = r["chrs"][0]; where = dict(chrn=str(c), plk=cod(c, anc), grp=split_grp(c))
+        else:
+            where = dict(chrs=r["chrs"], plk=lambda c, a=anc: cod(c, a), grp=split_grp)
         submit(name=nm, image=IMG13, masks=SPLIT_MASKS, fasttest=r["fasttest"],
                outdir=f"{anc}/skato_sai05", anc=anc, pheno=r["pheno"], trait=r["trait"], firth=r["firth"], env=env,
-               geno=r["geno"], chrs=r["chrs"], plk=lambda c, a=anc: cod(c, a), grp=split_grp, testtype="group",
-               machine_type=r["machine_type"], spot=r["spot"], pooled=True, sidecars=True, sparse_grm=r["sparse_grm"])
+               geno=r["geno"], testtype="group", machine_type=r["machine_type"], spot=r["spot"],
+               pooled=True, sidecars=True, sparse_grm=r["sparse_grm"], **where)
         # spot as production ran it (owner, 2026-10-12): preempted jobs are resubmitted from the check below
         print(nm, r["chrs"], RUNS[nm]["geno"])
 ```
@@ -1692,3 +1699,54 @@ for tag in TRAITS:
         if failed != "none": redo.append(nm); print(nm, "SUCCESS but chromosomes failed:", failed)
 print(len(redo), "to resubmit:", redo)
 ```
+
+```python
+# reading the evidence run (after every bin is in). Pools the ten bins per trait. Prints counts, gene
+# IDs and p-values only. Reference genes = exome-wide significant under pLoF in this run: pLoF is
+# unchanged by the rule, so the set is independent of the comparison and it is where a missense/splice
+# mask has signal to gain. (No local Genebass gene list; results.mt is in the cloud.)
+import math
+NEW_DM, OLD_DM, DROPPED = "damaging_missense;spliceai_gt05", "damaging_missense;spliceai_gt05;spliceai_02_05", "spliceai_02_05"
+SIG = 2.5e-6
+def load_trait(tag):
+    t = {}
+    for v4name in bins_of("eur", tag):
+        nm = v4name.replace("skv4", "sai05"); t.update(table(rows(RUNS[nm]["out_prefix"] + ".txt.gz")))
+    return t
+def minp_by_gene(t, mask):
+    d = {}
+    for (g, grp, m), p in t.items():
+        if grp == mask and p != "NA": d[g] = min(d.get(g, 1.0), float(p))
+    return d
+def qq_quantiles(ps):   # -log10 observed at the expected 1e-1 .. 1e-5 points, plus the fraction below 0.05
+    ps = sorted(ps); n = len(ps); out = []
+    for e in (1e-1, 1e-2, 1e-3, 1e-4, 1e-5):
+        k = int(e * n); out.append((e, ps[k] if k < n else float("nan")))
+    return n, out, sum(p < 0.05 for p in ps) / n
+pooled_dropped, pooled_syn = [], []
+print(f"{'trait':7s} {'genes':>6s} {'pLoF ref':>8s} | {'new<old':>7s} {'new>old':>7s} | {'hits new':>8s} {'hits old':>8s} {'hits dropped':>12s} {'hits allin':>10s} | ref genes: new p < old p")
+for tag in TRAITS:
+    t = load_trait(tag)
+    pn, po, pd = minp_by_gene(t, NEW_DM), minp_by_gene(t, OLD_DM), minp_by_gene(t, DROPPED)
+    plof = minp_by_gene(t, "pLoF"); allin = minp_by_gene(t, [k[1] for k in t if k[1].startswith("pLoF;damaging_missense;spliceai_gt05;spliceai_02_05")][0])
+    ref = [g for g, p in plof.items() if p < SIG]
+    common = set(pn) & set(po)
+    better = sum(pn[g] < po[g] for g in common); worse = sum(pn[g] > po[g] for g in common)
+    ref_better = sum(pn.get(g, 1) < po.get(g, 1) for g in ref); ref_n = sum(g in pn and g in po for g in ref)
+    print(f"{tag:7s} {len(common):6d} {len(ref):8d} | {better:7d} {worse:7d} | {sum(p < SIG for p in pn.values()):8d} {sum(p < SIG for p in po.values()):8d} "
+          f"{sum(p < SIG for p in pd.values()):12d} {sum(p < SIG for p in allin.values()):10d} | {ref_better} of {ref_n}")
+    pooled_dropped += [float(p) for (g, grp, m), p in t.items() if grp == DROPPED and p != "NA"]
+    pooled_syn += [float(p) for (g, grp, m), p in t.items() if grp == "synonymous" and p != "NA"]
+    if ref:
+        print("   ref genes (pLoF-significant), new vs old damaging p:",
+              [(g, f"{pn.get(g, float('nan')):.1e}", f"{po.get(g, float('nan')):.1e}") for g in sorted(ref, key=lambda g: plof[g])[:8]])
+for label, ps in (("spliceai_02_05 pooled", pooled_dropped), ("synonymous pooled", pooled_syn)):
+    n, q, f05 = qq_quantiles(ps)
+    print(f"{label}: n={n}, frac<0.05={f05:.3f}; observed p at expected " + ", ".join(f"{e:.0e}: {o:.1e}" for e, o in q))
+```
+
+Reading: `synonymous pooled` must track its expected points (the null); `spliceai_02_05 pooled`
+tracking them says the dropped variants carry no burden signal and the cutoff loses nothing; lifting
+off at 1e-3..1e-5 says it discards recall. The hits columns and the ref-gene comparison are the power
+claim; the all-in column is the tie to production. A gain in hits with an inflated synonymous line is
+not a gain.
