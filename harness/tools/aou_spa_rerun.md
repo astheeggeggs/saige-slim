@@ -1666,17 +1666,15 @@ for tag in TRAITS:
         assert r["geno"] == "pgen" and "RCORR" not in r["env"], v4name
         env = {k: v for k, v in r["env"].items() if k != "REGIONS"}
         nm = v4name.replace("skv4", "sai05")
-        # a ONE-chromosome bin (eur b0 = chr1) takes chrn and STRING plk/grp, as the production record
-        # holds them; passing functions with chrs=[1] failed every b0 in ~60 s (nothing localised,
-        # 2026-10-12). Multi-chromosome bins take chrs and the functions.
-        if len(r["chrs"]) == 1:
-            c = r["chrs"][0]; where = dict(chrn=str(c), plk=cod(c, anc), grp=split_grp(c))
-        else:
-            where = dict(chrs=r["chrs"], plk=lambda c, a=anc: cod(c, a), grp=split_grp)
         submit(name=nm, image=IMG13, masks=SPLIT_MASKS, fasttest=r["fasttest"],
                outdir=f"{anc}/skato_sai05", anc=anc, pheno=r["pheno"], trait=r["trait"], firth=r["firth"], env=env,
-               geno=r["geno"], testtype="group", machine_type=r["machine_type"], spot=r["spot"],
-               pooled=True, sidecars=True, sparse_grm=r["sparse_grm"], **where)
+               geno=r["geno"], chrs=r["chrs"], plk=lambda c, a=anc: cod(c, a), grp=split_grp, testtype="group",
+               machine_type=r["machine_type"], spot=r["spot"], pooled=True, sidecars=True, sparse_grm=r["sparse_grm"])
+        # 2026-10-12: every b0 (chr1 alone) failed in ~60 s -- the upload had dropped aou.chr1's file, the
+        # job log's `gcloud.storage.cp ... matched no objects` named it. Count the listing (22) before submitting,
+        # and check SIZES: the workbench's web uploader stalled on the re-upload and left a 9,437,184-byte object
+        # (exactly 9 MiB, a chunk boundary) for a 19,128,189-byte file -- a truncated gzip that lists like a
+        # file. `gcloud storage cp` from the laptop is the route that works.
         # spot as production ran it (owner, 2026-10-12): preempted jobs are resubmitted from the check below
         print(nm, r["chrs"], RUNS[nm]["geno"])
 ```
