@@ -1417,7 +1417,7 @@ people: durations, file sizes and "identical"/"DIFFERENT" only.
 # cell 1: submit the pairs. Each v4name is a RUNS key, fxv4-<anc>-<tag(pheno)>-b<i>; the record
 # carries anc, pheno, trait, masks, geno and the GRM, so binary and quantitative need no special-casing.
 IMG9  = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-a08fb295"     # current production
-IMG10 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-8bffa0ca"     # LEDGER #179, both sites; built and pushed 2026-10-08, P1 byte-identical in the container
+IMG13 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-8bffa0ca"     # LEDGER #179, both sites; built and pushed 2026-10-08, P1 byte-identical in the container
 BENCH = ["fxv4-afr-asth-b0", "fxv4-afr-vte-b0", "fxv4-afr-<QUANT-TAG>-b0"]   # two binary, one quantitative
 CHRN = "20"
 def bench_names(v4name):
@@ -1426,7 +1426,7 @@ for v4name in BENCH:
     r, names = bench_names(v4name); anc = r["anc"]
     env = {k: v for k, v in r["env"].items() if k != "REGIONS"}      # the whole chromosome, no region list
     assert r["geno"] == "pgen", (v4name, r["geno"])
-    for tag, img in (("old", IMG9), ("new", IMG10)):
+    for tag, img in (("old", IMG9), ("new", IMG13)):
         submit(name=names[tag], image=img, masks=r["masks"], fasttest=r["fasttest"],
                outdir=f"{anc}/bench179_{tag}", anc=anc, pheno=r["pheno"], trait=r["trait"], firth=r["firth"], env=env,
                geno=r["geno"], chrn=CHRN, plk=cod(int(CHRN), anc), grp=am_grp(int(CHRN)), testtype="group",
@@ -1496,7 +1496,7 @@ the rows: check with `gcloud storage cat <path> | zcat | md5sum` on both before
 reading a DIFFERENT as a defect.
 
 ```python
-# cell 4: the same records once more on IMG10 with --is_single_in_groupTest OFF. FlexRV's single-variant
+# cell 4: the same records once more on IMG13 with --is_single_in_groupTest OFF. FlexRV's single-variant
 # rows duplicate the SKAT-O run's (real markers) plus one pseudo-marker row per cell that only the splice
 # control ever read, so a complete run on one image does not need them. Needs the wrapper patch below
 # this section (SINGLE_IN_GROUP, default TRUE: the flag, the OUT_FILE_SINGLE_ASSOC check, and a one-line
@@ -1505,7 +1505,7 @@ for v4name in BENCH:
     r, names = bench_names(v4name); anc = r["anc"]
     env = {k: v for k, v in r["env"].items() if k != "REGIONS"}; env["SINGLE_IN_GROUP"] = "FALSE"
     nm = names["new"].replace("-new-", "-nosingle-")
-    submit(name=nm, image=IMG10, masks=r["masks"], fasttest=r["fasttest"],
+    submit(name=nm, image=IMG13, masks=r["masks"], fasttest=r["fasttest"],
            outdir=f"{anc}/bench179_nosingle", anc=anc, pheno=r["pheno"], trait=r["trait"], firth=r["firth"], env=env,
            geno=r["geno"], chrn=CHRN, plk=cod(int(CHRN), anc), grp=am_grp(int(CHRN)), testtype="group",
            pooled=True, sidecars=True, sparse_grm=r["sparse_grm"])
@@ -1612,7 +1612,7 @@ gcloud storage ls "$BUCKET/SAIGE_SLIM_TESTING/annotations_reannot_v1/" | wc -l  
 ```python
 # submit: copy the production SKAT-O record (skv4-<anc>-<tag>-b<i>) and change ONLY the group file,
 # the masks and the output directory. Pilot = afr chr20, the three benchmark traits; then all.
-IMG10 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-8bffa0ca"
+IMG13 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-8bffa0ca"
 SPLIT_MASKS = ("pLoF,synonymous,damaging_missense,damaging_missense:spliceai_gt05,"
                "damaging_missense:spliceai_gt05:spliceai_02_05,pLoF:damaging_missense:spliceai_gt05,"
                "spliceai_gt05,spliceai_02_05,other_missense,"
@@ -1624,7 +1624,7 @@ for v4name in PILOT:
     assert r["geno"] == "pgen" and "RCORR" not in r["env"], v4name      # a SKAT-O record: r.corr at the build default
     env = {k: v for k, v in r["env"].items() if k != "REGIONS"}
     nm = v4name.replace("skv4", "sai05")
-    submit(name=nm, image=IMG10, masks=SPLIT_MASKS, fasttest=r["fasttest"],
+    submit(name=nm, image=IMG13, masks=SPLIT_MASKS, fasttest=r["fasttest"],
            outdir=f"{anc}/skato_sai05", anc=anc, pheno=r["pheno"], trait=r["trait"], firth=r["firth"], env=env,
            geno=r["geno"], chrn=CHRN, plk=cod(int(CHRN), anc), grp=split_grp(int(CHRN)), testtype="group",
            pooled=True, sidecars=True, sparse_grm=r["sparse_grm"])
