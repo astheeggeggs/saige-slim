@@ -1640,3 +1640,55 @@ column takes these rows), so a gain is not read off an inflated tail.
 Full run: the same cell over every `skv4-*` record and `chrs=range(1, 23)` with `grp=split_grp`
 (the function, as section 2 does for multi-chromosome jobs). Single-in-group stays as the record had
 it: this arm's single-variant file IS the variant results for everything downstream.
+
+**Pilot outcome (2026-10-12, afr chr20, asth/vte/bmi):** `pLoF` cells identical to production in every
+gene; all-in and `synonymous` 96-99 % identical, the rest shifted <= 0.9 log10 (popmax drops, dbNSFP
+relabels); synonymous null 0.048-0.065 at 0.05; new vs old damaging a coin toss gene by gene, nothing
+past 2.5e-6 under either, the dropped set's smallest p 1.8e-4 over ~1,600 cells. Plumbing passes;
+chr20 x three traits cannot show the rule. The evidence run is below.
+
+```python
+# the evidence run: eur, genome-wide, the ten masks, eight quantitative traits with many established
+# rare-variant genes. One job per production bin (skv4-eur-<tag>-b0..b3, each its own chromosome
+# set, machine type and spot setting), changing ONLY the group file, the masks, the image and the
+# output directory. eur has ten bins per trait: 80 jobs, spot. Reading: spliceai_02_05 pooled over all genes x traits on a QQ (null if
+# the cutoff is right); the new vs old damaging mask at the Genebass burden genes for these traits;
+# exome-wide hits per mask with the inflation beside each; synonymous as the null throughout.
+TRAITS = ["ldlc", "hdlc", "tg", "tchol", "alt", "hba1c", "height", "bmi"]
+def bins_of(anc, tag):      # eur was binned into MORE than four jobs; take whatever the registry holds, and check it tiles 1-22
+    ks = sorted(k for k in RUNS if k.startswith(f"skv4-{anc}-{tag}-b"))
+    chrs = [c for k in ks for c in RUNS[k]["chrs"]]
+    assert sorted(chrs) == list(range(1, 23)), (tag, ks, sorted(chrs))
+    return ks
+for tag in TRAITS:
+    for v4name in bins_of("eur", tag):
+        r = RUNS[v4name]; anc = r["anc"]
+        assert r["geno"] == "pgen" and "RCORR" not in r["env"], v4name
+        env = {k: v for k, v in r["env"].items() if k != "REGIONS"}
+        nm = v4name.replace("skv4", "sai05")
+        submit(name=nm, image=IMG13, masks=SPLIT_MASKS, fasttest=r["fasttest"],
+               outdir=f"{anc}/skato_sai05", anc=anc, pheno=r["pheno"], trait=r["trait"], firth=r["firth"], env=env,
+               geno=r["geno"], chrs=r["chrs"], plk=lambda c, a=anc: cod(c, a), grp=split_grp, testtype="group",
+               machine_type=r["machine_type"], spot=r["spot"], pooled=True, sidecars=True, sparse_grm=r["sparse_grm"])
+        # spot as production ran it (owner, 2026-10-12): preempted jobs are resubmitted from the check below
+        print(nm, r["chrs"], RUNS[nm]["geno"])
+```
+
+```python
+# after the batch settles: which jobs to resubmit. A preempted job and a failed one look alike from
+# outside; and a job can report SUCCESS with chromosomes missing (the wrapper exits 0 so the ones that
+# worked are delivered) -- only chrStatus says so. Resubmit = the cell above filtered to `redo`.
+def status_of(name):
+    out = subprocess.run(["bash", "-lc", 'dstat --provider google-batch --project "${GOOGLE_CLOUD_PROJECT}" '
+                          f"--users '*' --status '*' --age 2d --names {name} --format json"], capture_output=True, text=True, timeout=120).stdout
+    j = json.loads(out); return j[0]["status"] if j else "NOT FOUND"
+redo = []
+for tag in TRAITS:
+    for v4name in bins_of("eur", tag):
+        nm = v4name.replace("skv4", "sai05"); st = status_of(nm)
+        if st != "SUCCESS": redo.append(nm); print(nm, st); continue
+        chs = rows(RUNS[nm]["out_prefix"] + ".chrStatus.txt.gz")
+        failed = [l for l in chs if l.startswith("failed")][0].split("\t")[1]
+        if failed != "none": redo.append(nm); print(nm, "SUCCESS but chromosomes failed:", failed)
+print(len(redo), "to resubmit:", redo)
+```
