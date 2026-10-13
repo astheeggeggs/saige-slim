@@ -1748,3 +1748,35 @@ tracking them says the dropped variants carry no burden signal and the cutoff lo
 off at 1e-3..1e-5 says it discards recall. The hits columns and the ref-gene comparison are the power
 claim; the all-in column is the tie to production. A gain in hits with an inflated synonymous line is
 not a gain.
+
+**Evidence-run outcome (2026-10-13, eur genome-wide, 8 quantitative traits, 80 bins + 2 resubmitted
+on demand after spot preemption; ~18k genes a trait):**
+
+| trait | pLoF ref genes | new<old / new>old (all genes) | hits new | hits old | hits dropped | hits all-in | ref genes new<old |
+|---|---|---|---|---|---|---|---|
+| ldlc | 4 | 8022 / 8248 | 2 | 2 | 0 | 5 | 4 of 4 |
+| hdlc | 10 | 8324 / 8102 | 8 | 6 | 0 | 13 | 4 of 10 |
+| tg | 7 | 8321 / 8110 | 6 | 5 | 0 | 12 | 3 of 7 |
+| tchol | 6 | 8134 / 8307 | 4 | 5 | 1 | 8 | 6 of 6 |
+| alt | 2 | 8294 / 8211 | 1 | 1 | 0 | 2 | 1 of 2 |
+| hba1c | 1 | 7897 / 8270 | 2 | 1 | 0 | 1 | 0 of 1 |
+| height | 25 | 8565 / 8225 | 25 | 24 | 1 | 49 | 14 of 25 |
+| bmi | 7 | 8396 / 8323 | 2 | 1 | 0 | 2 | 2 of 7 |
+
+Pooled QQ (observed p at the expected 1e-1 / 1e-2 / 1e-3 / 1e-4 / 1e-5 points; frac < 0.05):
+`spliceai_02_05` n=402,419: 9.7e-2 / 8.5e-3 / 8.1e-4 / 5.7e-5 / 5.9e-6; 0.052 -- ON THE NULL.
+`synonymous` n=441,731: 9.5e-2 / 7.7e-3 / 5.3e-4 / 2.9e-5 / 1.7e-7; 0.055 (the usual large-gene
+synonymous tail; heavier than the dropped set's). New damaging n=435,979: 9.0e-2 / 6.3e-3 / 2.3e-4 /
+1.2e-11 / 9.4e-41; old damaging n=439,501: 9.0e-2 / 6.2e-3 / 2.6e-4 / 2.1e-11 / 7.1e-41 -- the same tail.
+
+Reading: the DS 0.2-0.5 variants carry no burden signal in aggregate (2 hits in 8 traits against 50);
+the new mask finds 50 exome-wide hits against the old rule's 45, new >= old on 7 of 8 traits, with
+identical tail behaviour and the same synonymous null; at the 62 pLoF-reference genes the new mask is
+better at 34 -- gains where the rule cleans (APOC3 3.1e-4 -> 4.2e-7 for HDLC, LDLR, LCAT, ACAN),
+losses where some 0.2-0.5 splice variants were real (CD36 2.2e-8 -> 9.0e-7, CETP, one height gene
+3.6e-7 -> 3.3e-5). **DECIDED (owner, 2026-10-13): the spliceAI cutoff moves to 0.5**; production runs
+the seven-mask set on the release `new_rules` file:
+`pLoF,damaging_missense,spliceai_gt05,pLoF:damaging_missense:spliceai_gt05,synonymous,other_missense,pLoF:damaging_missense:spliceai_gt05:other_missense:synonymous`
+(the all-in mask under the new rule carries the DS 0.2-0.5 variants inside `other_missense`/`non_coding`,
+so on the release file it is spelt without `spliceai_02_05`). Quantitative eur bins ran 15-22 min each
+on IMG13 (no saddlepoint); the binary bin's time is pending (`sai05-eur-t2diab-b5`).
