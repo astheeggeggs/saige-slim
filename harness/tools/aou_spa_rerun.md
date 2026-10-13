@@ -1778,5 +1778,7 @@ losses where some 0.2-0.5 splice variants were real (CD36 2.2e-8 -> 9.0e-7, CETP
 the seven-mask set on the release `new_rules` file:
 `pLoF,damaging_missense,spliceai_gt05,pLoF:damaging_missense:spliceai_gt05,synonymous,other_missense,pLoF:damaging_missense:spliceai_gt05:other_missense:synonymous`
 (the all-in mask under the new rule carries the DS 0.2-0.5 variants inside `other_missense`/`non_coding`,
-so on the release file it is spelt without `spliceai_02_05`). Quantitative eur bins ran 15-22 min each
-on IMG13 (no saddlepoint); the binary bin's time is pending (`sai05-eur-t2diab-b5`).
+so on the release file it is spelt without `spliceai_02_05`). eur bin times on IMG13, ten masks, chromosomes 3+8 (`-b5`), SAIGE seconds from the job log:
+quantitative (ldlc) 972 s, binary (t2diab) 3,416 s -- 3.5x, the per-cell saddlepoint of the binary
+SKAT-O path. So a production rerun of ~60 binary traits is ~600 bin-hours on n2-highmem-2 (~$60
+on demand), the ~12 quantitative traits a sixth of that; spot lost 2 of 80 quantitative bins tonight.
