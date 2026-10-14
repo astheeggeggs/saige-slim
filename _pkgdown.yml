@@ -25,6 +25,7 @@ reference:
   - fitNULLGLMM_multi
   - getNeff
   - CCT
+  - CCT_log10
 articles:
 - title: Command line
   navbar: ~
