@@ -1789,3 +1789,133 @@ so on the release file it is spelt without `spliceai_02_05`). eur bin times on I
 quantitative (ldlc) 972 s, binary (t2diab) 3,416 s -- 3.5x, the per-cell saddlepoint of the binary
 SKAT-O path. So a production rerun of ~60 binary traits is ~600 bin-hours on n2-highmem-2 (~$60
 on demand), the ~12 quantitative traits a sixth of that; spot lost 2 of 80 quantitative bins tonight.
+
+## 17. SpliceAI v1 (DS >= 0.5) against SpliceAI2 (>= 0.25) in ONE SKAT-O run (2026-10-14)
+
+`~/Repositories/brava-reannotation/out_spliceai2/aou/sai_versions_test/aou.chr<c>.sai_versions_test.saige_group.txt.gz`
+(`build/sai_versions_test.py`): every entry carries its SpliceAI2-build label, except the splice category,
+which is split by which version calls it -- `sai_both`, `sai_v1only` (v1 >= 0.5 only), `sai_v2only`
+(SpliceAI2 >= 0.25 only). The builder refuses to write if `pLoF` or `damaging_missense` differ between the
+builds (neither involves SpliceAI). Genome-wide: v1 27,326, v2 36,990, both 18,884 (Jaccard 0.42); chr20
+2,045 / 4,724 / 4,581. chr1 ships as two parts (`.part_aa` 15,728,640 + `.part_ab` 3,344,665 bytes) because
+the workbench uploader cannot take the 19 MB file; `cat` of the parts has the full file's md5.
+
+Masks, twelve: the three unchanged controls, the two rules, each version's splice set, the three pieces
+of the split (the disagreement sets `sai_v1only` / `sai_v2only` are the decisive ones), `other_missense`,
+and the all-in mask (under both rules at once, since it holds every splice piece):
+`pLoF,synonymous,damaging_missense,other_missense,damaging_missense:sai_both:sai_v1only,damaging_missense:sai_both:sai_v2only,sai_both:sai_v1only,sai_both:sai_v2only,sai_both,sai_v1only,sai_v2only,pLoF:damaging_missense:sai_both:sai_v1only:sai_v2only:other_missense:synonymous`
+
+Upload (workbench web uploader, into `SAIGE_SLIM_TESTING/annotations_reannot_v2/`): chr2..22 as they are,
+chr1 as its two parts; then in the notebook compose chr1 and md5 everything against the laptop list:
+
+```python
+import hashlib, subprocess
+D = f"{BUCKET}/SAIGE_SLIM_TESTING/annotations_reannot_v2"
+# chr1 from its parts, server side; each part's size checked first (compose would join a truncated part)
+parts = [f"{D}/aou.chr1.sai_versions_test.saige_group.txt.gz.part_{s}" for s in ("aa", "ab")]
+for p, n in zip(parts, (15728640, 3344665)):
+    got = len(subprocess.run(["gcloud", "storage", "cat", p], capture_output=True).stdout); assert got == n, (p, got, n)
+dest = f"{D}/aou.chr1.sai_versions_test.saige_group.txt.gz"
+print(subprocess.run(["gcloud", "storage", "objects", "compose", *parts, dest], capture_output=True, text=True).stderr[-200:])
+REF = """ea5c3e2c33eb156220cee2110e80a291 19073305 aou.chr1.sai_versions_test.saige_group.txt.gz
+b23baa838835bd7392cad3bcb130c228 13025514 aou.chr2.sai_versions_test.saige_group.txt.gz
+4f2a88ce097656bf57f90b1e75d698d0 11184831 aou.chr3.sai_versions_test.saige_group.txt.gz
+088b1acc793aa61e89304265ceb2040d 7191211 aou.chr4.sai_versions_test.saige_group.txt.gz
+eed8eb71d3862a618ae3e3631514222c 11298945 aou.chr5.sai_versions_test.saige_group.txt.gz
+3cec5daa349027cf8f2c1a6c58c7e2a6 9628159 aou.chr6.sai_versions_test.saige_group.txt.gz
+50f671281b1c71c383d1e558bca693a5 8855502 aou.chr7.sai_versions_test.saige_group.txt.gz
+e5fb486253ad5ba3163735fd9c812df5 6717005 aou.chr8.sai_versions_test.saige_group.txt.gz
+bcb981f3bd67e7c25a6742ddb03ecce3 7763187 aou.chr9.sai_versions_test.saige_group.txt.gz
+eae14fc1419da01294fe5878b4e85f1b 7201901 aou.chr10.sai_versions_test.saige_group.txt.gz
+93de48441a84b320beddedecf9626ee7 11754107 aou.chr11.sai_versions_test.saige_group.txt.gz
+6f4d2c3a5c044a477203df2bb59ce160 10345765 aou.chr12.sai_versions_test.saige_group.txt.gz
+547357e042edcf091d40b990f8f3811f 3437785 aou.chr13.sai_versions_test.saige_group.txt.gz
+021fdcb9813adb8de629e76b7f9505ac 6492259 aou.chr14.sai_versions_test.saige_group.txt.gz
+069287d791149c00aecb0eea5d528185 6910637 aou.chr15.sai_versions_test.saige_group.txt.gz
+9a42c5f1267cb038333c7958816299fb 9573142 aou.chr16.sai_versions_test.saige_group.txt.gz
+74d2ebaafa65c978f9387707af237a0e 11561726 aou.chr17.sai_versions_test.saige_group.txt.gz
+bfc6ccf83f973b0c939a4a0f915b5bc7 3032049 aou.chr18.sai_versions_test.saige_group.txt.gz
+79f064c0ee55c1d1f61178976bda44d8 13363704 aou.chr19.sai_versions_test.saige_group.txt.gz
+c1b07d370f1c0223e0a50e21b707de24 4853842 aou.chr20.sai_versions_test.saige_group.txt.gz
+812dd545da0df3eb43300209b963864d 1838382 aou.chr21.sai_versions_test.saige_group.txt.gz
+b1c0cc3c11413d42ac6db047464a868f 4152616 aou.chr22.sai_versions_test.saige_group.txt.gz"""
+bad = []
+for l in REF.splitlines():
+    h, n, f = l.split(); data = subprocess.run(["gcloud", "storage", "cat", f"{D}/{f}"], capture_output=True).stdout
+    ok = hashlib.md5(data).hexdigest() == h and len(data) == int(n)
+    print(f"{f:50s} {len(data):>10d} / {n:<10s} {'ok' if ok else 'MISMATCH'}", flush=True); bad += [] if ok else [f]
+print(len(bad), "bad:", bad)
+if not bad:
+    for p in parts: subprocess.run(["gcloud", "storage", "rm", p])
+    print("chr1 parts removed")
+```
+
+```python
+# submit: eur, the eight quantitative traits + T2D, every bin, same image; only the group file, masks and
+# output directory differ from section 16. (Spot: 2 of 80 lost last time; the check cell lists them.)
+SAI2_MASKS = ("pLoF,synonymous,damaging_missense,other_missense,"
+              "damaging_missense:sai_both:sai_v1only,damaging_missense:sai_both:sai_v2only,"
+              "sai_both:sai_v1only,sai_both:sai_v2only,sai_both,sai_v1only,sai_v2only,"
+              "pLoF:damaging_missense:sai_both:sai_v1only:sai_v2only:other_missense:synonymous")
+sai2_grp = lambda c: f"{BUCKET}/SAIGE_SLIM_TESTING/annotations_reannot_v2/aou.chr{c}.sai_versions_test.saige_group.txt.gz"
+TRAITS2 = ["ldlc", "hdlc", "tg", "tchol", "alt", "hba1c", "height", "bmi", "t2diab"]
+for tag in TRAITS2:
+    for v4name in bins_of("eur", tag):
+        r = RUNS[v4name]; anc = r["anc"]
+        assert r["geno"] == "pgen" and "RCORR" not in r["env"], v4name
+        env = {k: v for k, v in r["env"].items() if k != "REGIONS"}
+        nm = v4name.replace("skv4", "sai2v")
+        submit(name=nm, image=IMG13, masks=SAI2_MASKS, fasttest=r["fasttest"],
+               outdir=f"{anc}/skato_sai2v", anc=anc, pheno=r["pheno"], trait=r["trait"], firth=r["firth"], env=env,
+               geno=r["geno"], chrs=r["chrs"], plk=lambda c, a=anc: cod(c, a), grp=sai2_grp, testtype="group",
+               machine_type=r["machine_type"], spot=r["spot"], pooled=True, sidecars=True, sparse_grm=r["sparse_grm"])
+        print(nm, r["chrs"], RUNS[nm]["geno"])
+```
+
+The delivery check is section 16's listing cell with `skato_sai2v` and `sai2v`; the reading cell is below.
+
+```python
+# reading: v1 against v2, per trait and pooled. Decisive lines: sai_v1only and sai_v2only pooled -- the
+# variants only one version calls; a version whose private set carries signal is finding real splice
+# damage the other misses, one whose private set is null is adding noise.
+import gzip, math, subprocess
+def rows(path):
+    data = subprocess.run(["gcloud", "storage", "cat", path], capture_output=True, check=True).stdout
+    return gzip.decompress(data).decode().splitlines()
+def table(lines):
+    h = lines[0].split("\t"); ix = {k: i for i, k in enumerate(h)}; out = {}
+    for l in lines[1:]:
+        f = l.split("\t")
+        if f[ix["Group"]] == "Cauchy": continue
+        out[(f[ix["Region"]], f[ix["Group"]], f[ix["max_MAF"]])] = f[ix["Pvalue"]]
+    return out
+listing = subprocess.run(["gcloud", "storage", "ls", f"{BUCKET}/SAIGE_SLIM_TESTING/eur/skato_sai2v/"], capture_output=True, text=True).stdout.split()
+prefix_of = {p.rsplit("/", 1)[-1].split(".")[0]: p[:-len(".chrStatus.txt.gz")] for p in listing if p.endswith(".chrStatus.txt.gz")}
+V1, V2 = "damaging_missense;sai_both;sai_v1only", "damaging_missense;sai_both;sai_v2only"
+S1, S2, BOTH, ONLY1, ONLY2 = "sai_both;sai_v1only", "sai_both;sai_v2only", "sai_both", "sai_v1only", "sai_v2only"
+SIG = 2.5e-6
+def minp_by_gene(t, mask):
+    d = {}
+    for (g, grp, m), p in t.items():
+        if grp == mask and p != "NA": d[g] = min(d.get(g, 1.0), float(p))
+    return d
+def qq(ps):
+    ps = sorted(ps); n = len(ps)
+    return n, [(e, ps[int(e * n)]) for e in (1e-1, 1e-2, 1e-3, 1e-4, 1e-5) if int(e * n) < n], sum(p < 0.05 for p in ps) / n
+pooled = {m: [] for m in (ONLY1, ONLY2, BOTH, S1, S2, V1, V2, "synonymous")}
+print(f"{'trait':7s} {'ref':>4s} | {'v1<v2':>6s} {'v1>v2':>6s} | {'hits v1':>7s} {'hits v2':>7s} {'splice v1':>9s} {'splice v2':>9s} {'v1only':>6s} {'v2only':>6s} {'both':>5s} | ref genes v2<v1")
+for tag in TRAITS2:
+    t = {}
+    for v4name in bins_of("eur", tag):
+        nm = v4name.replace("skv4", "sai2v"); assert nm in prefix_of, nm; t.update(table(rows(prefix_of[nm] + ".txt.gz")))
+    p1, p2, s1, s2, pb, o1, o2, plof = (minp_by_gene(t, m) for m in (V1, V2, S1, S2, BOTH, ONLY1, ONLY2, "pLoF"))
+    ref = [g for g, p in plof.items() if p < SIG]; common = set(p1) & set(p2)
+    hits = lambda d: sum(p < SIG for p in d.values())
+    print(f"{tag:7s} {len(ref):4d} | {sum(p1[g] < p2[g] for g in common):6d} {sum(p1[g] > p2[g] for g in common):6d} | {hits(p1):7d} {hits(p2):7d} {hits(s1):9d} {hits(s2):9d} {hits(o1):6d} {hits(o2):6d} {hits(pb):5d} | "
+          f"{sum(g in p1 and g in p2 and p2[g] < p1[g] for g in ref)} of {sum(g in p1 and g in p2 for g in ref)}", flush=True)
+    if ref: print("   ref genes, v1 vs v2 damaging p:", [(g, f"{p1.get(g, float('nan')):.1e}", f"{p2.get(g, float('nan')):.1e}") for g in sorted(ref, key=lambda g: plof[g])[:8]])
+    for m in pooled: pooled[m] += [float(p) for (g, grp, mm), p in t.items() if grp == m and p != "NA"]
+for m, ps in pooled.items():
+    n, q, f05 = qq(ps)
+    print(f"{m:36s} n={n:7d} frac<0.05={f05:.3f}  observed at expected " + ", ".join(f"{e:.0e}: {o:.1e}" for e, o in q))
+```
