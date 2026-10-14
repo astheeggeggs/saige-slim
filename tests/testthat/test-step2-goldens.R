@@ -222,6 +222,26 @@ test_that("step2 FlexRV default-set BURDEN (binary, collapse on) matches golden"
     c(PLINK_ARGS(), GRP_MODEL, SG_ARGS, FLEXRV_COMMON, "--r.corr=1", "--is_fastTest=FALSE"))
 })
 
+# P79/P80 (2026-10-14): the --is_output_log10P columns, pinned on both region
+# paths; every pre-existing column is byte-identical to P2 / P58, which the
+# flag's own test file asserts (test-step2-log10p.R).
+test_that("step2 group fastTest binary with log10 p-value columns matches golden (P79)", {
+  run_step2_case("plink_group_fastTest_log10p.txt",
+    c(PLINK_ARGS(), "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
+      GRP_MODEL, SG_ARGS,
+      "--groupFile=./input/group_new_snpid.txt",
+      "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+      "--maxMAF_in_groupTest=0.0001,0.001,0.01",
+      "--is_fastTest=TRUE", "--is_output_log10P=TRUE"),
+    extra_outputs = c(".singleAssoc.txt", ".singleAssoc.txt_temp"))
+})
+
+test_that("step2 FlexRV default-set BURDEN with the log10 p-value column matches golden (P80)", {
+  run_step2_case("plink_group_flexrv_burden_log10p.txt",
+    c(PLINK_ARGS(), GRP_MODEL, SG_ARGS, FLEXRV_COMMON, "--r.corr=1", "--is_fastTest=FALSE",
+      "--is_output_log10P=TRUE"))
+})
+
 test_that("step2 FlexRV default-set BURDEN (quantitative, no collapse) matches golden", {
   run_step2_case("plink_group_flexrv_burden_quant.txt",
     c(PLINK_ARGS(), quant_model(), FLEXRV_COMMON, "--MACCutoff_to_CollapseUltraRare=0",

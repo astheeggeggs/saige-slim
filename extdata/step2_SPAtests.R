@@ -122,6 +122,19 @@ option_list <- list(
     )
   ),
   make_option(
+    "--is_output_log10P",
+    type = "logical",
+    default = FALSE,
+    help = paste0(
+      "Add log10 p-value columns to the set-based results after SE_Burden ",
+      "(log10_Pvalue, log10_Pvalue_Burden, log10_Pvalue_SKAT on the SKAT-O path, ",
+      "log10_Pvalue_Burden on the BURDEN path, and the pooled Cauchy row combined ",
+      "in log space), exact in log space wherever the kernel works there, so a ",
+      "p-value below double precision (~1e-308) is a finite log10 rather than 0. ",
+      "Existing columns are unchanged. [default FALSE]"
+    )
+  ),
+  make_option(
     "--SKATO_screen_threshold",
     type = "double",
     default = 0.05,
@@ -941,6 +954,7 @@ fixed_params <- list(
   maxMAF_in_groupTest = maxMAF_in_groupTest,
   maxMAC_in_groupTest = maxMAC_in_groupTest,
   minGroupMAC_in_BurdenTest = opt$minGroupMAC_in_BurdenTest,
+  is_output_log10P = opt[["is_output_log10P"]],
   SKATO_screen_threshold = opt[["SKATO_screen_threshold"]],
   SKATO_tail_method = opt[["SKATO_tail_method"]],
   SKATO_tail_threshold = opt[["SKATO_tail_threshold"]],

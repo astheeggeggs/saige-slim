@@ -22,6 +22,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// CCT_log10_cpp
+double CCT_log10_cpp(arma::vec& log10p);
+RcppExport SEXP _SAIGE_CCT_log10_cpp(SEXP log10pSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec& >::type log10p(log10pSEXP);
+    rcpp_result_gen = Rcpp::wrap(CCT_log10_cpp(log10p));
+    return rcpp_result_gen;
+END_RCPP
+}
 // flexrvWeightsInCPP
 arma::mat flexrvWeightsInCPP(arma::mat t_table, arma::vec t_score, arma::vec t_isLof, arma::vec t_MAF, arma::vec t_MAC, double t_maxMAF);
 RcppExport SEXP _SAIGE_flexrvWeightsInCPP(SEXP t_tableSEXP, SEXP t_scoreSEXP, SEXP t_isLofSEXP, SEXP t_MAFSEXP, SEXP t_MACSEXP, SEXP t_maxMAFSEXP) {
@@ -240,6 +251,16 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// setOutputLog10PInCPP
+void setOutputLog10PInCPP(bool t_isOutputLog10P);
+RcppExport SEXP _SAIGE_setOutputLog10PInCPP(SEXP t_isOutputLog10PSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< bool >::type t_isOutputLog10P(t_isOutputLog10PSEXP);
+    setOutputLog10PInCPP(t_isOutputLog10P);
+    return R_NilValue;
+END_RCPP
+}
 // setMarker_GlobalVarsInCPP
 void setMarker_GlobalVarsInCPP(bool t_isOutputMoreDetails, int t_marker_chunksize);
 RcppExport SEXP _SAIGE_setMarker_GlobalVarsInCPP(SEXP t_isOutputMoreDetailsSEXP, SEXP t_marker_chunksizeSEXP) {
@@ -262,6 +283,17 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type t_min_gourpmac_for_burdenonly(t_min_gourpmac_for_burdenonlySEXP);
     setRegion_GlobalVarsInCPP(t_max_maf_region, t_max_markers_region, t_MACCutoff_to_CollapseUltraRare, t_min_gourpmac_for_burdenonly);
     return R_NilValue;
+END_RCPP
+}
+// log10PrintedPval_cpp
+double log10PrintedPval_cpp(std::string t_s);
+RcppExport SEXP _SAIGE_log10PrintedPval_cpp(SEXP t_sSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< std::string >::type t_s(t_sSEXP);
+    rcpp_result_gen = Rcpp::wrap(log10PrintedPval_cpp(t_s));
+    return rcpp_result_gen;
 END_RCPP
 }
 // mainMarkerInCPP
@@ -2362,6 +2394,7 @@ END_RCPP
 
 static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_CCT_cpp", (DL_FUNC) &_SAIGE_CCT_cpp, 1},
+    {"_SAIGE_CCT_log10_cpp", (DL_FUNC) &_SAIGE_CCT_log10_cpp, 1},
     {"_SAIGE_flexrvWeightsInCPP", (DL_FUNC) &_SAIGE_flexrvWeightsInCPP, 6},
     {"_SAIGE_resetExactByWeightRecordsInCPP", (DL_FUNC) &_SAIGE_resetExactByWeightRecordsInCPP, 0},
     {"_SAIGE_getExactByWeightRecordsInCPP", (DL_FUNC) &_SAIGE_getExactByWeightRecordsInCPP, 0},
@@ -2382,8 +2415,10 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_setAssocTest_GlobalVarsInCPP", (DL_FUNC) &_SAIGE_setAssocTest_GlobalVarsInCPP, 10},
     {"_SAIGE_setAssocTest_GlobalVarsInCPP_indexInModel_male", (DL_FUNC) &_SAIGE_setAssocTest_GlobalVarsInCPP_indexInModel_male, 1},
     {"_SAIGE_setAssocTest_GlobalVarsInCPP_X_PARregion_mat", (DL_FUNC) &_SAIGE_setAssocTest_GlobalVarsInCPP_X_PARregion_mat, 1},
+    {"_SAIGE_setOutputLog10PInCPP", (DL_FUNC) &_SAIGE_setOutputLog10PInCPP, 1},
     {"_SAIGE_setMarker_GlobalVarsInCPP", (DL_FUNC) &_SAIGE_setMarker_GlobalVarsInCPP, 2},
     {"_SAIGE_setRegion_GlobalVarsInCPP", (DL_FUNC) &_SAIGE_setRegion_GlobalVarsInCPP, 4},
+    {"_SAIGE_log10PrintedPval_cpp", (DL_FUNC) &_SAIGE_log10PrintedPval_cpp, 1},
     {"_SAIGE_mainMarkerInCPP", (DL_FUNC) &_SAIGE_mainMarkerInCPP, 6},
     {"_SAIGE_Unified_getOneMarker", (DL_FUNC) &_SAIGE_Unified_getOneMarker, 17},
     {"_SAIGE_processMale_XnonPAR", (DL_FUNC) &_SAIGE_processMale_XnonPAR, 3},

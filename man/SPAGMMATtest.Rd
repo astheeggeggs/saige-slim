@@ -64,6 +64,7 @@ SPAGMMATtest(
   is_single_in_groupTest = FALSE,
   is_no_weight_in_groupTest = FALSE,
   is_output_markerList_in_groupTest = FALSE,
+  is_output_log10P = FALSE,
   is_fastTest = FALSE,
   pval_cutoff_for_fastTest = 0.05,
   max_MAC_use_ER = 4,
@@ -211,6 +212,8 @@ the printed digits. Only for binary traits with is_Firth_beta = TRUE.}
 \item{is_no_weight_in_groupTest}{logical. Whether no weights (all-ones) are used in the group test. If FALSE, weights will be calcuated based on MAF from the Beta distribution with paraemters weights.beta or weights will be extracted from the group File if available. If TRUE and the run has no other weight sets (unweighted group file, single weights.beta pair), the all-ones weights simply replace the beta weights, exactly as before. If TRUE and the run does have other weight sets (weight lines in the group file, or more than one weights.beta pair), an all-ones weight set named "No_Weights" is appended as the last weight set (this replaces the previous hard error for weighted group files). By default, FALSE}
 
 \item{is_output_markerList_in_groupTest}{logical. Whether to output the marker lists included in the set-based tests for each mask. By default, FALSE}
+
+\item{is_output_log10P}{logical. Whether to add log10 p-value columns to the set-based results (after SE_Burden): log10_Pvalue, log10_Pvalue_Burden, log10_Pvalue_SKAT on the SKAT-O path (plus log10_Pvalue_ACATV/ACATO with more than one weight set), log10_Pvalue_Burden on the BURDEN path, and the same for the pooled Cauchy row, which is then combined in log space. The value is exact in log space wherever the kernel works there (the SKAT-O saddlepoint tail, the burden chi-square, the C++ score test's underflow branch, the Cauchy combination) and log10(p) elsewhere, so a p-value that underflows double precision (below ~1e-308) is reported as a finite log10 rather than 0, and a pooled row over such a cell is no longer 0. FALSE (default) leaves every existing column and byte unchanged. By default, FALSE}
 
 \item{is_fastTest}{logical. Whether to use the fast mode for tests. By default, FALSE}
 

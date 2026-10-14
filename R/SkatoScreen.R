@@ -292,9 +292,9 @@ skatoMethodSummary <- function(OutputFile) {
 
 #' P(sum_j lambda_j chi2_1 > q) by Kuonen's saddlepoint; NA where undefined.
 #' @noRd
-skatoSaddlepointSurvival <- function(lambda, q) {
+skatoSaddlepointSurvival <- function(lambda, q, log = FALSE) {
   if (q <= 0) {
-    return(1)
+    return(if (log) 0 else 1)
   }
   mu <- sum(lambda)
   lmax <- max(lambda)
@@ -321,7 +321,10 @@ skatoSaddlepointSurvival <- function(lambda, q) {
   if (!is.finite(w) || abs(w) < 1e-6 || !is.finite(v)) {
     return(NA_real_)
   }
-  pnorm(w + log(v / w) / w, lower.tail = FALSE)
+  # log = TRUE (--is_output_log10P): the same Lugannani-Rice value as a natural
+  # log, which pnorm computes without underflow where the probability itself
+  # would be 0 (below ~1e-308).
+  pnorm(w + log(v / w) / w, lower.tail = FALSE, log.p = log)
 }
 
 #' The saddlepoint tier over the layers the screen already built. `pvalDavies`
@@ -333,10 +336,20 @@ skatoSaddlepointSurvival <- function(lambda, q) {
 skatoSaddlepointTail <- function(Qr, lambda.all, param.m, r.all, pvalDavies, param.mat) {
   n.r <- length(r.all)
   pval <- numeric(n.r)
+  logpval <- numeric(n.r)
   for (i in seq_len(n.r)) {
     lam <- lambda.all[[i]]
     p <- if (length(lam) == 1) pvalDavies[i] else skatoSaddlepointSurvival(lam, Qr[i])
-    if (is.na(p) || p <= 0 || p > 1) p <- pvalDavies[i]
+    if (is.na(p) || p <= 0 || p > 1) {
+      p <- pvalDavies[i]
+      logpval[i] <- log(p)
+    } else if (length(lam) == 1) {
+      logpval[i] <- log(p)
+    } else {
+      # the same saddlepoint as a log: finite where p underflowed to 0
+      logpval[i] <- skatoSaddlepointSurvival(lam, Qr[i], log = TRUE)
+      if (is.na(logpval[i])) logpval[i] <- log(p)
+    }
     pval[i] <- p
   }
   pmin <- min(pval)
@@ -401,17 +414,28 @@ skatoSaddlepointTail <- function(Qr, lambda.all, param.m, r.all, pvalDavies, par
     return(NULL)
   }
   pvalue <- pchisq(xstar, df = 1, lower.tail = FALSE) + area
+  # the log twin of the lines below, same rules in log space (log(0) = -Inf is
+  # legal in logspace_add; `area` of 0 contributes nothing)
+  logspace_add <- function(a, b) {
+    m <- max(a, b)
+    if (!is.finite(m)) return(m)
+    m + log1p(exp(min(a, b) - m))
+  }
+  log.pvalue <- logspace_add(pchisq(xstar, df = 1, lower.tail = FALSE, log.p = TRUE), log(area))
+  logpmin <- min(logpval)
   if (pmin * n.r < pvalue) pvalue <- pmin * n.r
+  if (logpmin + log(n.r) < log.pvalue) log.pvalue <- logpmin + log(n.r)
   multi <- if (n.r < 3) 2 else 3
   IDX <- which(pval > 0)
   if (pvalue <= 0 || length(IDX) < n.r) pvalue <- min(pval) * multi
+  if (length(IDX) < n.r || !is.finite(log.pvalue)) log.pvalue <- logpmin + log(multi)
   if (pvalue == 0 && length(IDX) > 0) pvalue <- min(pval[IDX])
-  param <- list(p.val.each = pval, q.val.each = Qr)
+  param <- list(p.val.each = pval, q.val.each = Qr, log.p.val.each = logpval)
   param$rho <- r.all
   param$minp <- pmin
   id_temp <- which(param$p.val.each == pmin)
   id_temp1 <- which(param$rho >= 0.999)
   if (length(id_temp1) > 0) param$rho[id_temp1] <- 1
   param$rho_est <- param$rho[id_temp]
-  list(p.value = pvalue, param = param, p.value.resampling = NULL)
+  list(p.value = pvalue, param = param, p.value.resampling = NULL, log.p.value = log.pvalue)
 }

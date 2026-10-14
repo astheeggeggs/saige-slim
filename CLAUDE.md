@@ -869,6 +869,15 @@ declarations sit at the top of `src/Main.cpp`.
   1e-6 gives 0.021 (P73) -- and at 1e-6 the 1e-6 budget refuses those cells.
   An unweighted test is unaffected either way: its roots are nowhere near
   `-log(mu)`.
+- **`--is_output_log10P` (2026-10-14) adds log10 p-value columns after `SE_Burden`**
+  on both region paths and combines the pooled row in log space (`CCT_log10`,
+  `CCT_log10_cpp`), exact wherever the kernel works in log space (the SKAT-O
+  saddlepoint tier, the C++ score test's underflow spelling, the Cauchy); with
+  it off every byte is as before, with it on every pre-existing column is
+  unchanged. `CCT()`'s own `1 - pcauchy()` loses 2e-3 in log10 p at large
+  statistics; the log versions use `atan(1/t)/pi` and a cancellation-free
+  reference is what the test compares against
+  (`docs/state/handoff-2026-10-14-log10p.md`).
 - **A SKAT kernel failure is counted, not hidden** (LEDGER #57): the cell's
   rows stay NA, the run prints `SKAT failures: N ...` before `Analysis done!`,
   and `<SAIGEOutputFile>.skatFailures.txt` names each failed cell with the

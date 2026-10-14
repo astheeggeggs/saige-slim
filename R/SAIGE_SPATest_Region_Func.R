@@ -500,6 +500,26 @@ get_SKAT_pvalue <- function(Score, Phi, r.corr, regionTestType) {
     SE_Burden <- abs(BETA_Burden / qnorm((out_SKAT_List$param$p.val.each[pos01]) / 2))
   }
   out <- list(Pvalue_SKATO = Pvalue[1], Pvalue_Burden = Pvalue[3], Pvalue_SKAT = Pvalue[2], BETA_Burden = BETA_Burden, SE_Burden = SE_Burden)
+  # --is_output_log10P (2026-10-14): log10 of the three p-values. Exact in log
+  # space where the kernel worked there -- the saddlepoint tier returns
+  # log.p.value and param$log.p.val.each (R/SkatoScreen.R) -- and log10(p)
+  # elsewhere, where p is above the floor by construction (the Davies path
+  # runs only above the tail threshold). A p that is 0 with no log available
+  # (tail method davies) is NA here, not -Inf.
+  lg <- function(p) ifelse(is.na(p) | p <= 0, NA_real_, log10(p))
+  log10P <- lg(Pvalue)
+  if (!inherits(out_SKAT_List, "try-error") && !is.null(out_SKAT_List$log.p.value)) {
+    log10P[1] <- out_SKAT_List$log.p.value / log(10)
+    if (!is.null(out_SKAT_List$param$log.p.val.each)) {
+      pos00 <- which(out_SKAT_List$param$rho == 0)
+      pos01 <- which(out_SKAT_List$param$rho == 1)
+      if (length(pos00) == 1) log10P[2] <- out_SKAT_List$param$log.p.val.each[pos00] / log(10)
+      if (length(pos01) == 1) log10P[3] <- out_SKAT_List$param$log.p.val.each[pos01] / log(10)
+    }
+  }
+  out$log10_Pvalue_SKATO <- log10P[1]
+  out$log10_Pvalue_Burden <- log10P[3]
+  out$log10_Pvalue_SKAT <- log10P[2]
   if (!is.null(skat_error)) out$error <- skat_error
   if (!inherits(out_SKAT_List, "try-error") && !is.null(attr(out_SKAT_List, "skato_method"))) {
     out$skato_method <- attr(out_SKAT_List, "skato_method")
@@ -528,6 +548,12 @@ get_ACATV_pvalue <- function(pvalue, weights) {
     acatvpval <- NA
   }
   acatvpval
+}
+
+# log10 twin of get_CCT_pvalue over a vector of log10 p-values (NA dropped)
+get_CCT_log10pvalue <- function(log10pvalue) {
+  x <- suppressWarnings(as.numeric(log10pvalue))
+  if (any(!is.na(x))) CCT_log10(x[!is.na(x)]) else NA_real_
 }
 
 get_CCT_pvalue <- function(pvalue) {

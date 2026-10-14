@@ -69,3 +69,58 @@ CCT <- function(pvals, weights = NULL) {
   }
   pval
 }
+
+#' The Cauchy combination in log space: log10 of CCT()'s p-value, from log10
+#' p-values, with equal weights. Written for --is_output_log10P (2026-10-14):
+#' a cell whose p underflowed double precision reaches CCT() as 0 and the
+#' combined p is then 0 by its `is.zero` rule, which is a statement about the
+#' representation, not the evidence. Here every term is kept as a logarithm.
+#' Same rules as CCT(): a p of exactly 1 anywhere gives min(1, k * min p); a
+#' p below 1e-16 contributes 1/(pi p) (the tangent's asymptote) and is summed
+#' as a log-sum-exp; the rest contribute tan((0.5 - p) pi) linearly; a
+#' statistic above 1e15 is inverted as 1/(pi T), else the Cauchy CDF. NA
+#' inputs are dropped; NA out when nothing is left. Agrees with log10(CCT(p))
+#' wherever CCT(p) is representable (test-step2-log10p.R).
+CCT_log10 <- function(log10p) {
+  log10p <- log10p[!is.na(log10p)]
+  k <- length(log10p)
+  if (k == 0) {
+    return(NA_real_)
+  }
+  if (any(log10p > 0)) {
+    stop("All p-values must be between 0 and 1!")
+  }
+  if (any(log10p == 0)) {
+    return(min(0, min(log10p) + log10(k)))
+  }
+  small <- log10p < -16
+  lin <- if (any(!small)) sum(tan((0.5 - 10^log10p[!small]) * pi)) else 0
+  # the Cauchy upper tail without cancellation: 0.5 - atan(t)/pi loses digits
+  # for t above ~1e8 (measured 0.5 % at t ~ 1e13); atan(1/t)/pi is the same
+  # quantity exactly for t > 0
+  tail10 <- function(stat) {
+    if (stat > 1e+15) return(-(log10(stat) + log10(pi)))
+    if (stat > 0) return(log10(atan(1 / stat) / pi))
+    log10(0.5 - atan(stat) / pi)
+  }
+  if (!any(small)) {
+    return(tail10(lin / k))
+  }
+  big <- -log10p[small] - log10(pi)          # log10 of each 1/(pi p) term
+  m <- max(big)
+  log10S <- m + log10(sum(10^(big - m)))      # log-sum-exp, base 10
+  if (lin != 0 && log10S < 300) {
+    ratio <- lin / 10^log10S                  # the linear terms, relative to the large ones
+    if (1 + ratio <= 0) {
+      # cannot happen with a term at or above 1e16/pi against tangents bounded by
+      # k * tan(0.5 pi - 1e-16) ~ k * 1e16: kept as a guard, not a path
+      return(tail10((10^log10S + lin) / k))
+    }
+    log10S <- log10S + log10(1 + ratio)
+  }
+  log10T <- log10S - log10(k)
+  if (log10T > 15) {
+    return(-(log10T + log10(pi)))
+  }
+  tail10(10^log10T)
+}

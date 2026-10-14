@@ -5,6 +5,10 @@ CCT_cpp <- function(pval) {
     .Call('_SAIGE_CCT_cpp', PACKAGE = 'SAIGE', pval)
 }
 
+CCT_log10_cpp <- function(log10p) {
+    .Call('_SAIGE_CCT_log10_cpp', PACKAGE = 'SAIGE', log10p)
+}
+
 flexrvWeightsInCPP <- function(t_table, t_score, t_isLof, t_MAF, t_MAC, t_maxMAF) {
     .Call('_SAIGE_flexrvWeightsInCPP', PACKAGE = 'SAIGE', t_table, t_score, t_isLof, t_MAF, t_MAC, t_maxMAF)
 }
@@ -85,12 +89,20 @@ setAssocTest_GlobalVarsInCPP_X_PARregion_mat <- function(t_X_PARregion_mat) {
     invisible(.Call('_SAIGE_setAssocTest_GlobalVarsInCPP_X_PARregion_mat', PACKAGE = 'SAIGE', t_X_PARregion_mat))
 }
 
+setOutputLog10PInCPP <- function(t_isOutputLog10P) {
+    invisible(.Call('_SAIGE_setOutputLog10PInCPP', PACKAGE = 'SAIGE', t_isOutputLog10P))
+}
+
 setMarker_GlobalVarsInCPP <- function(t_isOutputMoreDetails, t_marker_chunksize) {
     invisible(.Call('_SAIGE_setMarker_GlobalVarsInCPP', PACKAGE = 'SAIGE', t_isOutputMoreDetails, t_marker_chunksize))
 }
 
 setRegion_GlobalVarsInCPP <- function(t_max_maf_region, t_max_markers_region, t_MACCutoff_to_CollapseUltraRare, t_min_gourpmac_for_burdenonly) {
     invisible(.Call('_SAIGE_setRegion_GlobalVarsInCPP', PACKAGE = 'SAIGE', t_max_maf_region, t_max_markers_region, t_MACCutoff_to_CollapseUltraRare, t_min_gourpmac_for_burdenonly))
+}
+
+log10PrintedPval_cpp <- function(t_s) {
+    .Call('_SAIGE_log10PrintedPval_cpp', PACKAGE = 'SAIGE', t_s)
 }
 
 mainMarkerInCPP <- function(t_genoType, t_genoIndex, t_isMoreOutput, t_isImputation, t_isFirth, t_nThreadsMarker) {

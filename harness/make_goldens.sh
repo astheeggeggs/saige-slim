@@ -1843,6 +1843,39 @@ run step2_plink_customweight_abovecap_burden.log R2 step2_SPAtests.R \
   --maxMAF_in_groupTest=0.0001,0.001,0.01 \
   --r.corr=1 --is_fastTest=FALSE
 
+# P79-P80 (2026-10-14, --is_output_log10P): the log10 p-value columns, on both
+# region paths. P2's command (SKAT-O, three annotation groups x three MAF
+# cutoffs, fastTest) and P58's (FlexRV BURDEN, 112 transform sets) with the one
+# flag added: every pre-existing column is byte-identical to P2/P58, and the
+# new columns -- log10_Pvalue, log10_Pvalue_Burden, log10_Pvalue_SKAT after
+# SE_Burden (SKAT-O) and log10_Pvalue_Burden after SE_Burden (BURDEN), the
+# pooled Cauchy row combined in log space (CCT_log10 / CCT_log10_cpp) -- are
+# pinned here. No bundled cell underflows, so these pin the arithmetic where
+# log10(p) is representable; the underflow branches are unit-tested
+# (test-step2-log10p.R: the saddlepoint tier's log twin, the digit parser,
+# the log-space Cauchy against a cancellation-free reference).
+# P79: SKAT-O with the log10 columns
+run step2_plink_group_fastTest_log10p.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_fastTest_log10p.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --is_fastTest=TRUE --is_output_log10P=TRUE
+
+# P80: FlexRV BURDEN with the log10 column
+run step2_plink_group_flexrv_burden_log10p.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_flexrv_burden_log10p.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid_flexrv.txt \
+  --flexRV_score=REVEL --flexRV_maxMAF=0.01 \
+  --annotation_in_groupTest=lof:missense \
+  --r.corr=1 --is_fastTest=FALSE --is_output_log10P=TRUE
+
 echo "### byte identity: PGEN reader vs PLINK reader (step0/step1)"
 PGEN_IDENTITY_FAILS=0
 check_identical() { # check_identical <plink-file> <pgen-file>

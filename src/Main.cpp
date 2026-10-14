@@ -74,6 +74,9 @@ void writeOutfile_BURDEN(std::string regionName,
 			arma::vec & NumUltraRare_GroupVec,
 			double cctpval,
 			double cctpval_cond,
+			std::vector<double> & BURDEN_log10p_Vec,   // --is_output_log10P
+			double cctlog10,
+			bool t_emitLog10,
 			unsigned int q_anno,
 			unsigned int q_maf,
 			unsigned int q_weight,
@@ -183,6 +186,9 @@ struct Step2Config {
   double marker_minINFO_cutoff = 0;
   arma::vec region_maxMAF_cutoff;
   double min_gourpmac_for_burdenonly = 0;
+  // --is_output_log10P (2026-10-14): the BURDEN writer adds log10_Pvalue_Burden
+  // after SE_Burden and the pooled row is combined in log space
+  bool isOutputLog10P = false;
   double maxMAFLimit = 0;
   unsigned int region_maxMarkers_cutoff = 0;   // maximal number of markers in one chunk, only used for region-based analysis to reduce memory usage
   bool isOutputMoreDetails = false;
@@ -746,6 +752,12 @@ void setAssocTest_GlobalVarsInCPP_X_PARregion_mat(arma::umat & t_X_PARregion_mat
 
 
 // [[Rcpp::export]]
+void setOutputLog10PInCPP(bool t_isOutputLog10P)
+{
+  g_cfg.isOutputLog10P = t_isOutputLog10P;
+}
+
+// [[Rcpp::export]]
 void setMarker_GlobalVarsInCPP(
 			       bool t_isOutputMoreDetails,
 			       int t_marker_chunksize
@@ -781,6 +793,31 @@ static void applyMaleXnonPAR(arma::vec& t_GVec, uint32_t& t_pd, double& t_altCou
 // A printed p-value back to a double, tolerating what the writer can print
 // and std::stod cannot read: a subnormal (out_of_range) reads as 0, and a
 // string that is not a number at all reads as 0 with a note (LEDGER #72).
+// --is_output_log10P: log10 of a printed p-value, read from its digits rather
+// than its double, so the score test's underflow spelling ("%.1fE%d" from
+// formatPvalOrLog, exponent below -308) gives a finite log10 where std::stod
+// gives 0. "NA" -> NaN. A spelling without an exponent is parsed as a double.
+static double log10FromPrinted(const std::string& s){
+  if(s == "NA" || s.empty()){ return std::numeric_limits<double>::quiet_NaN(); }
+  std::size_t e = s.find_first_of("Ee");
+  try {
+    if(e == std::string::npos){
+      double p = std::stod(s);
+      return (p > 0) ? std::log10(p) : std::numeric_limits<double>::quiet_NaN();
+    }
+    double mant = std::stod(s.substr(0, e));
+    long expo = std::stol(s.substr(e + 1));
+    if(!(mant > 0)){ return std::numeric_limits<double>::quiet_NaN(); }
+    return std::log10(mant) + (double)expo;
+  } catch (...) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+}
+
+// the parser above, exported for its unit test (test-step2-log10p.R)
+// [[Rcpp::export]]
+double log10PrintedPval_cpp(std::string t_s){ return log10FromPrinted(t_s); }
+
 static double parsePrintedPval(const std::string& s){
   try {
     return std::stod(s);
@@ -1118,23 +1155,9 @@ struct ScratchGuard {
 static CarrierStore g_carrierStore;
 
 
-// The zero-index vector a cell test consumes (the SPA and ER kernels read it;
-// the score tests do not) is the complement of its nonzero list, and
-// `arma::find(v == 0)` returns exactly that in increasing order. Deriving it
-// into the worker's scratch at test time is value-identical and frees the
-// N-length copy every persistent cell record used to hold (levers 3/4 of the
-// FlexRV RAM work, 2026-09-12): at N = 500,000 and 192 sets that was 768 MB
-// per record kind.
-static void complementIndices(const arma::uword* t_nz, std::size_t t_nnz,
-                              arma::uword t_n, arma::uvec & t_out)
-{
-  t_out.set_size(t_n - t_nnz);
-  arma::uword* out = t_out.memptr();
-  std::size_t k = 0, o = 0;
-  for(arma::uword i = 0; i < t_n; i++){
-    if(k < t_nnz && t_nz[k] == i){ k++; }else{ out[o++] = i; }
-  }
-}
+// (complementIndices, the O(N) zero-index builder, was deleted on 2026-10-14: LEDGER #179's third
+// site was its last caller; the exact test builds its own complement from an empty vector.)
+
 
 // 2026-09-16: the carrier-space prepare's case/control reductions over ONE
 // marker's list (t_nz increasing, t_v parallel), by rank -- the identities
@@ -4903,6 +4926,7 @@ if(t_regionTestType == "BURDEN"){
      std::vector<double> BURDEN_seBeta_Vec(q_anno_maf_weight);
      std::vector<double> BURDEN_Beta_cVec(q_anno_maf_weight);
      std::vector<double> BURDEN_seBeta_cVec(q_anno_maf_weight);
+     std::vector<double> BURDEN_log10p_Vec(q_anno_maf_weight, std::numeric_limits<double>::quiet_NaN());   // --is_output_log10P
      // Carry-forward cache for maxMAF cutoffs beyond q_maf_for_anno(j): those
      // cutoffs add no markers, so the last tested (j,*,r) result is re-emitted.
      // With the weight dimension the cache and the isPolyMarker flag are per
@@ -4939,6 +4963,7 @@ if(t_regionTestType == "BURDEN"){
 	   str.erase ( str.find_last_not_of('0') + 1, std::string::npos );
 	   BURDEN_maxMAFName_Vec.at(i) = str;
 	   BURDEN_pval_Vec.at(i) = cm.pval;
+	   BURDEN_log10p_Vec.at(i) = log10FromPrinted(cm.pval);
 	   BURDEN_Beta_Vec.at(i) = cm.Beta;
 	   BURDEN_seBeta_Vec.at(i) = cm.seBeta;
 
@@ -4966,6 +4991,7 @@ if(t_regionTestType == "BURDEN"){
            BURDEN_AnnoName_Vec.at(i) = AnnoName;
            BURDEN_maxMAFName_Vec.at(i) = std::to_string(maxMAFName);
            BURDEN_pval_Vec.at(i) = carry_pval[r];
+           BURDEN_log10p_Vec.at(i) = log10FromPrinted(carry_pval[r]);
            BURDEN_Beta_Vec.at(i) = carry_Beta[r];
            BURDEN_seBeta_Vec.at(i) = carry_seBeta[r];
 	 }
@@ -4998,6 +5024,17 @@ if(t_regionTestType == "BURDEN"){
 	   // result. A region in which nothing was tested reports NA instead.
 	   const bool anyCombined = (nonMissingPvalVec.n_elem > 0);
 	   w.cctpval = anyCombined ? CCT_cpp(nonMissingPvalVec) : NA_REAL;
+	   // --is_output_log10P: the same combination in log space, from the printed
+	   // digits (a cell that underflowed is a finite log10 here, 0 above)
+	   double cctlog10 = NA_REAL;
+	   if(g_cfg.isOutputLog10P){
+	     std::vector<double> lg;
+	     for(unsigned int i = 0; i < BURDEN_pval_Vec.size(); i++){
+	       if(BURDEN_pval_Vec.at(i) != "NA" && std::isfinite(BURDEN_log10p_Vec.at(i))){ lg.push_back(BURDEN_log10p_Vec.at(i)); }
+	     }
+	     arma::vec lgv = arma::conv_to<arma::vec>::from(lg);
+	     cctlog10 = (lgv.n_elem > 0) ? CCT_log10_cpp(lgv) : NA_REAL;
+	   }
            if(isCondition){
 		arma::vec nonMissingPvalVec_cond  = arma::conv_to< arma::vec >::from(nonMissingPvalVec_c_std);
 	   	w.cctpval_cond = (nonMissingPvalVec_cond.n_elem > 0) ? CCT_cpp(nonMissingPvalVec_cond) : NA_REAL;
@@ -5054,6 +5091,9 @@ if(t_regionTestType == "BURDEN"){
 			NumUltraRare_GroupVec,
 			w.cctpval,
 			w.cctpval_cond,
+			BURDEN_log10p_Vec,
+			cctlog10,
+			g_cfg.isOutputLog10P,
 			q_anno,
 			q_maf,
 			q_weight,
@@ -5630,6 +5670,7 @@ bool openOutfile(int t_modelIndex, std::string t_traitType, bool isappend, unsig
 			rw.group << "Weight\t";
 		}
 		rw.group << "Pvalue_Burden\tBETA_Burden\tSE_Burden\t";
+		if(g_cfg.isOutputLog10P){ rw.group << "log10_Pvalue_Burden\t"; }   // --is_output_log10P
 		if(model.m_isCondition){
 			rw.group << "Pvalue_Burden_c\tBeta_Burden_c\tseBeta_Burden_c\t";
 		}
@@ -6099,6 +6140,16 @@ void set_flagSparseGRM_cur_SAIGE_org(){
 
 
 
+// --is_output_log10P: a log10 p-value printed with ten decimals, "NA" when not
+// finite (a cell whose printed p could not be read as a number).
+static void writeLog10OrNA(std::ofstream & t_out, double t_log10p){
+  if(std::isfinite(t_log10p)){
+    char buf[64]; snprintf(buf, sizeof(buf), "%.10f", t_log10p); t_out << buf;
+  }else{
+    t_out << "NA";
+  }
+}
+
 void writeOutfile_BURDEN(std::string regionName,
 			std::vector<std::string>  & BURDEN_AnnoName_Vec,
 			std::vector<std::string> & BURDEN_maxMAFName_Vec,
@@ -6115,6 +6166,9 @@ void writeOutfile_BURDEN(std::string regionName,
 			arma::vec & NumUltraRare_GroupVec,
 			double cctpval,
 			double cctpval_cond,
+			std::vector<double> & BURDEN_log10p_Vec,   // --is_output_log10P
+			double cctlog10,
+			bool t_emitLog10,
 			unsigned int q_anno,
 			unsigned int q_maf,
 			unsigned int q_weight,
@@ -6150,6 +6204,7 @@ void writeOutfile_BURDEN(std::string regionName,
            rw.group << "\t";
            writeNumOrNA(rw.group, BURDEN_seBeta_Vec.at(i));
            rw.group << "\t";
+           if(t_emitLog10){ writeLog10OrNA(rw.group, BURDEN_log10p_Vec.at(i)); rw.group << "\t"; }
            if(isCondition){
                rw.group << BURDEN_pval_cVec.at(i);
                rw.group << "\t";
@@ -6183,6 +6238,7 @@ void writeOutfile_BURDEN(std::string regionName,
      // LEDGER #127: NA when nothing entered the combination (see the caller).
      writeNumOrNA(rw.group, cctpval);
      rw.group << "\tNA\tNA\t";	
+     if(t_emitLog10){ writeLog10OrNA(rw.group, cctlog10); rw.group << "\t"; }
      if(isCondition){
 	writeNumOrNA(rw.group, cctpval_cond);
 	rw.group << "\tNA\tNA\t";

@@ -1919,3 +1919,14 @@ for m, ps in pooled.items():
     n, q, f05 = qq(ps)
     print(f"{m:36s} n={n:7d} frac<0.05={f05:.3f}  observed at expected " + ", ".join(f"{e:.0e}: {o:.1e}" for e, o in q))
 ```
+
+## 18. `LOG10P` (2026-10-14): log10 p-value columns in the AoU runs
+
+`--is_output_log10P` (`docs/state/handoff-2026-10-14-log10p.md`) adds `log10_Pvalue*`
+columns after `SE_Burden` on both region paths and combines the pooled row in log
+space, so PNPLA3-class genes are estimated rather than floored at 0. The wrapper
+(drop-in `harness/work/aou/saige_step2_brava_main_original.sh`) takes `LOG10P`
+(default FALSE); `env["LOG10P"] = "TRUE"` in a submit cell turns it on. Needs an
+image built from the commit that carries it or later. Do NOT set it on a partial
+rerun meant for the splice control: the header differs from the v4 file's and the
+control refuses. The AoU tools read columns by name and are unaffected.
