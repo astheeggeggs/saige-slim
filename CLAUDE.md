@@ -877,7 +877,18 @@ declarations sit at the top of `src/Main.cpp`.
   unchanged. `CCT()`'s own `1 - pcauchy()` loses 2e-3 in log10 p at large
   statistics; the log versions use `atan(1/t)/pi` and a cancellation-free
   reference is what the test compares against
-  (`docs/state/handoff-2026-10-14-log10p.md`).
+  (`docs/state/handoff-2026-10-14-log10p.md`). **The first image with the flag
+  (IMG14, `1.5.2-dev-524a299f`) LOST A CHROMOSOME on AoU** (2026-10-15, GPT for
+  ALT, p ~1e-146): the tail's log twin followed the linear underflow fallback
+  and printed -Inf, `CCT_log10` then computed Inf - Inf and its `if` errored
+  from inside `region_postprocess`, OUTSIDE the per-cell kernel catch, so the
+  chromosome died and the job still delivered (`chrStatus` is the record).
+  Fixed the same day: the twin keeps the saddlepoint's log on underflow, both
+  `CCT_log10` twins return -Inf on -Inf (CCT()'s `is.zero` rule), a negative
+  quadrature `area` is clamped before its log. No bundled cell is below 1e-5,
+  so the gate could not see any of it; `test-step2-log10p.R` now drives a
+  synthetic extreme-tail ladder (p to 1e-26,000). Do not run `LOG10P=TRUE` on
+  IMG14.
 - **A SKAT kernel failure is counted, not hidden** (LEDGER #57): the cell's
   rows stay NA, the run prints `SKAT failures: N ...` before `Analysis done!`,
   and `<SAIGEOutputFile>.skatFailures.txt` names each failed cell with the

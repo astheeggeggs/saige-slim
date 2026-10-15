@@ -339,18 +339,20 @@ skatoSaddlepointTail <- function(Qr, lambda.all, param.m, r.all, pvalDavies, par
   logpval <- numeric(n.r)
   for (i in seq_len(n.r)) {
     lam <- lambda.all[[i]]
-    p <- if (length(lam) == 1) pvalDavies[i] else skatoSaddlepointSurvival(lam, Qr[i])
-    if (is.na(p) || p <= 0 || p > 1) {
-      p <- pvalDavies[i]
-      logpval[i] <- log(p)
-    } else if (length(lam) == 1) {
-      logpval[i] <- log(p)
-    } else {
-      # the same saddlepoint as a log: finite where p underflowed to 0
-      logpval[i] <- skatoSaddlepointSurvival(lam, Qr[i], log = TRUE)
-      if (is.na(logpval[i])) logpval[i] <- log(p)
-    }
+    p.sp <- if (length(lam) == 1) NA_real_ else skatoSaddlepointSurvival(lam, Qr[i])
+    # the linear rule, unchanged: a saddlepoint that failed (NA), returned a
+    # non-probability, OR underflowed to 0 is replaced by Davies' value
+    p <- if (is.na(p.sp) || p.sp <= 0 || p.sp > 1) pvalDavies[i] else p.sp
     pval[i] <- p
+    # the log twin: the same saddlepoint as a natural log, finite where the
+    # linear value underflowed to 0 -- which is the one case the column exists
+    # for, so an UNDERFLOW (p.sp == 0 with a finite log) keeps the saddlepoint's
+    # log while a FAILURE (NA, or above 1) follows the linear fallback. Found
+    # 2026-10-15: the first version followed the fallback in both cases and
+    # printed -Inf exactly where the linear p was 0.
+    lp.sp <- if (length(lam) == 1) NA_real_ else skatoSaddlepointSurvival(lam, Qr[i], log = TRUE)
+    sp.valid <- !is.na(p.sp) && p.sp <= 1 && !is.na(lp.sp) && is.finite(lp.sp) && lp.sp <= 0
+    logpval[i] <- if (sp.valid) lp.sp else log(max(p, 0))
   }
   pmin <- min(pval)
   pmin.q <- numeric(n.r)
@@ -421,7 +423,11 @@ skatoSaddlepointTail <- function(Qr, lambda.all, param.m, r.all, pvalDavies, par
     if (!is.finite(m)) return(m)
     m + log1p(exp(min(a, b) - m))
   }
-  log.pvalue <- logspace_add(pchisq(xstar, df = 1, lower.tail = FALSE, log.p = TRUE), log(area))
+  # a quadrature `area` can be a tiny negative number where the integrand is
+  # ~0 everywhere; the linear sum absorbs it, the log must not see it (NaN)
+  log.pvalue <- logspace_add(pchisq(xstar, df = 1, lower.tail = FALSE, log.p = TRUE),
+                             log(max(area, 0)))
+  if (is.na(log.pvalue)) log.pvalue <- -Inf
   logpmin <- min(logpval)
   if (pmin * n.r < pvalue) pvalue <- pmin * n.r
   if (logpmin + log(n.r) < log.pvalue) log.pvalue <- logpmin + log(n.r)

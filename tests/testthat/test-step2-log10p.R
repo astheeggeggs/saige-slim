@@ -151,6 +151,13 @@ test_that("CCT_log10 and CCT_log10_cpp match a cancellation-free reference, unde
   expect_equal(CCT_log10_cpp(c(-3, 0)), log10(2e-3), tolerance = 1e-12)
   # no inputs
   expect_true(is.na(SAIGE:::get_CCT_log10pvalue(c(NA_real_, NA_real_))))
+  # a p of exactly 0 (log10 -Inf) is legal and dominates: the combination is 0,
+  # never NaN and never an error. On AoU (2026-10-15) a -Inf from the tail's
+  # underflow branch reached CCT_log10, whose log-sum-exp made Inf - Inf, and
+  # the error killed a whole chromosome from inside region_postprocess.
+  expect_identical(SAIGE:::CCT_log10(c(-Inf, -3, -0.5)), -Inf)
+  expect_identical(CCT_log10_cpp(c(-Inf, -3, -0.5)), -Inf)
+  expect_identical(SAIGE:::get_CCT_log10pvalue(c("-Inf", "-3", "NA")), -Inf)
 })
 
 test_that("the saddlepoint log twin is finite where the linear p underflows, log(p) elsewhere", {
@@ -176,4 +183,60 @@ test_that("the C++ digit parser reads the score test's underflow spelling", {
   expect_equal(log10PrintedPval_cpp("0.5"), log10(0.5), tolerance = 1e-12)
   expect_true(is.na(log10PrintedPval_cpp("NA")))
   expect_true(is.na(log10PrintedPval_cpp("0.000000E+00")))
+})
+
+# (7) the SKAT-O tail's log twin past the double floor. Found 2026-10-15 on the
+# first AoU run with the flag: the per-rho rule replaces a saddlepoint p that
+# underflowed to 0 by Davies' (also 0), and the first version of the log twin
+# followed that branch, so it printed -Inf exactly where the linear p was 0 --
+# the one case the column exists for. Now the twin keeps the saddlepoint's log
+# whenever it is finite and the saddlepoint did not FAIL. No bundled cell
+# reaches this regime (the goldens are all above 1e-5), so it is driven here.
+skato_tail_ladder <- function(scale, p.m = 12) {
+  ns <- asNamespace("SKAT")
+  set.seed(1)
+  a <- matrix(rnorm(p.m * p.m), p.m)
+  phi <- crossprod(a) / p.m + diag(p.m)
+  r.all <- c(0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 0.999)
+  n.r <- length(r.all)
+  score <- scale * (phi %*% rep(1, p.m))[, 1]
+  qr <- get("SKAT_META_Optimal_Get_Q", ns)(score, r.all)$Q.r
+  phi2 <- phi / 2
+  lambda.all <- lapply(r.all, function(rc) {
+    rm <- diag(rep(1 - rc, p.m)) + matrix(rc, p.m, p.m)
+    l <- chol(rm, pivot = TRUE)
+    get("Get_Lambda", ns)(l %*% (phi2 %*% t(l)))
+  })
+  param.m <- get("SKAT_META_Optimal_Param", ns)(phi2, r.all)
+  pval <- numeric(n.r)
+  param.mat <- matrix(0, n.r, 3)
+  for (i in seq_len(n.r)) {
+    lam <- lambda.all[[i]]
+    c1 <- c(sum(lam), sum(lam^2), sum(lam^3), sum(lam^4))
+    pt <- get("Get_Liu_Params_Mod", ns)(c1)
+    pval[i] <- get("Get_PValue.Lambda", ns)(lam, qr[i])$p.value
+    param.mat[i, ] <- c(pt$muQ, pt$sigmaQ^2, pt$l)
+  }
+  SAIGE:::skatoSaddlepointTail(qr, lambda.all, param.m, r.all, pval, param.mat)
+}
+
+test_that("the SKAT-O tail's log twin stays finite and monotone past the double floor", {
+  scales <- c(2, 4, 8, 12, 20, 40)
+  res <- lapply(scales, skato_tail_ladder)
+  p <- vapply(res, function(r) r$p.value, numeric(1))
+  l10 <- vapply(res, function(r) r$log.p.value, numeric(1)) / log(10)
+  expect_true(all(is.finite(l10)))
+  expect_true(all(diff(l10) < 0))
+  # where the linear p is representable the two agree; past the floor it is 0
+  rep <- p > 0
+  expect_true(any(rep) && any(!rep))
+  expect_lt(max(abs(log10(p[rep]) - l10[rep])), 1e-9)
+  expect_true(all(p[!rep] == 0))
+  # the log twin scales as the square of the score (a burden-like statistic):
+  # within 15% of the quadratic extrapolation from the last representable point
+  i <- max(which(rep))
+  pred <- l10[i] * (scales[!rep] / scales[i])^2
+  expect_lt(max(abs(l10[!rep] / pred - 1)), 0.15)
+  # the per-rho twins are finite too (what the pooled rules read)
+  expect_true(all(is.finite(res[[length(res)]]$param$log.p.val.each)))
 })

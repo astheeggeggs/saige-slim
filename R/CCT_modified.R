@@ -90,6 +90,15 @@ CCT_log10 <- function(log10p) {
   if (any(log10p > 0)) {
     stop("All p-values must be between 0 and 1!")
   }
+  # CCT()'s is.zero rule, first as there: a p of exactly 0 (log10 -Inf) makes
+  # the combination 0. Without this the log-sum-exp below computes Inf - Inf =
+  # NaN and the `if` on it errors, which on AoU (2026-10-15, GPT for ALT) killed
+  # a whole chromosome from inside region_postprocess, outside the per-cell
+  # kernel catch.
+  if (any(is.infinite(log10p))) {
+    return(-Inf)
+  }
+  # CCT()'s is.one rule: min(1, k * min p)
   if (any(log10p == 0)) {
     return(min(0, min(log10p) + log10(k)))
   }

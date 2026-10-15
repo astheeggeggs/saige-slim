@@ -2024,8 +2024,11 @@ space, so PNPLA3-class genes are estimated rather than floored at 0. The wrapper
 **default TRUE** (owner, 2026-10-15); `env["LOG10P"] = "FALSE"` in a submit cell
 turns it off, which is REQUIRED for a partial rerun meant for the splice control:
 the header differs from the v4 file's and the control refuses. The AoU tools read
-columns by name and are unaffected. Needs IMG14 or later; an older image rejects
-the flag.
+columns by name and are unaffected. **Needs IMG15 or later: IMG14 LOST A CHROMOSOME with
+the flag on** (GPT for ALT, p ~1e-146 -- a -Inf log twin reached `CCT_log10`, whose error
+killed the chromosome from inside `region_postprocess`; `docs/state/handoff-2026-10-14-log10p.md`,
+addendum). Any IMG14 job that ran with `LOG10P=TRUE` has its `chrStatus` read and a failed
+chromosome rerun on IMG15.
 
 ```python
 IMG14 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-524a299f"   # --is_output_log10P; same bytes on Docker Hub as astheeggeggs/saige-slim:1.5.2-dev-524a299f

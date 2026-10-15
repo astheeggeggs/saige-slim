@@ -91,6 +91,10 @@ double CCT_log10_cpp(arma::vec & log10p){
     const arma::uword k = log10p.n_elem;
     if(k == 0 || log10p.has_nan()){ return std::numeric_limits<double>::quiet_NaN(); }
     if(arma::any(log10p > 0)){ Rcpp::stop("All p-values must be between 0 and 1!"); }
+    // CCT's is.zero rule first, as in CCT_cpp / R CCT(): a p of exactly 0
+    // (log10 -Inf) makes the combination 0 (the log-sum-exp below would
+    // compute Inf - Inf otherwise); then the is.one rule, min(1, k * min p)
+    if(!log10p.is_finite()){ return -std::numeric_limits<double>::infinity(); }
     if(arma::any(log10p == 0)){ return std::min(0.0, log10p.min() + std::log10((double)k)); }
     double lin = 0.0;
     std::vector<double> big;
