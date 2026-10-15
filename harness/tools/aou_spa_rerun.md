@@ -1992,6 +1992,18 @@ pool is a single gene. The cells: the four-way table and the threshold-count cel
 `brava-reannotation/workbench/sai2v040_cells.md`'s successor, or reconstructable from the
 section-17 reading cell with `MAF = "0.001"` applied inside `table()` and `minp_by_gene()`.
 
+**Touched-gene lift (the last instrument, same day).** For each arm, the gene-traits whose
+damaging + splice p differs from the plain `damaging_missense` p in the same run (the splice
+set added at least one variant), the combined p against the damaging-only p of the same
+genes: touched 145,844 / 129,167 / 136,174 / 121,646 (v1@0.2 / v1@0.5 / v2@0.25 / v2@0.40);
+median log10 lift -0.011 / -0.005 / -0.005 / -0.004 and the fraction sharpened 0.48 in every
+arm -- for the typical gene every splice set is noise, slightly more dilution than help;
+cells below 1e-4 among the touched, combined minus damaging-only: +6 / +8 / +5 / +15. Tighter
+beats looser within each version and v2@0.40, touching the fewest genes, gains the most;
+counts near 90 carry a sd of ~10, so +15 against +5 is suggestive, but it is the fourth
+instrument to order the arms the same way. **FINAL: SpliceAI2 at 0.40.** The cut-off
+question is closed; the band below 0.40 dilutes and carries no distinguishable signal.
+
 ## 18. `LOG10P` (2026-10-15): log10 p-value columns in the AoU runs, ON by default
 
 `--is_output_log10P` (`docs/state/handoff-2026-10-14-log10p.md`) adds `log10_Pvalue*`
