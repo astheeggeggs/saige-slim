@@ -227,11 +227,16 @@ test_that("the SKAT-O tail's log twin stays finite and monotone past the double 
   l10 <- vapply(res, function(r) r$log.p.value, numeric(1)) / log(10)
   expect_true(all(is.finite(l10)))
   expect_true(all(diff(l10) < 0))
-  # where the linear p is representable the two agree; past the floor it is 0
-  rep <- p > 0
+  # where the linear p is a NORMAL double the two agree. Below ~1e-308 the
+  # linear value is a denormal FLOOR, not the p (CI, Linux, 2026-10-15: p =
+  # 2.78e-318 printed where the twin says 1e-602, a 284-decade gap; macOS
+  # underflows the same cell to 0), so there the twin must be at or below
+  # log10 of whatever the linear path kept, and finite.
+  rep <- p >= 1e-300
   expect_true(any(rep) && any(!rep))
   expect_lt(max(abs(log10(p[rep]) - l10[rep])), 1e-9)
-  expect_true(all(p[!rep] == 0))
+  expect_true(all(p[!rep] < 1e-300))
+  expect_true(all(l10[!rep] <= log10(pmax(p[!rep], .Machine$double.xmin))))
   # the log twin scales as the square of the score (a burden-like statistic):
   # within 15% of the quadratic extrapolation from the last representable point
   i <- max(which(rep))
