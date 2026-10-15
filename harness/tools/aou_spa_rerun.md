@@ -2255,22 +2255,93 @@ for od_suffix in ("skato_v6", "flexrv_v6", "am_v6"):
 A failed chromosome is a job to rerun in full (same name, same bins) before its trait is read;
 both lost-chromosome episodes (#170, the IMG14 log10 defect) passed every other check.
 
-### 19.6 Reading: controls first, then the contrasts (per ancestry; counts are of genes and cells)
+### 19.6 Reading (morning of 2026-10-16): three dsub passes, nothing read into the notebook
 
-Controls, stated before the numbers:
-1. `synonymous` QQ per trait: on the null, as in v4. Inflation is the image or the model, not annotation.
-2. `pLoF` gene for gene against v4 (`skato_v4` outputs, `skv4-` names): the pLoF rule did not change,
-   so this is the cross-image control; the expected differences are the saddlepoint fixes
-   (#163-#176, cells past 1e-5 and the exact-by-weight routed cells) and nothing else.
-3. The scan above, clean.
+The reading follows the v4 pattern (section 7): gene-level summaries are built INSIDE dsub
+jobs, figures are rendered INSIDE dsub jobs, and the notebook only displays PNGs and a text
+file. Every number is a count of genes or cells. The three tools, each with a fabricated-data
+selftest run before this was written (`bash harness/tools/<tool>_selftest.sh` locally; the
+python ones inside the pyplot image: `docker run --rm -v $PWD:/repo -w /repo pyplot:20260928
+bash harness/tools/aou_v6_vs_v4_selftest.sh python3`):
 
-Contrasts (the result):
-- `pLoF:damaging_missense` vs `pLoF:damaging_missense:spliceai2_gt040`: the splice label, gene for
-  gene and pooled QQ on the common touched set (section 17b's method).
-- new `damaging_missense` vs v4's: the reannotation (REVEL 0.773 / CADD 28.1 / AlphaMissense fill).
-- `am_moderate` vs `damaging_missense`: what AlphaMissense alone buys at Moderate.
-- `p_FlexRV` (the Cauchy row's `log10_Pvalue_Burden`) vs the SKAT-O `pLoF:damaging_missense:spliceai2_gt040`
-  cell at `max_MAF 0.001`, same genes: what the weighting buys.
-- Distinct genes past 2.5e-6 per trait, v4 vs v6, with the correlated-trait caveat beside the number
-  (lipids share APOB/APOC3/LDLR/ABCA1/LCAT; anthropometric traits share GIGYF1).
-Every p read from `log10_Pvalue*` where present (the linear column floors at the denormal on Linux).
+- `aou_flexrv_summary.sh` (RUNTAG=v6): reads `skato_v6`, `flexrv_v6` AND `am_v6` (the
+  am_moderate cells go into the wide cells table as `am_moderate@<maf>`, never into the
+  SKAT-O per-gene best), writes `<anc>.flexrv_vs_skato.v6.tsv.gz`, `<anc>.skato_cells.v6.tsv.gz`
+  and NEW `<anc>.floor.v6.tsv.gz` -- every cell past log10 p = -300 by its log10 column, the
+  genes the flag exists for (empty for v4). Selftest 21 checks.
+- `aou_flexrv_qq.py`: the per-(ancestry, trait) QQ grids, now over whatever masks the cells
+  table holds (v6: the seven plus am_moderate, a 3 x 4 grid). Selftest 6 checks.
+- `aou_v6_vs_v4.py` (NEW): one ancestry, the two summary sets; prints and writes
+  `<anc>.v6_vs_v4.txt` with the CONTROLS first (synonymous below 0.05 old vs new; pLoF gene
+  for gene as the cross-image control: Spearman, cells moved by more than a decade -- expected
+  only past 1e-5 -- and the hit counts), then the contrasts (3. the splice label; 4a/4b the
+  reannotation like for like and missense-only; 5. am_moderate against damaging_missense;
+  6. FlexRV pooled against the splice mask's SKAT-O p), a per-trait table
+  `<anc>.v6_vs_v4.tsv`, and two figures `<anc>.controls.png`, `<anc>.contrasts.png`.
+  Selftest 11 checks (planted moves, splice hits, am hits, FlexRV hits all recovered).
+
+Copy the three tools next to `aou_dsub.bash` on the workbench first (they are `--script`
+arguments). The v4 summaries already exist under `SAIGE_SLIM_TESTING/summary_v4/` (section 7).
+
+```python
+ANCS = ["afr", "amr", "eas", "eur", "sas"]
+SV6 = f"{BUCKET}/SAIGE_SLIM_TESTING/summary_v6"; SV4 = f"{BUCKET}/SAIGE_SLIM_TESTING/summary_v4"
+PYPLOT = "gcr.io/weighty-elf-452116-c7/pyplot:20260928"
+def run_dsub(args):
+    script = "source /home/jupyter/aou_dsub.bash\n" + " ".join(shlex.quote(a) for a in args)
+    out = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=os.environ)
+    print(args[2], "rc =", out.returncode, "|", ((out.stdout or "") + (out.stderr or "")).strip()[-300:])
+# pass 1: the v6 summaries, one job per ancestry (eur ~1 h on the cloud-cli image: 806 x 3 files streamed)
+for anc in ANCS:
+    run_dsub(["aou_dsub", "--name", f"summary6-{anc}", "--image", "gcr.io/google.com/cloudsdktool/google-cloud-cli:slim",
+              "--env", f"ANC={anc}", "--env", f"BASE={BUCKET}/SAIGE_SLIM_TESTING", "--env", "RUNTAG=v6",
+              "--output-recursive", f"OUT_DIR={SV6}", "--machine-type", "n2-standard-2", "--disk-size", "20",
+              "--script", "aou_flexrv_summary.sh"])
+```
+
+Read each summary job's log before the next pass: the lines `flexrv: N v4 files ...; skato: M
+files`, `am_moderate: K files` (806 / 806 / 806 for eur... per ancestry the registry's count)
+and `floor table: F row(s)`.
+
+```python
+# pass 2 (after pass 1 delivers): QQ grids and the v6-vs-v4 comparison, per ancestry
+for anc in ANCS:
+    run_dsub(["aou_dsub", "--name", f"qq6-{anc}", "--image", PYPLOT, "--env", f"ANC={anc}",
+              "--input", f"IN_SUMMARY={SV6}/{anc}.flexrv_vs_skato.v6.tsv.gz", "--input", f"IN_CELLS={SV6}/{anc}.skato_cells.v6.tsv.gz",
+              "--output-recursive", f"OUT_DIR={SV6}/qq/{anc}", "--machine-type", "n2-standard-2", "--disk-size", "20",
+              "--script", "aou_flexrv_qq.py"])
+    run_dsub(["aou_dsub", "--name", f"cmp6-{anc}", "--image", PYPLOT, "--env", f"ANC={anc}",
+              "--input", f"IN_SUM_NEW={SV6}/{anc}.flexrv_vs_skato.v6.tsv.gz", "--input", f"IN_CELLS_NEW={SV6}/{anc}.skato_cells.v6.tsv.gz",
+              "--input", f"IN_FLOOR_NEW={SV6}/{anc}.floor.v6.tsv.gz",
+              "--input", f"IN_SUM_OLD={SV4}/{anc}.flexrv_vs_skato.v4.tsv.gz", "--input", f"IN_CELLS_OLD={SV4}/{anc}.skato_cells.v4.tsv.gz",
+              "--output-recursive", f"OUT_DIR={SV6}/cmp/{anc}", "--machine-type", "n2-standard-2", "--disk-size", "20",
+              "--script", "aou_v6_vs_v4.py"])
+```
+
+```python
+# reading: the text report first (controls at the top), then the two figures per ancestry
+from IPython.display import Image, display
+for anc in ANCS:
+    print(subprocess.run(["gcloud", "storage", "cat", f"{SV6}/cmp/{anc}/{anc}.v6_vs_v4.txt"], capture_output=True, text=True).stdout[:6000])
+    for fig in ("controls", "contrasts"):
+        subprocess.run(["gcloud", "storage", "cp", f"{SV6}/cmp/{anc}/{anc}.{fig}.png", f"/home/jupyter/{anc}.{fig}.png"], check=True)
+        display(Image(f"/home/jupyter/{anc}.{fig}.png"))
+```
+
+How to read it, decided before the numbers:
+1. `synonymous below 0.05` must be ~0.05 in both runs and the synonymous QQ on the band;
+   if the new run inflates where the old did not, stop -- that is the image or the model.
+2. pLoF: Spearman near 1; the cells moved by more than a decade should be few and past
+   1e-5 (the saddlepoint tail and exact-by-weight changes between the images); hit counts
+   old vs new within a handful. Many moved cells above 1e-5 means the arithmetic changed
+   where it must not have, and that is read before any contrast.
+3. The splice label (3.): the only-second count is what SpliceAI2 at 0.40 adds; only-first
+   is what it dilutes away. From the eur evidence run the expectation is a small positive net
+   with the band of borderline swaps both ways.
+4. The reannotation (4a/4b): the net change of the damaging mask; distinct genes per ancestry.
+5. am_moderate (5.) and FlexRV (6.): what each buys over the damaging mask, as hit counts and
+   the scatter's spread above the identity line.
+6. The floor section: the genes past 1e-300, by name and log10 -- the ones a linear p could
+   not rank; the known shape is one or a few cis-enzyme genes per trait (GPT for ALT).
+Then the per-(ancestry, trait) QQ grids under `summary_v6/qq/<anc>/` for anything the
+report flags, exactly as in section 7.

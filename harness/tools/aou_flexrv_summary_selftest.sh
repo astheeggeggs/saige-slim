@@ -3,7 +3,8 @@
 # verified v7 file must win over fixed, and fixed over v4, the exactByWeight
 # sidecar must not be read as a results file, an NA set p is skipped, a gene
 # in one arm only carries NA on the other, sidecars are ignored, and the row
-# count and both-arms count are what the fixtures say.
+# count and both-arms count are what the fixtures say. A second, v6 layout (2026-10-15):
+# log10 columns, the am_moderate arm into the cells table only, the floor table.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 T=$(mktemp -d); trap 'rm -rf "${T}"' EXIT
@@ -54,5 +55,38 @@ awk -F'\t' 'NR>1 && $2=="TraitA" && $3=="G1" && $4=="0.02" && $5=="0.5" && $6=="
 awk -F'\t' 'NR>1 && $2=="TraitA" && $3=="G4" && $4=="0.9" && $5=="NA" && $7=="NA"' cells.tsv | grep -q . && echo "ok   cells row: a gene with one cell carries NA in the other" || { echo "FAIL cells row G4"; fail=1; }
 [[ $(($(wc -l < cells.tsv) - 1)) -eq 3 ]] && echo "ok   3 cell rows (genes in the SKAT-O arm)" || { echo "FAIL cells row count"; fail=1; }
 grep -q "cells table: 3 (trait, gene) rows x 2 cells" run.log && echo "ok   cells summary line" || { echo "FAIL cells summary line"; fail=1; }
+# ---- v6 layout (2026-10-15): log10 columns, the am_moderate arm, the floor table ------
+mkdir -p base/xx/skato_v6 base/xx/am_v6 base/xx/flexrv_v6 out6
+python3 - <<'PY'
+import gzip
+SH = "Region\tGroup\tmax_MAF\tPvalue\tPvalue_Burden\tPvalue_SKAT\tBETA_Burden\tSE_Burden\tlog10_Pvalue\tlog10_Pvalue_Burden\tlog10_Pvalue_SKAT\tMAC"
+def sk(reg, grp, maf, p, l10): return f"{reg}\t{grp}\t{maf}\t{p}\t{p}\t{p}\t1\t1\t{l10}\t{l10}\t{l10}\t9"
+def skc(reg, p, l10): return f"{reg}\tCauchy\tNA\t{p}\t{p}\t{p}\tNA\tNA\t{l10}\t{l10}\t{l10}\tNA"
+# G1: an ordinary cell and one PAST THE FLOOR (printed 0, log10 -602.1); G5 ordinary
+sk6 = [SH, sk("G1","pLoF","0.001","0.01","-2"), sk("G1","pLoF;damaging_missense;spliceai2_gt040","0.001","0","-602.1"), skc("G1","0","-601.2"),
+       sk("G5","synonymous","0.001","0.5","-0.30103"), skc("G5","0.5","-0.30103")]
+am6 = [SH, sk("G1","am_moderate","0.001","0.002","-2.69897"), skc("G1","0.002","-2.69897"), sk("G5","am_moderate","0.01","0.4","-0.39794"), skc("G5","0.4","-0.39794")]
+FH = "Region\tGroup\tmax_MAF\tWeight\tPvalue_Burden\tBETA_Burden\tSE_Burden\tlog10_Pvalue_Burden\tMAC"
+def fx(reg, w, p, l10): return f"{reg}\tgrp\t0.001\t{w}\t{p}\t1\t1\t{l10}\t9"
+def cau(reg, p, l10): return f"{reg}\tCauchy\tNA\tNA\t{p}\tNA\tNA\t{l10}\tNA"
+fx6 = [FH, fx("G1","W1","0.5","-0.30103"), fx("G1","W2","0","-350.5"), cau("G1","0","-349.8"), fx("G5","W1","0.2","-0.69897"), cau("G5","0.3","-0.52288")]
+for path, lines in [("base/xx/skato_v6/sk6-xx-traita.TraitA.xx.chr1-22.txt.gz", sk6), ("base/xx/am_v6/am6-xx-traita.TraitA.xx.chr1-22.txt.gz", am6),
+                    ("base/xx/flexrv_v6/fx6-xx-traita.TraitA.xx.chr1-22.txt.gz", fx6)]:
+    gzip.open(path, "wt").write("\n".join(lines) + "\n")
+gzip.open("base/xx/am_v6/am6-xx-traita.TraitA.xx.chr1-22.singleAssoc.txt.gz", "wt").write("# no singleAssoc output: SINGLE_IN_GROUP=FALSE\n")
+PY
+ANC=xx BASE="${T}/base" OUT_DIR="${T}/out6" RUNTAG=v6 bash "${HERE}/aou_flexrv_summary.sh" > run6.log 2>&1 || { cat run6.log; echo "SELFTEST FAILED: v6 run exited non-zero"; exit 1; }
+gzip -dc out6/xx.skato_cells.v6.tsv.gz > cells6.tsv
+head -1 cells6.tsv | tr '\t' '\n' | grep -qx 'burden:am_moderate@0.001' && echo "ok   v6: am_moderate cells in the wide table" || { echo "FAIL v6 am cell column: $(head -1 cells6.tsv)"; fail=1; }
+awk -F'\t' 'NR>1 && $2=="TraitA" && $3=="G1"' cells6.tsv | grep -q $'\t0.002\t' && echo "ok   v6: am_moderate value on the gene row" || { echo "FAIL v6 am value"; fail=1; }
+gzip -dc out6/xx.flexrv_vs_skato.v6.tsv.gz > out6.tsv
+awk -F'\t' 'NR>1 && $3=="G1" && $10=="0" && $11=="pLoF;damaging_missense;spliceai2_gt040@0.001"' out6.tsv | grep -q . && echo "ok   v6: SKAT-O best cell is the floored one (p printed 0)" || { echo "FAIL v6 best cell"; fail=1; }
+awk -F'\t' 'NR>1 && $3=="G1" && $9!="NA"' out6.tsv | grep -q . && echo "ok   v6: am_moderate did NOT enter the SKAT-O per-gene best (G1 has its own skato row)" || { echo "FAIL v6 am leaked"; fail=1; }
+gzip -dc out6/xx.floor.v6.tsv.gz > floor6.tsv
+[[ $(($(wc -l < floor6.tsv) - 1)) -eq 4 ]] && echo "ok   v6: floor table has the 4 planted rows (2 skato incl. Cauchy, 2 flexrv incl. Cauchy)" || { echo "FAIL floor rows: $(cat floor6.tsv)"; fail=1; }
+head -2 floor6.tsv | tail -1 | grep -q $'skato\tTraitA\tG1\tpLoF;damaging_missense;spliceai2_gt040@0.001\t-602.1' && echo "ok   v6: floor table sorted by log10 p, the deepest first" || { echo "FAIL floor order: $(head -2 floor6.tsv)"; fail=1; }
+grep -q "floor table: 4 row(s)" run6.log && echo "ok   v6: floor summary line" || { echo "FAIL floor summary"; fail=1; }
+grep -q "am_moderate: 1 files" run6.log && echo "ok   v6: am listing line (the singleAssoc placeholder is not a results file)" || { echo "FAIL am listing"; fail=1; }
+[[ $(gzip -dc out/xx.floor.v4.tsv.gz | wc -l | tr -d " ") == 1 ]] && echo "ok   v4: floor table is header-only (no log10 columns)" || { echo "FAIL v4 floor"; fail=1; }
 (( fail )) && { echo "SELFTEST FAILED"; exit 1; }
-echo "selftest OK: 12 checks"
+echo "selftest OK: 21 checks"

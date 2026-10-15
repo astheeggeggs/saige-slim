@@ -24,8 +24,17 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from scipy.stats import beta
 
-MASK_ORDER = ["pLoF", "damaging_missense", "other_missense", "synonymous",
-              "pLoF;damaging_missense", "pLoF;damaging_missense;other_missense;synonymous"]
+# The masks are whatever the cells table holds (its columns are `burden:<mask>@<maf>`),
+# drawn in this preferred order with anything unlisted appended alphabetically. v4's
+# six masks first, then v6's (2026-10-15: the seven-mask set with SpliceAI2 at 0.40 and
+# the am_moderate arm, which the summary tool folds into the same table).
+MASK_PREF = ["pLoF", "damaging_missense", "other_missense", "synonymous",
+             "pLoF;damaging_missense", "pLoF;damaging_missense;spliceai2_gt040",
+             "pLoF;damaging_missense;other_missense;synonymous",
+             "pLoF;damaging_missense;spliceai2_gt040;other_missense;synonymous", "am_moderate"]
+def masks_in(C):
+    have = {c[len("burden:"):].rsplit("@", 1)[0] for c in C.columns if c.startswith("burden:")}
+    return [m for m in MASK_PREF if m in have] + sorted(have - set(MASK_PREF))
 FLEX_MAF = 0.001
 TRAITS_BINARY = {"AMD", "Asth", "AFib", "BenCervUterNeo", "BenIntNeo", "BreastCanc", "CervCanc",
                  "COPD", "CRF", "ColonRectCanc", "CAD", "EFRMB", "FemInf", "Gout", "HF", "HTN", "IBD",
@@ -51,17 +60,18 @@ def null_band(n, bulk=400):
     lo = -np.log10(beta.ppf(0.975, k, n + 1 - k)); hi = -np.log10(beta.ppf(0.025, k, n + 1 - k))
     return e, lo, hi
 
-def qq_grid(anc, trait, c, s):
-    """c: this trait's rows of the cells table; s: this trait's rows of the summary."""
+def qq_grid(anc, trait, c, s, masks):
+    """c: this trait's rows of the cells table; s: this trait's rows of the summary; masks: the panel list."""
     cells = {}
     for col in [x for x in c.columns if x.startswith("burden:")]:
         g, m = col[len("burden:"):].rsplit("@", 1); cells.setdefault(g, {})[float(m)] = col
     mafs = sorted({m for d in cells.values() for m in d})
     blues = plt.cm.Blues(np.linspace(0.35, 0.95, max(len(mafs), 1)))
-    fig = plt.figure(figsize=(18, 8.5))
-    axes = fig.subplots(2, 4)          # independent axes: a p of 1e-78 (BRCA1) must not set every panel's scale, nor be clipped
+    nrow = max(2, -(-(len(masks) + 1) // 4))   # the mask panels plus the FlexRV panel, four across
+    fig = plt.figure(figsize=(18, 4.25 * nrow))
+    axes = fig.subplots(nrow, 4)       # independent axes: a p of 1e-78 (BRCA1) must not set every panel's scale, nor be clipped
     fig.suptitle(f"{anc.upper()}  {trait}   burden $p$-value per annotation mask and max MAF (SAIGE-GENE+ cells), and FlexRV pooled vs all masks at maxMAF {FLEX_MAF:g}", y=0.995)
-    for ax, g in zip(axes.flat[:6], MASK_ORDER):
+    for ax, g in zip(axes.flat[:len(masks)], masks):
         ax.set_title(nice(g).replace(";", ";\n") if g.count(";") > 1 else nice(g), fontsize=10)
         nmax = 0
         for m, col in zip(mafs, blues):
@@ -74,10 +84,10 @@ def qq_grid(anc, trait, c, s):
             e, lo, hi = null_band(nmax); ax.fill_between(e, lo, hi, color="grey", alpha=0.25, lw=0, label="95% null band")
             ax.plot([0, e.max()], [0, e.max()], color="0.3", lw=0.8)
         ax.grid(alpha=0.3); ax.legend(fontsize=7, loc="upper left")
-    ax = axes.flat[6]; ax.set_title(f"FlexRV pooled vs burden per mask at maxMAF {FLEX_MAF:g}", fontsize=10)
-    palette = ["#08306b", "#2ca02c", "#ff7f0e", "#7f7f7f", "#6a3d9a", "#8c564b"]
+    ax = axes.flat[len(masks)]; ax.set_title(f"FlexRV pooled vs burden per mask at maxMAF {FLEX_MAF:g}", fontsize=10)
+    palette = ["#08306b", "#2ca02c", "#ff7f0e", "#7f7f7f", "#6a3d9a", "#8c564b", "#17becf", "#bcbd22", "#e377c2"]
     nmax = 0
-    for g, col in zip(MASK_ORDER, palette):
+    for g, col in zip(masks, palette):
         colname = cells.get(g, {}).get(FLEX_MAF)
         if colname is None: continue
         e, o, n = qq_points(pd.to_numeric(c[colname], errors="coerce").dropna())
@@ -88,8 +98,8 @@ def qq_grid(anc, trait, c, s):
         e, lo, hi = null_band(nmax); ax.fill_between(e, lo, hi, color="grey", alpha=0.25, lw=0, label="95% null band")
         ax.plot([0, e.max()], [0, e.max()], color="0.3", lw=0.8)
     ax.grid(alpha=0.3); ax.legend(fontsize=7, loc="upper left")
-    axes.flat[7].axis("off")
-    for ax in axes.flat[:7]:
+    for ax in axes.flat[len(masks) + 1:]: ax.axis("off")
+    for ax in axes.flat[:len(masks) + 1]:
         ax.set_xlim(left=0); ax.set_ylim(bottom=0)
         ax.set_xlabel("expected $-\\log_{10} p$"); ax.set_ylabel("observed $-\\log_{10} p$")
     fig.tight_layout(rect=(0, 0, 1, 0.97))
@@ -102,9 +112,11 @@ def main():
     C = pd.read_csv(os.environ["IN_CELLS"], sep="\t", dtype=str)
     S = S[S.anc == anc]
     traits = sorted(set(C.trait) & set(S.trait), key=lambda t: (t not in TRAITS_BINARY, t))
+    masks = masks_in(C)
     print(f"{anc}: {len(traits)} traits with both tables; cells columns: {sum(x.startswith('burden:') for x in C.columns)}")
+    print(f"masks: {len(masks)} -> " + ", ".join(masks))
     for t in traits:
-        fig = qq_grid(anc, t, C[C.trait == t], S[S.trait == t])
+        fig = qq_grid(anc, t, C[C.trait == t], S[S.trait == t], masks)
         fig.savefig(os.path.join(out, f"{anc}_{t}.png"), dpi=dpi); plt.close(fig)
     print(f"wrote {len(traits)} figures to {out}")
     print("done")
