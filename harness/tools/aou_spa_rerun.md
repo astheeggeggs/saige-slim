@@ -2015,6 +2015,22 @@ that are hits under one cut-off and not the other, by name (a cell in the sessio
 enough to inspect). If 0.25 is chosen the `out_spliceai2` release files (built at 0.40,
 label `spliceai2_gt040`) are rebuilt at 0.25 before upload.
 
+**DECIDED (owner, 2026-10-15): SpliceAI2 at 0.40, on the calibration framing.** The
+reannotation repo's own Pejaver-style ClinVar calibration (`brava-reannotation/docs/spliceai.md`,
+one rule applied to v1 and SpliceAI2 in the same domain with the same prior, with a simulation,
+a REVEL positive control and a permuted negative control) puts v1's Moderate at 0.50 -- the
+threshold BRaVa already uses, confirmed by section 16 -- and SpliceAI2's at 0.40; the README's
+0.25 is Supporting (0.24) under the same rule, i.e. the README equivalence is recall-matched,
+not evidence-matched. So the mask's three predictors (REVEL 0.773, CADD 28.1, SpliceAI2 0.40)
+sit at one evidence level by one calibration, which is the citable argument. Soft spots, named:
+the number moves with the window and the ClinVar release (0.33-0.50 for SpliceAI2, 0.50-0.66 for
+v1), the REVEL control runs one level lenient (circularity), SpliceAI2's training-set overlap
+with ClinVar is unchecked; and nine eur traits cannot separate 0.25 from 0.40 on power. The
+production mask set keeps a with/without pair -- `pLoF:damaging_missense:spliceai2_gt040`
+against `damaging_missense` and `pLoF` on their own, and `spliceai2_gt040` alone -- so the
+splice label's contribution is readable in the production output itself. Release files: the
+`out_spliceai2` `new_rules` build (label `spliceai2_gt040`), nothing to rebuild.
+
 ## 18. `LOG10P` (2026-10-15): log10 p-value columns in the AoU runs, ON by default
 
 `--is_output_log10P` (`docs/state/handoff-2026-10-14-log10p.md`) adds `log10_Pvalue*`
