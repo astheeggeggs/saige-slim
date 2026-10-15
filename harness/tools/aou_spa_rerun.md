@@ -1940,6 +1940,34 @@ v1 at 0.5 against v2 at 0.40 -- is taken on this run's reading cell over all
 nine traits, the private sets (`sai_v1only`, `sai_v2only`) pooled being the
 decisive lines.
 
+**Outcome (2026-10-15, all nine traits read; DECIDED: SpliceAI2 at 0.40).** The decisive
+lines are null for BOTH versions: over the eight non-height traits `sai_v1only`
+(294,717 cells) and `sai_v2only` (198,010) track the synonymous line at 1e-2..1e-4
+(v1's 2.7e-7 at the 1e-5 quantile is its single hdlc hit, 0.7 such cells expected by
+chance at that n; v2's private set has no hit), and on height, whose synonymous control
+is itself far off the null (min p 1.1e-15), `sai_v1only` tracks synonymous with 2 hits
+while `sai_v2only` sits BELOW it with 1. Neither version's exclusive calls carry signal
+these traits can see, so the choice is a tie-break, and it is close either way:
+damaging + splice hits 51 (v1) vs 54 (v2) over nine traits (height 25 vs 27); gene for
+gene, v2's p is the smaller in a majority for all nine traits (by 0.5-3 %); the pooled
+non-height tail is sharper under v2 at every quantile (1e-4: 4.2e-7 vs 5.9e-7; 1e-5:
+1.2e-35 vs 1.5e-34), height's is mixed (1e-4 v1, 1e-5 v2); the pLoF-reference genes
+favour v1, 38 of 65 (APOB, CETP, GIGYF1 sharpen under v1; APOC3, CD36, LCAT, ABCB4
+under v2). Verdict per the rule stated before the numbers: a draw on the private sets
+goes to the hit count and the calibrated cut-off, i.e. v2. The cost of being wrong is
+about one hit either way. One observation to keep: even `sai_both` is barely above
+synonymous outside height (4.2e-5 vs 3.6e-5 at 1e-4) and the splice-only masks have
+zero non-height hits -- splice annotation earns its place inside the combined damaging
+mask, not on its own.
+
+**Production mask set under the decision** (release files
+`brava-reannotation/out_spliceai2/aou/aou.chr<c>.new_rules.saige_group.txt.gz`, labels
+`pLoF damaging_missense spliceai2_gt040 other_missense synonymous non_coding`; NOT yet
+uploaded):
+`pLoF,damaging_missense,spliceai2_gt040,pLoF:damaging_missense:spliceai2_gt040,synonymous,other_missense,pLoF:damaging_missense:spliceai2_gt040:other_missense:synonymous`.
+`am_moderate` is its own one-label file in the same directory and a separate owner's
+decision; so is whether the FlexRV annotation group takes `spliceai2_gt040`.
+
 ## 18. `LOG10P` (2026-10-15): log10 p-value columns in the AoU runs, ON by default
 
 `--is_output_log10P` (`docs/state/handoff-2026-10-14-log10p.md`) adds `log10_Pvalue*`
