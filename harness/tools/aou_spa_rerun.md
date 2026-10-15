@@ -1974,11 +1974,14 @@ decision; so is whether the FlexRV annotation group takes `spliceai2_gt040`.
 **Four-way at max_MAF 0.001 (2026-10-15, all nine traits; three runs, four arms, same
 damaging-missense base, synonymous controls identical across runs -- 5.3 % below 0.05, same
 quantiles -- so the differences are the masks).** Gene-trait hits past 2.5e-6 on the
-damaging + splice mask: v1@0.2 34, v1@0.5 37, v2@0.25 43, v2@0.40 41; distinct genes across
-traits 31 / 34 / 39 / 36, 28 in every arm, only-in-one-arm 1 / 1 / 2 / 2; splice-only hits 0
+damaging + splice mask: v1@0.2 34, v1@0.5 37, v2@0.25 43, v2@0.40 42; distinct genes across
+traits 31 / 34 / 39 / 37, 29 in every arm, only-in-one-arm 1 / 1 / 2 / 2; splice-only hits 0
 in every arm except height (0 / 1 / 3 / 1) and alt (0 / 1 / 1 / 0); pooled tail at 1e-3:
-3.0e-4 / 2.8e-4 / 2.3e-4 / 2.2e-4, at 1e-4: 1.2e-10 / 6.5e-11 / 4.2e-11 / 5.9e-10 (the
-1e-5 quantile at n = 163k is one height gene and is not read). Height carries most of it
+3.0e-4 / 2.8e-4 / 2.3e-4 / 2.2e-4, at 1e-4: 1.2e-10 / 6.5e-11 / 4.2e-11 / 2.1e-11 (the
+1e-5 quantile at n = 163k is one height gene and is not read). (These are the numbers AFTER
+the alt-b5 bin's chr8 was recovered on IMG15 -- the first reading had v2@0.40 at 41 / 36 /
+5.9e-10 with GPT's chromosome missing; GPT itself reads 1e-128 on damaging missense alone and
+1e-146 with the SpliceAI2 label, 18 decades from the splice calls.) Height carries most of it
 (17 / 19 / 22 / 21). Reading: v2 beats v1 in the same direction on every count, and the
 ordering v1@0.2 < v1@0.5 reproduces section 16 on independent grounds; the margin
 v2@0.40 over v1@0.5 is 4 gene-trait hits and 2 distinct genes, small on correlated traits
