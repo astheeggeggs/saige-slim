@@ -1968,6 +1968,30 @@ uploaded):
 `am_moderate` is its own one-label file in the same directory and a separate owner's
 decision; so is whether the FlexRV annotation group takes `spliceai2_gt040`.
 
+**Four-way at max_MAF 0.001 (2026-10-15, all nine traits; three runs, four arms, same
+damaging-missense base, synonymous controls identical across runs -- 5.3 % below 0.05, same
+quantiles -- so the differences are the masks).** Gene-trait hits past 2.5e-6 on the
+damaging + splice mask: v1@0.2 34, v1@0.5 37, v2@0.25 43, v2@0.40 41; distinct genes across
+traits 31 / 34 / 39 / 36, 28 in every arm, only-in-one-arm 1 / 1 / 2 / 2; splice-only hits 0
+in every arm except height (0 / 1 / 3 / 1) and alt (0 / 1 / 1 / 0); pooled tail at 1e-3:
+3.0e-4 / 2.8e-4 / 2.3e-4 / 2.2e-4, at 1e-4: 1.2e-10 / 6.5e-11 / 4.2e-11 / 5.9e-10 (the
+1e-5 quantile at n = 163k is one height gene and is not read). Height carries most of it
+(17 / 19 / 22 / 21). Reading: v2 beats v1 in the same direction on every count, and the
+ordering v1@0.2 < v1@0.5 reproduces section 16 on independent grounds; the margin
+v2@0.40 over v1@0.5 is 4 gene-trait hits and 2 distinct genes, small on correlated traits
+(the lipid four share APOB, APOC3, LDLR, ABCA1, LCAT; the anthropometric three share
+GIGYF1) but the third contrast in a row to land the same way. Within v2, 0.25 vs 0.40 is a
+draw: the band's own cells are null (`v2only@.25` on the synonymous line at every
+quantile, 118k cells), the per-trait moves are one gene both ways (0.25 gains height,
+bmi, hba1c, alt; loses tchol, t2diab), and the tighter arm has the smaller p in a majority
+for every trait. 0.40 stands. **Two metrics retired on this reading:** "best arm by min p
+over shared genes" counts mask size (the superset arm v1@0.2 wins every trait by ~1,000
+because every gene its band touches and nudges down is a strict win, while a gene no
+version touches is a four-way tie credited to all); and the 1e-5 quantile of a 160k-cell
+pool is a single gene. The cells: the four-way table and the threshold-count cell are in
+`brava-reannotation/workbench/sai2v040_cells.md`'s successor, or reconstructable from the
+section-17 reading cell with `MAF = "0.001"` applied inside `table()` and `minp_by_gene()`.
+
 ## 18. `LOG10P` (2026-10-15): log10 p-value columns in the AoU runs, ON by default
 
 `--is_output_log10P` (`docs/state/handoff-2026-10-14-log10p.md`) adds `log10_Pvalue*`
