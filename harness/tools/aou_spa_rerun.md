@@ -1964,7 +1964,10 @@ mask, not on its own.
 `brava-reannotation/out_spliceai2/aou/aou.chr<c>.new_rules.saige_group.txt.gz`, labels
 `pLoF damaging_missense spliceai2_gt040 other_missense synonymous non_coding`; NOT yet
 uploaded):
-`pLoF,damaging_missense,spliceai2_gt040,pLoF:damaging_missense:spliceai2_gt040,synonymous,other_missense,pLoF:damaging_missense:spliceai2_gt040:other_missense:synonymous`.
+`pLoF,damaging_missense,pLoF:damaging_missense,pLoF:damaging_missense:spliceai2_gt040,synonymous,other_missense,pLoF:damaging_missense:spliceai2_gt040:other_missense:synonymous`
+(owner, 2026-10-15: the with/without pair is `pLoF:damaging_missense` against
+`pLoF:damaging_missense:spliceai2_gt040`; a splice-only mask was null on its own in every run
+and is not spent).
 `am_moderate` is its own one-label file in the same directory and a separate owner's
 decision; so is whether the FlexRV annotation group takes `spliceai2_gt040`.
 
@@ -2026,9 +2029,9 @@ sit at one evidence level by one calibration, which is the citable argument. Sof
 the number moves with the window and the ClinVar release (0.33-0.50 for SpliceAI2, 0.50-0.66 for
 v1), the REVEL control runs one level lenient (circularity), SpliceAI2's training-set overlap
 with ClinVar is unchecked; and nine eur traits cannot separate 0.25 from 0.40 on power. The
-production mask set keeps a with/without pair -- `pLoF:damaging_missense:spliceai2_gt040`
-against `damaging_missense` and `pLoF` on their own, and `spliceai2_gt040` alone -- so the
-splice label's contribution is readable in the production output itself. Release files: the
+production mask set keeps a with/without pair -- `pLoF:damaging_missense` against
+`pLoF:damaging_missense:spliceai2_gt040` -- so the splice label's contribution is readable in
+the production output itself. Release files: the
 `out_spliceai2` `new_rules` build (label `spliceai2_gt040`), nothing to rebuild.
 
 ## 18. `LOG10P` (2026-10-15): log10 p-value columns in the AoU runs, ON by default
@@ -2063,3 +2066,180 @@ LOG10P="${LOG10P:-TRUE}"                              # TRUE | FALSE: --is_outpu
 # the settings echo
 LOG10P            = ${LOG10P}
 ```
+
+## 19. Production rerun on IMG15: the seven-mask SKAT-O, FlexRV, `am_moderate` (2026-10-15)
+
+Decided inputs (owner, 2026-10-15; sections 16-17b): release group files are the `out_spliceai2`
+build in `~/Repositories/brava-reannotation/out_spliceai2/aou/` (SpliceAI2 at 0.40, label
+`spliceai2_gt040`); 23 chromosomes each of `new_rules`, `flexrv_AM`, `am_moderate` (chrX is
+uploaded and not run). Image IMG15. `LOG10P` on (the wrapper default). Masks:
+
+```python
+IMG15 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-f4a316d5"
+REL = f"{BUCKET}/SAIGE_SLIM_TESTING/annotations_v5"          # the release upload directory
+PROD_MASKS = ("pLoF,damaging_missense,pLoF:damaging_missense,pLoF:damaging_missense:spliceai2_gt040,"
+              "synonymous,other_missense,pLoF:damaging_missense:spliceai2_gt040:other_missense:synonymous")
+FLEXRV_GROUP = "pLoF:damaging_missense:other_missense:spliceai2_gt040"   # the splice bin holds missense with a splice call; AM-scored
+AM_MASK = "am_moderate"                                                 # AlphaMissense >= 0.906, missense only (checked: every variant scores >= 0.906 in the FlexRV file, the only scored >= 0.906 outside it are pLoF)
+nr_grp = lambda c: f"{REL}/aou.chr{c}.new_rules.saige_group.txt.gz"
+fx_grp = lambda c: f"{REL}/aou.chr{c}.flexrv_AM.txt.gz"
+am_grp5 = lambda c: f"{REL}/aou.chr{c}.am_moderate.saige_group.txt.gz"
+```
+
+### 19.1 Local prep (laptop): one directory, chr1 `new_rules` split, md5 of everything
+
+Only `aou.chr1.new_rules.saige_group.txt.gz` (19.0 MB) is above the size that uploaded intact in
+section 17 (15 MiB parts); everything else goes up whole.
+
+```bash
+cd ~/Repositories/brava-reannotation/out_spliceai2/aou
+mkdir -p release_v5 && cp aou.chr*.new_rules.saige_group.txt.gz aou.chr*.flexrv_AM.txt.gz aou.chr*.am_moderate.saige_group.txt.gz release_v5/
+cd release_v5 && split -b 15m aou.chr1.new_rules.saige_group.txt.gz aou.chr1.new_rules.saige_group.txt.gz.part_ && rm aou.chr1.new_rules.saige_group.txt.gz
+ls -l aou.chr1.new_rules.saige_group.txt.gz.part_*          # two parts, 15,728,640 + the rest
+cd .. && (cd release_v5 && for f in *; do printf '%s %s %s\n' "$(md5 -q "$f")" "$(stat -f %z "$f")" "$f"; done) > release_v5.md5.txt
+printf '%s %s %s\n' "$(md5 -q aou.chr1.new_rules.saige_group.txt.gz)" "$(stat -f %z aou.chr1.new_rules.saige_group.txt.gz)" aou.chr1.new_rules.saige_group.txt.gz >> release_v5.md5.txt
+wc -l release_v5.md5.txt                                      # 71: 68 whole files + 2 parts + the composed chr1
+```
+
+Upload `release_v5/` (70 objects) and `release_v5.md5.txt` into `SAIGE_SLIM_TESTING/annotations_v5/`.
+
+### 19.2 Workbench: compose chr1, md5-check all 69 objects
+
+```python
+import hashlib
+D = REL
+parts = [f"{D}/aou.chr1.new_rules.saige_group.txt.gz.part_{x}" for x in ("aa", "ab")]
+dest = f"{D}/aou.chr1.new_rules.saige_group.txt.gz"
+sizes = {}
+for p in parts:
+    out = subprocess.run(["gcloud", "storage", "ls", "-l", p], capture_output=True, text=True).stdout.split()
+    sizes[p] = int(out[0]) if out else -1
+print(sizes)                                                   # part_aa must be 15728640 exactly
+assert sizes[parts[0]] == 15728640, "part_aa truncated: re-upload it"
+print(subprocess.run(["gcloud", "storage", "objects", "compose", *parts, dest], capture_output=True, text=True).stderr[-200:])
+ref = {}
+for l in subprocess.run(["gcloud", "storage", "cat", f"{D}/release_v5.md5.txt"], capture_output=True, text=True).stdout.splitlines():
+    h, n, f = l.split(); ref[f] = (h, int(n))
+bad = []
+for f, (h, n) in sorted(ref.items()):
+    if ".part_" in f: continue
+    data = subprocess.run(["gcloud", "storage", "cat", f"{D}/{f}"], capture_output=True).stdout
+    ok = hashlib.md5(data).hexdigest() == h and len(data) == n
+    if not ok: bad.append(f)
+    print(("OK  " if ok else "BAD ") + f, len(data))
+print(len(ref) - 2, "objects checked;", "ALL OK" if not bad else f"RE-UPLOAD: {bad}")
+```
+
+Nothing below runs until that prints `ALL OK`.
+
+### 19.3 Two canaries on IMG15 (on demand), read before the fleet
+
+One eur quantitative SKAT-O bin and the matching FlexRV trait. What to read in each: `chrStatus`
+`failed none`; the log's settings echo `LOG10P            = TRUE` and the `Running` line carrying
+`--is_output_log10P=TRUE`; the results header with `log10_Pvalue` after `SE_Burden`; the end-of-run
+lines (`SPA fallbacks`, `Exact test by weight`, `Stretch gate`, `SKAT-O cells` / `BURDEN cells`);
+and for FlexRV the one-line `.singleAssoc.txt` placeholder (`SINGLE_IN_GROUP=FALSE`).
+
+```python
+load_runs()
+v4 = next(k for k in bins_of("eur", "ldlc") if 19 in RUNS[k]["chrs"])        # the LDLR bin
+r = RUNS[v4]; env = {k: v for k, v in r["env"].items() if k != "REGIONS"}
+submit(name="canary-sk6-eur-ldlc", image=IMG15, masks=PROD_MASKS, fasttest=r["fasttest"], outdir="eur/canary_v6",
+       anc="eur", pheno=r["pheno"], trait=r["trait"], firth=r["firth"], env=env, geno=r["geno"], chrs=r["chrs"],
+       plk=lambda c, a="eur": cod(c, a), grp=nr_grp, testtype="group", machine_type=r["machine_type"],
+       spot=False, pooled=True, sidecars=True, sparse_grm=r["sparse_grm"])
+f4 = next(k for k in RUNS if k.startswith("fxv4-eur-ldlc"))
+r = RUNS[f4]; env = {k: v for k, v in r["env"].items() if k != "REGIONS"}; env["SINGLE_IN_GROUP"] = "FALSE"
+submit(name="canary-fx6-eur-ldlc", image=IMG15, masks=FLEXRV_GROUP, fasttest=r["fasttest"], outdir="eur/canary_v6",
+       anc="eur", pheno=r["pheno"], trait=r["trait"], firth=r["firth"], env=env, geno=r["geno"], chrs=r["chrs"],
+       plk=lambda c, a="eur": cod(c, a), grp=fx_grp, testtype="group", machine_type=r["machine_type"],
+       spot=False, pooled=True, sidecars=True, sparse_grm=r["sparse_grm"])
+```
+
+```python
+# reading the canaries
+for nm in ("canary-sk6-eur-ldlc", "canary-fx6-eur-ldlc"):
+    pre = RUNS[nm]["out_prefix"]; log = fetch_log(nm)
+    print("==", nm)
+    print("  chrStatus:", rows(pre + ".chrStatus.txt.gz"))
+    print("  LOG10P echo:", [l for l in log.splitlines() if l.startswith("LOG10P")][:1], "| flag in cmd:", "--is_output_log10P=TRUE" in log)
+    h = rows(pre + ".txt.gz")[0].split("\t"); print("  log10 columns:", [c for c in h if c.startswith("log10_")], "after SE_Burden:", h[h.index("SE_Burden") + 1] if "SE_Burden" in h else None)
+    for key in ("SPA fallbacks", "Exact test by weight", "Stretch gate", "SKAT-O cells", "BURDEN cells", "Concentrated cells"):
+        for l in log.splitlines():
+            if l.startswith(key): print("  ", l[:160]); break
+```
+
+### 19.4 The fleet: every v4 record, same bins, new image and files
+
+Three job sets, each derived from the v4 registry so bins, models, `fasttest`, `firth`, `geno`,
+machine type and the GRM choice are the v4 job's; only name, image, masks, group file and output
+directory change (plus `SINGLE_IN_GROUP=FALSE` on FlexRV). Spot for quantitative, on demand for
+binary (the 3.5x bins, where a Spot capacity wait or a preemption costs an hour). `ARMED = False`
+prints the plan.
+
+```python
+ARMED = False
+def fleet(kind):
+    """kind: 'sk6' (SKAT-O, PROD_MASKS, new_rules), 'fx6' (FlexRV, FLEXRV_GROUP, flexrv_AM), 'am6' (am_moderate)."""
+    src = "fxv4-" if kind == "fx6" else "skv4-"
+    plan = []
+    for v4 in sorted(k for k in RUNS if k.startswith(src)):
+        r = RUNS[v4]; anc = r["anc"]
+        if kind == "sk6":  masks, grp, od = PROD_MASKS, nr_grp, f"{anc}/skato_v6"
+        if kind == "fx6":  masks, grp, od = FLEXRV_GROUP, fx_grp, f"{anc}/flexrv_v6"
+        if kind == "am6":  masks, grp, od = AM_MASK, am_grp5, f"{anc}/am_v6"
+        nm = v4.replace(src, kind + "-")
+        if already(out_prefix_for(nm, anc, r["pheno"], r["chrs"]), od): continue
+        env = {k: v for k, v in r["env"].items() if k != "REGIONS"}
+        if kind == "fx6": env["SINGLE_IN_GROUP"] = "FALSE"
+        spot = r["trait"] == "quantitative"
+        plan.append((nm, anc, r["pheno"], r["chrs"], spot))
+        if ARMED:
+            submit(name=nm, image=IMG15, masks=masks, fasttest=r["fasttest"], outdir=od, anc=anc, pheno=r["pheno"],
+                   trait=r["trait"], firth=r["firth"], env=env, geno=r["geno"], chrs=r["chrs"],
+                   plk=lambda c, a=anc: cod(c, a), grp=grp, testtype="group", machine_type=r["machine_type"],
+                   spot=spot, pooled=True, sidecars=True, sparse_grm=r["sparse_grm"])
+    print(kind, len(plan), "jobs", "(submitted)" if ARMED else "(plan)", "| spot", sum(p[4] for p in plan), "on demand", sum(not p[4] for p in plan))
+    return plan
+plan_sk = fleet("sk6"); plan_fx = fleet("fx6"); plan_am = fleet("am6")
+if ARMED: save_runs()
+```
+
+Run unarmed first: the three counts must equal the v4 registry's (every skv4 record twice, every
+fxv4 once). Arm, run, `save_runs()`. The same cell IS the mop-up: `already()` keys on the delivered
+results file, so rerunning it after the batch settles resubmits exactly the Spot losses and
+nothing else (set `spot = False` inside for that pass).
+
+### 19.5 Before any reading: the chromosome scan
+
+```python
+for od_suffix in ("skato_v6", "flexrv_v6", "am_v6"):
+    for anc in ("afr", "amr", "eas", "eur", "sas"):
+        ls_ = subprocess.run(["gcloud", "storage", "ls", f"{BUCKET}/SAIGE_SLIM_TESTING/{anc}/{od_suffix}/*.chrStatus.txt.gz"], capture_output=True, text=True).stdout.split()
+        bad = [(p.rsplit("/", 1)[-1].split(".")[0], dict(l.split("\t") for l in rows(p)).get("failed")) for p in ls_]
+        bad = [b for b in bad if b[1] not in (None, "none")]
+        print(f"{anc}/{od_suffix}: {len(ls_)} jobs, {len(bad)} with a failed chromosome", bad[:5])
+```
+
+A failed chromosome is a job to rerun in full (same name, same bins) before its trait is read;
+both lost-chromosome episodes (#170, the IMG14 log10 defect) passed every other check.
+
+### 19.6 Reading: controls first, then the contrasts (per ancestry; counts are of genes and cells)
+
+Controls, stated before the numbers:
+1. `synonymous` QQ per trait: on the null, as in v4. Inflation is the image or the model, not annotation.
+2. `pLoF` gene for gene against v4 (`skato_v4` outputs, `skv4-` names): the pLoF rule did not change,
+   so this is the cross-image control; the expected differences are the saddlepoint fixes
+   (#163-#176, cells past 1e-5 and the exact-by-weight routed cells) and nothing else.
+3. The scan above, clean.
+
+Contrasts (the result):
+- `pLoF:damaging_missense` vs `pLoF:damaging_missense:spliceai2_gt040`: the splice label, gene for
+  gene and pooled QQ on the common touched set (section 17b's method).
+- new `damaging_missense` vs v4's: the reannotation (REVEL 0.773 / CADD 28.1 / AlphaMissense fill).
+- `am_moderate` vs `damaging_missense`: what AlphaMissense alone buys at Moderate.
+- `p_FlexRV` (the Cauchy row's `log10_Pvalue_Burden`) vs the SKAT-O `pLoF:damaging_missense:spliceai2_gt040`
+  cell at `max_MAF 0.001`, same genes: what the weighting buys.
+- Distinct genes past 2.5e-6 per trait, v4 vs v6, with the correlated-trait caveat beside the number
+  (lipids share APOB/APOC3/LDLR/ABCA1/LCAT; anthropometric traits share GIGYF1).
+Every p read from `log10_Pvalue*` where present (the linear column floors at the denormal on Linux).
