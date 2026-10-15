@@ -2176,7 +2176,8 @@ for nm in ("canary-sk6-eur-ldlc", "canary-fx6-eur-ldlc"):
 
 Three job sets, each derived from the v4 registry so bins, models, `fasttest`, `firth`, `geno`,
 machine type and the GRM choice are the v4 job's; only name, image, masks, group file and output
-directory change (plus `SINGLE_IN_GROUP=FALSE` on FlexRV). Spot for quantitative, on demand for
+directory change (plus `SINGLE_IN_GROUP=FALSE` on FlexRV AND on `am_moderate`: the single-variant
+file is written once, by the seven-mask run, whose variants are a superset). Spot for quantitative, on demand for
 binary (the 3.5x bins, where a Spot capacity wait or a preemption costs an hour). `ARMED = False`
 prints the plan.
 
@@ -2194,7 +2195,7 @@ def fleet(kind):
         nm = v4.replace(src, kind + "-")
         if already(out_prefix_for(nm, anc, r["pheno"], r["chrs"]), od): continue
         env = {k: v for k, v in r["env"].items() if k != "REGIONS"}
-        if kind == "fx6": env["SINGLE_IN_GROUP"] = "FALSE"
+        if kind in ("fx6", "am6"): env["SINGLE_IN_GROUP"] = "FALSE"   # every am_moderate variant is a new_rules missense variant: the sk6 run's single-variant file covers both (owner, 2026-10-15)
         spot = r["trait"] == "quantitative"
         plan.append((nm, anc, r["pheno"], r["chrs"], spot))
         if ARMED:
