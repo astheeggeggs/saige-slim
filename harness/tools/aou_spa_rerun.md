@@ -1920,6 +1920,26 @@ for m, ps in pooled.items():
     print(f"{m:36s} n={n:7d} frac<0.05={f05:.3f}  observed at expected " + ", ".join(f"{e:.0e}: {o:.1e}" for e, o in q))
 ```
 
+### 17b. SpliceAI2's cut-off moved to 0.40 and the run was redone (2026-10-15)
+
+The reannotation side recalibrated SpliceAI2 against ACMG (`brava-reannotation`
+`spliceai.md`, commits `717f86b`/`8e32fe7`, 2026-10-14): 0.25 is the README's
+"Supporting" line, 0.40 is "Moderate", and the rule is now `spliceai2_gt040`. The
+split-test files were rebuilt at 0.40 (same three labels, `sai_both` /
+`sai_v1only` / `sai_v2only`; chr21: 1,466 / 1,311 / 692 variants, Jaccard 0.42
+between the versions' calls), uploaded to `SAIGE_SLIM_TESTING/annotations_reannot_v3/`
+(chr1 composed from two parts, every object md5-checked against
+`out_spliceai2/aou/sai_versions_test.md5.txt`), and the section-17 cells were
+rerun as job names `sai2v040-...`, output `eur/skato_sai2v040`, on IMG14
+(`LOG10P` on, so every file carries the `log10_Pvalue*` columns; the reading
+cell reads by name). The generated cells are
+`brava-reannotation/workbench/sai2v040_cells.md`. **The 0.25 run (section 17,
+`skato_sai2v`) is superseded**: its six read traits were a near draw with v2
+slightly ahead, and its height/bmi/t2diab outputs are not read. The decision --
+v1 at 0.5 against v2 at 0.40 -- is taken on this run's reading cell over all
+nine traits, the private sets (`sai_v1only`, `sai_v2only`) pooled being the
+decisive lines.
+
 ## 18. `LOG10P` (2026-10-15): log10 p-value columns in the AoU runs, ON by default
 
 `--is_output_log10P` (`docs/state/handoff-2026-10-14-log10p.md`) adds `log10_Pvalue*`
