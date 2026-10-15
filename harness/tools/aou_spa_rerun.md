@@ -2179,9 +2179,12 @@ machine type and the GRM choice are the v4 job's; only name, image, masks, group
 directory change (plus `SINGLE_IN_GROUP=FALSE` on FlexRV AND on `am_moderate`: the single-variant
 file is written once, by the seven-mask run, whose variants are a superset). **Launched 2026-10-15
 (owner): Spot for every job** (the standing preference; section 16 lost 2 of 80, the mop-up pass
-recovers losses at the cost of their wasted hours) **and `n2-standard-2` for every job, eur
-included** (v4 ran eur on highmem; every eur peak on record is under 2.3 GB -- the wrapper's
-chr1 1,188 / chr2 2,134 / chr19 2,230 MB, today's canaries 1.2 / 0.9 / 0.7 GB -- against 8 GB).
+recovers losses at the cost of their wasted hours) **and the v4 machine types: `n2-highmem-2`
+for eur, `n2-standard-2` for the rest.** (A standard-2 for eur was proposed and withdrawn the same
+hour: the 2026-09-25 sizing handoff has eur SKAT-O at 6,057-6,170 MB, flat across chromosomes --
+a property of the model, not the work -- which is why eur is on highmem; the chr1 1,188 / chr2
+2,134 / chr19 2,230 MB figures in the wrapper are AFR's. Today's eur canary reported a SAMPLED
+`PEAK_RSS_MB` of 1,191 on IMG15, five times below September's; unexplained, not relied on.)
 Canaries read clean first: `chrStatus` none failed, `LOG10P` echoed and in the command, the
 log10 columns after `SE_Burden`, the single-variant file real on sk6 and the placeholder on fx6/am6,
 LDLR pLoF 4.4e-10 / damaging 9.5e-19 (v4's) / pLoF:damaging 3.1e-26 / with the splice label 2.2e-26
@@ -2205,7 +2208,7 @@ def fleet(kind):
         env = {k: v for k, v in r["env"].items() if k != "REGIONS"}
         if kind in ("fx6", "am6"): env["SINGLE_IN_GROUP"] = "FALSE"   # every am_moderate variant is a new_rules missense variant: the sk6 run's single-variant file covers both (owner, 2026-10-15)
         spot = True                          # the mop-up pass sets False for the stragglers
-        machine_type = "n2-standard-2"       # eur included (see above)
+        machine_type = "n2-highmem-2" if anc == "eur" else "n2-standard-2"   # the v4 sizing (see above)
         plan.append((nm, anc, r["pheno"], r["chrs"], spot))
         if ARMED:
             submit(name=nm, image=IMG15, masks=masks, fasttest=r["fasttest"], outdir=od, anc=anc, pheno=r["pheno"],
