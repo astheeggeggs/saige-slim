@@ -2226,6 +2226,21 @@ fxv4 once). Arm, run, `save_runs()`. The same cell IS the mop-up: `already()` ke
 results file, so rerunning it after the batch settles resubmits exactly the Spot losses and
 nothing else (set `spot = False` inside for that pass).
 
+### 19.4b The first batch's failures (2026-10-15 evening) and the mop-up
+
+35 of 2,418 failed, none labelled a preemption: Batch's `--full` events on this provider carry
+only `scheduled` / `start` / `fail` and the status message is the word FAILURE, so a filter on
+"preempt" or exit code 50001 finds nothing. The signature IS the preemption: empty stderr,
+stdout cut off mid-run (one at `T_SAIGE_START`, two in the middle of their output, four amr
+FlexRV jobs with nothing written at all), no SAIGE error anywhere. The failures cluster by trait
+(all ten eur ifhern bins, all four amr t2diab FlexRV bins) because a trait's bins are submitted
+within seconds, land in one zone and are reclaimed together -- the zone correlation. One
+(`sk6-eur-height-b5`) had finished SAIGE and was killed in delivery. `fetch_log` reads the
+runner log (`<job>.log` sorts after `-stderr.log`); the SAIGE output is the `-stdout.log`.
+**Mop-up**: wait until nothing is RUNNING, then `_DELIVERED.clear()` (the `delivered()` cache
+was taken when nothing had been delivered -- without clearing it the pass resubmits all 806),
+`spot = False` in `fleet()`, unarmed to see the list, armed per set, `save_runs()`.
+
 ### 19.5 Before any reading: the chromosome scan
 
 ```python
