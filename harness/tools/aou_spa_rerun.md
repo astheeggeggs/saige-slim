@@ -1920,13 +1920,31 @@ for m, ps in pooled.items():
     print(f"{m:36s} n={n:7d} frac<0.05={f05:.3f}  observed at expected " + ", ".join(f"{e:.0e}: {o:.1e}" for e, o in q))
 ```
 
-## 18. `LOG10P` (2026-10-14): log10 p-value columns in the AoU runs
+## 18. `LOG10P` (2026-10-15): log10 p-value columns in the AoU runs, ON by default
 
 `--is_output_log10P` (`docs/state/handoff-2026-10-14-log10p.md`) adds `log10_Pvalue*`
 columns after `SE_Burden` on both region paths and combines the pooled row in log
 space, so PNPLA3-class genes are estimated rather than floored at 0. The wrapper
-(drop-in `harness/work/aou/saige_step2_brava_main_original.sh`) takes `LOG10P`
-(default FALSE); `env["LOG10P"] = "TRUE"` in a submit cell turns it on. Needs an
-image built from the commit that carries it or later. Do NOT set it on a partial
-rerun meant for the splice control: the header differs from the v4 file's and the
-control refuses. The AoU tools read columns by name and are unaffected.
+(drop-in `harness/work/aou/saige_step2_brava_main_original.sh`) takes `LOG10P`,
+**default TRUE** (owner, 2026-10-15); `env["LOG10P"] = "FALSE"` in a submit cell
+turns it off, which is REQUIRED for a partial rerun meant for the splice control:
+the header differs from the v4 file's and the control refuses. The AoU tools read
+columns by name and are unaffected. Needs IMG14 or later; an older image rejects
+the flag.
+
+```python
+IMG14 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-524a299f"   # --is_output_log10P; same bytes on Docker Hub as astheeggeggs/saige-slim:1.5.2-dev-524a299f
+```
+
+The wrapper patch (same shape as section 15's; the three sites):
+
+```bash
+# inputs block
+LOG10P="${LOG10P:-TRUE}"                              # TRUE | FALSE: --is_output_log10P (group tests; FALSE for a partial rerun to be spliced)
+
+# the command's group block, after the cmd array is built
+  if [[ ${LOG10P} == "TRUE" ]]; then cmd+=(--is_output_log10P=TRUE); fi
+
+# the settings echo
+LOG10P            = ${LOG10P}
+```
