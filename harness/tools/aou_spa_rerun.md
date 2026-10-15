@@ -2019,7 +2019,7 @@ label `spliceai2_gt040`) are rebuilt at 0.25 before upload.
 
 `--is_output_log10P` (`docs/state/handoff-2026-10-14-log10p.md`) adds `log10_Pvalue*`
 columns after `SE_Burden` on both region paths and combines the pooled row in log
-space, so PNPLA3-class genes are estimated rather than floored at 0. The wrapper
+space, so GPT-class genes (the trait's own enzyme) are estimated rather than floored at 0. The wrapper
 (drop-in `harness/work/aou/saige_step2_brava_main_original.sh`) takes `LOG10P`,
 **default TRUE** (owner, 2026-10-15); `env["LOG10P"] = "FALSE"` in a submit cell
 turns it off, which is REQUIRED for a partial rerun meant for the splice control:

@@ -1,7 +1,10 @@
 # --is_output_log10P: log10 p-value columns, exact in log space (2026-10-14)
 
-**Why.** On AoU the strongest genes print a p-value of 0: PNPLA3/ALT sits at
-1.48e-323 on eur chr20 (the denormal floor; one more order and it is 0), and
+**Why.** On AoU the strongest genes print a p-value of 0: the top ALT gene in the
+eur chr20 pilot output sat at 1.48e-323 (the denormal floor; one more order and it
+is 0 -- the first version of this paragraph named it PNPLA3, which is wrong: PNPLA3
+is on chr22 and null in every rare-variant mask, its ALT signal being the common
+I148M that the af01 genotype files exclude; corrected 2026-10-15), and
 on the BURDEN path the C++ writer already prints an underflowed p as the
 log-derived string `"1.0E-400"` -- which the pooled-row Cauchy then parses
 back as 0 (`parsePrintedPval`), so the gene's Cauchy row is 0 by CCT's
