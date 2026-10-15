@@ -2001,8 +2001,19 @@ arm -- for the typical gene every splice set is noise, slightly more dilution th
 cells below 1e-4 among the touched, combined minus damaging-only: +6 / +8 / +5 / +15. Tighter
 beats looser within each version and v2@0.40, touching the fewest genes, gains the most;
 counts near 90 carry a sd of ~10, so +15 against +5 is suggestive, but it is the fourth
-instrument to order the arms the same way. **FINAL: SpliceAI2 at 0.40.** The cut-off
-question is closed; the band below 0.40 dilutes and carries no distinguishable signal.
+instrument to order the arms the same way. **Status after this reading (corrected the
+same day): v2 over v1 is DECIDED on evidence; 0.25 against 0.40 is a DRAW the data cannot
+break** -- counts favour 0.25 (hits 43 vs 41, distinct genes 39 vs 36, the top of the
+touched-gene QQ), per-gene behaviour favours 0.40 (the band's own cells null, the typical
+gene diluted, lift per touched gene +15 vs +5). The earlier "FINAL 0.40" was the pre-stated
+tie-break convention (the ACMG-calibrated cut-off) speaking, not the data, and it was
+written as if it were the data. The competing convention is Illumina's README, which names
+0.25 as the operating point equivalent to v1's 0.5 -- comparability with every v1-based
+result, at no measurable cost on these counts, and a better fit for an inclusion mask than
+a clinical evidence-strength threshold. The owner's call, pending one last check: the genes
+that are hits under one cut-off and not the other, by name (a cell in the session; few
+enough to inspect). If 0.25 is chosen the `out_spliceai2` release files (built at 0.40,
+label `spliceai2_gt040`) are rebuilt at 0.25 before upload.
 
 ## 18. `LOG10P` (2026-10-15): log10 p-value columns in the AoU runs, ON by default
 
