@@ -19,6 +19,7 @@ Do not treat a blank in that section as "default".
 | the #176 stretch-gate fix (the notebook's `IMG12`) | `gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-152ffd8c` |
 | LEDGER #179 (the notebook's `IMG13`, twelve commits after IMG12: #179, #171, the sidecar/tool fixes; also `astheeggeggs/saige-slim:1.5.2-dev-8bffa0ca`) | `gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-8bffa0ca` |
 | `--is_output_log10P` (the notebook's `IMG14`, 1c3f89b5 + the pkgdown index fix; also `astheeggeggs/saige-slim:1.5.2-dev-524a299f`) | `gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-524a299f` |
+| **IMG15: the log10 fix** (f4a316d5; IMG14 LOST A CHROMOSOME with `LOG10P=TRUE`, `docs/state/handoff-2026-10-14-log10p.md` addendum; also `astheeggeggs/saige-slim:1.5.2-dev-f4a316d5`) | `gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-f4a316d5` |
 
 The tags name the commits the images were built from; a hash that no longer
 resolves in the current history still names its image.
@@ -87,7 +88,7 @@ Common to both arms (the wrapper's fixed flags plus the notebook's `submit()` va
 | `--sparseGRMFile`, `--sparseGRMSampleIDFile` | the step-0 GRM of the ancestry, every ancestry (the earlier "none for amr" is void) |
 | `--relatednessCutoff` | 0.05; amr 0.125 (`RELCUTOFF`, required by the wrapper when a GRM is given) |
 | `--is_single_in_groupTest` | TRUE in v4. **From 2026-10-08 the wrapper takes `SINGLE_IN_GROUP` (default TRUE); set FALSE for FlexRV runs**: the file was 80% of a FlexRV job (LEDGER #179; afr chr20 431/465/601 s -> 55/55/75 s with it off, gene-level rows identical), its real-marker rows are the SKAT-O run's and its pseudo-marker rows were read only by the splice control's twin rule. The wrapper then delivers a one-line placeholder; `aou_spa_scan.sh` and `aou_spa_splice.sh` recognise it. SKAT-O runs keep TRUE. |
-| `--is_output_log10P` | absent in v4 (the flag is 2026-10-14). **From 2026-10-15 the wrapper takes `LOG10P` (default TRUE)**: `log10_Pvalue*` columns after `SE_Burden` on both region paths and the pooled row combined in log space, so a gene below the double floor (PNPLA3/ALT at 1.48e-323 on eur) is estimated, not 0. Set FALSE for a partial rerun that the splice control will compare against a v4 file (its header check refuses the extra columns). Needs IMG14. |
+| `--is_output_log10P` | absent in v4 (the flag is 2026-10-14). **From 2026-10-15 the wrapper takes `LOG10P` (default TRUE)**: `log10_Pvalue*` columns after `SE_Burden` on both region paths and the pooled row combined in log space, so a gene below the double floor (PNPLA3/ALT at 1.48e-323 on eur) is estimated, not 0. Set FALSE for a partial rerun that the splice control will compare against a v4 file (its header check refuses the extra columns). Needs IMG15 (IMG14 lost a chromosome with the flag on). |
 | `--is_output_markerList_in_groupTest` | TRUE |
 | `--subSampleFile`, `--minGroupMAC_in_BurdenTest`, `--is_no_weight_in_groupTest` | not passed (build defaults: none, 1, FALSE) |
 | machine | `n2-standard-2` (eur `n2-highmem-2`), on demand, 50 GB disk; chromosomes in size-balanced bins per job |

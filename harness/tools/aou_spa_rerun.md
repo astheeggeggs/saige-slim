@@ -2031,7 +2031,8 @@ addendum). Any IMG14 job that ran with `LOG10P=TRUE` has its `chrStatus` read an
 chromosome rerun on IMG15.
 
 ```python
-IMG14 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-524a299f"   # --is_output_log10P; same bytes on Docker Hub as astheeggeggs/saige-slim:1.5.2-dev-524a299f
+IMG14 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-524a299f"   # --is_output_log10P -- DO NOT USE with LOG10P=TRUE (lost a chromosome, see above)
+IMG15 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-f4a316d5"   # the fix; same bytes on Docker Hub as astheeggeggs/saige-slim:1.5.2-dev-f4a316d5 (digest a77c961e); P1 byte-identical, P79 1e-13, the extreme ladder finite in the container
 ```
 
 The wrapper patch (same shape as section 15's; the three sites):
