@@ -8,6 +8,8 @@
 #   ANC      ancestry (afr|amr|eas|eur|sas)
 #   BASE     gs://.../SAIGE_SLIM_TESTING   (or a local dir for the self-test)
 #   RUNTAG   v4 (default)
+#   FX_DIR, FX_PREFIX   optional: the FlexRV directory under BASE/ANC and the job prefix, for
+#            a control fleet that follows neither naming rule (e.g. FX_DIR=fxr_syn FX_PREFIX=fxr_syn-)
 #   OUT_DIR  local dir dsub delocalizes (--output-recursive)
 # FlexRV: the final file of a job is, in this order of precedence,
 #   flexrv_v7_checked/<pre>.txt.gz   the complete rerun after LEDGER #172 (binary
@@ -55,6 +57,12 @@ SIDECARS='\.(singleAssoc|markerList|pooledTests|skatoMethod|skatFailures|spaFall
 # named fxv4-/skv4-, later tags fx<N>-/sk<N>-/am<N>-; anything else in the directory is listed
 # in the log as excluded and never read.
 if [[ ${RUNTAG} == "v4" ]]; then PFX_FX="fxv4-"; PFX_SK="skv4-"; PFX_AM="amv4-"; else n="${RUNTAG#v}"; PFX_FX="fx${n}-"; PFX_SK="sk${n}-"; PFX_AM="am${n}-"; fi
+# 2026-10-16: a control fleet whose jobs are named <tag>-... and whose files sit in <anc>/<tag>/
+# (the FlexRV random-score arms fxr_syn / fxr_dmg / fxa_dmg) fits neither rule above; FX_DIR
+# names its directory (under BASE/ANC) and FX_PREFIX its job prefix. The SKAT-O and am arms of
+# such a tag do not exist and report 0 files.
+[[ -n ${FX_DIR:-} ]] && FX="${BASE}/${ANC}/${FX_DIR}"
+[[ -n ${FX_PREFIX:-} ]] && PFX_FX="${FX_PREFIX}"
 keep(){ grep -E '\.txt\.gz$' | grep -vE "${SIDECARS}" | awk -v pfx="$1" '{ b=$0; sub(/.*\//, "", b); if (index(b, pfx) == 1) print; else print "excluded (not " pfx "*): " $0 > "/dev/stderr" }'; }
 lsd "${FX}/*.txt.gz"  | keep "${PFX_FX}" > fx.list  2>> excluded.log || true
 lsd "${FXF}/*.txt.gz" | keep "${PFX_FX}" > fxf.list 2>> excluded.log || true

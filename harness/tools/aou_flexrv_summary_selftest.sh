@@ -108,5 +108,12 @@ grep -q "^spaRegionNA: 2 rescale saddlepoint(s) returned nothing (LEDGER #181); 
 gzip -dc out6/xx.spaRegionNA.v6.tsv.gz | awk -F'\t' 'NR>1 && $3=="sk6-xx-traita" && $6=="G5" && $14=="NaN"' | grep -q . && echo "ok   v6: spaRegionNA table row" || { echo "FAIL spaRegionNA table"; fail=1; }
 grep -q "^spaRegionNA: 0 rescale" run.log && echo "ok   v4: no #181 sidecar, 0 reported" || { echo "FAIL v4 spaRegionNA"; fail=1; }
 grep -q "^flexrv: 1 v4 files, 0 fixed, 0 v7; skato: 1 files" run6.log && echo "ok   v6: the #181 sidecar is not counted as a results file" || { echo "FAIL sidecar counted"; fail=1; }
+# a control fleet named <tag>-... in <anc>/<tag>/ (the random-score arms): FX_DIR + FX_PREFIX
+mkdir -p base/xx/fxr_syn outr
+cp "base/xx/flexrv_v6/fx6-xx-traita.TraitA.xx.chr1-22.txt.gz" "base/xx/fxr_syn/fxr_syn-xx-traita.TraitA.xx.chr1-22.txt.gz"
+ANC=xx BASE="${T}/base" OUT_DIR="${T}/outr" RUNTAG=fxr_syn FX_DIR=fxr_syn FX_PREFIX=fxr_syn- bash "${HERE}/aou_flexrv_summary.sh" > runr.log 2>&1 || { cat runr.log; echo "SELFTEST FAILED: fxr_syn run exited non-zero"; exit 1; }
+grep -q "^flexrv: 1 v4 files, 0 fixed, 0 v7; skato: 0 files" runr.log && [[ -s outr/xx.flexrv_vs_skato.fxr_syn.tsv.gz ]] && echo "ok   control tag: FX_DIR/FX_PREFIX read the <tag>/ directory, SKAT-O absent" || { echo "FAIL control tag: $(grep '^flexrv' runr.log)"; fail=1; }
+ANC=xx BASE="${T}/base" OUT_DIR="${T}/outr0" RUNTAG=fxr_syn bash "${HERE}/aou_flexrv_summary.sh" > runr0.log 2>&1 || true
+grep -q "^flexrv: 0 v4 files" runr0.log && echo "ok   control tag without the overrides reads nothing (the 2026-10-16 mistake)" || { echo "FAIL control tag w/o overrides: $(grep '^flexrv' runr0.log)"; fail=1; }
 (( fail )) && { echo "SELFTEST FAILED"; exit 1; }
-echo "selftest OK: 31 checks"
+echo "selftest OK: 33 checks"
