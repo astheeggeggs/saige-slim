@@ -84,51 +84,67 @@ gzip -f "${chrout}"
 nbad=$(awk -F'\t' '$4!="none" && $4!="?"' chrstatus.long | wc -l | tr -d " ")
 echo "chrStatus: $(wc -l < chrstatus.long | tr -d " ") jobs scanned, ${nbad} with a failed chromosome$( (( nbad > 0 )) && awk -F'\t' '$4!="none" && $4!="?"{printf ": %s/%s(chr %s)", $1, $2, $4}' chrstatus.long )"
 trait_of(){ basename "$1" | awk -F. '{print $2}'; }   # <job>.<TRAIT>.<anc>.chr<...>.txt.gz
-# --- FlexRV: per gene, the Cauchy row's p, the best set and how many sets ----
-: > fx.tsv
-while read -r f; do
-  [[ -n ${f} ]] || continue
-  pre=$(basename "${f}"); src=v4
+# --- the three per-file passes, PARALLEL streams (2026-10-16): the job's time is gcloud cat
+# one file at a time, so PARALLEL (default 8) files are streamed at once; each worker writes
+# its own numbered part and the parts are concatenated in list order, so every table is
+# byte-identical to the serial version's (the joins and sorts below never depended on order).
+PARALLEL="${PARALLEL:-8}"
+mkdir -p parts
+do_fx(){   # $1 = index, $2 = file
+  local f="$2" pre src=v4
+  pre=$(basename "${f}")
   if grep -qxF "${FX7}/${pre}" fx7.list; then f="${FX7}/${pre}"; src=v7
   elif grep -qxF "${FXF}/${pre}" fxf.list; then f="${FXF}/${pre}"; src=fixed; fi
-  catz "${f}" | awk -F'\t' -v tr="$(trait_of "${f}")" -v src="${src}" '
+  catz "${f}" | awk -F'\t' -v tr="$(trait_of "${f}")" -v src="${src}" -v floor="parts/$1.fx.floor" '
     NR==1{for(i=1;i<=NF;i++)h[$i]=i; if(!("Weight" in h)){print "ERROR: no Weight column in " FILENAME > "/dev/stderr"; exit 1} next}
     { g=$h["Region"]; p=$h["Pvalue_Burden"]
       if(("log10_Pvalue_Burden" in h) && $h["log10_Pvalue_Burden"]!="NA" && $h["log10_Pvalue_Burden"]+0 < -300)
-        printf "flexrv\t%s\t%s\t%s\t%s\n", tr, g, (($h["Group"]=="Cauchy")?"Cauchy":$h["Group"] "@" $h["max_MAF"] "@" $h["Weight"]), $h["log10_Pvalue_Burden"] >> "floor.long"
+        printf "flexrv\t%s\t%s\t%s\t%s\n", tr, g, (($h["Group"]=="Cauchy")?"Cauchy":$h["Group"] "@" $h["max_MAF"] "@" $h["Weight"]), $h["log10_Pvalue_Burden"] >> floor
       if($h["Group"]=="Cauchy"){ pc[g]=p; next }
       n[g]++; if(p!="NA" && (!(g in pb) || p+0 < pb[g]+0)){ pb[g]=p; wb[g]=$h["Weight"] } }
-    END{ for(g in n) printf "%s\t%s\t%s\t%s\t%s\t%s\t%d\n", tr, g, src, ((g in pc)?pc[g]:"NA"), ((g in pb)?pb[g]:"NA"), ((g in wb)?wb[g]:"NA"), n[g] }' >> fx.tsv
-done < fx.list
-# --- SKAT-O: per gene, the Cauchy row, the best cell, best burden, best SKAT --
-: > sk.tsv; : > cells.long
-while read -r f; do
-  [[ -n ${f} ]] || continue
-  catz "${f}" | awk -F'\t' -v tr="$(trait_of "${f}")" '
+    END{ for(g in n) printf "%s\t%s\t%s\t%s\t%s\t%s\t%d\n", tr, g, src, ((g in pc)?pc[g]:"NA"), ((g in pb)?pb[g]:"NA"), ((g in wb)?wb[g]:"NA"), n[g] }' > "parts/$1.fx.tsv"
+}
+do_sk(){   # $1 = index, $2 = file: the per-gene best AND the cells
+  local f="$2"
+  catz "${f}" | awk -F'\t' -v tr="$(trait_of "${f}")" -v cells="parts/$1.sk.cells" -v floor="parts/$1.sk.floor" '
     NR==1{for(i=1;i<=NF;i++)h[$i]=i; next}
     { g=$h["Region"]; p=$h["Pvalue"]
       if(("log10_Pvalue" in h) && $h["log10_Pvalue"]!="NA" && $h["log10_Pvalue"]+0 < -300)
-        printf "skato\t%s\t%s\t%s\t%s\n", tr, g, (($h["Group"]=="Cauchy")?"Cauchy":$h["Group"] "@" $h["max_MAF"]), $h["log10_Pvalue"] >> "floor.long"
+        printf "skato\t%s\t%s\t%s\t%s\n", tr, g, (($h["Group"]=="Cauchy")?"Cauchy":$h["Group"] "@" $h["max_MAF"]), $h["log10_Pvalue"] >> floor
       if($h["Group"]=="Cauchy"){ pc[g]=p; next }
       cell=$h["Group"] "@" $h["max_MAF"]
-      printf "%s\t%s\t%s\t%s\t%s\n", tr, g, cell, $h["Pvalue_Burden"], p >> "cells.long"
+      printf "%s\t%s\t%s\t%s\t%s\n", tr, g, cell, $h["Pvalue_Burden"], p >> cells
       if(p!="NA" && (!(g in pb) || p+0 < pb[g]+0)){ pb[g]=p; cb[g]=cell }
       q=$h["Pvalue_Burden"]; if(q!="NA" && (!(g in bb) || q+0 < bb[g]+0)) bb[g]=q
       q=$h["Pvalue_SKAT"];   if(q!="NA" && (!(g in sb) || q+0 < sb[g]+0)) sb[g]=q
       seen[g]=1 }
-    END{ for(g in seen) printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", tr, g, ((g in pc)?pc[g]:"NA"), ((g in pb)?pb[g]:"NA"), ((g in cb)?cb[g]:"NA"), ((g in bb)?bb[g]:"NA"), ((g in sb)?sb[g]:"NA") }' >> sk.tsv
-done < sk.list
-# --- am_moderate: its cells into the wide table only (same schema as SKAT-O) --
-while read -r f; do
-  [[ -n ${f} ]] || continue
-  catz "${f}" | awk -F'\t' -v tr="$(trait_of "${f}")" '
+    END{ for(g in seen) printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", tr, g, ((g in pc)?pc[g]:"NA"), ((g in pb)?pb[g]:"NA"), ((g in cb)?cb[g]:"NA"), ((g in bb)?bb[g]:"NA"), ((g in sb)?sb[g]:"NA") }' > "parts/$1.sk.tsv"
+}
+do_am(){   # $1 = index, $2 = file: cells only (same schema as SKAT-O)
+  local f="$2"
+  catz "${f}" | awk -F'\t' -v tr="$(trait_of "${f}")" -v cells="parts/$1.am.cells" -v floor="parts/$1.am.floor" '
     NR==1{for(i=1;i<=NF;i++)h[$i]=i; next}
     { g=$h["Region"]; p=$h["Pvalue"]
       if(("log10_Pvalue" in h) && $h["log10_Pvalue"]!="NA" && $h["log10_Pvalue"]+0 < -300)
-        printf "am\t%s\t%s\t%s\t%s\n", tr, g, (($h["Group"]=="Cauchy")?"Cauchy":$h["Group"] "@" $h["max_MAF"]), $h["log10_Pvalue"] >> "floor.long"
+        printf "am\t%s\t%s\t%s\t%s\n", tr, g, (($h["Group"]=="Cauchy")?"Cauchy":$h["Group"] "@" $h["max_MAF"]), $h["log10_Pvalue"] >> floor
       if($h["Group"]=="Cauchy") next
-      printf "%s\t%s\t%s\t%s\t%s\n", tr, g, $h["Group"] "@" $h["max_MAF"], $h["Pvalue_Burden"], p >> "cells.long" }' 
-done < am.list
+      printf "%s\t%s\t%s\t%s\t%s\n", tr, g, $h["Group"] "@" $h["max_MAF"], $h["Pvalue_Burden"], p >> cells }'
+}
+export -f do_fx do_sk do_am catz trait_of
+export FX7 FXF
+run_parallel(){   # $1 = list file, $2 = worker; one numbered argument pair per file
+  [[ -s $1 ]] || return 0
+  nl -ba -nrz -w6 "$1" | xargs -P "${PARALLEL}" -n 2 bash -c "$2 \"\$@\"" _
+}
+run_parallel fx.list do_fx
+run_parallel sk.list do_sk
+run_parallel am.list do_am
+# concatenate the parts in list order (byte-identical to the serial loops' output)
+cat_parts(){ local sfx="$1" f; for f in $(ls parts/ 2>/dev/null | grep -E "\.${sfx}$" | sort); do cat "parts/${f}"; done; }
+cat_parts fx.tsv   > fx.tsv
+cat_parts sk.tsv   > sk.tsv
+{ cat_parts sk.cells; cat_parts am.cells; } > cells.long
+{ cat_parts fx.floor; cat_parts sk.floor; cat_parts am.floor; } >> floor.long
 # --- the floor table: rows past the double floor, by their log10 columns ------
 floorout="${OUT_DIR}/${ANC}.floor.${RUNTAG}.tsv"
 { printf 'anc\tarm\ttrait\tgene\tcell\tlog10_p\n'; awk -F'\t' -v anc="${ANC}" 'BEGIN{OFS="\t"}{print anc,$0}' floor.long | sort -t $'\t' -k6,6g; } > "${floorout}"
