@@ -2271,6 +2271,13 @@ for nm in redo:
 save_runs()
 ```
 
+**The sidecar's delivery (added after the reruns were submitted, so THEY carry only the log
+line and the dumps):** the wrapper drop-in now takes `OUT_FILE_SPAREGIONNA` (delivered like the
+other sidecars, a one-line placeholder when the run had none), and `submit()`'s sidecar block
+needs one more line beside `OUT_FILE_STRETCHGATE`:
+`"--output", f"OUT_FILE_SPAREGIONNA={od}/{pre}.spaRegionNA.txt.gz",`. The summary tool scans
+the sidecar on all three arms, prints `spaRegionNA: N rescale saddlepoint(s) returned nothing
+...; <arm>/<trait> K` and writes `<anc>.spaRegionNA.<tag>.tsv.gz` (selftest 31 checks).
 Read each rerun's log for `Region saddlepoint NA: N ...` and `chrStatus` `failed none`; then
 `aou_spa_dumpcheck.sh` is NOT the tool for the R dumps (different header) -- read them where
 the data lives: `n_dropped` in the header says whether the pinned guard emptied the vector,

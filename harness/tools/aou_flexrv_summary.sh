@@ -49,7 +49,7 @@ AM="${BASE}/${ANC}/am_${RUNTAG}"
 # file; a new one that is not listed here is counted as a results file and the
 # `K v7` provenance line reads STALE (2026-10-04: spaPinned, exactByWeightAboveCap
 # and stretchGate were missing once flexrv_v8_checked carried them)
-SIDECARS='\.(singleAssoc|markerList|pooledTests|skatoMethod|skatFailures|spaFallbacks|chrStatus|exactByWeight|exactByWeightAboveCap|spaPinned|stretchGate|spliceStatId|splice)\.txt(\.gz)?$'
+SIDECARS='\.(singleAssoc|markerList|pooledTests|skatoMethod|skatFailures|spaFallbacks|chrStatus|exactByWeight|exactByWeightAboveCap|spaPinned|stretchGate|spaRegionNA|spliceStatId|splice)\.txt(\.gz)?$'
 # Only the run's own job files are results files (2026-10-16: a stray fxv5-* filtered rerun
 # sat in sas/flexrv_v6 and would have been summarised as a second BenIntNeo). v4 jobs were
 # named fxv4-/skv4-, later tags fx<N>-/sk<N>-/am<N>-; anything else in the directory is listed
@@ -83,6 +83,25 @@ chrout="${OUT_DIR}/${ANC}.chrstatus.${RUNTAG}.tsv"
 gzip -f "${chrout}"
 nbad=$(awk -F'\t' '$4!="none" && $4!="?"' chrstatus.long | wc -l | tr -d " ")
 echo "chrStatus: $(wc -l < chrstatus.long | tr -d " ") jobs scanned, ${nbad} with a failed chromosome$( (( nbad > 0 )) && awk -F'\t' '$4!="none" && $4!="?"{printf ": %s/%s(chr %s)", $1, $2, $4}' chrstatus.long )"
+# --- LEDGER #181 (2026-10-16): the rescale saddlepoints that returned nothing, all arms. The
+# sidecar is written only when a run had any; absent for v4 and for IMG15 runs. One line, and
+# a table <anc>.spaRegionNA.<tag>.tsv.gz of every named cell with the normal p it used.
+: > sparegionna.long
+for arm in flexrv:"${FX}" skato:"${SK}" am:"${AM}"; do
+  name="${arm%%:*}"; dir="${arm#*:}"
+  for f in $(lsd "${dir}/*.spaRegionNA.txt.gz"); do
+    job=$(basename "${f}" | awk -F. '{print $1}'); tr=$(basename "${f}" | awk -F. '{print $2}')
+    catz "${f}" | awk -F'\t' -v arm="${name}" -v job="${job}" -v tr="${tr}" 'BEGIN{OFS="\t"} NR>1 && $1!~/^#/ {print arm, job, tr, $0}' >> sparegionna.long
+  done
+done
+nna=$(wc -l < sparegionna.long | tr -d " ")
+if (( nna > 0 )); then
+  naout="${OUT_DIR}/${ANC}.spaRegionNA.${RUNTAG}.tsv"
+  { printf 'anc\tarm\tjob\ttrait\tKind\tRegion\tGroup\tmax_MAF\tWeight\tn_carriers\tn_pinned_dropped\tq_adj\tlog_p_normal_reported\tkernel_value\tdump\n'
+    awk -F'\t' -v anc="${ANC}" 'BEGIN{OFS="\t"}{print anc,$0}' sparegionna.long; } > "${naout}"
+  gzip -f "${naout}"
+fi
+echo "spaRegionNA: ${nna} rescale saddlepoint(s) returned nothing (LEDGER #181)$( (( nna > 0 )) && awk -F'\t' '{c[$1"/"$3]++} END{for(k in c) printf "; %s %d", k, c[k]}' sparegionna.long )"
 trait_of(){ basename "$1" | awk -F. '{print $2}'; }   # <job>.<TRAIT>.<anc>.chr<...>.txt.gz
 # --- the three per-file passes, PARALLEL streams (2026-10-16): the job's time is gcloud cat
 # one file at a time, so PARALLEL (default 8) files are streamed at once; each worker writes

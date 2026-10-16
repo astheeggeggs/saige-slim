@@ -76,6 +76,10 @@ for path, lines in [("base/xx/skato_v6/sk6-xx-traita.TraitA.xx.chr1-22.txt.gz", 
 gzip.open("base/xx/am_v6/am6-xx-traita.TraitA.xx.chr1-22.singleAssoc.txt.gz", "wt").write("# no singleAssoc output: SINGLE_IN_GROUP=FALSE\n")
 # a STRAY from another run tag in the v6 directory: excluded by its basename, named in the log
 gzip.open("base/xx/flexrv_v6/fxv5-xx-traita.TraitA.xx.chr1-22.txt.gz", "wt").write("\n".join([FH, fx("G1","W1","1e-30","-30"), cau("G1","1e-29","-29")]) + "\n")
+# a LEDGER #181 sidecar on the skato arm: two named cells (never a results file)
+gzip.open("base/xx/skato_v6/sk6-xx-traita.TraitA.xx.chr1-22.spaRegionNA.txt.gz", "wt").write(
+    "Kind\tRegion\tGroup\tmax_MAF\tWeight\tn_carriers\tn_pinned_dropped\tq_adj\tlog_p_normal_reported\tkernel_value\tdump\n"
+    "region_rescale\tG1\tpLoF\t0.001\tNA\t9\t0\t3.5\t-4.2\tNA\t\nregion_rescale\tG5\tpLoF\t0.001\tNA\t3\t0\t2.1\t-1.1\tNaN\t\n")
 # chrStatus sidecars: two clean, one that lost chr8 (the job still delivered)
 gzip.open("base/xx/skato_v6/sk6-xx-traita.TraitA.xx.chr1-22.chrStatus.txt.gz", "wt").write("requested\t1 22\nfailed\tnone\nrefused_by_gate\tnone\nskipped_no_region\tnone\n")
 gzip.open("base/xx/am_v6/am6-xx-traita.TraitA.xx.chr1-22.chrStatus.txt.gz", "wt").write("requested\t1 22\nfailed\tnone\nrefused_by_gate\tnone\nskipped_no_region\tnone\n")
@@ -100,5 +104,9 @@ grep -q "^chrStatus: 0 jobs scanned, 0 with a failed chromosome$" run.log && ech
 grep -q "^EXCLUDED 1 file(s)" run6.log && grep -q "excluded (not fx6-\*): .*fxv5-xx-traita" run6.log && echo "ok   v6: the stray fxv5 file is excluded and named" || { echo "FAIL stray exclusion: $(grep -i exclud run6.log)"; fail=1; }
 awk -F'\t' 'NR>1 && $2=="TraitA" && $3=="G1" && $5=="0"' out6.tsv | grep -q . && echo "ok   v6: the real fx6 file's Cauchy p (0) was used, not the stray's (1e-29)" || { echo "FAIL stray leaked into the join"; fail=1; }
 grep -q "^flexrv: 1 v4 files" run6.log && echo "ok   v6: one FlexRV results file counted" || { echo "FAIL v6 flexrv count: $(grep '^flexrv' run6.log)"; fail=1; }
+grep -q "^spaRegionNA: 2 rescale saddlepoint(s) returned nothing (LEDGER #181); skato/TraitA 2" run6.log && echo "ok   v6: the #181 sidecar is scanned and counted by arm/trait" || { echo "FAIL spaRegionNA line: $(grep spaRegionNA run6.log)"; fail=1; }
+gzip -dc out6/xx.spaRegionNA.v6.tsv.gz | awk -F'\t' 'NR>1 && $3=="sk6-xx-traita" && $6=="G5" && $14=="NaN"' | grep -q . && echo "ok   v6: spaRegionNA table row" || { echo "FAIL spaRegionNA table"; fail=1; }
+grep -q "^spaRegionNA: 0 rescale" run.log && echo "ok   v4: no #181 sidecar, 0 reported" || { echo "FAIL v4 spaRegionNA"; fail=1; }
+grep -q "^flexrv: 1 v4 files, 0 fixed, 0 v7; skato: 1 files" run6.log && echo "ok   v6: the #181 sidecar is not counted as a results file" || { echo "FAIL sidecar counted"; fail=1; }
 (( fail )) && { echo "SELFTEST FAILED"; exit 1; }
-echo "selftest OK: 27 checks"
+echo "selftest OK: 31 checks"
