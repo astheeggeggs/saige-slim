@@ -19,6 +19,7 @@ Do not treat a blank in that section as "default".
 | the #176 stretch-gate fix (the notebook's `IMG12`) | `gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-152ffd8c` |
 | LEDGER #179 (the notebook's `IMG13`, twelve commits after IMG12: #179, #171, the sidecar/tool fixes; also `astheeggeggs/saige-slim:1.5.2-dev-8bffa0ca`) | `gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-8bffa0ca` |
 | `--is_output_log10P` (the notebook's `IMG14`, 1c3f89b5 + the pkgdown index fix; also `astheeggeggs/saige-slim:1.5.2-dev-524a299f`) | `gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-524a299f` |
+| **IMG17: LEDGER #181 accounting** (b5456dee; `SPA_pval_status` -- every non-converged rescale saddlepoint counted, named, dumped; IMG16's counter was blind; also `astheeggeggs/saige-slim:1.5.2-dev-b5456dee`) | `gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-b5456dee` |
 | **IMG16: LEDGER #181** (3a6d81fa; the region path's R-side saddlepoint NaN killed HTN chromosomes on IMG15 -- kernels refuse a non-finite saddle, the rescale's caller counts/names/dumps; `docs/state/handoff-2026-10-16-region-spa-na.md`; also `astheeggeggs/saige-slim:1.5.2-dev-3a6d81fa`) | `gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-3a6d81fa` |
 | **IMG15: the log10 fix** (f4a316d5; IMG14 LOST A CHROMOSOME with `LOG10P=TRUE`, `docs/state/handoff-2026-10-14-log10p.md` addendum; also `astheeggeggs/saige-slim:1.5.2-dev-f4a316d5`) | `gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-f4a316d5` |
 
