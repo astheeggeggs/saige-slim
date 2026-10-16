@@ -35,6 +35,10 @@ else
 fi
 FX="${BASE}/${ANC}/flexrv_${RUNTAG}"; FXF="${BASE}/${ANC}/flexrv_${RUNTAG}_fixed"; SK="${BASE}/${ANC}/skato_${RUNTAG}"
 FX7="${BASE}/${ANC}/${FLEXRV_V7_DIR:-flexrv_v7_checked}"
+# the fixed/v7 precedence is the v4 era's splice of filtered reruns (sections 5-7); any other
+# tag's FlexRV files are complete runs in flexrv_<tag>/ alone (2026-10-16: a v6 run listed the
+# v4-era v7 directory -- harmless, the basenames never match, but wrong by construction)
+if [[ ${RUNTAG} != "v4" ]]; then FXF="${FX}/__no_fixed_for_${RUNTAG}__"; FX7="${FX}/__no_v7_for_${RUNTAG}__"; fi
 # 2026-10-15 (v6): a third arm, the am_moderate SKAT-O run (one mask, no single-variant
 # file), read into the CELLS table only (its cells are `am_moderate@<maf>`), never into the
 # per-gene best of the main SKAT-O arm; absent for v4. And a FLOOR table: every row whose
@@ -46,12 +50,19 @@ AM="${BASE}/${ANC}/am_${RUNTAG}"
 # `K v7` provenance line reads STALE (2026-10-04: spaPinned, exactByWeightAboveCap
 # and stretchGate were missing once flexrv_v8_checked carried them)
 SIDECARS='\.(singleAssoc|markerList|pooledTests|skatoMethod|skatFailures|spaFallbacks|chrStatus|exactByWeight|exactByWeightAboveCap|spaPinned|stretchGate|spliceStatId|splice)\.txt(\.gz)?$'
-lsd "${FX}/*.txt.gz"  | grep -E '\.txt\.gz$' | grep -vE "${SIDECARS}" > fx.list || true
-lsd "${FXF}/*.txt.gz" | grep -E '\.txt\.gz$' | grep -vE "${SIDECARS}" > fxf.list || true
-lsd "${SK}/*.txt.gz"  | grep -E '\.txt\.gz$' | grep -vE "${SIDECARS}" > sk.list || true
-lsd "${FX7}/*.txt.gz" | grep -E '\.txt\.gz$' | grep -vE "${SIDECARS}" > fx7.list || true
-lsd "${AM}/*.txt.gz"  | grep -E '\.txt\.gz$' | grep -vE "${SIDECARS}" > am.list || true
-echo "flexrv: $(wc -l < fx.list) v4 files, $(wc -l < fxf.list) fixed, $(wc -l < fx7.list) v7; skato: $(wc -l < sk.list) files"
+# Only the run's own job files are results files (2026-10-16: a stray fxv5-* filtered rerun
+# sat in sas/flexrv_v6 and would have been summarised as a second BenIntNeo). v4 jobs were
+# named fxv4-/skv4-, later tags fx<N>-/sk<N>-/am<N>-; anything else in the directory is listed
+# in the log as excluded and never read.
+if [[ ${RUNTAG} == "v4" ]]; then PFX_FX="fxv4-"; PFX_SK="skv4-"; PFX_AM="amv4-"; else n="${RUNTAG#v}"; PFX_FX="fx${n}-"; PFX_SK="sk${n}-"; PFX_AM="am${n}-"; fi
+keep(){ grep -E '\.txt\.gz$' | grep -vE "${SIDECARS}" | awk -v pfx="$1" '{ b=$0; sub(/.*\//, "", b); if (index(b, pfx) == 1) print; else print "excluded (not " pfx "*): " $0 > "/dev/stderr" }'; }
+lsd "${FX}/*.txt.gz"  | keep "${PFX_FX}" > fx.list  2>> excluded.log || true
+lsd "${FXF}/*.txt.gz" | keep "${PFX_FX}" > fxf.list 2>> excluded.log || true
+lsd "${SK}/*.txt.gz"  | keep "${PFX_SK}" > sk.list  2>> excluded.log || true
+lsd "${FX7}/*.txt.gz" | keep "${PFX_FX}" > fx7.list 2>> excluded.log || true
+lsd "${AM}/*.txt.gz"  | keep "${PFX_AM}" > am.list  2>> excluded.log || true
+if [[ -s excluded.log ]]; then echo "EXCLUDED $(wc -l < excluded.log | tr -d " ") file(s) whose basename is not this run's:"; cat excluded.log; fi
+echo "flexrv: $(wc -l < fx.list | tr -d " ") v4 files, $(wc -l < fxf.list | tr -d " ") fixed, $(wc -l < fx7.list | tr -d " ") v7; skato: $(wc -l < sk.list | tr -d " ") files"
 echo "am_moderate: $(wc -l < am.list | tr -d " ") files"
 : > floor.long
 # --- the chromosome scan (2026-10-16): every job's chrStatus sidecar, all three arms. A job

@@ -74,6 +74,8 @@ for path, lines in [("base/xx/skato_v6/sk6-xx-traita.TraitA.xx.chr1-22.txt.gz", 
                     ("base/xx/flexrv_v6/fx6-xx-traita.TraitA.xx.chr1-22.txt.gz", fx6)]:
     gzip.open(path, "wt").write("\n".join(lines) + "\n")
 gzip.open("base/xx/am_v6/am6-xx-traita.TraitA.xx.chr1-22.singleAssoc.txt.gz", "wt").write("# no singleAssoc output: SINGLE_IN_GROUP=FALSE\n")
+# a STRAY from another run tag in the v6 directory: excluded by its basename, named in the log
+gzip.open("base/xx/flexrv_v6/fxv5-xx-traita.TraitA.xx.chr1-22.txt.gz", "wt").write("\n".join([FH, fx("G1","W1","1e-30","-30"), cau("G1","1e-29","-29")]) + "\n")
 # chrStatus sidecars: two clean, one that lost chr8 (the job still delivered)
 gzip.open("base/xx/skato_v6/sk6-xx-traita.TraitA.xx.chr1-22.chrStatus.txt.gz", "wt").write("requested\t1 22\nfailed\tnone\nrefused_by_gate\tnone\nskipped_no_region\tnone\n")
 gzip.open("base/xx/am_v6/am6-xx-traita.TraitA.xx.chr1-22.chrStatus.txt.gz", "wt").write("requested\t1 22\nfailed\tnone\nrefused_by_gate\tnone\nskipped_no_region\tnone\n")
@@ -95,5 +97,8 @@ grep -q "am_moderate: 1 files" run6.log && echo "ok   v6: am listing line (the s
 grep -q "^chrStatus: 3 jobs scanned, 1 with a failed chromosome: flexrv/fx6-xx-traita(chr 8)" run6.log && echo "ok   v6: chromosome scan names the job that lost chr8" || { echo "FAIL chrStatus line: $(grep chrStatus run6.log)"; fail=1; }
 gzip -dc out6/xx.chrstatus.v6.tsv.gz | awk -F'\t' 'NR>1 && $3=="fx6-xx-traita" && $5=="8"' | grep -q . && echo "ok   v6: chrstatus table row" || { echo "FAIL chrstatus table"; fail=1; }
 grep -q "^chrStatus: 0 jobs scanned, 0 with a failed chromosome$" run.log && echo "ok   v4: no sidecars, scan reports 0/0" || { echo "FAIL v4 chrStatus line: $(grep chrStatus run.log)"; fail=1; }
+grep -q "^EXCLUDED 1 file(s)" run6.log && grep -q "excluded (not fx6-\*): .*fxv5-xx-traita" run6.log && echo "ok   v6: the stray fxv5 file is excluded and named" || { echo "FAIL stray exclusion: $(grep -i exclud run6.log)"; fail=1; }
+awk -F'\t' 'NR>1 && $2=="TraitA" && $3=="G1" && $5=="0"' out6.tsv | grep -q . && echo "ok   v6: the real fx6 file's Cauchy p (0) was used, not the stray's (1e-29)" || { echo "FAIL stray leaked into the join"; fail=1; }
+grep -q "^flexrv: 1 v4 files" run6.log && echo "ok   v6: one FlexRV results file counted" || { echo "FAIL v6 flexrv count: $(grep '^flexrv' run6.log)"; fail=1; }
 (( fail )) && { echo "SELFTEST FAILED"; exit 1; }
-echo "selftest OK: 24 checks"
+echo "selftest OK: 27 checks"
