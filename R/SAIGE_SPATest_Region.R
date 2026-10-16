@@ -544,6 +544,8 @@ region_postprocess <- function(outList,
                 if (record_pooled) {
                   spaPinnedRecord("region_rescale", regionName, AnnoName, maxMAFName,
                                   if (isMultiWeight) weightNames[r] else "", model_index, re_phi$pinned)
+                  spaRegionNARecord("region_rescale", regionName, AnnoName, maxMAFName,
+                                    if (isMultiWeight) weightNames[r] else "", re_phi$spa_na) # LEDGER #181
                 }
               }
               groupOutList <- skat_fun(Score, Phi, r.corr, regionTestType)
@@ -1011,6 +1013,7 @@ SAIGE.Region <- function(mu,
   }
   cat("Region marker loop will use ", nThreads, " in-process threads.\n", sep = "")
   skatFailureReset() # LEDGER #57: per-run accounting, R/SkatFailures.R
+  spaRegionNAReset() # LEDGER #181: per-run accounting, R/SpaRegionNA.R
   resetSpaFallbackRecordsInCPP() # LEDGER #164: per-run accounting, R/SpaFallbacks.R
   resetExactByWeightRecordsInCPP() # LEDGER #172: per-run accounting, R/ExactByWeight.R
   resetSpaPinnedRecordsInCPP() # LEDGER #174: per-run accounting, R/SpaPinned.R
@@ -1995,6 +1998,7 @@ SAIGE.Region <- function(mu,
   exactByWeightAboveCapSummary(OutputFile) # LEDGER #176: observation only
   stretchGateSummary(OutputFile) # LEDGER #176: observation only
   spaPinnedSummary(OutputFile) # LEDGER #174
+  spaRegionNASummary(OutputFile) # LEDGER #181
   skatoDedupeSummary()
   burdenMemoSummary()
   # LEDGER #127: how each region's pooled (Cauchy) row was formed -- cells

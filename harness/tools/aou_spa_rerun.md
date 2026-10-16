@@ -2241,6 +2241,34 @@ runner log (`<job>.log` sorts after `-stderr.log`); the SAIGE output is the `-st
 was taken when nothing had been delivered -- without clearing it the pass resubmits all 806),
 `spot = False` in `fleet()`, unarmed to see the list, armed per set, `save_runs()`.
 
+### 19.4c The summary job's chromosome scan found four lost chromosomes (2026-10-16): LEDGER #181
+
+afr HTN only: `sk6-afr-htn-b2` (chr 5, 20), `am6-afr-htn-b0/b1/b2` (chr 6, 12, 5); `Error in if
+(VarQ_2 == 0)` in the region path's burden rescale, a NaN from the R-side saddlepoint outside
+the per-cell catch (`docs/state/handoff-2026-10-16-region-spa-na.md`). Fixed the same day
+(the NaN is dumped, counted, named, and the rescale takes the normal p as `SPA_pval` itself
+does on non-convergence); image IMG16. The four jobs are rerun in full on IMG16 with
+`SPA_DUMP=1` (the dumps say which kernel path made the NaN), then afr's summary once more.
+Every other ancestry's scan is read the same way before its pass 2.
+
+```python
+IMG16 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-<fix commit>"
+redo = ["sk6-afr-htn-b2", "am6-afr-htn-b0", "am6-afr-htn-b1", "am6-afr-htn-b2"]
+for nm in redo:
+    r = RUNS[nm]; env = dict(r["env"]); env["SPA_DUMP"] = "1"
+    kind = nm[:3]; grp = {"sk6": nr_grp, "am6": am_grp5, "fx6": fx_grp}[kind]
+    submit(name=nm, image=IMG16, masks=r["masks"], fasttest=r["fasttest"], outdir=r["outdir"], anc=r["anc"],
+           pheno=r["pheno"], trait=r["trait"], firth=r["firth"], env=env, geno=r["geno"], chrs=r["chrs"],
+           plk=lambda c, a=r["anc"]: cod(c, a), grp=grp, testtype="group", machine_type=r["machine_type"],
+           spot=False, pooled=True, sidecars=True, sparse_grm=r["sparse_grm"])
+save_runs()
+```
+
+Read each rerun's log for `Region saddlepoint NA: N ...` and `chrStatus` `failed none`; then
+`aou_spa_dumpcheck.sh` is NOT the tool for the R dumps (different header) -- read them where
+the data lives: `n_dropped` in the header says whether the pinned guard emptied the vector,
+and a vector with no non-zero `g` says the same.
+
 ### 19.5 Before any reading: the chromosome scan -- NOW DONE BY PASS 1 (2026-10-16)
 
 The notebook version below killed a session (2,418 sidecars at ~2 s each through `gcloud cat`,

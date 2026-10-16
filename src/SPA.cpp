@@ -73,7 +73,7 @@ void SPA_ws(const arma::vec & mu, const arma::vec & g, double q, double qinv, do
         if(outuni1.Isconverge && mirrorUnattainable){
                 SPASaddle getSaddle1 = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp, ws);
                 ws.diagQSaddle = getSaddle1.isSaddle ? 1 : 0;
-                if(getSaddle1.isSaddle){
+                if(getSaddle1.isSaddle && std::isfinite(getSaddle1.pval)){   // LEDGER #181: a non-finite saddle is not a saddle
                         pval = logp ? getSaddle1.pval : std::abs(getSaddle1.pval);
                         isSPAConverge = true;
                         return;
@@ -89,7 +89,7 @@ void SPA_ws(const arma::vec & mu, const arma::vec & g, double q, double qinv, do
         if(outuni1.Isconverge && !outuni2.Isconverge && !mirrorUnattainable){
                 SPASaddle sq = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp, ws);
                 ws.diagQSaddle = sq.isSaddle ? 1 : 0;
-                if(sq.isSaddle){
+                if(sq.isSaddle && std::isfinite(sq.pval)){   // LEDGER #181
                         const double p1 = logp ? std::exp(sq.pval) : std::abs(sq.pval);
                         double gmax = 0.0;
                         for(arma::uword e = 0; e < g.n_elem; e++){ gmax = std::max(gmax, std::fabs(g(e))); }
@@ -153,6 +153,9 @@ void SPA_ws(const arma::vec & mu, const arma::vec & g, double q, double qinv, do
                         // the CGF overflow on the BenIntNeo cells
                         Isconverge=false; ws.failReason = !outuni1.Isconverge ? 1 : (ws.diagQSaddle == 0 ? 3 : 2);
                 }
+        // LEDGER #181: the both-roots sum can be non-finite too (a NaN saddle value
+        // with isSaddle true); it is a non-convergence, never a p
+        if(!std::isfinite(pval)){ pval = pval_noadj; Isconverge = false; ws.failReason = 2; }
         isSPAConverge = Isconverge;
 	//std::cout << "pval " << pval << std::endl;
 	//result["pvalue"] = pval;
@@ -218,7 +221,7 @@ void SPA_fast_ws(const arma::vec & g, double q, double qinv, double pval_noadj, 
         if(outuni1.Isconverge && mirrorUnattainable){
                 SPASaddle getSaddle1 = Get_Saddle_Prob_fast_Binom_core(outuni1.root, g, q, gNB, muNB, NAmu, NAsigma, logp, ws);
                 ws.diagQSaddle = getSaddle1.isSaddle ? 1 : 0;
-                if(getSaddle1.isSaddle){
+                if(getSaddle1.isSaddle && std::isfinite(getSaddle1.pval)){   // LEDGER #181: a non-finite saddle is not a saddle
                         pval = logp ? getSaddle1.pval : std::abs(getSaddle1.pval);
                         isSPAConverge = true;
                         return;
@@ -234,7 +237,7 @@ void SPA_fast_ws(const arma::vec & g, double q, double qinv, double pval_noadj, 
         if(outuni1.Isconverge && !outuni2.Isconverge && !mirrorUnattainable){
                 SPASaddle sq = Get_Saddle_Prob_fast_Binom_core(outuni1.root, g, q, gNB, muNB, NAmu, NAsigma, logp, ws);
                 ws.diagQSaddle = sq.isSaddle ? 1 : 0;
-                if(sq.isSaddle){
+                if(sq.isSaddle && std::isfinite(sq.pval)){   // LEDGER #181
                         const double p1 = logp ? std::exp(sq.pval) : std::abs(sq.pval);
                         double gmax = 0.0;
                         for(arma::uword e = 0; e < g.n_elem; e++){ gmax = std::max(gmax, std::fabs(g(e))); }
@@ -295,6 +298,9 @@ void SPA_fast_ws(const arma::vec & g, double q, double qinv, double pval_noadj, 
                         // the CGF overflow on the BenIntNeo cells
                         Isconverge=false; ws.failReason = !outuni1.Isconverge ? 1 : (ws.diagQSaddle == 0 ? 3 : 2);
         }
+        // LEDGER #181: the both-roots sum can be non-finite too (a NaN saddle value
+        // with isSaddle true); it is a non-convergence, never a p
+        if(!std::isfinite(pval)){ pval = pval_noadj; Isconverge = false; ws.failReason = 2; }
 	isSPAConverge = Isconverge;
         //result["pvalue"] = pval;
         //result["Isconverge"] = Isconverge;
@@ -356,7 +362,7 @@ double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv
         if(outuni1.Isconverge && mirrorUnattainable){
                 SPASaddle getSaddle1 = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp, ws);
                 ws.diagQSaddle = getSaddle1.isSaddle ? 1 : 0;
-                if(getSaddle1.isSaddle){
+                if(getSaddle1.isSaddle && std::isfinite(getSaddle1.pval)){   // LEDGER #181: a non-finite saddle is not a saddle
                         pval = logp ? getSaddle1.pval : std::abs(getSaddle1.pval);
                         isSPAConverge = true;
                         return pval;
@@ -372,7 +378,7 @@ double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv
         if(outuni1.Isconverge && !outuni2.Isconverge && !mirrorUnattainable){
                 SPASaddle sq = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp, ws);
                 ws.diagQSaddle = sq.isSaddle ? 1 : 0;
-                if(sq.isSaddle){
+                if(sq.isSaddle && std::isfinite(sq.pval)){   // LEDGER #181
                         const double p1 = logp ? std::exp(sq.pval) : std::abs(sq.pval);
                         double gmax = 0.0;
                         for(arma::uword e = 0; e < g.n_elem; e++){ gmax = std::max(gmax, std::fabs(g(e))); }
@@ -430,6 +436,9 @@ double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv
                         pval = pval_noadj;
                         Isconverge=false;
                 }
+        // LEDGER #181: the both-roots sum can be non-finite too (a NaN saddle value
+        // with isSaddle true); it is a non-convergence, never a p
+        if(!std::isfinite(pval)){ pval = pval_noadj; Isconverge = false; }
         isSPAConverge = Isconverge;
 
 	return(pval);

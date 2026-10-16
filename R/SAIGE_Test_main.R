@@ -725,6 +725,7 @@ SPAGMMATtest <- function(bedFile = "",
           pinned = getSpaPinnedModelInCPP(as.integer(k - 1L)) # LEDGER #174
         )
         spaPinnedRecord("conditioning_rescale", "", "", "", "", k, G2condList$pinned)
+        spaRegionNARecord("conditioning_rescale", "", "", "", "", G2condList$spa_na) # LEDGER #181
         # print(G2condList)
         scaleFactorVec <- as.vector(G2condList$scaleFactor)
         # print(scaleFactorVec)

@@ -889,6 +889,18 @@ declarations sit at the top of `src/Main.cpp`.
   so the gate could not see any of it; `test-step2-log10p.R` now drives a
   synthetic extreme-tail ladder (p to 1e-26,000). Do not run `LOG10P=TRUE` on
   IMG14.
+- **The saddlepoint the region path runs from R can return NaN, and that used to kill
+  the chromosome** (LEDGER #181, 2026-10-16: afr HTN, four production jobs delivered as
+  SUCCESS with `chrStatus` the only record). `get_newPhi_scaleFactor_traitType` calls
+  `SPA_pval` for the burden RESCALE of Phi (not a reported p); a non-finite value is now
+  dumped under `SAIGE_SPA_DUMP_DIR`, counted (`Region saddlepoint NA: N ...`), named in
+  `<SAIGEOutputFile>.spaRegionNA.txt` and replaced by the normal p with the convergence
+  flag FALSE -- `SPA_pval`'s own non-convergence behaviour, disclosed -- and the three kernels
+  (`SPA_pval`, `SPA_ws`, `SPA_fast_ws`) no longer return a non-finite saddle value as a
+  converged one (the #168 early returns require `std::isfinite`). **Any value computed
+  in R outside the per-cell catch must be total**: three chromosomes have now died on an
+  `if` over NA (#170, the IMG14 log10 defect, #181). `R/SpaRegionNA.R`;
+  `SAIGE_SPA_PLANT_NA_R=1` is the plant.
 - **A SKAT kernel failure is counted, not hidden** (LEDGER #57): the cell's
   rows stay NA, the run prints `SKAT failures: N ...` before `Analysis done!`,
   and `<SAIGEOutputFile>.skatFailures.txt` names each failed cell with the

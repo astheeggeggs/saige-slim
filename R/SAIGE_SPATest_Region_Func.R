@@ -344,7 +344,9 @@ SPA_ER_kernel_related_Phiadj_fast_new <- function(p.new, Score, Phi, p.value_bur
   VarQ <- sum(G2_adj_n)
   Q_b <- sum(zscore.all_1)^2
   VarQ_2 <- Q_b / qchisq(p.value_burden, df = 1, ncp = 0, lower.tail = FALSE, log.p = TRUE)
-  if (VarQ_2 == 0) {
+  # LEDGER #181: an `if` on NA here killed a chromosome; the caller now never
+  # passes a non-finite p, and this guard is the second net
+  if (is.na(VarQ_2) || VarQ_2 == 0) {
     r <- 1
   } else {
     r <- VarQ / VarQ_2
@@ -406,6 +408,7 @@ get_newPhi_scaleFactor_traitType <- function(q.sum, mu.a, g.sum, p.new, Score, P
   pval_noadj <- pchisq((q_adj - m1)^2 / var1, lower.tail = FALSE, df = 1, log.p = TRUE)
   isSPAConverge <- TRUE
   pinned_done <- list(n_dropped = 0L, mass = 0, refused = FALSE)
+  spa_na <- NULL
   if (abs(q_adj - m1) / sqrt(var1) < 2) {
     p.value_burden <- pval_noadj
   } else {
@@ -426,10 +429,28 @@ get_newPhi_scaleFactor_traitType <- function(q.sum, mu.a, g.sum, p.new, Score, P
       }
     }
     p.value_burden <- SPA_pval(mu.a, g.sum, q_adj, qinv, pval_noadj, .Machine$double.eps^0.25, TRUE, traitType, isSPAConverge)
+    if (identical(Sys.getenv("SAIGE_SPA_PLANT_NA_R", ""), "1")) {
+      p.value_burden <- NA_real_ # the test plant (LEDGER #181)
+    }
+    # LEDGER #181 (2026-10-16): the kernel's value went straight into an `if`
+    # in SPA_ER_kernel_related_Phiadj_fast_new; a NaN there errored outside the
+    # per-cell catch and killed the chromosome (afr HTN, four jobs). A
+    # non-finite p is dumped, recorded by the caller (which has the cell's
+    # names) and replaced by the normal-approximation p, DISCLOSED.
+    if (!is.finite(p.value_burden)) {
+      spa_na <- list(
+        n_carriers = sum(g.sum != 0), n_dropped = pinned_done$n_dropped, q = q_adj,
+        pval_noadj = pval_noadj, value = p.value_burden,
+        dump = spaRegionNADump(mu.a, g.sum, q_adj, qinv, pval_noadj, pinned_done$n_dropped)
+      )
+      p.value_burden <- pval_noadj
+      isSPAConverge <- FALSE
+    }
   }
 
   re_phi <- SPA_ER_kernel_related_Phiadj_fast_new(p.new, Score, Phi, p.value_burden, regionTestType)
   re_phi$pinned <- pinned_done
+  re_phi$spa_na <- spa_na
   re_phi
 }
 
