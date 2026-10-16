@@ -2557,3 +2557,13 @@ its hits past 2.5e-6 about n x 2.5e-6 (a handful at most); more than that, conce
 sparse rungs, is the quantitative-trait sparse-rung inflation of 19.8 and sizes the filter. On the
 production group, AM must beat RAND (more hits, sharper on most pairs); if it does not, FlexRV's
 margin over SKAT-O is the machinery, not the score.
+
+### 19.10 `NEFF` (2026-10-16): the effective-carrier column in production output
+
+`--is_output_nEff` (`docs/state/handoff-2026-10-16-neff-column.md`) adds `nEff_Burden` after
+`SE_Burden` on both region paths: Kish's effective number of carriers of the cell's burden
+vector, NA on the pooled row, no p-value changed. The wrapper drop-in takes `NEFF` (default
+TRUE; FALSE for a partial rerun to be spliced into an older file, whose header check refuses the
+extra column). Needs the image built from the column's commit or later. The reading rule, once
+the random-score null has sized it: a FlexRV hit below ~10 effective carriers is reported with
+that caveat or filtered at the meta-analysis stage.

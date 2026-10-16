@@ -261,6 +261,27 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// setOutputNEffInCPP
+void setOutputNEffInCPP(bool t_isOutputNEff);
+RcppExport SEXP _SAIGE_setOutputNEffInCPP(SEXP t_isOutputNEffSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< bool >::type t_isOutputNEff(t_isOutputNEffSEXP);
+    setOutputNEffInCPP(t_isOutputNEff);
+    return R_NilValue;
+END_RCPP
+}
+// kishNEffInCPP
+double kishNEffInCPP(arma::vec t_x);
+RcppExport SEXP _SAIGE_kishNEffInCPP(SEXP t_xSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type t_x(t_xSEXP);
+    rcpp_result_gen = Rcpp::wrap(kishNEffInCPP(t_x));
+    return rcpp_result_gen;
+END_RCPP
+}
 // setMarker_GlobalVarsInCPP
 void setMarker_GlobalVarsInCPP(bool t_isOutputMoreDetails, int t_marker_chunksize);
 RcppExport SEXP _SAIGE_setMarker_GlobalVarsInCPP(SEXP t_isOutputMoreDetailsSEXP, SEXP t_marker_chunksizeSEXP) {
@@ -2434,6 +2455,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_setAssocTest_GlobalVarsInCPP_indexInModel_male", (DL_FUNC) &_SAIGE_setAssocTest_GlobalVarsInCPP_indexInModel_male, 1},
     {"_SAIGE_setAssocTest_GlobalVarsInCPP_X_PARregion_mat", (DL_FUNC) &_SAIGE_setAssocTest_GlobalVarsInCPP_X_PARregion_mat, 1},
     {"_SAIGE_setOutputLog10PInCPP", (DL_FUNC) &_SAIGE_setOutputLog10PInCPP, 1},
+    {"_SAIGE_setOutputNEffInCPP", (DL_FUNC) &_SAIGE_setOutputNEffInCPP, 1},
+    {"_SAIGE_kishNEffInCPP", (DL_FUNC) &_SAIGE_kishNEffInCPP, 1},
     {"_SAIGE_setMarker_GlobalVarsInCPP", (DL_FUNC) &_SAIGE_setMarker_GlobalVarsInCPP, 2},
     {"_SAIGE_setRegion_GlobalVarsInCPP", (DL_FUNC) &_SAIGE_setRegion_GlobalVarsInCPP, 4},
     {"_SAIGE_log10PrintedPval_cpp", (DL_FUNC) &_SAIGE_log10PrintedPval_cpp, 1},

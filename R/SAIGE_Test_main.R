@@ -125,6 +125,7 @@ parse_X_PARregion_token <- function(token) {
 #' @param flexRV_maxMAF numeric. The single max MAF of a FlexRV run (the paper's variant filter). Replaces maxMAF_in_groupTest; giving both with different values is an error. Not 0.001 rescales the mafbeta transforms to the new boundary (and names them mafbeta<b>@<maxMAF>) but leaves the MAC ladder's values alone; it does set the bound 2 * N * flexRV_maxMAF at or above which a mac rung is dropped (see flexRV_MAFTransforms). By default, 0.001
 #' @param is_output_weight_column logical. Whether to force the multi-weight output schema even when only a single weight set is in play: the Weight column (labeled with the set's name) right after max_MAF, and for SKAT-O the additive Pvalue_ACATV/Pvalue_ACATO columns and an always-emitted Cauchy row. Useful for a stable schema across runs with different weight configurations. With more than one weight set the schema is always on and this flag is redundant. By default, FALSE
 #' @param is_output_log10P logical. Whether to add log10 p-value columns to the set-based results (after SE_Burden): log10_Pvalue, log10_Pvalue_Burden, log10_Pvalue_SKAT on the SKAT-O path (plus log10_Pvalue_ACATV/ACATO with more than one weight set), log10_Pvalue_Burden on the BURDEN path, and the same for the pooled Cauchy row, which is then combined in log space. The value is exact in log space wherever the kernel works there (the SKAT-O saddlepoint tail, the burden chi-square, the C++ score test's underflow branch, the Cauchy combination) and log10(p) elsewhere, so a p-value that underflows double precision (below ~1e-308) is reported as a finite log10 rather than 0, and a pooled row over such a cell is no longer 0. FALSE (default) leaves every existing column and byte unchanged. By default, FALSE
+#' @param is_output_nEff logical. Whether to add nEff_Burden to the set-based results (after SE_Burden and the log10 columns): Kish's effective number of carriers of the cell's burden vector, (sum x)^2 / sum x^2 over the per-sample weighted genotype sums the burden test saw (the ultra-rare pseudo-marker included), for every cell and weight set on both region paths; NA on the pooled Cauchy row. A steeply weighted set of many singletons can rest on two or three people, and on a quantitative trait that is an outlier person rather than a gene: the column lets a meta-analysis filter such cells. Changes no p-value. By default, FALSE
 #' @param is_output_markerList_in_groupTest logical. Whether to output the marker lists included in the set-based tests for each mask. By default, FALSE
 #' @param is_Firth_beta logical. Whether to estimate effect sizes using approx Firth, only for binary traits. By default, FALSE
 #' @param minCaseCount integer. Binary traits only. Refuse to TEST a null model that was fitted on fewer than this many cases. The count is read from the model file, so this also screens models fitted by a SAIGE that had no such gate. Below a few hundred cases the SKAT-O null tail is liberal (measured on this branch: 2.7x the nominal rate at p = 1e-4 with 100 cases, 1.5x at 1e-3 with 500). By default, 100; 0 disables the gate. SAIGE_FIT_GATES=0 disables every gate at once.
@@ -218,6 +219,7 @@ SPAGMMATtest <- function(bedFile = "",
                          is_no_weight_in_groupTest = FALSE,
                          is_output_markerList_in_groupTest = FALSE,
                          is_output_log10P = FALSE,
+                         is_output_nEff = FALSE,
                          is_fastTest = FALSE,
                          pval_cutoff_for_fastTest = 0.05,
                          max_MAC_use_ER = 4,
@@ -387,6 +389,10 @@ SPAGMMATtest <- function(bedFile = "",
   # --is_output_log10P: the BURDEN writer's columns (src/Main.cpp); set on both
   # paths (the marker path ignores it)
   setOutputLog10PInCPP(is_output_log10P)
+  setOutputNEffInCPP(is_output_nEff)
+  if (is_output_nEff) {
+    cat("nEff_Burden column (--is_output_nEff) is on: Kish's effective carrier count of each cell's burden vector\n")
+  }
   if (is_output_log10P) {
     cat("log10 p-value columns (--is_output_log10P) are on: log10_Pvalue* after SE_Burden,",
         "exact in log space where the kernel works there, the pooled row combined in log space\n")
@@ -868,6 +874,7 @@ SPAGMMATtest <- function(bedFile = "",
       pval_cutoff_for_fastTest,
       is_output_moreDetails,
       is_output_log10P = is_output_log10P,
+      is_output_nEff = is_output_nEff,
       weights_beta_mat = weights.beta,
       is_output_weight_column = is_output_weight_column,
       flexRV = flexRV,

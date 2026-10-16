@@ -238,6 +238,7 @@ region_postprocess <- function(outList,
                                # where the kernel worked there, and a log-space
                                # Cauchy row. FALSE keeps every byte as before.
                                is_output_log10P = FALSE,
+                               is_output_nEff = FALSE,
                                # The SKAT-O evaluator, injected so the cell loop
                                # can be driven twice by skato_parallel(): once to
                                # COLLECT every (Score, Phi) it would test, once to
@@ -621,6 +622,11 @@ region_postprocess <- function(outList,
                   ))
                 }
               }
+              if (is_output_nEff) {
+                # --is_output_nEff: Kish's effective carrier count of this cell's
+                # burden vector, computed once in C++ for both paths
+                resultDF$nEff_Burden <- outList$NEff_GroupVec[jmr]
+              }
 
               if (isCondition) {
                 if (traitType == "binary") {
@@ -849,6 +855,7 @@ region_postprocess <- function(outList,
             cctRow$Pvalue_ACATO <- get_CCT_pvalue(pval.Region$Pvalue_ACATO)
           }
         }
+        if (is_output_nEff) cctRow$nEff_Burden <- NA_real_
         if (is_output_log10P) {
           # the same combinations in log space (CCT_log10): a cell at 0 no
           # longer makes the pooled row 0
@@ -894,7 +901,8 @@ region_postprocess <- function(outList,
     # stated once and asserted against every written row). The #127 sidecar
     # records the region with Rows = 0 below, as before.
     if (is.null(pval.Region) && regionTestType != "BURDEN") {
-      pval.Region <- regionEmptyPooledRow(regionName, traitType, isCondition, isMultiWeight, is_output_log10P)
+      pval.Region <- regionEmptyPooledRow(regionName, traitType, isCondition, isMultiWeight, is_output_log10P,
+                                          is_output_nEff)
     }
     # LEDGER #127. One record per (region, model, pass). A region with one cell
     # writes no pooled row at all; it is still recorded, because a reader cannot
@@ -959,6 +967,7 @@ SAIGE.Region <- function(mu,
                          flexRV = NULL,
                          # --is_output_log10P (2026-10-14): log10 p-value columns
                          is_output_log10P = FALSE,
+                         is_output_nEff = FALSE,
                          # LEDGER #126: the min-group-MAC gate. C++ applies it on
                          # the BURDEN path; region_postprocess applies the same
                          # predicate on the SKAT-O path, which also reports
@@ -1386,7 +1395,7 @@ SAIGE.Region <- function(mu,
   # block) and stops on any drift, so this cannot silently disagree with them.
   if (regionTestType != "BURDEN" && !isappend) {
     for (k in seq_len(nModels)) {
-      cat(regionHeaderLine(traitTypes[k], isCondition, isMultiWeightSchema, is_output_log10P),
+      cat(regionHeaderLine(traitTypes[k], isCondition, isMultiWeightSchema, is_output_log10P, is_output_nEff),
           file = OutputFiles[k])
       scan$iswriteRegion[k] <- TRUE
     }
@@ -1527,7 +1536,8 @@ SAIGE.Region <- function(mu,
       weight_sets = weight_sets,
       minGroupMAC_in_BurdenTest = minGroupMAC_in_BurdenTest,
       model_index = k,
-      is_output_log10P = is_output_log10P
+      is_output_log10P = is_output_log10P,
+      is_output_nEff = is_output_nEff
     )
   }
   # Bind one model's post-processing result into the region's state.
@@ -1612,7 +1622,8 @@ SAIGE.Region <- function(mu,
       if (regionTestType != "BURDEN") {
         for (k in seq_len(nModels)) {
           S$pvalRegionK[k] <- list(regionEmptyPooledRow(regionName, traitTypes[k],
-                                                        isCondition, isMultiWeightSchema, is_output_log10P))
+                                                        isCondition, isMultiWeightSchema, is_output_log10P,
+                                                        is_output_nEff))
           pooledRecord(regionName, k, rows = 0L, refused = 0L, combined = 0L,
                        rule = pooledRule(numeric(0)), pvalue = NA_real_)
         }
@@ -1877,7 +1888,8 @@ SAIGE.Region <- function(mu,
         if (regionTestType != "BURDEN") {
           # LEDGER #116: the rows about to be written must carry exactly the
           # schema whose header the run wrote at start (R/RegionSchema.R)
-          regionAssertSchema(scan$pval.Region.all[[k]], traitTypes[k], isCondition, isMultiWeightSchema, is_output_log10P)
+          regionAssertSchema(scan$pval.Region.all[[k]], traitTypes[k], isCondition, isMultiWeightSchema, is_output_log10P,
+                             is_output_nEff)
           # The truncate-vs-append decision is untouched; only the HEADER moves,
           # to the first chunk that actually HAS rows (LEDGER #59).
           if (scan$Start) {

@@ -242,6 +242,23 @@ test_that("step2 FlexRV default-set BURDEN with the log10 p-value column matches
       "--is_output_log10P=TRUE"))
 })
 
+test_that("step2 group fastTest binary with nEff p-value columns matches golden (P81)", {
+  run_step2_case("plink_group_fastTest_neff.txt",
+    c(PLINK_ARGS(), "--chrom=1", "--minMAF=0", "--minMAC=0.5", "--LOCO=FALSE",
+      GRP_MODEL, SG_ARGS,
+      "--groupFile=./input/group_new_snpid.txt",
+      "--annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous",
+      "--maxMAF_in_groupTest=0.0001,0.001,0.01",
+      "--is_fastTest=TRUE", "--is_output_nEff=TRUE"),
+    extra_outputs = c(".singleAssoc.txt", ".singleAssoc.txt_temp"))
+})
+
+test_that("step2 FlexRV BURDEN with the nEff column (P82) matches golden", {
+  run_step2_case("plink_group_flexrv_burden_neff.txt",
+    c(PLINK_ARGS(), GRP_MODEL, SG_ARGS, FLEXRV_COMMON, "--r.corr=1", "--is_fastTest=FALSE",
+      "--is_output_nEff=TRUE"))
+})
+
 test_that("step2 FlexRV default-set BURDEN (quantitative, no collapse) matches golden", {
   run_step2_case("plink_group_flexrv_burden_quant.txt",
     c(PLINK_ARGS(), quant_model(), FLEXRV_COMMON, "--MACCutoff_to_CollapseUltraRare=0",

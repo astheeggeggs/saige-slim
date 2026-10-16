@@ -65,6 +65,7 @@ SPAGMMATtest(
   is_no_weight_in_groupTest = FALSE,
   is_output_markerList_in_groupTest = FALSE,
   is_output_log10P = FALSE,
+  is_output_nEff = FALSE,
   is_fastTest = FALSE,
   pval_cutoff_for_fastTest = 0.05,
   max_MAC_use_ER = 4,
@@ -214,6 +215,8 @@ the printed digits. Only for binary traits with is_Firth_beta = TRUE.}
 \item{is_output_markerList_in_groupTest}{logical. Whether to output the marker lists included in the set-based tests for each mask. By default, FALSE}
 
 \item{is_output_log10P}{logical. Whether to add log10 p-value columns to the set-based results (after SE_Burden): log10_Pvalue, log10_Pvalue_Burden, log10_Pvalue_SKAT on the SKAT-O path (plus log10_Pvalue_ACATV/ACATO with more than one weight set), log10_Pvalue_Burden on the BURDEN path, and the same for the pooled Cauchy row, which is then combined in log space. The value is exact in log space wherever the kernel works there (the SKAT-O saddlepoint tail, the burden chi-square, the C++ score test's underflow branch, the Cauchy combination) and log10(p) elsewhere, so a p-value that underflows double precision (below ~1e-308) is reported as a finite log10 rather than 0, and a pooled row over such a cell is no longer 0. FALSE (default) leaves every existing column and byte unchanged. By default, FALSE}
+
+\item{is_output_nEff}{logical. Whether to add nEff_Burden to the set-based results (after SE_Burden and the log10 columns): Kish's effective number of carriers of the cell's burden vector, (sum x)^2 / sum x^2 over the per-sample weighted genotype sums the burden test saw (the ultra-rare pseudo-marker included), for every cell and weight set on both region paths; NA on the pooled Cauchy row. A steeply weighted set of many singletons can rest on two or three people, and on a quantitative trait that is an outlier person rather than a gene: the column lets a meta-analysis filter such cells. Changes no p-value. By default, FALSE}
 
 \item{is_fastTest}{logical. Whether to use the fast mode for tests. By default, FALSE}
 

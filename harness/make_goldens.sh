@@ -1876,6 +1876,34 @@ run step2_plink_group_flexrv_burden_log10p.log R2 step2_SPAtests.R \
   --annotation_in_groupTest=lof:missense \
   --r.corr=1 --is_fastTest=FALSE --is_output_log10P=TRUE
 
+# P81-P82 (2026-10-16, --is_output_nEff): the nEff_Burden column -- Kish's
+# effective number of carriers of each cell's burden vector, (sum x)^2 / sum x^2
+# over the per-sample weighted sums the burden test saw -- after SE_Burden (and
+# after the log10 columns when both are on), NA on the pooled row, on both region
+# paths. P81 is P2's command plus the flag, P82 is P58's plus the flag; every
+# pre-existing column is byte-identical to P2's and P58's (test-step2-neff.R).
+# P81: SKAT-O with the nEff column
+run step2_plink_group_fastTest_neff.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_fastTest_neff.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid.txt \
+  --annotation_in_groupTest=lof,missense:lof,missense:lof:synonymous \
+  --maxMAF_in_groupTest=0.0001,0.001,0.01 \
+  --is_fastTest=TRUE --is_output_nEff=TRUE
+
+# P82: FlexRV BURDEN with the nEff column
+run step2_plink_group_flexrv_burden_neff.log R2 step2_SPAtests.R \
+  $PLINK_G \
+  --SAIGEOutputFile="$GOLD/step2/plink_group_flexrv_burden_neff.txt" \
+  --chrom=1 --minMAF=0 --minMAC=0.5 --LOCO=FALSE \
+  $GRP_MODEL $SG \
+  --groupFile=./input/group_new_snpid_flexrv.txt \
+  --flexRV_score=REVEL --flexRV_maxMAF=0.01 \
+  --annotation_in_groupTest=lof:missense \
+  --r.corr=1 --is_fastTest=FALSE --is_output_nEff=TRUE
+
 echo "### byte identity: PGEN reader vs PLINK reader (step0/step1)"
 PGEN_IDENTITY_FAILS=0
 check_identical() { # check_identical <plink-file> <pgen-file>

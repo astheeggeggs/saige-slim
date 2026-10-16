@@ -93,6 +93,14 @@ setOutputLog10PInCPP <- function(t_isOutputLog10P) {
     invisible(.Call('_SAIGE_setOutputLog10PInCPP', PACKAGE = 'SAIGE', t_isOutputLog10P))
 }
 
+setOutputNEffInCPP <- function(t_isOutputNEff) {
+    invisible(.Call('_SAIGE_setOutputNEffInCPP', PACKAGE = 'SAIGE', t_isOutputNEff))
+}
+
+kishNEffInCPP <- function(t_x) {
+    .Call('_SAIGE_kishNEffInCPP', PACKAGE = 'SAIGE', t_x)
+}
+
 setMarker_GlobalVarsInCPP <- function(t_isOutputMoreDetails, t_marker_chunksize) {
     invisible(.Call('_SAIGE_setMarker_GlobalVarsInCPP', PACKAGE = 'SAIGE', t_isOutputMoreDetails, t_marker_chunksize))
 }

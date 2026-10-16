@@ -889,6 +889,15 @@ declarations sit at the top of `src/Main.cpp`.
   so the gate could not see any of it; `test-step2-log10p.R` now drives a
   synthetic extreme-tail ladder (p to 1e-26,000). Do not run `LOG10P=TRUE` on
   IMG14.
+- **`--is_output_nEff` (2026-10-16) adds `nEff_Burden` after `SE_Burden`** (after the log10
+  columns when both are on) on both region paths: Kish's effective number of carriers of
+  the cell's burden vector, (sum x)^2 / sum x^2 over the per-sample weighted sums the test
+  saw (pseudo-marker included), computed once in C++ after the ultra-rare pass over the
+  carrier slots; NA on the pooled row; changes no p-value. Why: on AoU three eur Height
+  FlexRV-only hits were carried by sparse rungs with steep weights and rested on fewer
+  than five effective carriers -- on a quantitative trait that is an outlier person, not a
+  gene (no exact test caps the evidence there as it does for binary traits, LEDGER #172).
+  The column is for the meta-analysis to filter on. Goldens P81/P82; `test-step2-neff.R`.
 - **The saddlepoint the region path runs from R can return NaN, and that used to kill
   the chromosome** (LEDGER #181, 2026-10-16: afr HTN, four production jobs delivered as
   SUCCESS with `chrStatus` the only record). `get_newPhi_scaleFactor_traitType` calls

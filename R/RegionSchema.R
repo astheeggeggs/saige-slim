@@ -16,7 +16,8 @@
 # the first row actually written (SAIGE.Region), so a drift here cannot ship
 # silently: every golden run would stop.
 
-regionResultColnames <- function(traitType, isCondition, isMultiWeight, isLog10P = FALSE) {
+regionResultColnames <- function(traitType, isCondition, isMultiWeight, isLog10P = FALSE,
+                                 isNEff = FALSE) {
   cols <- c("Region", "Group", "max_MAF")
   if (isMultiWeight) cols <- c(cols, "Weight")
   cols <- c(cols, "Pvalue", "Pvalue_Burden", "Pvalue_SKAT")
@@ -27,6 +28,8 @@ regionResultColnames <- function(traitType, isCondition, isMultiWeight, isLog10P
     cols <- c(cols, "log10_Pvalue", "log10_Pvalue_Burden", "log10_Pvalue_SKAT")
     if (isMultiWeight) cols <- c(cols, "log10_Pvalue_ACATV", "log10_Pvalue_ACATO")
   }
+  # --is_output_nEff (2026-10-16): Kish's effective carrier count of the cell's burden vector
+  if (isNEff) cols <- c(cols, "nEff_Burden")
   if (isCondition) {
     cols <- c(cols, "Pvalue_cond", "Pvalue_Burden_cond", "Pvalue_SKAT_cond",
               "BETA_Burden_cond", "SE_Burden_cond")
@@ -37,8 +40,9 @@ regionResultColnames <- function(traitType, isCondition, isMultiWeight, isLog10P
 }
 
 # The header line fwrite() writes for that schema: tab-separated, one newline.
-regionHeaderLine <- function(traitType, isCondition, isMultiWeight, isLog10P = FALSE) {
-  cols <- regionResultColnames(traitType, isCondition, isMultiWeight, isLog10P)
+regionHeaderLine <- function(traitType, isCondition, isMultiWeight, isLog10P = FALSE,
+                             isNEff = FALSE) {
+  cols <- regionResultColnames(traitType, isCondition, isMultiWeight, isLog10P, isNEff)
   paste0(paste(cols, collapse = "\t"),
          "\n")
 }
@@ -51,8 +55,9 @@ regionHeaderLine <- function(traitType, isCondition, isMultiWeight, isLog10P = F
 # exactly as it would without it (a character NA would coerce a numeric
 # column and change its printed digits).
 regionEmptyPooledRow <- function(regionName, traitType, isCondition, isMultiWeight,
-                                 isLog10P = FALSE) {
-  cols <- regionResultColnames(traitType, isCondition, isMultiWeight, isLog10P)
+                                 isLog10P = FALSE,
+                                 isNEff = FALSE) {
+  cols <- regionResultColnames(traitType, isCondition, isMultiWeight, isLog10P, isNEff)
   row <- as.list(rep(NA, length(cols)))
   names(row) <- cols
   row$Region <- regionName
@@ -62,9 +67,10 @@ regionEmptyPooledRow <- function(regionName, traitType, isCondition, isMultiWeig
 
 # Stop if a data.frame of rows about to be written does not carry the schema
 # the run's header promised. NULL (a chunk with no rows) passes.
-regionAssertSchema <- function(df, traitType, isCondition, isMultiWeight, isLog10P = FALSE) {
+regionAssertSchema <- function(df, traitType, isCondition,
+                               isMultiWeight, isLog10P = FALSE, isNEff = FALSE) {
   if (is.null(df)) return(invisible(TRUE))
-  expected <- regionResultColnames(traitType, isCondition, isMultiWeight, isLog10P)
+  expected <- regionResultColnames(traitType, isCondition, isMultiWeight, isLog10P, isNEff)
   if (!identical(colnames(df), expected)) {
     stop("region results schema drift (LEDGER #116): the rows carry columns [",
          paste(colnames(df), collapse = ", "), "] but the header written at start was [",

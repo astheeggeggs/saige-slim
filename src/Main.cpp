@@ -77,6 +77,8 @@ void writeOutfile_BURDEN(std::string regionName,
 			std::vector<double> & BURDEN_log10p_Vec,   // --is_output_log10P
 			double cctlog10,
 			bool t_emitLog10,
+			arma::vec & NEff_GroupVec,             // --is_output_nEff
+			bool t_emitNEff,
 			unsigned int q_anno,
 			unsigned int q_maf,
 			unsigned int q_weight,
@@ -189,6 +191,7 @@ struct Step2Config {
   // --is_output_log10P (2026-10-14): the BURDEN writer adds log10_Pvalue_Burden
   // after SE_Burden and the pooled row is combined in log space
   bool isOutputLog10P = false;
+  bool isOutputNEff = false;     // --is_output_nEff (2026-10-16): Kish's effective carrier count per cell
   double maxMAFLimit = 0;
   unsigned int region_maxMarkers_cutoff = 0;   // maximal number of markers in one chunk, only used for region-based analysis to reduce memory usage
   bool isOutputMoreDetails = false;
@@ -755,6 +758,26 @@ void setAssocTest_GlobalVarsInCPP_X_PARregion_mat(arma::umat & t_X_PARregion_mat
 void setOutputLog10PInCPP(bool t_isOutputLog10P)
 {
   g_cfg.isOutputLog10P = t_isOutputLog10P;
+}
+
+// --is_output_nEff (2026-10-16): Kish's effective number of carriers of each
+// cell's burden vector, (sum x)^2 / sum x^2 over the per-sample weighted sums
+// the test saw (pre-residualisation; the pseudo-marker included), as a column.
+// A steeply weighted set of many singletons can rest on two or three people;
+// on a quantitative trait that is an outlier person, not a gene (runbook 19.8).
+// [[Rcpp::export]]
+void setOutputNEffInCPP(bool t_isOutputNEff)
+{
+  g_cfg.isOutputNEff = t_isOutputNEff;
+}
+
+// Kish's effective count of a vector: (sum x)^2 / sum x^2, 0 for an all-zero one.
+// [[Rcpp::export]]
+double kishNEffInCPP(arma::vec t_x)
+{
+  double s1 = 0.0, s2 = 0.0;
+  for(arma::uword i = 0; i < t_x.n_elem; i++){ s1 += t_x(i); s2 += t_x(i) * t_x(i); }
+  return (s2 > 0.0) ? (s1 * s1) / s2 : 0.0;
 }
 
 // [[Rcpp::export]]
@@ -3145,6 +3168,8 @@ Rcpp::List mainRegionInCPP(
   NumRare_GroupVec.zeros();
   arma::vec NumUltraRare_GroupVec(q_anno_maf_weight);
   NumUltraRare_GroupVec.zeros();
+  arma::vec NEff_GroupVec(q_anno_maf_weight);   // --is_output_nEff: Kish's effective carriers per cell
+  NEff_GroupVec.zeros();
   // Dead-surface sweep 2026-09-14 (C3): the function-scope gtildeVec,
   // MACgroup/MACcasegroup/MACcontrolgroup/AF_case/AF_ctrl, N_case_hom/
   // N_ctrl_het/N_case_het/N_ctrl_hom and N that were declared here were never
@@ -4464,6 +4489,18 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
     cs.clear(sc.urNwScratch, false);
   };
   runCellTests(q_anno_maf_weight, urPrepFn);
+  // --is_output_nEff: every cell's burden vector is complete here (the rare
+  // markers from the marker loop, the pseudo-marker from the pass above); the
+  // Kish count is over the carrier slots, so O(carriers x cells), and computed
+  // whether or not the column is written (R reads it only when it is).
+  for(unsigned int jmrK = 0; jmrK < q_anno_maf_weight; jmrK++){
+    double s1 = 0.0, s2 = 0.0;
+    for(std::size_t sl = 0; sl < cs.carriers.size(); sl++){
+      const double x = cs.sumAt((int32_t)sl, jmrK);
+      s1 += x; s2 += x * x;
+    }
+    NEff_GroupVec(jmrK) = (s2 > 0.0) ? (s1 * s1) / s2 : 0.0;
+  }
   // Serial post-pass, cell order: exactly the increments the loop body used
   // to make as it went (a cell with a carrier consumed a P1/P2 row whether
   // or not it was tested singly).
@@ -5094,6 +5131,8 @@ if(t_regionTestType == "BURDEN"){
 			BURDEN_log10p_Vec,
 			cctlog10,
 			g_cfg.isOutputLog10P,
+			NEff_GroupVec,
+			g_cfg.isOutputNEff,
 			q_anno,
 			q_maf,
 			q_weight,
@@ -5279,6 +5318,7 @@ OutList.push_back(W[km].iswriteOutput, "iswriteOutput");
  }
   OutList.push_back(NumRare_GroupVec, "NumRare_GroupVec");
   OutList.push_back(NumUltraRare_GroupVec, "NumUltraRare_GroupVec");
+  OutList.push_back(NEff_GroupVec, "NEff_GroupVec");   // --is_output_nEff
  if(t_regionTestType != "BURDEN" || t_isOutputMarkerList){
   OutList.push_back(annoMAFIndicatorMat, "annoMAFIndicatorMat");
  }
@@ -5671,6 +5711,7 @@ bool openOutfile(int t_modelIndex, std::string t_traitType, bool isappend, unsig
 		}
 		rw.group << "Pvalue_Burden\tBETA_Burden\tSE_Burden\t";
 		if(g_cfg.isOutputLog10P){ rw.group << "log10_Pvalue_Burden\t"; }   // --is_output_log10P
+		if(g_cfg.isOutputNEff){ rw.group << "nEff_Burden\t"; }   // --is_output_nEff
 		if(model.m_isCondition){
 			rw.group << "Pvalue_Burden_c\tBeta_Burden_c\tseBeta_Burden_c\t";
 		}
@@ -6169,6 +6210,8 @@ void writeOutfile_BURDEN(std::string regionName,
 			std::vector<double> & BURDEN_log10p_Vec,   // --is_output_log10P
 			double cctlog10,
 			bool t_emitLog10,
+			arma::vec & NEff_GroupVec,             // --is_output_nEff
+			bool t_emitNEff,
 			unsigned int q_anno,
 			unsigned int q_maf,
 			unsigned int q_weight,
@@ -6205,6 +6248,7 @@ void writeOutfile_BURDEN(std::string regionName,
            writeNumOrNA(rw.group, BURDEN_seBeta_Vec.at(i));
            rw.group << "\t";
            if(t_emitLog10){ writeLog10OrNA(rw.group, BURDEN_log10p_Vec.at(i)); rw.group << "\t"; }
+           if(t_emitNEff){ writeNumOrNA(rw.group, NEff_GroupVec(i)); rw.group << "\t"; }
            if(isCondition){
                rw.group << BURDEN_pval_cVec.at(i);
                rw.group << "\t";
@@ -6239,6 +6283,7 @@ void writeOutfile_BURDEN(std::string regionName,
      writeNumOrNA(rw.group, cctpval);
      rw.group << "\tNA\tNA\t";	
      if(t_emitLog10){ writeLog10OrNA(rw.group, cctlog10); rw.group << "\t"; }
+     if(t_emitNEff){ rw.group << "NA\t"; }
      if(isCondition){
 	writeNumOrNA(rw.group, cctpval_cond);
 	rw.group << "\tNA\tNA\t";

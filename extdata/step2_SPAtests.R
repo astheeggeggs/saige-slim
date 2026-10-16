@@ -122,6 +122,19 @@ option_list <- list(
     )
   ),
   make_option(
+    "--is_output_nEff",
+    type = "logical",
+    default = FALSE,
+    help = paste0(
+      "Add nEff_Burden to the set-based results: Kish's effective number of carriers ",
+      "of each cell's burden vector, (sum x)^2 / sum x^2 over the per-sample weighted ",
+      "genotype sums the burden test saw, for every cell and weight set on both region ",
+      "paths (NA on the pooled row). A steeply weighted set of many singletons can rest ",
+      "on two or three people; the column lets a meta-analysis filter such cells. ",
+      "Changes no p-value [default=FALSE]."
+    )
+  ),
+  make_option(
     "--is_output_log10P",
     type = "logical",
     default = FALSE,
@@ -955,6 +968,7 @@ fixed_params <- list(
   maxMAC_in_groupTest = maxMAC_in_groupTest,
   minGroupMAC_in_BurdenTest = opt$minGroupMAC_in_BurdenTest,
   is_output_log10P = opt[["is_output_log10P"]],
+  is_output_nEff = opt[["is_output_nEff"]],
   SKATO_screen_threshold = opt[["SKATO_screen_threshold"]],
   SKATO_tail_method = opt[["SKATO_tail_method"]],
   SKATO_tail_threshold = opt[["SKATO_tail_threshold"]],
