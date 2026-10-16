@@ -2462,3 +2462,32 @@ the figures are under `summary_v6/cmp/<anc>/`, the per-(ancestry, trait) QQ grid
 rerun for LEDGER #181 (19.4c); one stray `fxv5` run excluded from every ancestry's FlexRV
 directory by the summary tool's prefix guard; the notebook chromosome scan replaced by the
 summary job's.
+
+### 19.8 FlexRV outliers (2026-10-16): the sparse-rung shape on quantitative traits
+
+For eur's 138 FlexRV hits, the decades FlexRV sits below SKAT-O's best cell (`gap`), the best
+set and whether the pooled p is one set or many. The large gaps are textbook genes sharpened
+(ABCA1 +21 decades, LDLR +15, LCAT +14, ANGPTL3, PCSK9, LPL, PKD1, FBN1, IHH, ADAMTS10, BRCA1,
+MLH1), all exome-wide in SKAT-O too, best sets spread over the transforms. Of the 21 FlexRV-only
+hits, 19 have a SKAT-O cell between 2.5e-6 and 1e-3 (CFH for AMD at 1e-3 -> 1e-7, LDLR for CAD,
+IGF1R, ANTXR1, PPARG, NR1H3, INSR among them) and two have no SKAT-O signal at all.
+
+**The shape to hold back**: a hit carried by a sparse rung (`MACsparse` / `MACsparse` / `MACsparse`) with a
+steep score weighting on a QUANTITATIVE trait. `sbeta_b` is `s^(b-1)` -- `sbeta20` is zero
+below AlphaMissense 0.67 after rounding -- so such a set is its top-scored singletons, and on an
+inverse-normalised trait one carrier contributes at most z ~ 4.9 at eur's N: two or three tall
+carriers reach 1e-6..1e-8 with no gene-level effect. Checked by Kish's effective carrier count,
+(sum w)^2 / sum w^2 over the carriers' weights, from the group file's `score:AM` line and the
+`sk6` run's per-variant allele counts (the cell in the session; reported as a BAND, it derives
+from real-data carrier counts): three eur Height hits -- ENSG00000186970 (`sbeta20_MACsparse`,
+SKAT-O 0.12), ENSG00000140564 (FURIN, `sbeta20_MACsparse`, SKAT-O 1.5e-4), ENSG00000159224
+(`cbrt0.8_MACsparse`, SKAT-O 1.3e-3) -- have FEWER THAN FIVE effective carriers each, with 20+
+variants and MAC >= 20 on the set (the plain counts do not show it; the weighting does). Held
+back. SRSF2 for HDL-C (`sbeta10_mafbeta5`, SKAT-O 1.8e-4) has 20+ effective carriers and stands
+as a borderline FlexRV-only hit of unknown biology.
+
+**Proposed (owner's call, not built):** emit Kish's effective carrier count per set as a column on
+the BURDEN path for every trait (it is already computed for the binary exact-by-weight routing,
+LEDGER #172) and filter FlexRV hits below ~10 at reporting; or drop the `MAC<=1`/`MAC<=3` rungs
+on quantitative traits. The random-score null (19.7) sizes how often the rungs do this under no
+signal, which is the number that decides between the two.
