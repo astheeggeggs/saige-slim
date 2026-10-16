@@ -2414,3 +2414,51 @@ How to read it, decided before the numbers:
    not rank; the known shape is one or a few cis-enzyme genes per trait (GPT for ALT).
 Then the per-(ancestry, trait) QQ grids under `summary_v6/qq/<anc>/` for anything the
 report flags, exactly as in section 7.
+
+### 19.7 The reading (2026-10-16, afternoon): controls clean on five ancestries, the gains by size
+
+Every number below is a count of genes or cells from `<anc>.v6_vs_v4.txt` (cells at max_MAF
+0.001, hits past 2.5e-6, gene for gene on the shared (trait, gene) pairs). The five reports and
+the figures are under `summary_v6/cmp/<anc>/`, the per-(ancestry, trait) QQ grids under
+`summary_v6/qq/<anc>/`.
+
+**Controls (read first; all five clean).**
+- synonymous below 0.05: sas 0.048 / 0.048, eas 0.048 / 0.048, amr 0.051 / 0.051, afr 0.051 /
+  0.051, eur 0.051 / 0.051 (old / new, identical to three digits; eur on the same 791,559 cells).
+  Per trait, the polygenic ones sit where they sat in v4 (amr Height 0.075, BMI 0.064).
+- pLoF gene for gene (the cross-image control, the one mask whose definition did not change):
+  Spearman 1.0000 in all five; cells moved by more than a decade 0 / 0 / 0 / 1 / 0; hits and
+  distinct genes identical (eur 85 hits, 67 genes; amr and afr 27 / 23; eas 5; sas 1). The two
+  images agree on the unchanged mask exactly: everything below is annotation and method.
+- The chromosome scans: 0 failed everywhere after the HTN reruns (19.4c). The `NA` check per
+  (trait, gene) on pLoF: no cell v4 tested came back `NA` in v6 outside HTN's lost chromosomes.
+
+**The contrasts, by size.**
+- Reannotation, like for like (old `pLoF;damaging_missense` with SpliceAI v1 >= 0.2 inside, vs
+  new `pLoF;damaging_missense;spliceai2_gt040`): a net gain wherever there is power -- amr 22 ->
+  26 hits (19 -> 23 genes), afr 27 -> 31 (23 -> 26), eur 95 -> 110 (80 -> 89 genes; 26 gained,
+  11 lost); sas 4 -> 5, eas 4 -> 3. Spearman ~0.5: a different mask (REVEL 0.773 / CADD 28.1 /
+  the AlphaMissense fill), tens of thousands of cells moved by a decade.
+- The splice label (new `pLoF;damaging_missense` vs the same with `spliceai2_gt040`): marginal
+  below eur (afr 32 vs 31, amr 26 vs 27, eas 4 vs 3, sas 6 vs 6), a real net in eur: 102 -> 110
+  hits, 84 -> 89 distinct genes (13 gained, 5 lost). And on the one gene where splice calls
+  matter most it is 19 decades: GPT for ALT, log10 p -383 with the label, -365 without.
+- `am_moderate` vs `damaging_missense`: fewer hits alone (eur 34 vs 44, afr 10 vs 13, amr 10 vs
+  13) but a partly different set (eur 14 only it finds): complementary, not redundant.
+- FlexRV pooled vs the splice mask's SKAT-O p: the largest margin in every cohort with power --
+  eur 138 vs 110 hits (49 only FlexRV, 21 only SKAT-O; 110 vs 89 distinct genes; Height 52 vs
+  35, HDLC 18 vs 14, TG 13 vs 10, T2Diab 7 vs 6), afr 41 vs 31 (Height 14 vs 8), amr 41 vs 27
+  (Height 12 vs 5), eas 6 vs 3, sas 4 vs 6. **Caveat that stays until it is measured: FlexRV has
+  no null control of its own in this run** (no synonymous arm; its calibration rests on the sim
+  study and on the per-trait QQ grids, where its pooled panel sits on the band on null traits).
+  The control proposed: a `flexrv_RAND` group file (the `score:AM` line replaced by seeded
+  uniform values) run on `synonymous` (the machinery's null) and on the damaging group (the
+  score's positive control against `AM`), eur, the nine evidence traits.
+- The floor (`<anc>.floor.v6.tsv.gz`): nothing past log10 p = -300 in sas, eas, amr, afr; eur has
+  four cells, all GPT for ALT at max_MAF 0.01 (-383 splice mask, -365 missense-only, -342 all-in,
+  Cauchy -382). A linear `Pvalue` reads 0 for all four; `--is_output_log10P` ranks them.
+
+**What this run cost in corrections**: 35 Spot preemptions resubmitted (19.4b); five HTN jobs
+rerun for LEDGER #181 (19.4c); one stray `fxv5` run excluded from every ancestry's FlexRV
+directory by the summary tool's prefix guard; the notebook chromosome scan replaced by the
+summary job's.
