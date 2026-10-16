@@ -2491,3 +2491,69 @@ the BURDEN path for every trait (it is already computed for the binary exact-by-
 LEDGER #172) and filter FlexRV hits below ~10 at reporting; or drop the `MAC<=1`/`MAC<=3` rungs
 on quantitative traits. The random-score null (19.7) sizes how often the rungs do this under no
 signal, which is the number that decides between the two.
+
+### 19.9 The FlexRV null control: random scores (2026-10-16)
+
+`harness/tools/flexrv_rand_scores.py` (selftest 8 checks) rewrites a `flexrv_AM` file's
+`score:AM` line as `score:RAND`, uniform on (0, 1) per variant, seeded by a hash of the variant
+ID (the same variant gets the same value in every file and rerun). Local build:
+`out_spliceai2/aou/release_v5_rand/` (23 files, none above 15 MiB, md5 list
+`release_v5_rand.md5.txt`); upload into `SAIGE_SLIM_TESTING/annotations_v5_rand/` and md5-check
+as in 19.2 (23 objects, no parts). Two eur job sets on the nine evidence traits, FlexRV's shape
+(`SINGLE_IN_GROUP=FALSE`, `RCORR=1`, the v4 FlexRV records' bins), differing only in the group and
+the output directory:
+
+```python
+RELR = f"{BUCKET}/SAIGE_SLIM_TESTING/annotations_v5_rand"
+rand_grp = lambda c: f"{RELR}/aou.chr{c}.flexrv_RAND.txt.gz"
+RAND_TRAITS = ["ldlc", "hdlc", "tg", "tchol", "alt", "hba1c", "height", "bmi", "t2diab"]
+def rand_fleet(kind, ARMED=False):
+    """kind 'fxr_syn': the machinery's null (synonymous, random score);
+       kind 'fxr_dmg': the score's positive control (the production group, random score)."""
+    group = "synonymous" if kind == "fxr_syn" else FLEXRV_GROUP
+    plan = []
+    for v4 in sorted(k for k in RUNS if k.startswith("fxv4-eur-") and any(k.startswith(f"fxv4-eur-{t}-") or k == f"fxv4-eur-{t}" for t in RAND_TRAITS)):
+        r = RUNS[v4]; env = {k: v for k, v in r["env"].items() if k != "REGIONS"}
+        env.update({"SINGLE_IN_GROUP": "FALSE", "FLEXRV_SCORE": "RAND"})
+        nm = v4.replace("fxv4-", kind + "-"); od = f"eur/{kind}"
+        if already(out_prefix_for(nm, "eur", r["pheno"], r["chrs"]), od): continue
+        plan.append(nm)
+        if ARMED:
+            submit(name=nm, image=IMG17, masks=group, fasttest=r["fasttest"], outdir=od, anc="eur", pheno=r["pheno"],
+                   trait=r["trait"], firth=r["firth"], env=env, geno=r["geno"], chrs=r["chrs"],
+                   plk=lambda c, a="eur": cod(c, a), grp=rand_grp, testtype="group", machine_type=r["machine_type"],
+                   spot=True, pooled=True, sidecars=True, sparse_grm=r["sparse_grm"])
+    print(kind, len(plan), "jobs", "(submitted)" if ARMED else "(plan)")
+    return plan
+rand_fleet("fxr_syn"); rand_fleet("fxr_dmg")        # unarmed: the counts (eur's FlexRV bins x 9 traits each)
+```
+
+Then `summary6`-style jobs with `RUNTAG=fxr_syn` and `RUNTAG=fxr_dmg` (the summary tool reads
+`flexrv_<tag>` alone; `skato_<tag>` and `am_<tag>` are absent and report 0 files; the prefix guard
+expects `fx<N>-` names, so for these tags set `PFX_FX` by hand: run the summary with
+`RUNTAG=fxr_syn` after exporting nothing else -- the guard derives `fxr_syn-` from the tag, which
+IS the job prefix). Reading:
+
+```python
+# the machinery's null: p_FlexRV on synonymous with random scores must be uniform
+import numpy as np
+def flex_p(tag):
+    S = pd.read_csv(subprocess.run(["bash", "-lc", f'gcloud storage cp {SV6}/../summary_{tag}/eur.flexrv_vs_skato.{tag}.tsv.gz /tmp/{tag}.tsv.gz >/dev/null && echo /tmp/{tag}.tsv.gz'], capture_output=True, text=True).stdout.strip(), sep="\t", dtype=str, keep_default_na=False)
+    S["p"] = pd.to_numeric(S.p_flexrv, errors="coerce"); return S
+syn = flex_p("fxr_syn")
+for t, d in syn.groupby("trait"):
+    p = d.p.dropna().values; n = len(p); q = [(e, np.sort(p)[int(e * n)]) for e in (1e-2, 1e-3, 1e-4) if int(e * n) < n]
+    print(f"{t:8s} n={n:6d} frac<0.05 {np.mean(p < 0.05):.3f} hits {int((p < 2.5e-6).sum())}  " + ", ".join(f"{e:.0e}: {o:.1e}" for e, o in q))
+p = syn.p.dropna().values; print(f"pooled n={len(p):,} frac<0.05 {np.mean(p < 0.05):.3f} hits past 2.5e-6: {int((p < 2.5e-6).sum())} (expected ~{len(p) * 2.5e-6:.1f})")
+# the score's positive control: AM vs RAND on the production group, same genes
+dmg = flex_p("fxr_dmg").set_index(["trait", "gene"]).p; am = flex_p("v6").set_index(["trait", "gene"]).p
+j = dmg.index.intersection(am.index); d, a = dmg.loc[j], am.loc[j]
+print(f"production group, {len(j):,} (trait, gene): hits AM {int((a < 2.5e-6).sum())} vs RAND {int((d < 2.5e-6).sum())}; "
+      f"AM sharper on {np.mean(a < d):.2f} of pairs; median log10 lift of AM over RAND {np.median(np.log10(d.clip(1e-300)) - np.log10(a.clip(1e-300))):+.3f}")
+```
+
+Decided before the numbers: the synonymous arm's pooled fraction below 0.05 should be ~0.05 and
+its hits past 2.5e-6 about n x 2.5e-6 (a handful at most); more than that, concentrated on the
+sparse rungs, is the quantitative-trait sparse-rung inflation of 19.8 and sizes the filter. On the
+production group, AM must beat RAND (more hits, sharper on most pairs); if it does not, FlexRV's
+margin over SKAT-O is the machinery, not the score.
