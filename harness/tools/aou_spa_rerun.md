@@ -2243,17 +2243,24 @@ was taken when nothing had been delivered -- without clearing it the pass resubm
 
 ### 19.4c The summary job's chromosome scan found four lost chromosomes (2026-10-16): LEDGER #181
 
-afr HTN only: `sk6-afr-htn-b2` (chr 5, 20), `am6-afr-htn-b0/b1/b2` (chr 6, 12, 5); `Error in if
+afr HTN (`sk6-afr-htn-b2` chr 5, 20; `am6-afr-htn-b0/b1/b2` chr 6, 12, 5) and eur HTN (`sk6-eur-htn-b3` chr 11); `Error in if
 (VarQ_2 == 0)` in the region path's burden rescale, a NaN from the R-side saddlepoint outside
 the per-cell catch (`docs/state/handoff-2026-10-16-region-spa-na.md`). Fixed the same day
 (the NaN is dumped, counted, named, and the rescale takes the normal p as `SPA_pval` itself
 does on non-convergence); image IMG16. The four jobs are rerun in full on IMG16 with
 `SPA_DUMP=1` (the dumps say which kernel path made the NaN), then afr's summary once more.
-Every other ancestry's scan is read the same way before its pass 2.
+Every other ancestry's scan is read the same way before its pass 2. **Was anything else hit?**
+The kernel's NaN on the C++ test paths would have printed an `NA` p rather than crashing; the
+check is per (trait, gene) on a mask whose definition is the same in v4 and v6 (`pLoF`): cells
+non-`NA` in v4 and `NA` in v6, binary traits against the quantitative baseline (which has no
+saddlepoint). sas: 0 such cells in every trait (2026-10-16). (A per-trait NA COUNT comparison
+is confounded by the annotation rebuild -- genes gain and lose cells -- and a raw NA fraction
+by the mask composition; both were tried first and read as alarming before the per-cell
+statistic was written.)
 
 ```python
-IMG16 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-<fix commit>"
-redo = ["sk6-afr-htn-b2", "am6-afr-htn-b0", "am6-afr-htn-b1", "am6-afr-htn-b2"]
+IMG16 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-3a6d81fa"   # LEDGER #181; same bytes on Docker Hub (digest 4b987d8f); P1 byte-identical and the planted NA net checked in the container
+redo = ["sk6-afr-htn-b2", "am6-afr-htn-b0", "am6-afr-htn-b1", "am6-afr-htn-b2", "sk6-eur-htn-b3"]
 for nm in redo:
     r = RUNS[nm]; env = dict(r["env"]); env["SPA_DUMP"] = "1"
     kind = nm[:3]; grp = {"sk6": nr_grp, "am6": am_grp5, "fx6": fx_grp}[kind]
