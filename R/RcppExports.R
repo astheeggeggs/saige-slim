@@ -673,6 +673,10 @@ SPA_pval <- function(mu, g, q, qinv, pval_noadj, tol, logp, traitType, isSPAConv
     .Call('_SAIGE_SPA_pval', PACKAGE = 'SAIGE', mu, g, q, qinv, pval_noadj, tol, logp, traitType, isSPAConverge)
 }
 
+SPA_pval_status <- function(mu, g, q, qinv, pval_noadj, tol, logp, traitType) {
+    .Call('_SAIGE_SPA_pval_status', PACKAGE = 'SAIGE', mu, g, q, qinv, pval_noadj, tol, logp, traitType)
+}
+
 Korg_Binom <- function(t1, mu, g) {
     .Call('_SAIGE_Korg_Binom', PACKAGE = 'SAIGE', t1, mu, g)
 }

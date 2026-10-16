@@ -41,7 +41,8 @@ test_that("as shipped: the golden, the line reads 0 and there is no sidecar", {
   expect_cli_ok(st)
   expect_output_matches_golden(golden_p2, out)
   log <- readLines(attr(st, "log"), warn = FALSE)
-  expect_match(na_line(log), "^Region saddlepoint NA: 0 burden rescales")
+  # on the bundled model every rescale saddlepoint converges: 0, and no sidecar
+  expect_match(na_line(log), "^Region saddlepoint NA: 0 burden rescale saddlepoints failed")
   expect_false(file.exists(paste0(out, ".spaRegionNA.txt")))
 })
 
@@ -56,14 +57,17 @@ test_that("planted: the run completes, every rescale is counted, named and dumpe
   log <- readLines(attr(st, "log"), warn = FALSE)
   line <- na_line(log)
   n <- as.integer(sub("^Region saddlepoint NA: ([0-9]+) burden rescale.*$", "\\1", line))
+  expect_match(line, paste0(" ", n, " of them returned a non-finite value"))
   expect_gt(n, 0)
   side <- paste0(out, ".spaRegionNA.txt")
   expect_true(file.exists(side))
   tab <- read.delim(side, stringsAsFactors = FALSE)
   expect_identical(nrow(tab), n)
   expect_true(all(tab$Kind == "region_rescale"))
+  expect_true(all(tab$Reason == "nonfinite_reached_R"))
   expect_true(all(tab$Region %in% c("GENE1", "GENE2")))
-  expect_true(all(is.na(tab$kernel_value))) # the kernel returned NA (written "NA", read back as NA)
+  # the plant nulls the value AFTER the kernel, so the recorded kernel value is the converged one
+  expect_true(all(is.finite(tab$kernel_value)))
   expect_true(all(is.finite(tab$log_p_normal_reported)))
   # every named cell has its dump, and the dump holds the model's vector
   expect_true(all(nzchar(tab$dump)) && all(file.exists(tab$dump)))

@@ -53,3 +53,20 @@ replace the normal one -- a design change to make with the dumps in hand.
 (an `if` on NaN in `CCT_log10`), #181 (an `if` on NaN in the rescale): a value computed in R
 outside the per-cell catch that can be NA costs a whole chromosome, silently. The CLAUDE.md
 trap now says so in one line.
+
+## Addendum, same afternoon: the instrument was blind, and why
+
+The five HTN reruns on IMG16 all delivered with `failed none` and `Region saddlepoint NA: 0`.
+The zero was NOT "no NaN": the kernel guard caught the non-finite value first and returned the
+normal p with `isSPAConverge = false`, and R never sees that flag -- `SPA_pval` takes it by C++
+reference but R passes it by value, so the `isSPAConverge <- TRUE` R sets beforehand is never
+updated. The rescale's non-convergence has therefore been invisible to R for SAIGE's whole life,
+and the net only fired on a value that reached R non-finite, which after the kernel fix nothing
+does. The dumps never fired either, so the cause stayed unread.
+
+Repair: `SPA_pval_status` (a new export over the same kernel) returns the value with the flag
+and whether the non-finite guard fired; `get_newPhi_scaleFactor_traitType` calls it and records
+every non-converged rescale with its reason (`nonconverged`, `nonfinite`, or
+`nonfinite_reached_R` for the plant), dumping when `SAIGE_SPA_DUMP_DIR` is set. The line now
+reads `Region saddlepoint NA: N burden rescale saddlepoint(s) did not converge ... K of them
+returned a non-finite value`. Image IMG17; one HTN bin rerun with `SPA_DUMP=1` reads the cause.

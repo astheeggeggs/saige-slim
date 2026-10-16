@@ -428,23 +428,34 @@ get_newPhi_scaleFactor_traitType <- function(q.sum, mu.a, g.sum, p.new, Score, P
         }
       }
     }
-    p.value_burden <- SPA_pval(mu.a, g.sum, q_adj, qinv, pval_noadj, .Machine$double.eps^0.25, TRUE, traitType, isSPAConverge)
+    # LEDGER #181 (2026-10-16): SPA_pval_status returns the kernel's value WITH
+    # its convergence flag (R could never see the flag through SPA_pval: it is
+    # passed by value) and whether the kernel's non-finite guard fired. A
+    # rescale saddlepoint that did not converge used the normal p silently for
+    # SAIGE's whole life; a NaN from it errored outside the per-cell catch and
+    # killed the chromosome (afr/eur HTN, five jobs). Now every non-converged
+    # rescale is dumped under SAIGE_SPA_DUMP_DIR, recorded by the caller (which
+    # has the cell's names) and DISCLOSED; the value used is the normal p, as
+    # the kernel itself returns on non-convergence.
+    st <- SPA_pval_status(mu.a, g.sum, q_adj, qinv, pval_noadj, .Machine$double.eps^0.25, TRUE,
+                          traitType)
+    p.value_burden <- st$pval
+    isSPAConverge <- isTRUE(st$converged)
+    reason <- if (isTRUE(st$nonfinite)) "nonfinite" else if (!isSPAConverge) "nonconverged" else ""
     if (identical(Sys.getenv("SAIGE_SPA_PLANT_NA_R", ""), "1")) {
-      p.value_burden <- NA_real_ # the test plant (LEDGER #181)
+      p.value_burden <- NA_real_ # the test plant (LEDGER #181): the net below must catch it
     }
-    # LEDGER #181 (2026-10-16): the kernel's value went straight into an `if`
-    # in SPA_ER_kernel_related_Phiadj_fast_new; a NaN there errored outside the
-    # per-cell catch and killed the chromosome (afr HTN, four jobs). A
-    # non-finite p is dumped, recorded by the caller (which has the cell's
-    # names) and replaced by the normal-approximation p, DISCLOSED.
     if (!is.finite(p.value_burden)) {
-      spa_na <- list(
-        n_carriers = sum(g.sum != 0), n_dropped = pinned_done$n_dropped, q = q_adj,
-        pval_noadj = pval_noadj, value = p.value_burden,
-        dump = spaRegionNADump(mu.a, g.sum, q_adj, qinv, pval_noadj, pinned_done$n_dropped)
-      )
+      reason <- "nonfinite_reached_R"
       p.value_burden <- pval_noadj
       isSPAConverge <- FALSE
+    }
+    if (nzchar(reason)) {
+      spa_na <- list(
+        reason = reason, n_carriers = sum(g.sum != 0), n_dropped = pinned_done$n_dropped, q = q_adj,
+        pval_noadj = pval_noadj, value = st$pval,
+        dump = spaRegionNADump(mu.a, g.sum, q_adj, qinv, pval_noadj, pinned_done$n_dropped)
+      )
     }
   }
 

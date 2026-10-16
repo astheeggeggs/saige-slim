@@ -310,8 +310,7 @@ void SPA_fast_ws(const arma::vec & g, double q, double qinv, double pval_noadj, 
 
 
 
-// [[Rcpp::export]]
-double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, bool & isSPAConverge){
+static double SPA_pval_impl(const arma::vec & mu, const arma::vec & g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, bool & isSPAConverge, bool & nonfinite){
        double pval;
         SPAWorkspace ws(mu.n_elem);
         double p1, p2;
@@ -362,7 +361,8 @@ double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv
         if(outuni1.Isconverge && mirrorUnattainable){
                 SPASaddle getSaddle1 = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp, ws);
                 ws.diagQSaddle = getSaddle1.isSaddle ? 1 : 0;
-                if(getSaddle1.isSaddle && std::isfinite(getSaddle1.pval)){   // LEDGER #181: a non-finite saddle is not a saddle
+                if(getSaddle1.isSaddle && !std::isfinite(getSaddle1.pval)) nonfinite = true;   // LEDGER #181: seen, not returned
+                if(getSaddle1.isSaddle && std::isfinite(getSaddle1.pval)){
                         pval = logp ? getSaddle1.pval : std::abs(getSaddle1.pval);
                         isSPAConverge = true;
                         return pval;
@@ -378,7 +378,8 @@ double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv
         if(outuni1.Isconverge && !outuni2.Isconverge && !mirrorUnattainable){
                 SPASaddle sq = Get_Saddle_Prob_Binom_core(outuni1.root, mu, g, q, logp, ws);
                 ws.diagQSaddle = sq.isSaddle ? 1 : 0;
-                if(sq.isSaddle && std::isfinite(sq.pval)){   // LEDGER #181
+                if(sq.isSaddle && !std::isfinite(sq.pval)) nonfinite = true;   // LEDGER #181: seen, not returned
+                if(sq.isSaddle && std::isfinite(sq.pval)){
                         const double p1 = logp ? std::exp(sq.pval) : std::abs(sq.pval);
                         double gmax = 0.0;
                         for(arma::uword e = 0; e < g.n_elem; e++){ gmax = std::max(gmax, std::fabs(g(e))); }
@@ -438,7 +439,7 @@ double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv
                 }
         // LEDGER #181: the both-roots sum can be non-finite too (a NaN saddle value
         // with isSaddle true); it is a non-convergence, never a p
-        if(!std::isfinite(pval)){ pval = pval_noadj; Isconverge = false; }
+        if(!std::isfinite(pval)){ pval = pval_noadj; Isconverge = false; nonfinite = true; }
         isSPAConverge = Isconverge;
 
 	return(pval);
@@ -447,3 +448,20 @@ double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv
         //return(result);
 }
 
+// [[Rcpp::export]]
+double SPA_pval(const arma::vec & mu, const arma::vec & g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType, bool & isSPAConverge){
+        bool nonfinite = false;
+        return SPA_pval_impl(mu, g, q, qinv, pval_noadj, tol, logp, traitType, isSPAConverge, nonfinite);
+}
+
+// LEDGER #181 (2026-10-16): the R caller cannot see `isSPAConverge` (R passes the
+// flag by value, so the kernel's non-convergence was invisible to R for SAIGE's
+// whole life and the rescale silently used the normal p). This twin returns the
+// value WITH the flag and whether the non-finite guard fired, so the region
+// path's rescale can count, name and dump every non-converged saddlepoint.
+// [[Rcpp::export]]
+Rcpp::List SPA_pval_status(const arma::vec & mu, const arma::vec & g, double q, double qinv, double pval_noadj, double tol, bool logp, std::string traitType){
+        bool converged = true, nonfinite = false;
+        const double pval = SPA_pval_impl(mu, g, q, qinv, pval_noadj, tol, logp, traitType, converged, nonfinite);
+        return Rcpp::List::create(Rcpp::Named("pval") = pval, Rcpp::Named("converged") = converged, Rcpp::Named("nonfinite") = nonfinite);
+}

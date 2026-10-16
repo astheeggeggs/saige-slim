@@ -57,8 +57,8 @@ spaRegionNARecord <- function(kind, region, group, maxMAF, weight, info) {
     return(invisible(NULL))
   }
   spa_region_na_env$rows[[length(spa_region_na_env$rows) + 1L]] <- data.frame(
-    Kind = kind, Region = as.character(region), Group = as.character(group),
-    max_MAF = as.character(maxMAF),
+    Kind = kind, Reason = as.character(info$reason), Region = as.character(region),
+    Group = as.character(group), max_MAF = as.character(maxMAF),
     Weight = if (is.null(weight) || length(weight) == 0) NA_character_ else as.character(weight),
     n_carriers = as.integer(info$n_carriers), n_pinned_dropped = as.integer(info$n_dropped),
     q_adj = info$q, log_p_normal_reported = info$pval_noadj,
@@ -70,8 +70,8 @@ spaRegionNARecord <- function(kind, region, group, maxMAF, weight, info) {
 
 spaRegionNATable <- function() {
   if (length(spa_region_na_env$rows) == 0) {
-    return(data.frame(Kind = character(), Region = character(), Group = character(),
-                      max_MAF = character(), Weight = character(), n_carriers = integer(),
+    return(data.frame(Kind = character(), Reason = character(), Region = character(),
+                      Group = character(), max_MAF = character(), Weight = character(), n_carriers = integer(),
                       n_pinned_dropped = integer(), q_adj = numeric(),
                       log_p_normal_reported = numeric(), kernel_value = character(),
                       dump = character(), stringsAsFactors = FALSE))
@@ -85,20 +85,23 @@ spaRegionNASummary <- function(OutputFile) {
   tab <- spaRegionNATable()
   n <- nrow(tab)
   if (n == 0) {
-    cat("Region saddlepoint NA: 0 burden rescales had a saddlepoint that returned nothing.\n")
+    cat("Region saddlepoint NA: 0 burden rescale saddlepoints failed to converge ",
+        "(none returned nothing, none fell to the normal p).\n", sep = "")
     return(invisible(tab))
   }
   path <- paste0(OutputFile, ".spaRegionNA.txt")
   utils::write.table(tab, path, sep = "\t", quote = FALSE, row.names = FALSE)
-  by_kind <- sort(table(tab$Kind), decreasing = TRUE)
-  cat("Region saddlepoint NA: ", n, " burden rescale(s) had a saddlepoint that returned nothing ",
-      "(NaN/NA) and reported the NORMAL-approximation p for the rescale instead, with the ",
-      "convergence flag FALSE (LEDGER #181); before 2026-10-16 this killed the chromosome. ",
+  by_reason <- sort(table(paste(tab$Kind, tab$Reason)), decreasing = TRUE)
+  n_nf <- sum(tab$Reason != "nonconverged")
+  cat("Region saddlepoint NA: ", n, " burden rescale saddlepoint(s) did not converge and the ",
+      "rescale used the NORMAL-approximation p instead (the kernel's own fallback, now counted; ",
+      "LEDGER #181); ", n_nf, " of them returned a non-finite value, which before 2026-10-16 ",
+      "killed the chromosome. ",
       "Each is named in '", path, "'",
       if (any(nzchar(tab$dump))) " with the vector dumped (SAIGE_SPA_DUMP_DIR)" else "",
-      ". By kind:\n", sep = "")
-  for (k in seq_along(by_kind)) {
-    cat("  ", by_kind[[k]], " x ", names(by_kind)[k], "\n", sep = "")
+      ". By kind and reason:\n", sep = "")
+  for (k in seq_along(by_reason)) {
+    cat("  ", by_reason[[k]], " x ", names(by_reason)[k], "\n", sep = "")
   }
   invisible(tab)
 }

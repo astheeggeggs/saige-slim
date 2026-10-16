@@ -895,7 +895,9 @@ declarations sit at the top of `src/Main.cpp`.
   `SPA_pval` for the burden RESCALE of Phi (not a reported p); a non-finite value is now
   dumped under `SAIGE_SPA_DUMP_DIR`, counted (`Region saddlepoint NA: N ...`), named in
   `<SAIGEOutputFile>.spaRegionNA.txt` and replaced by the normal p with the convergence
-  flag FALSE -- `SPA_pval`'s own non-convergence behaviour, disclosed -- and the three kernels
+  flag FALSE -- `SPA_pval`'s own non-convergence behaviour, disclosed through `SPA_pval_status`
+  (R cannot see `SPA_pval`'s by-reference flag: it is passed by value, so the rescale's
+  non-convergence was invisible for SAIGE's whole life) -- and the three kernels
   (`SPA_pval`, `SPA_ws`, `SPA_fast_ws`) no longer return a non-finite saddle value as a
   converged one (the #168 early returns require `std::isfinite`). **Any value computed
   in R outside the per-cell catch must be total**: three chromosomes have now died on an
