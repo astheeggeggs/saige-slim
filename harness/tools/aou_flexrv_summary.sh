@@ -132,9 +132,14 @@ do_am(){   # $1 = index, $2 = file: cells only (same schema as SKAT-O)
 }
 export -f do_fx do_sk do_am catz trait_of
 export FX7 FXF
+progress(){   # $1 = index, $2 = total, $3 = label: one line every 50 files (dsub ships stdout every minute)
+  if (( 10#$1 % 50 == 0 || 10#$1 == $2 )); then echo "  $3: $((10#$1))/$2 files streamed ($(date -u +%H:%M:%S))"; fi
+}
+export -f progress
 run_parallel(){   # $1 = list file, $2 = worker; one numbered argument pair per file
   [[ -s $1 ]] || return 0
-  nl -ba -nrz -w6 "$1" | xargs -P "${PARALLEL}" -n 2 bash -c "$2 \"\$@\"" _
+  local total; total=$(wc -l < "$1" | tr -d " ")
+  nl -ba -nrz -w6 "$1" | xargs -P "${PARALLEL}" -n 2 bash -c "$2 \"\$@\" && progress \"\$1\" ${total} $2" _
 }
 run_parallel fx.list do_fx
 run_parallel sk.list do_sk
