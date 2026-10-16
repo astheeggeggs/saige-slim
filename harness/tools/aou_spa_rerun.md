@@ -2278,6 +2278,26 @@ needs one more line beside `OUT_FILE_STRETCHGATE`:
 `"--output", f"OUT_FILE_SPAREGIONNA={od}/{pre}.spaRegionNA.txt.gz",`. The summary tool scans
 the sidecar on all three arms, prints `spaRegionNA: N rescale saddlepoint(s) returned nothing
 ...; <arm>/<trait> K` and writes `<anc>.spaRegionNA.<tag>.tsv.gz` (selftest 31 checks).
+**IMG17 (`1.5.2-dev-b5456dee`, same day): the counter was blind on IMG16** -- the kernel guard
+caught the NaN first and R cannot see `SPA_pval`'s convergence flag (passed by value), so the
+five reruns read `0` and no dump fired. `SPA_pval_status` fixes that: every non-converged
+rescale is now counted with its reason and dumped. The cause is read from ONE bin rerun on
+IMG17 with the dump on (the production outputs from IMG16 are complete and correct; this rerun
+is the instrument, its output overwrites the same prefix with identical cells):
+
+```python
+IMG17 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-b5456dee"
+nm = "sk6-afr-htn-b2"; r = RUNS[nm]; env = dict(r["env"]); env["SPA_DUMP"] = "1"
+submit(name=nm, image=IMG17, masks=r["masks"], fasttest=r["fasttest"], outdir=r["outdir"], anc=r["anc"],
+       pheno=r["pheno"], trait=r["trait"], firth=r["firth"], env=env, geno=r["geno"], chrs=r["chrs"],
+       plk=lambda c, a=r["anc"]: cod(c, a), grp=nr_grp, testtype="group", machine_type=r["machine_type"],
+       spot=False, pooled=True, sidecars=True, sparse_grm=r["sparse_grm"])
+```
+
+Then its log's `Region saddlepoint NA: N ... K returned a non-finite value` line and, in the
+delivered `spaDump.tgz`, the `spaRegionNA_*.tsv` files (header: q, qinv, the normal log p,
+n_dropped, n; columns mu, g). Read them where the data lives: a vector whose non-zero `g` are
+all cases with mu near 1, or a root at the attainable edge, is the #168-branch shape.
 Read each rerun's log for `Region saddlepoint NA: N ...` and `chrStatus` `failed none`; then
 `aou_spa_dumpcheck.sh` is NOT the tool for the R dumps (different header) -- read them where
 the data lives: `n_dropped` in the header says whether the pinned guard emptied the vector,

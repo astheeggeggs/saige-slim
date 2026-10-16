@@ -70,11 +70,15 @@ spaRegionNARecord <- function(kind, region, group, maxMAF, weight, info) {
 
 spaRegionNATable <- function() {
   if (length(spa_region_na_env$rows) == 0) {
-    return(data.frame(Kind = character(), Reason = character(), Region = character(),
-                      Group = character(), max_MAF = character(), Weight = character(), n_carriers = integer(),
-                      n_pinned_dropped = integer(), q_adj = numeric(),
-                      log_p_normal_reported = numeric(), kernel_value = character(),
-                      dump = character(), stringsAsFactors = FALSE))
+    cols <- c("Kind", "Reason", "Region", "Group", "max_MAF", "Weight", "n_carriers",
+              "n_pinned_dropped", "q_adj", "log_p_normal_reported", "kernel_value", "dump")
+    empty <- as.data.frame(setNames(replicate(length(cols), character(), simplify = FALSE), cols),
+                           stringsAsFactors = FALSE)
+    empty$n_carriers <- integer()
+    empty$n_pinned_dropped <- integer()
+    empty$q_adj <- numeric()
+    empty$log_p_normal_reported <- numeric()
+    return(empty)
   }
   do.call(rbind, spa_region_na_env$rows)
 }
