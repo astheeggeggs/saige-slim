@@ -54,6 +54,24 @@ lsd "${AM}/*.txt.gz"  | grep -E '\.txt\.gz$' | grep -vE "${SIDECARS}" > am.list 
 echo "flexrv: $(wc -l < fx.list) v4 files, $(wc -l < fxf.list) fixed, $(wc -l < fx7.list) v7; skato: $(wc -l < sk.list) files"
 echo "am_moderate: $(wc -l < am.list | tr -d " ") files"
 : > floor.long
+# --- the chromosome scan (2026-10-16): every job's chrStatus sidecar, all three arms. A job
+# that lost a chromosome still delivers and exits 0 (LEDGER #170, the IMG14 log10 defect), so
+# this is the first thing read; a failed chromosome means the job is rerun BEFORE its trait
+# is summarised. Written as a table and printed as one line; the scan is the VM's, not the
+# notebook's (2,418 sidecars at ~2 s each killed a notebook session).
+: > chrstatus.long
+for arm in flexrv:"${FX}" flexrv_fixed:"${FXF}" flexrv_v7:"${FX7}" skato:"${SK}" am:"${AM}"; do
+  name="${arm%%:*}"; dir="${arm#*:}"
+  for f in $(lsd "${dir}/*.chrStatus.txt.gz"); do
+    job=$(basename "${f}" | awk -F. '{print $1}')
+    catz "${f}" | awk -F'\t' -v arm="${name}" -v job="${job}" 'BEGIN{OFS="\t"; req="?"; fl="?"} $1=="requested"{req=$2} $1=="failed"{fl=$2} END{print arm, job, req, fl}' >> chrstatus.long
+  done
+done
+chrout="${OUT_DIR}/${ANC}.chrstatus.${RUNTAG}.tsv"
+{ printf 'anc\tarm\tjob\trequested\tfailed\n'; awk -F'\t' -v anc="${ANC}" 'BEGIN{OFS="\t"}{print anc,$0}' chrstatus.long; } > "${chrout}"
+gzip -f "${chrout}"
+nbad=$(awk -F'\t' '$4!="none" && $4!="?"' chrstatus.long | wc -l | tr -d " ")
+echo "chrStatus: $(wc -l < chrstatus.long | tr -d " ") jobs scanned, ${nbad} with a failed chromosome$( (( nbad > 0 )) && awk -F'\t' '$4!="none" && $4!="?"{printf ": %s/%s(chr %s)", $1, $2, $4}' chrstatus.long )"
 trait_of(){ basename "$1" | awk -F. '{print $2}'; }   # <job>.<TRAIT>.<anc>.chr<...>.txt.gz
 # --- FlexRV: per gene, the Cauchy row's p, the best set and how many sets ----
 : > fx.tsv

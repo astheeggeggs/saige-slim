@@ -74,6 +74,10 @@ for path, lines in [("base/xx/skato_v6/sk6-xx-traita.TraitA.xx.chr1-22.txt.gz", 
                     ("base/xx/flexrv_v6/fx6-xx-traita.TraitA.xx.chr1-22.txt.gz", fx6)]:
     gzip.open(path, "wt").write("\n".join(lines) + "\n")
 gzip.open("base/xx/am_v6/am6-xx-traita.TraitA.xx.chr1-22.singleAssoc.txt.gz", "wt").write("# no singleAssoc output: SINGLE_IN_GROUP=FALSE\n")
+# chrStatus sidecars: two clean, one that lost chr8 (the job still delivered)
+gzip.open("base/xx/skato_v6/sk6-xx-traita.TraitA.xx.chr1-22.chrStatus.txt.gz", "wt").write("requested\t1 22\nfailed\tnone\nrefused_by_gate\tnone\nskipped_no_region\tnone\n")
+gzip.open("base/xx/am_v6/am6-xx-traita.TraitA.xx.chr1-22.chrStatus.txt.gz", "wt").write("requested\t1 22\nfailed\tnone\nrefused_by_gate\tnone\nskipped_no_region\tnone\n")
+gzip.open("base/xx/flexrv_v6/fx6-xx-traita.TraitA.xx.chr1-22.chrStatus.txt.gz", "wt").write("requested\t1 22\nfailed\t8\nrefused_by_gate\tnone\nskipped_no_region\tnone\n")
 PY
 ANC=xx BASE="${T}/base" OUT_DIR="${T}/out6" RUNTAG=v6 bash "${HERE}/aou_flexrv_summary.sh" > run6.log 2>&1 || { cat run6.log; echo "SELFTEST FAILED: v6 run exited non-zero"; exit 1; }
 gzip -dc out6/xx.skato_cells.v6.tsv.gz > cells6.tsv
@@ -88,5 +92,8 @@ head -2 floor6.tsv | tail -1 | grep -q $'skato\tTraitA\tG1\tpLoF;damaging_missen
 grep -q "floor table: 4 row(s)" run6.log && echo "ok   v6: floor summary line" || { echo "FAIL floor summary"; fail=1; }
 grep -q "am_moderate: 1 files" run6.log && echo "ok   v6: am listing line (the singleAssoc placeholder is not a results file)" || { echo "FAIL am listing"; fail=1; }
 [[ $(gzip -dc out/xx.floor.v4.tsv.gz | wc -l | tr -d " ") == 1 ]] && echo "ok   v4: floor table is header-only (no log10 columns)" || { echo "FAIL v4 floor"; fail=1; }
+grep -q "^chrStatus: 3 jobs scanned, 1 with a failed chromosome: flexrv/fx6-xx-traita(chr 8)" run6.log && echo "ok   v6: chromosome scan names the job that lost chr8" || { echo "FAIL chrStatus line: $(grep chrStatus run6.log)"; fail=1; }
+gzip -dc out6/xx.chrstatus.v6.tsv.gz | awk -F'\t' 'NR>1 && $3=="fx6-xx-traita" && $5=="8"' | grep -q . && echo "ok   v6: chrstatus table row" || { echo "FAIL chrstatus table"; fail=1; }
+grep -q "^chrStatus: 0 jobs scanned, 0 with a failed chromosome$" run.log && echo "ok   v4: no sidecars, scan reports 0/0" || { echo "FAIL v4 chrStatus line: $(grep chrStatus run.log)"; fail=1; }
 (( fail )) && { echo "SELFTEST FAILED"; exit 1; }
-echo "selftest OK: 21 checks"
+echo "selftest OK: 24 checks"

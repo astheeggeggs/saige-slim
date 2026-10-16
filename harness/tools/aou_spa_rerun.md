@@ -2241,7 +2241,14 @@ runner log (`<job>.log` sorts after `-stderr.log`); the SAIGE output is the `-st
 was taken when nothing had been delivered -- without clearing it the pass resubmits all 806),
 `spot = False` in `fleet()`, unarmed to see the list, armed per set, `save_runs()`.
 
-### 19.5 Before any reading: the chromosome scan
+### 19.5 Before any reading: the chromosome scan -- NOW DONE BY PASS 1 (2026-10-16)
+
+The notebook version below killed a session (2,418 sidecars at ~2 s each through `gcloud cat`,
+the browser connection dropped and the output with it). `aou_flexrv_summary.sh` now scans every
+job's `chrStatus` on the VM, writes `<anc>.chrstatus.v6.tsv.gz` and prints ONE line in the job
+log -- `chrStatus: N jobs scanned, K with a failed chromosome[: arm/job(chr c) ...]` -- which is
+read before that ancestry's summaries are used. The notebook cell is kept for a single
+ancestry or a spot check only.
 
 ```python
 for od_suffix in ("skato_v6", "flexrv_v6", "am_v6"):
