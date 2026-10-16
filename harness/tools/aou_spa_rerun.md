@@ -581,10 +581,10 @@ that must fire on both.
 
 The scan (section 1) flags FAILED saddlepoints (`Is.SPA FALSE`); a saddlepoint
 that converges to a wrong value passes it, and the splice keeps its v4 row.
-Three FlexRV cells did exactly that: amr BenCervUterNeo ENSG00000101198
-`AM_sbeta20_MACsparse` p 2.2e-53 (normal p 8e-101), amr BenIntNeo ENSG00000196109
-(sbeta sets), eas MatHem ENSG00000128607 `AM_sbeta10_MACsparse` p 3.5e-93 with a
-NORMAL p of 0.02. Same carriers, sane p under `sbeta5` and `lof`; the trigger
+Three FlexRV cells did exactly that: amr BenCervUterNeo ENSG00000101198 (an
+`sbeta20` set on a sparse rung) p 2.2e-53 (normal p 8e-101), amr BenIntNeo
+ENSG00000196109 (sbeta sets), eas MatHem ENSG00000128607 (an `sbeta10` set on a
+sparse rung) p 3.5e-93 with a NORMAL p of 0.02. Same carriers, sane p under `sbeta5` and `lof`; the trigger
 is the weight spread of `sbeta10`/`sbeta20`. Every kernel change since the v4
 image (`f2fb24da`) is on a failure path, so the current image is predicted to
 reproduce the values -- the run has to be watched, not trusted.
@@ -2479,9 +2479,10 @@ inverse-normalised trait one carrier contributes at most z ~ 4.9 at eur's N: two
 carriers reach 1e-6..1e-8 with no gene-level effect. Checked by Kish's effective carrier count,
 (sum w)^2 / sum w^2 over the carriers' weights, from the group file's `score:AM` line and the
 `sk6` run's per-variant allele counts (the cell in the session; reported as a BAND, it derives
-from real-data carrier counts): three eur Height hits -- ENSG00000186970 (`sbeta20_MACsparse`,
-SKAT-O 0.12), ENSG00000140564 (FURIN, `sbeta20_MACsparse`, SKAT-O 1.5e-4), ENSG00000159224
-(`cbrt0.8_MACsparse`, SKAT-O 1.3e-3) -- have FEWER THAN FIVE effective carriers each, with 20+
+from real-data carrier counts): three eur Height hits -- ENSG00000186970 (SKAT-O 0.12),
+ENSG00000140564 (FURIN, SKAT-O 1.5e-4), ENSG00000159224 (SKAT-O 1.3e-3), their best sets
+steep score transforms (`sbeta20`, `cbrt0.8`) on the sparse MAC rungs -- have FEWER THAN FIVE
+effective carriers each, with 20+
 variants and MAC >= 20 on the set (the plain counts do not show it; the weighting does). Held
 back. SRSF2 for HDL-C (`sbeta10_mafbeta5`, SKAT-O 1.8e-4) has 20+ effective carriers and stands
 as a borderline FlexRV-only hit of unknown biology.
@@ -2498,41 +2499,77 @@ signal, which is the number that decides between the two.
 `score:AM` line as `score:RAND`, uniform on (0, 1) per variant, seeded by a hash of the variant
 ID (the same variant gets the same value in every file and rerun). Local build:
 `out_spliceai2/aou/release_v5_rand/` (23 files, none above 15 MiB, md5 list
-`release_v5_rand.md5.txt`); upload into `SAIGE_SLIM_TESTING/annotations_v5_rand/` and md5-check
-as in 19.2 (23 objects, no parts). Two eur job sets on the nine evidence traits, FlexRV's shape
-(`SINGLE_IN_GROUP=FALSE`, `RCORR=1`, the v4 FlexRV records' bins), differing only in the group and
-the output directory:
+`release_v5_rand.md5.txt`); uploaded into `SAIGE_SLIM_TESTING/annotations_v5_rand/` with the
+md5 list IN THE SAME FOLDER, md5-checked as in 19.2 (23 objects, no parts):
 
 ```python
+D = f"{BUCKET}/SAIGE_SLIM_TESTING/annotations_v5_rand"
+REF = subprocess.run(["gcloud", "storage", "cat", f"{D}/release_v5_rand.md5.txt"], capture_output=True, text=True).stdout
+bad = []
+for l in REF.splitlines():
+    h, n, f = l.split(); data = subprocess.run(["gcloud", "storage", "cat", f"{D}/{f}"], capture_output=True).stdout
+    ok = hashlib.md5(data).hexdigest() == h and len(data) == int(n)
+    print(f"{f:40s} {len(data):>10d} / {n:<10s} {'ok' if ok else 'MISMATCH'}", flush=True); bad += [] if ok else [f]
+print(len(REF.splitlines()), "checked,", len(bad), "bad:", bad)
+```
+
+**Three eur job sets** on the nine evidence traits, FlexRV's shape (`SINGLE_IN_GROUP=FALSE`,
+`RCORR=1`, the v4 FlexRV records' bins), image IMG18 (`1.5.2-dev-49178058`, `NEFF` on, so every
+cell carries `nEff_Burden`). The score's control runs on the MISSENSE group WITHOUT pLoF
+(`damaging_missense:other_missense:spliceai2_gt040`): pLoF carries most of the production
+signal whatever the score says, so with it in the group a random score would inherit that
+signal and the AM-vs-RAND contrast would measure pLoF, not the score. That needs the AM run on
+the same group too, which production does not have, hence three arms:
+
+| kind | group | score | what it measures |
+|---|---|---|---|
+| `fxr_syn` | `synonymous` | RAND | the machinery's null: p_FlexRV must be uniform (the synonymous control FlexRV lacks) |
+| `fxr_dmg` | `damaging_missense:other_missense:spliceai2_gt040` | RAND | the score's null on a group with signal: the MAF ladder alone |
+| `fxa_dmg` | same | AM (production file) | the score's positive control: AM vs RAND, same genes, same ladder |
+
+```python
+IMG18 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-49178058"
 RELR = f"{BUCKET}/SAIGE_SLIM_TESTING/annotations_v5_rand"
 rand_grp = lambda c: f"{RELR}/aou.chr{c}.flexrv_RAND.txt.gz"
+MISSENSE_GROUP = "damaging_missense:other_missense:spliceai2_gt040"
 RAND_TRAITS = ["ldlc", "hdlc", "tg", "tchol", "alt", "hba1c", "height", "bmi", "t2diab"]
+RAND_KINDS = {"fxr_syn": ("synonymous", "RAND", rand_grp),
+              "fxr_dmg": (MISSENSE_GROUP, "RAND", rand_grp),
+              "fxa_dmg": (MISSENSE_GROUP, "AM", fx_grp)}            # fx_grp: the production flexrv_AM file
 def rand_fleet(kind, ARMED=False):
-    """kind 'fxr_syn': the machinery's null (synonymous, random score);
-       kind 'fxr_dmg': the score's positive control (the production group, random score)."""
-    group = "synonymous" if kind == "fxr_syn" else FLEXRV_GROUP
+    group, score, grp = RAND_KINDS[kind]
     plan = []
     for v4 in sorted(k for k in RUNS if k.startswith("fxv4-eur-") and any(k.startswith(f"fxv4-eur-{t}-") or k == f"fxv4-eur-{t}" for t in RAND_TRAITS)):
         r = RUNS[v4]; env = {k: v for k, v in r["env"].items() if k != "REGIONS"}
-        env.update({"SINGLE_IN_GROUP": "FALSE", "FLEXRV_SCORE": "RAND"})
+        env.update({"SINGLE_IN_GROUP": "FALSE", "FLEXRV_SCORE": score})
         nm = v4.replace("fxv4-", kind + "-"); od = f"eur/{kind}"
         if already(out_prefix_for(nm, "eur", r["pheno"], r["chrs"]), od): continue
         plan.append(nm)
         if ARMED:
-            submit(name=nm, image=IMG17, masks=group, fasttest=r["fasttest"], outdir=od, anc="eur", pheno=r["pheno"],
+            submit(name=nm, image=IMG18, masks=group, fasttest=r["fasttest"], outdir=od, anc="eur", pheno=r["pheno"],
                    trait=r["trait"], firth=r["firth"], env=env, geno=r["geno"], chrs=r["chrs"],
-                   plk=lambda c, a="eur": cod(c, a), grp=rand_grp, testtype="group", machine_type=r["machine_type"],
+                   plk=lambda c, a="eur": cod(c, a), grp=grp, testtype="group", machine_type=r["machine_type"],
                    spot=True, pooled=True, sidecars=True, sparse_grm=r["sparse_grm"])
     print(kind, len(plan), "jobs", "(submitted)" if ARMED else "(plan)")
     return plan
-rand_fleet("fxr_syn"); rand_fleet("fxr_dmg")        # unarmed: the counts (eur's FlexRV bins x 9 traits each)
+for k in RAND_KINDS: rand_fleet(k)                 # unarmed: the counts (eur's FlexRV bins x 9 traits each)
 ```
 
-Then `summary6`-style jobs with `RUNTAG=fxr_syn` and `RUNTAG=fxr_dmg` (the summary tool reads
-`flexrv_<tag>` alone; `skato_<tag>` and `am_<tag>` are absent and report 0 files; the prefix guard
-expects `fx<N>-` names, so for these tags set `PFX_FX` by hand: run the summary with
-`RUNTAG=fxr_syn` after exporting nothing else -- the guard derives `fxr_syn-` from the tag, which
-IS the job prefix). Reading:
+Then `summary6`-style jobs with `RUNTAG=fxr_syn`, `fxr_dmg` and `fxa_dmg`. **The fleet writes to
+`eur/<tag>/` with jobs named `<tag>-...`, which fits neither of the tool's naming rules** (it reads
+`flexrv_<tag>/` and keeps `fx<tag minus v>-*`; the first summaries of 2026-10-16 read 0 files), so
+pass `FX_DIR=<tag> FX_PREFIX=<tag>-`; `skato_<tag>` and `am_<tag>` are absent and report 0 files:
+
+```python
+for tag in ("fxr_syn", "fxr_dmg", "fxa_dmg"):
+    run_dsub(["aou_dsub", "--name", f"summary-{tag}", "--image", "gcr.io/google.com/cloudsdktool/google-cloud-cli:slim",
+              "--env", "ANC=eur", "--env", f"BASE={BUCKET}/SAIGE_SLIM_TESTING", "--env", f"RUNTAG={tag}",
+              "--env", f"FX_DIR={tag}", "--env", f"FX_PREFIX={tag}-",
+              "--output-recursive", f"OUT_DIR={BUCKET}/SAIGE_SLIM_TESTING/summary_{tag}",
+              "--machine-type", "n2-standard-2", "--disk-size", "20", "--script", "aou_flexrv_summary.sh"])
+```
+
+Reading:
 
 ```python
 # the machinery's null: p_FlexRV on synonymous with random scores must be uniform
@@ -2545,18 +2582,233 @@ for t, d in syn.groupby("trait"):
     p = d.p.dropna().values; n = len(p); q = [(e, np.sort(p)[int(e * n)]) for e in (1e-2, 1e-3, 1e-4) if int(e * n) < n]
     print(f"{t:8s} n={n:6d} frac<0.05 {np.mean(p < 0.05):.3f} hits {int((p < 2.5e-6).sum())}  " + ", ".join(f"{e:.0e}: {o:.1e}" for e, o in q))
 p = syn.p.dropna().values; print(f"pooled n={len(p):,} frac<0.05 {np.mean(p < 0.05):.3f} hits past 2.5e-6: {int((p < 2.5e-6).sum())} (expected ~{len(p) * 2.5e-6:.1f})")
-# the score's positive control: AM vs RAND on the production group, same genes
-dmg = flex_p("fxr_dmg").set_index(["trait", "gene"]).p; am = flex_p("v6").set_index(["trait", "gene"]).p
+# the score's control pair: AM vs RAND on the missense group, same genes
+dmg = flex_p("fxr_dmg").set_index(["trait", "gene"]).p; am = flex_p("fxa_dmg").set_index(["trait", "gene"]).p
 j = dmg.index.intersection(am.index); d, a = dmg.loc[j], am.loc[j]
-print(f"production group, {len(j):,} (trait, gene): hits AM {int((a < 2.5e-6).sum())} vs RAND {int((d < 2.5e-6).sum())}; "
+print(f"missense group, {len(j):,} (trait, gene): hits AM {int((a < 2.5e-6).sum())} vs RAND {int((d < 2.5e-6).sum())}; "
       f"AM sharper on {np.mean(a < d):.2f} of pairs; median log10 lift of AM over RAND {np.median(np.log10(d.clip(1e-300)) - np.log10(a.clip(1e-300))):+.3f}")
 ```
 
 Decided before the numbers: the synonymous arm's pooled fraction below 0.05 should be ~0.05 and
 its hits past 2.5e-6 about n x 2.5e-6 (a handful at most); more than that, concentrated on the
-sparse rungs, is the quantitative-trait sparse-rung inflation of 19.8 and sizes the filter. On the
-production group, AM must beat RAND (more hits, sharper on most pairs); if it does not, FlexRV's
-margin over SKAT-O is the machinery, not the score.
+sparse rungs, is the quantitative-trait sparse-rung inflation of 19.8 and sizes the `nEff_Burden`
+filter (the per-cell file from the summary carries the column; read the hits' effective carrier
+counts as BANDS). On the missense group, AM must beat RAND (more hits, sharper on most pairs);
+if it does not, FlexRV's margin over SKAT-O is the machinery (the MAF ladder, the many sets), not
+the score. The RAND arm's hits on the missense group are NOT false positives: the group has
+real signal and the ladder finds it; only the synonymous arm is a null.
+
+**Read 2026-10-16 (the 3 x 90 fleet; it ran on the OLD wrapper -- no `nEff_Burden`, no
+`spaRegionNA` -- because the `%%writefile` cell had been pasted and not run; the summaries needed
+the `FX_DIR`/`FX_PREFIX` overrides above).**
+
+| arm | per trait | pooled |
+|---|---|---|
+| `fxr_syn` (synonymous, random score) | frac < 0.05: 0.054 (T2D, TChol) .. 0.061 (BMI, TG); 1e-3 quantile 4.3e-4 .. 1.1e-3; 1e-4 quantile 1e-5 .. 2e-4 on eight traits, **1.5e-8 on Height** | n 165,654; 0.057 below 0.05; **5 hits past 2.5e-6 against 0.4 expected: Height 4, HDL-C 1** |
+| `fxr_dmg` vs `fxa_dmg` (missense group) | | 165,798 pairs; **hits AM 58 vs RAND 29**; AM sharper on 0.51 of pairs, median log10 lift +0.003 |
+
+- **The body is the Cauchy's, not FlexRV's.** Every trait, the binary one included, sits 0.4-1.1
+  points above 5% at 0.05 (binomial sd 0.16 points at n 18,400), and the excess is gone by 1e-3.
+  ACAT is exact in the tail and anti-conservative at moderate alpha on strongly correlated inputs,
+  and 112 nested sets of one gene are that. `frac<0.05` of a pooled FlexRV row is therefore not
+  the calibration statistic; the 1e-3 / 1e-4 quantiles and the hit count are.
+- **Height's body is its own baseline.** The production v6 synonymous SKAT-O on the same genes:
+  Height 0.060 at max MAF 0.001 and 0.071 at 0.01 (burden 0.055 / 0.063), every other trait
+  0.048-0.058 -- polygenic background and LD, which the owner predicted ("height is infinitesimal").
+  At max MAF 0.01 synonymous SKAT-O on Height has 7 hits past 2.5e-6 (1e-4 quantile 1.7e-7),
+  TG 2: real on these traits, not the kernel's.
+- **Height's tail is heavier under FlexRV than under SKAT-O at the SAME MAF**: synonymous SKAT-O at
+  0.001 has 1 hit and a 1e-4 quantile of 2.9e-5; FlexRV with random scores 4 hits and 1.5e-8,
+  **three of the four best sets `sbeta20_MACsparse`**, the fourth `cbrt0.8_unw`, the HDL-C one a
+  `cbrt0.5` set on a sparse rung (the genes, Height: ENSG00000182944, ENSG00000204599,
+  ENSG00000239620, ENSG00000174327; HDL-C: ENSG00000214819 -- which gene carries which set stays
+  in the summary table, not here: no gene is written beside a MAC rung below 20). The
+  steepest score transform on the singletons rung, with scores that are random numbers: the set
+  is the few singleton carriers whose score landed near 1, and on an inverse-normalised trait two
+  or three carriers in the tails reach 1e-9..1e-11 with no gene involved -- 19.8's mechanism in
+  its purest form. The chr1 Height bin read by hand showed the same (14 cells below 1e-5 of 326k,
+  ten of them one gene's `sbeta20` rungs); the chr1 T2D bin was clean (5.0%, no cell below 1e-5).
+- **The score is doing something**: AM doubles the hits on the missense group (58 vs 29); the
+  coin-toss pair statistics are the right null for the genes with no signal. The 29 RAND hits are
+  the MAF ladder finding real missense burden, not false positives.
+
+What decides between "polygenic background concentrated by steep weights" (a reporting caveat)
+and "noise concentrated by steep weights on sparse rungs" (a change to the set ladder on
+quantitative traits, or a minimum `nEff_Burden`) is the simulated Height null of 19.10, whose
+`sim_sk` arm also carries the synonymous mask: if `sbeta20_MAC1` throws hits there, it is noise.
+
+### 19.10 The simulated-phenotype null: the whole pipeline on real genotypes (2026-10-16)
+
+The synonymous arms (the SKAT-O mask, 19.9's `fxr_syn`) are proxy nulls: synonymous sites sit
+under different selection, in different genes, at different frequencies. The null that tests
+the pipeline as run is a phenotype DRAWN FROM THE FITTED NULL MODEL -- the model's own fixed
+part, a random effect from the sparse GRM at its tau2, residual noise at its tau1 (a Bernoulli
+draw on the logistic scale for a binary trait) -- refitted in step 1 and tested in step 2 on
+the real genotypes and the real group files, every mask and FlexRV alike. Every p-value is then
+a null p-value on real genotype structure with no annotation confound, and whatever the sparse
+rungs do under it is the inflation 19.8 is about.
+
+`harness/tools/sim_null_pheno.R` (selftest 15 checks) does the draw. Two things it is careful
+about, both raised by the owner before it was built: nothing N x N is formed (the GRM is read
+sparse, thinned at the cutoff step 1 used -- `--relatednessCutoff=0.125` for amr, the default 0
+elsewhere, which like step 1 also drops negative entries -- cut into connected components, and
+drawn block by block); and a thinned GRM is NOT positive definite in general, so a component up
+to `--maxDenseComponent` (2,000) samples is eigendecomposed with its negative eigenvalues
+clipped to zero, counted and its lost mass reported (`components_eigen_clipped`,
+`clipped_mass_fraction`, `min_eigenvalue`), and a larger one takes a sparse Cholesky with the
+smallest jitter that makes it succeed (`components_jittered`, `max_jitter`; CHOLMOD reports
+indefiniteness as a WARNING, treated as failure). tau2 = 0, most AoU fits, draws no random
+effect. The report's people counts are masked below 20. Verified on the bundled models: the
+fixed part is the stored covariate offset plus the intercept (eta minus it is the BLUP), over
+six seeds the residual variance and the GRM pair covariance reproduce tau1 + tau2 and tau2 k_ij
+on both paths (ratios 0.99 and 0.95), the planted indefinite block is clipped at min eigenvalue
+1 - 0.9 sqrt 2, and step 1 refits on the file and recovers 0.196/0.467 against 0.216/0.465.
+
+**The traits.** eur Height (quantitative, the trait that carried the 19.8 outliers) and eur
+T2Diab (binary, the one binary trait among the nine). Each a model of its own, so one simulated
+phenotype per trait; a second seed on Height if the first leaves a question.
+
+**Step A: the draw, one dsub job per trait on the SAIGE image**, in the STEP-1 NOTEBOOK (it
+reads that notebook's `GRM`, `PHENOFILE`, `out_root`, `RELATEDNESS_CUTOFF`). The phenotype file is
+the production step-1 file (`data/phenotypes/brava_pilot_v1.collapsed.with_covariates.txt.gz`,
+388,363 rows, ID column `eid`), with the trait column REPLACED by the draw for the model's samples
+and NA for everyone else, so the production step-1 launcher runs on it unchanged. Upload
+`sim_null_pheno.R` to `SAIGE_SLIM_TESTING/tools/` first: dsub localizes `--script` alone, so the R
+file is an `--input`. The step-1 notebook's shell needs `bash -lc` for `aou_dsub.bash`'s variables.
+
+```python
+%%writefile sim_null_pheno_job.sh
+set -euo pipefail
+P="${PHENO}"; if [[ ${P} == *.gz ]]; then zcat "${P}" > pheno.txt; P=pheno.txt; fi
+Rscript "${RSCRIPT}" --modelFile="${MODEL}" --sparseGRMFile="${GRM}" --sparseGRMSampleIDFile="${GRMID}" \
+  --phenoFile="${P}" --phenoCol="${PHENOCOL}" --sampleIDCol="${IDCOL}" --seed="${SEED}" \
+  --relatednessCutoff="${CUTOFF}" --maxDenseComponent="${CAP}" \
+  --outPhenoFile="${OUT_PHENO}" --reportFile="${OUT_REPORT}"
+```
+
+```python
+IMG18 = "gcr.io/weighty-elf-452116-c7/saige-slim:1.5.2-dev-49178058"
+def run_dsub(args):
+    cmd = "source ~/aou_dsub.bash; " + " ".join(shlex.quote(a) for a in args)
+    out = subprocess.run(["bash", "-lc", cmd], capture_output=True, text=True)
+    print(args[2], "rc =", out.returncode, "|", ((out.stdout or "") + (out.stderr or "")).strip()[-300:])
+SIMD = f"{BUCKET}/SAIGE_SLIM_TESTING/simnull"
+RSCRIPT_GS = f"{BUCKET}/SAIGE_SLIM_TESTING/tools/sim_null_pheno.R"
+IDCOL = "eid"
+def submit_simnull(trait, seed=1, anc="eur", image=IMG18, machine="n2-highmem-4", cap=2000):
+    grm = GRM.format(pop=anc)
+    args = ["aou_dsub", "--name", f"simnull-{anc}-{trait}-s{seed}".lower(), "--image", image,
+            "--input", f"RSCRIPT={RSCRIPT_GS}",
+            "--input", f"MODEL={out_root(anc)}/{anc}_{trait}.rda",
+            "--input", f"GRM={grm}", "--input", f"GRMID={grm}.sampleIDs.txt",
+            "--input", f"PHENO={PHENOFILE}",
+            "--env", f"PHENOCOL={trait}", "--env", f"IDCOL={IDCOL}", "--env", f"SEED={seed}",
+            "--env", f"CUTOFF={RELATEDNESS_CUTOFF[anc]}", "--env", f"CAP={cap}",
+            "--output", f"OUT_PHENO={SIMD}/{anc}_{trait}_s{seed}.pheno.txt",
+            "--output", f"OUT_REPORT={SIMD}/{anc}_{trait}_s{seed}.report.tsv",
+            "--machine-type", machine, "--disk-size", "50", "--script", "sim_null_pheno_job.sh"]
+    run_dsub(args)
+submit_simnull("Height", cap=8000); submit_simnull("T2Diab")       # the PANEL keys
+```
+
+**Run 2026-10-16, both ~3 min (Height with the 7,218-sample eigendecomposition ~4).** The
+reports, every people count at or above 20:
+
+| | Height | T2Diab |
+|---|---|---|
+| N / tau1 / tau2 | 210,399 / 0.082 / 0.418 | 166,634 / 1 / 0.063 |
+| off-diagonal pairs kept at 0.05 | 64,378 | 43,153 |
+| components / singletons / largest | 181,719 / 166,255 / **7,218** | 145,944 / 135,059 / **5,735** |
+| largest component | eigen-clipped (cap 8,000): min eigenvalue **-0.145**, clipped mass **4.3e-6** of the total | Cholesky, jitter 1.1e-2 x diag |
+| moments | var(y - fixed) 0.502 vs tau1 + tau2 0.500; pair covariance 0.0590 vs 0.0569 | prevalence 0.1464 vs fixed part 0.1446 (24,394 cases); pair covariance 0.00827 vs 0.00828 |
+
+Two things to hold on to. **At the 0.05 cutoff the kept pairs PERCOLATE into one giant component**
+(3.4% of eur in one block): the first Height draw sent it down the Cholesky path, which needed a
+jitter of **0.33 x diag** to factor -- 0.33 x tau2, about 0.14 on a total of 0.50, of extra
+INDEPENDENT variance on a related cluster that shares rare variants, i.e. the refit would model
+that cluster's variance ~28% too low and the score tests on its variants would inflate -- so Height
+was redrawn with `cap=8000` (eigen-clip removes the impossible directions instead of inflating
+everything; the clipped mass of 4e-6 says the thinned eur GRM is very nearly PSD apart from that one
+direction). T2D's jitter of 1% was left. **The pair covariance and the residual variance are the
+check that the draw is the model's**, and both reproduce on both traits.
+
+**Step B: step 1 on the simulated file**, the production launcher with two keyword arguments
+added to its `submit()` (defaults keep production behaviour): `phenofile=None` (the
+`IN_PHENO_FILE` input), `root=None` (the output prefix), `tag=""` (into the job name).
+
+```python
+SIMROOT = out_root("eur").replace("nullglmm_v4", "nullglmm_simnull")
+def submit_sim_step1(trait, kind, seed=1):
+    return submit(anc="eur", trait=trait, kind=kind, dry=False, force=True,       # force: not in the screen
+                  phenofile=f"{SIMD}/eur_{trait}_s{seed}.pheno.txt",
+                  root=f"{SIMROOT}/eur_{trait}_s{seed}", tag="-sim")
+submit_sim_step1("T2Diab", "binary"); submit_sim_step1("Height", "quantitative")
+```
+
+Same flags, GRM, covariates, cutoff, gates and the v4 step-1 image as production. **Run
+2026-10-16**: T2Diab `ok` in 44 s (peak RSS 1.6 GB), **tau2 = 0 at the optimum** (REML score at 0
+negative) where the generating value was 0.063 -- the LEDGER #161 boundary collapse that most
+production binary fits show, a sparse GRM with 43k pairs among 167k people carrying almost no
+information about tau2 on a binary trait; NOT a defect of the draw, and part of what the null
+measures (the test treats relatives as independent while the phenotype carries family
+correlation at 0.063), variance ratios 1.000/0.9997 (null) and 1 (sparse). Height `ok` in 193 s
+(peak RSS 2.1 GB), a faithful twin: tau 0.163/0.834 on the standardised scale against
+production's 0.168/0.830, null variance ratios 1.92 against production's 1.98, sparse 1.000.
+
+**Step C: step 2**, in the STEP-2 NOTEBOOK: the seven production masks (`sim_sk`) and the FlexRV
+production group (`sim_fx`) on the simulated model, eur, by the production `submit()` with
+`STEP1["eur"]` pointed at `nullglmm_simnull/` for the call (the model path is
+`STEP1[anc][0]/<anc>_<pheno>`, so `pheno="Height_s1"` resolves it) and the names
+`sim_sk-eur-heights1-...` / `sim_fx-eur-heights1-...`; 10 + 10 jobs per trait, IMG18, Spot,
+highmem-2. Submitted 2026-10-16 (T2D 16:24, Height 16:3x).
+
+```python
+SIM_MODEL_DIR = f"{BUCKET}/data/saige/run/nullglmm_simnull"
+SIM_PHENO = {"t2diab": "T2Diab", "height": "Height"}
+ARMED = False
+def sim_fleet(kind, trait, seed=1):
+    src = "fxv4-" if kind == "sim_fx" else "skv4-"
+    plan = []
+    for v4 in sorted(k for k in RUNS if k.startswith(f"{src}eur-{trait}-") or k == f"{src}eur-{trait}"):
+        r = RUNS[v4]
+        if kind == "sim_sk": masks, grp, od = PROD_MASKS, nr_grp, f"eur/{kind}"
+        if kind == "sim_fx": masks, grp, od = FLEXRV_GROUP, fx_grp, f"eur/{kind}"
+        pheno = f"{SIM_PHENO[trait]}_s{seed}"
+        nm = v4.replace(src, kind + "-").replace(f"-{trait}", f"-{trait}s{seed}", 1)
+        if already(out_prefix_for(nm, "eur", pheno, r["chrs"]), od): continue
+        env = {k: v for k, v in r["env"].items() if k != "REGIONS"}
+        if kind == "sim_fx": env["SINGLE_IN_GROUP"] = "FALSE"
+        plan.append(nm)
+        if ARMED:
+            saved = STEP1["eur"]; STEP1["eur"] = (SIM_MODEL_DIR, saved[1])
+            try:
+                submit(name=nm, image=IMG18, masks=masks, fasttest=r["fasttest"], outdir=od, anc="eur", pheno=pheno,
+                       trait=r["trait"], firth=r["firth"], env=env, geno=r["geno"], chrs=r["chrs"],
+                       plk=lambda c, a="eur": cod(c, a), grp=grp, testtype="group", machine_type="n2-highmem-2",
+                       spot=True, pooled=True, sidecars=True, sparse_grm=r["sparse_grm"])
+            finally:
+                STEP1["eur"] = saved
+    print(kind, trait, len(plan), "jobs", "(submitted)" if ARMED else "(plan)")
+    return plan
+for k in ("sim_sk", "sim_fx"): sim_fleet(k, "t2diab")       # unarmed: 10 + 10
+```
+
+Then `RUNTAG=simnull` summaries -- the summary tool reads `skato_<tag>` and `flexrv_<tag>` under
+the `sk<N>-`/`fx<N>-` rule, so these need `FX_DIR=sim_fx FX_PREFIX=sim_fx-` and the SKAT-O
+equivalents once added (open: the tool has no `SK_DIR`/`SK_PREFIX` yet). Before that, one bin of
+each arm by hand (the `sim_read` cell: pooled fraction, hits, the cells below 1e-5 with their set
+labels and `nEff_Burden`).
+
+Decided before the numbers:
+- every mask's and FlexRV's fraction below 0.05 near 0.05, hits past 2.5e-6 about n x 2.5e-6
+  -- on BOTH traits; the binary trait at eur's case count is where the few-case inflation of
+  LEDGER #159 could show, and it is upstream of every kernel option;
+- the FlexRV best-set labels of whatever hits appear: sparse rungs (`MAC1`/`MAC3`/`MAC5`) with
+  steep score weights on Height is 19.8's mechanism and sizes the `nEff_Burden` filter from a
+  true null (read the hits' effective carrier counts as bands);
+- the synonymous arms (production and `fxr_syn`) against this: if they agree, the proxy null
+  is good enough to run routinely and this one need not be repeated per release; if the
+  simulated null is cleaner, synonymous carries signal of its own and is not a null.
 
 ### 19.10 `NEFF` (2026-10-16): the effective-carrier column in production output
 

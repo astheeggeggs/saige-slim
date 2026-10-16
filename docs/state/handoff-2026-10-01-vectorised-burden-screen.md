@@ -298,7 +298,7 @@ every `.gz` pair DIFFERENT at equal size regardless. The identity claim rests
 on the sim50k comparison between adjacent commits (sections 7 and 9); on AoU
 the check is that every differing row is a stretch-gated cell. RUN: 85,904 /
 85,916 / 85,941 rows per trait; vte and bmi 0 rows differ; asth 2 rows, both
-ENSG00000124233 -- the `AM_sbeta10_MACsparse` cell (p 2.96e-2 -> 6.23e-2) and the
+ENSG00000124233 -- one `AM_sbeta10` cell on a sparse rung (p 2.96e-2 -> 6.23e-2) and the
 gene's Cauchy row -- and the stretch-gate sidecar lists exactly that cell with
 `reported = exact`, p_spa 0.0296, p_exact 0.0623. So every AoU difference is
 #176's. (The sidecar's region is column 3, after Model and Kind; a first
