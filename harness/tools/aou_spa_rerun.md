@@ -2823,9 +2823,14 @@ false positive in the statistical sense, but not a gene-level finding either. Th
 rule stands: hold back FlexRV hits on quantitative traits below an effective-carrier threshold
 (`nEff_Burden`, now in every output). And the synonymous mask IS a fit routine control for
 FlexRV, read beside the trait's own synonymous SKAT-O (Height's is 0.060 / 0.071 in production).
-Open: the SKAT-O rows of this summary (is Height's synonymous SKAT-O at 5% here, where production
-had 0.060 and seven hits at the 1% MAF?); a second Height seed if anyone wants the hit count's
-variance; the T2D SKAT-O bin.
+**SKAT-O under the simulated null is calibrated on every mask and both traits**: 0.045-0.053
+below 0.05, zero hits past 2.5e-6 on all fourteen (trait, mask) rows at max MAF 0.001, every 1e-4
+quantile between 4e-5 and 2.6e-4. Height's synonymous mask reads 0.051 here against 0.060 in
+production, so production's excess on Height (and its seven synonymous hits at the 1% MAF) is
+polygenic background, not the kernel. And the SKAT-O pooled rows show NONE of the Cauchy excess
+the FlexRV rows show on the same phenotype: three max MAFs of one mask are far less correlated than
+112 nested sets, which is the explanation's own prediction. Open: a second Height seed if anyone
+wants the hit count's variance; the one resubmitted T2D SKAT-O bin (rerun the summary when it lands).
 
 Decided before the numbers:
 - every mask's and FlexRV's fraction below 0.05 near 0.05, hits past 2.5e-6 about n x 2.5e-6
