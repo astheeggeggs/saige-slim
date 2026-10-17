@@ -2799,6 +2799,34 @@ equivalents once added (open: the tool has no `SK_DIR`/`SK_PREFIX` yet). Before 
 each arm by hand (the `sim_read` cell: pooled fraction, hits, the cells below 1e-5 with their set
 labels and `nEff_Burden`).
 
+**Read 2026-10-17 (summary `simnull`, `FX_DIR=sim_fx FX_PREFIX=sim_fx- SK_DIR=sim_sk SK_PREFIX=sim_sk-`;
+one T2D SKAT-O bin was still a resubmitted straggler and is absent from its SKAT-O rows).** FlexRV:
+
+| trait | n genes | frac < 0.05 | 1e-2 / 1e-3 / 1e-4 quantiles | past 2.5e-6 | below 1e-4 |
+|---|---|---|---|---|---|
+| Height (simulated) | 18,426 | 0.057 | 8.4e-3 / 1.0e-3 / 5.5e-5 | **0** | 6 (1.8 expected) |
+| T2Diab (simulated) | 18,427 | 0.054 | 9.1e-3 / 6.6e-4 / 1.8e-4 | 0 | 1 |
+
+Against the random-score run on the REAL Height (19.9): 4 past 2.5e-6, 1e-4 quantile 1.5e-8,
+three best sets `sbeta20_MAC1`. Under the simulated null **no `sbeta20` set appears below 1e-4**;
+the best sets there are mostly the gentle cube-root transforms, one `sbeta10` on a sparse rung.
+The body (0.057 / 0.054, the cells at 0.050-0.052 on the chr1 bins read by hand) is the Cauchy's
+anti-conservatism on a phenotype with NO genetic signal, which settles where it comes from, and
+the six Height genes below 1e-4 against 1.8 expected is that excess reaching a little further
+down; it is gone by 2.5e-6.
+
+**Verdict (one seed, two traits):** FlexRV's extreme tail on Height is POLYGENIC BACKGROUND
+concentrated by steep score weights on the sparsest rungs, not noise. A steep-transform sparse-rung
+set on Height is a handful of carriers whose real, tiny, polygenic residuals are summed with no
+dilution; under pure noise the same sets stayed quiet genome-wide. Not a kernel defect and not a
+false positive in the statistical sense, but not a gene-level finding either. The 19.8 reporting
+rule stands: hold back FlexRV hits on quantitative traits below an effective-carrier threshold
+(`nEff_Burden`, now in every output). And the synonymous mask IS a fit routine control for
+FlexRV, read beside the trait's own synonymous SKAT-O (Height's is 0.060 / 0.071 in production).
+Open: the SKAT-O rows of this summary (is Height's synonymous SKAT-O at 5% here, where production
+had 0.060 and seven hits at the 1% MAF?); a second Height seed if anyone wants the hit count's
+variance; the T2D SKAT-O bin.
+
 Decided before the numbers:
 - every mask's and FlexRV's fraction below 0.05 near 0.05, hits past 2.5e-6 about n x 2.5e-6
   -- on BOTH traits; the binary trait at eur's case count is where the few-case inflation of
