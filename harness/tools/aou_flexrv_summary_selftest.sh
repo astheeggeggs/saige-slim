@@ -115,5 +115,11 @@ ANC=xx BASE="${T}/base" OUT_DIR="${T}/outr" RUNTAG=fxr_syn FX_DIR=fxr_syn FX_PRE
 grep -q "^flexrv: 1 v4 files, 0 fixed, 0 v7; skato: 0 files" runr.log && [[ -s outr/xx.flexrv_vs_skato.fxr_syn.tsv.gz ]] && echo "ok   control tag: FX_DIR/FX_PREFIX read the <tag>/ directory, SKAT-O absent" || { echo "FAIL control tag: $(grep '^flexrv' runr.log)"; fail=1; }
 ANC=xx BASE="${T}/base" OUT_DIR="${T}/outr0" RUNTAG=fxr_syn bash "${HERE}/aou_flexrv_summary.sh" > runr0.log 2>&1 || true
 grep -q "^flexrv: 0 v4 files" runr0.log && echo "ok   control tag without the overrides reads nothing (the 2026-10-16 mistake)" || { echo "FAIL control tag w/o overrides: $(grep '^flexrv' runr0.log)"; fail=1; }
+# both arms under one control tag (the simulated null): SK_DIR/SK_PREFIX beside FX_DIR/FX_PREFIX
+mkdir -p base/xx/sim_sk base/xx/sim_fx outs
+cp "base/xx/flexrv_v6/fx6-xx-traita.TraitA.xx.chr1-22.txt.gz" "base/xx/sim_fx/sim_fx-xx-traita.TraitA.xx.chr1-22.txt.gz"
+for f in base/xx/skato_v6/sk6-xx-traita.TraitA.xx.chr1-22*.txt.gz; do cp "$f" "base/xx/sim_sk/$(basename "$f" | sed 's/^sk6-/sim_sk-/')"; done
+ANC=xx BASE="${T}/base" OUT_DIR="${T}/outs" RUNTAG=simnull FX_DIR=sim_fx FX_PREFIX=sim_fx- SK_DIR=sim_sk SK_PREFIX=sim_sk- bash "${HERE}/aou_flexrv_summary.sh" > runs.log 2>&1 || { cat runs.log; echo "SELFTEST FAILED: simnull run exited non-zero"; exit 1; }
+if grep -q "^flexrv: 1 v4 files, 0 fixed, 0 v7; skato: 1 files" runs.log && gzip -dc outs/xx.flexrv_vs_skato.simnull.tsv.gz | awk -F'\t' 'NR>1 && $3=="G1" && $5!="NA" && $9!="NA"' | grep -q .; then echo "ok   simnull tag: both arms read through the overrides, joined on the gene"; else echo "FAIL simnull tag: $(grep '^flexrv' runs.log)"; fail=1; fi
 (( fail )) && { echo "SELFTEST FAILED"; exit 1; }
-echo "selftest OK: 33 checks"
+echo "selftest OK: 34 checks"
