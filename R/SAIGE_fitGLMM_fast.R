@@ -1855,7 +1855,8 @@ refineKinPar <- function(relatednessCutoff, W, tauVecNew, nblocks = 10, verbose 
 
 
 # createSparseKinParallel = function(markerIndexVec, nblocks, ncore, relatednessCutoff, W, tauVecNew){
-createSparseKinParallel <- function(nblocks, ncore, relatednessCutoff) {
+createSparseKinParallel <- function(nblocks, ncore, relatednessCutoff,
+                                    screenMethod = "pairwise", screenBlockSize = 2048L) {
   # get MAT
   # MAT = Get_MultiMarkersBySample_StdGeno_Mat(markerIndexVec)
   # MAT = Get_MultiMarkersBySample_StdGeno_Mat()
@@ -1869,7 +1870,16 @@ createSparseKinParallel <- function(nblocks, ncore, relatednessCutoff) {
   # printComb(3) -- the R call was deleted 2026-09-14 (C6): it printed two junk
   # lines on every step-0 / internal-GRM run. The C++ printer stays (LEDGER #63).
   # indexVec = findIndiceRelatedSample()
-  findIndiceRelatedSample()
+  # screenMethod "pairwise" is the original all-pairs arma::dot screen;
+  # "blocked" tiles the samples into screenBlockSize-column blocks and screens
+  # each block pair with one sgemm, re-scoring every pair near the cutoff with
+  # the pairwise arithmetic, so the screened pair set is the same
+  # (findIndiceRelatedSampleBlocked in src/SAIGE_fitGLMM_fast.cpp).
+  if (identical(screenMethod, "blocked")) {
+    findIndiceRelatedSampleBlocked(as.integer(screenBlockSize))
+  } else {
+    findIndiceRelatedSample()
+  }
 
   # print(indexVec)
   tp1 <- proc.time()

@@ -1083,6 +1083,16 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// findIndiceRelatedSampleBlocked
+void findIndiceRelatedSampleBlocked(int blockSize);
+RcppExport SEXP _SAIGE_findIndiceRelatedSampleBlocked(SEXP blockSizeSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type blockSize(blockSizeSEXP);
+    findIndiceRelatedSampleBlocked(blockSize);
+    return R_NilValue;
+END_RCPP
+}
 // parallelcalsparseGRM
 void parallelcalsparseGRM(arma::fvec& GRMvec);
 RcppExport SEXP _SAIGE_parallelcalsparseGRM(SEXP GRMvecSEXP) {
@@ -2519,6 +2529,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_getCrossprodMatAndKin_LOCO", (DL_FUNC) &_SAIGE_getCrossprodMatAndKin_LOCO, 1},
     {"_SAIGE_printComb", (DL_FUNC) &_SAIGE_printComb, 1},
     {"_SAIGE_findIndiceRelatedSample", (DL_FUNC) &_SAIGE_findIndiceRelatedSample, 0},
+    {"_SAIGE_findIndiceRelatedSampleBlocked", (DL_FUNC) &_SAIGE_findIndiceRelatedSampleBlocked, 1},
     {"_SAIGE_parallelcalsparseGRM", (DL_FUNC) &_SAIGE_parallelcalsparseGRM, 1},
     {"_SAIGE_parallelsumTwoVec", (DL_FUNC) &_SAIGE_parallelsumTwoVec, 1},
     {"_SAIGE_setgeno", (DL_FUNC) &_SAIGE_setgeno, 7},

@@ -117,6 +117,27 @@ option_list <- list(
     type = "numeric",
     default = 0.15,
     help = "Optional. Maximum missing rate of markers used for GRM"
+  ),
+  make_option(
+    "--screenMethod",
+    type = "character",
+    default = "pairwise",
+    help = paste0(
+      "How the relatedness screen over all sample pairs is computed: pairwise ",
+      "(one dot product per pair) or blocked (one single-threaded sgemm per ",
+      "block pair of samples, parallel over block pairs; pairs near the cutoff ",
+      "are re-scored with the pairwise arithmetic, so the output is the same) ",
+      "[default=pairwise]"
+    )
+  ),
+  make_option(
+    "--screenBlockSize",
+    type = "integer",
+    default = 2048L,
+    help = paste0(
+      "Samples per block for --screenMethod=blocked; each thread holds a ",
+      "screenBlockSize^2 float matrix (16 MB at 2048) [default=2048]"
+    )
   )
 )
 
@@ -144,5 +165,7 @@ createSparseGRM(
   isDiagofKinSetAsOne = opt$isDiagofKinSetAsOne,
   nThreads = opt$nThreads,
   minMAFforGRM = opt$minMAFforGRM,
-  maxMissingRateforGRM = opt$maxMissingRateforGRM
+  maxMissingRateforGRM = opt$maxMissingRateforGRM,
+  screenMethod = opt$screenMethod,
+  screenBlockSize = opt$screenBlockSize
 )

@@ -10,7 +10,7 @@ something false. Spot-checked by hand afterwards: `--X_PARregion`,
 
 # SAIGE `strip` — implemented CLI options
 
-**Shape.** 179 distinct options across four wrappers: **step 0** `createSparseGRM.R` 16, **step 1** `step1_fitNULLGLMM.R` 58, **step 2** `step2_SPAtests.R` 65, and `extractNglmm.R` 40 (added after this inventory; its options are tabulated by the generated CLI-options page but their live/inert status has NOT been hand-traced here). Step 0 builds the sparse GRM (`.mtx` + `.sampleIDs.txt`, both named from `outputPrefix`/`relatednessCutoff`/`numRandomMarkerforSparseKin`). Step 1 fits the null GLMM and estimates variance ratios (one or several phenotypes per process). Step 2 tests markers, or regions when `--groupFile` is given — the single branch point at `R/SAIGE_Test_main.R:367` that decides whether ~25 of step 2's options do anything at all. PLINK bed/bim/fam and PGEN pgen/pvar/psam are the only genotype inputs at every step.
+**Shape.** 181 distinct options across four wrappers: **step 0** `createSparseGRM.R` 18, **step 1** `step1_fitNULLGLMM.R` 58, **step 2** `step2_SPAtests.R` 65, and `extractNglmm.R` 40 (added after this inventory; its options are tabulated by the generated CLI-options page but their live/inert status has NOT been hand-traced here). Step 0 builds the sparse GRM (`.mtx` + `.sampleIDs.txt`, both named from `outputPrefix`/`relatednessCutoff`/`numRandomMarkerforSparseKin`). Step 1 fits the null GLMM and estimates variance ratios (one or several phenotypes per process). Step 2 tests markers, or regions when `--groupFile` is given — the single branch point at `R/SAIGE_Test_main.R:367` that decides whether ~25 of step 2's options do anything at all. PLINK bed/bim/fam and PGEN pgen/pvar/psam are the only genotype inputs at every step.
 
 Legend: **L** live · **P** partly live · **R** refused · **I** inert · `+` this branch's option · `~` upstream's option, meaning changed here.
 
@@ -128,7 +128,7 @@ Legend: **L** live · **P** partly live · **R** refused · **I** inert · `+` t
 
 ---
 
-## 3. STEP 1 (58) and STEP 0 (16)
+## 3. STEP 1 (58) and STEP 0 (18)
 
 ### Step 1
 
@@ -185,6 +185,8 @@ Legend: **L** live · **P** partly live · **R** refused · **I** inert · `+` t
 | `relatednessCutoff` | 0.125 | applied twice — to the screen and to the full-marker value | L |
 | `isDiagofKinSetAsOne` | FALSE | diagonal values (count is always N) | L |
 | `minMAFforGRM` / `maxMissingRateforGRM` | 0.01 / 0.15 | marker QC — and hence **which** random markers get drawn | L |
+| `screenMethod` `+` | pairwise | how the screen visits the C(N,2) pairs: `pairwise` (one `arma::dot` per pair, memory-bound) or `blocked` (one single-threaded sgemm per block pair, TBB over block pairs; pairs within a rigorous float-rounding margin of the cutoff are re-scored with the pairwise arithmetic, so the screened set and both output files are identical; LEDGER #182) | L (speed only) |
+| `screenBlockSize` `+` | 2048 | samples per block for `blocked`; B² floats per thread (16 MB at 2048); ignored by `pairwise` | L (speed/memory only) |
 
 Step 0 reads only the **line count** from `bimFile`/`pvarFile`; IDs, chromosomes and alleles are never parsed there.
 
@@ -241,7 +243,7 @@ Step 0 reads only the **line count** from `bimFile`/`pvarFile`; IDs, chromosomes
 
 ## 5. THIS BRANCH'S OWN OPTIONS
 
-**Step 0 (4):** `--plink2File`, `--pgenFile`, `--pvarFile`, `--psamFile`.
+**Step 0 (6):** `--plink2File`, `--pgenFile`, `--pvarFile`, `--psamFile`, and `--screenMethod` / `--screenBlockSize` (#182: the opt-in blocked-GEMM relatedness screen; default `pairwise` is the upstream screen).
 **Step 1 (6):** the same PGEN quartet, plus `--seed` (upstream hardcodes `set.seed(1)`, #8) and `--tolCoef` (#125).
 **Step 2 (15):** `--pgenFile` / `--pvarFile` / `--psamFile` (upstream has only `--pgenPrefix`), `--GMMATmodel_varianceRatio_multiTraits_File`, `--is_output_weight_column`, `--firth_solver`, `--pval_cutoff_for_fastTest` (as a CLI flag; the R-API parameter and its 0.05 default are upstream's), and the five `--flexRV_*`, `--SKATO_screen_threshold` / `--SKATO_tail_method` / `--SKATO_tail_threshold` (#158: the SKAT-O outer-integral screen and the saddlepoint tail).
 

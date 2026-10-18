@@ -22,7 +22,9 @@ createSparseGRM(
   minMAFforGRM = 0.01,
   maxMissingRateforGRM = 0.15,
   isSetGeno = TRUE,
-  isWritetoFiles = TRUE
+  isWritetoFiles = TRUE,
+  screenMethod = "pairwise",
+  screenBlockSize = 2048L
 )
 }
 \arguments{
@@ -66,6 +68,10 @@ calculating the sparse GRM}
 \item{isSetGeno}{logical. Whether to read the genotypes into the global genotype object before computing the GRM. By default, TRUE; FALSE reuses whatever a previous call left in place}
 
 \item{isWritetoFiles}{logical. Whether to write the sparse GRM and its sample-ID file to disk. By default, TRUE; FALSE returns the matrix and writes nothing}
+
+\item{screenMethod}{character. How the relatedness screen over all sample pairs is computed: "pairwise" (one dot product per pair) or "blocked" (one single-threaded sgemm per block pair of samples, parallel over block pairs; pairs near the cutoff are re-scored with the pairwise arithmetic, so the screened pairs and the output are the same). By default, "pairwise"}
+
+\item{screenBlockSize}{integer. Samples per block for screenMethod = "blocked"; each thread holds a screenBlockSize x screenBlockSize float matrix (16 MB at 2048). By default, 2048}
 }
 \value{
 a file ended with sampleIDs.txt that contains sample IDs for the sparse GRM and a file ended with .sparseGRM.mtx that contains the sparse GRM

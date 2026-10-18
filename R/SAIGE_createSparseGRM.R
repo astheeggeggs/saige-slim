@@ -25,6 +25,8 @@
 #' @param maxMissingRateforGRM numeric. Maximum missing rate of the markers used for the GRM. By default, 0.15
 #' @param isSetGeno logical. Whether to read the genotypes into the global genotype object before computing the GRM. By default, TRUE; FALSE reuses whatever a previous call left in place
 #' @param isWritetoFiles logical. Whether to write the sparse GRM and its sample-ID file to disk. By default, TRUE; FALSE returns the matrix and writes nothing
+#' @param screenMethod character. How the relatedness screen over all sample pairs is computed: "pairwise" (one dot product per pair) or "blocked" (one single-threaded sgemm per block pair of samples, parallel over block pairs; pairs near the cutoff are re-scored with the pairwise arithmetic, so the screened pairs and the output are the same). By default, "pairwise"
+#' @param screenBlockSize integer. Samples per block for screenMethod = "blocked"; each thread holds a screenBlockSize x screenBlockSize float matrix (16 MB at 2048). By default, 2048
 createSparseGRM <- function(bedFile = "",
                             bimFile = "",
                             famFile = "",
@@ -42,7 +44,20 @@ createSparseGRM <- function(bedFile = "",
                             minMAFforGRM = 0.01,
                             maxMissingRateforGRM = 0.15,
                             isSetGeno = TRUE,
-                            isWritetoFiles = TRUE) {
+                            isWritetoFiles = TRUE,
+                            screenMethod = "pairwise",
+                            screenBlockSize = 2048L) {
+  methodOk <- is.character(screenMethod) && length(screenMethod) == 1L &&
+    screenMethod %in% c("pairwise", "blocked")
+  if (!methodOk) {
+    stop("screenMethod must be \"pairwise\" or \"blocked\", got ", deparse(screenMethod))
+  }
+  blockOk <- is.numeric(screenBlockSize) && length(screenBlockSize) == 1L &&
+    !is.na(screenBlockSize) && screenBlockSize >= 1 &&
+    screenBlockSize == round(screenBlockSize)
+  if (!blockOk) {
+    stop("screenBlockSize must be a positive integer, got ", deparse(screenBlockSize))
+  }
   # LEDGER #7 fix: always pin the TBB pool — nThreads=1 previously left
   # RcppParallel on all hardware threads (nondeterministic float reductions).
   RcppParallel:::setThreadOptions(numThreads = nThreads)
@@ -127,7 +142,13 @@ createSparseGRM <- function(bedFile = "",
 
   cat("Start creating sparse GRM\n")
   ta <- proc.time()
-  sparseMList <- createSparseKinParallel(nblocks = nThreads, ncore = nThreads, relatednessCutoff)
+  if (screenMethod == "blocked") {
+    cat("relatedness screen: blocked, screenBlockSize ", screenBlockSize, "\n")
+  }
+  sparseMList <- createSparseKinParallel(
+    nblocks = nThreads, ncore = nThreads, relatednessCutoff,
+    screenMethod = screenMethod, screenBlockSize = screenBlockSize
+  )
   tb <- proc.time()
   cat("tb-ta\n")
   print(tb - ta)

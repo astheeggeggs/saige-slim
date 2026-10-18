@@ -349,6 +349,10 @@ findIndiceRelatedSample <- function() {
     invisible(.Call('_SAIGE_findIndiceRelatedSample', PACKAGE = 'SAIGE'))
 }
 
+findIndiceRelatedSampleBlocked <- function(blockSize) {
+    invisible(.Call('_SAIGE_findIndiceRelatedSampleBlocked', PACKAGE = 'SAIGE', blockSize))
+}
+
 parallelcalsparseGRM <- function(GRMvec) {
     invisible(.Call('_SAIGE_parallelcalsparseGRM', PACKAGE = 'SAIGE', GRMvec))
 }

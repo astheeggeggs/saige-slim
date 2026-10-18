@@ -145,7 +145,10 @@ PLINK and PGEN input are mutually exclusive.
 
 Options that matter: `--numRandomMarkerforSparseKin` (default 2000),
 `--relatednessCutoff` (default 0.125), `--minMAFforGRM`, `--maxMissingRateforGRM`,
-`--isDiagofKinSetAsOne`, `--memoryChunk`. Note `--nThreads` **defaults to 16**
+`--isDiagofKinSetAsOne`, `--memoryChunk`, and `--screenMethod=blocked` (opt-in;
+with `--screenBlockSize`, default 2048), which screens the C(N,2) sample pairs with one
+single-threaded sgemm per block pair instead of one dot product per pair -- same
+screened pairs and byte-identical outputs, LEDGER #182. Note `--nThreads` **defaults to 16**
 here, unlike steps 1 and 2 where it defaults to 1.
 
 Two outputs, named from the prefix and the parameters:

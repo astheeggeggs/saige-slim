@@ -14,6 +14,11 @@
 #include <cstring>   // std::memcmp, for the GetTrace probe-cache check
 #include <boost/date_time.hpp> // for gettimeofday and timeval
 #include <oneapi/tbb/concurrent_vector.h>
+#include <atomic>
+#include <mutex>
+#include <algorithm>
+#include <chrono>
+#include <dlfcn.h>   // dlsym: openblas_{get,set}_num_threads for the blocked screen
 #include "PGEN.hpp"
 using namespace Rcpp;
 using namespace std;
@@ -2308,6 +2313,227 @@ void findIndiceRelatedSample(){
 */
 
 //  return(xout);
+}
+
+
+// ---------------------------------------------------------------------------
+// Blocked-GEMM relatedness screen (opt-in: createSparseGRM --screenMethod=blocked).
+//
+// findIndiceRelatedSample above visits all C(N,2) pairs with one arma::dot of
+// two m-float columns each: memory-bandwidth bound, hours at N ~ 3e5. Here the
+// samples are tiled into blocks of B columns and every block pair (bi <= bj)
+// is ONE single-threaded sgemm, C = X_bi^T X_bj (B x B floats per worker);
+// parallelism is over block pairs (TBB), never inside BLAS.
+//
+// The SAME pair set as the pairwise screen, by construction, not by luck. The
+// sgemm sums the m products in a different order from arma::dot, so C(i,j) and
+// the pairwise value differ in the last bits, and a pair within that rounding
+// of the cutoff could be decided differently. So the GEMM value is only a
+// PREFILTER with a rigorous margin: any floating-point evaluation of an
+// m-term inner product, in any order, with or without FMA, is within
+// gamma_m * sum_k |x_k y_k| <= gamma_m * ||x|| ||y|| of the exact one
+// (gamma_m = m u / (1 - m u), u = 2^-24; Higham, Thm 3.1/Cauchy-Schwarz), so
+// the two evaluations differ by at most 2 gamma_m ||x_i|| ||x_j||; the final
+// float division by m adds at most a relative u. Every pair whose GEMM value
+// clears (cutoff - that margin, doubled for safety) is RE-SCORED with exactly
+// the pairwise worker's two lines (arma::dot, then / m_M_Submarker in float)
+// and kept iff that value clears the cutoff -- the pairwise decision itself.
+// A pair below the prefilter provably fails the pairwise test too. The margin
+// is ~2 m u ~ 6e-4 in kinship units at m = 5000 (per pair, scaled by the two
+// columns' norms), so the re-scored set is the kept set plus a thin band.
+//
+// Pairs are pushed as (i, j) with i < j, the orientation the triangle fold in
+// indicesRelatedSamples produces (verified: both of its branches give i < j).
+// Within a diagonal block only the strict upper triangle is visited. Like the
+// pairwise screen, the push order into geno.indiceVec is nondeterministic at
+// nThreads > 1; refineKin scores each pair independently of its position and
+// the .mtx is written from a column-sorted Matrix, so the file is not.
+// ---------------------------------------------------------------------------
+typedef int (*openblas_get_num_threads_fn)(void);
+typedef void (*openblas_set_num_threads_fn)(int);
+typedef int (*omp_get_max_threads_fn)(void);
+typedef void (*omp_set_num_threads_fn)(int);
+
+struct indicesRelatedSamplesBlocked : public RcppParallel::Worker {
+  const arma::fmat & X;
+  const std::vector< std::pair<int, int> > & blockPairs;
+  const std::vector<double> & colNorm;
+  int Ntotal;
+  int B;
+  int m_M_Submarker;
+  float cutoff;
+  double rawThr;      // m * cutoff - 4 u m |cutoff|
+  double kappa;       // 4 gamma_m: margin coefficient on ||x_i|| ||x_j||
+  tbb::concurrent_vector< std::pair<int, int> > & output;
+  std::atomic<long long> & nRescored;
+  std::atomic<long long> & nGemmDisagree;
+  std::mutex & diffMutex;
+  double & maxAbsDiff;  // max |GEMM/m - dot/m| over re-scored pairs (diagnostic)
+  omp_get_max_threads_fn ompGet;  // NULL unless an OpenMP runtime is loaded
+  omp_set_num_threads_fn ompSet;
+
+  indicesRelatedSamplesBlocked(const arma::fmat & X,
+                               const std::vector< std::pair<int, int> > & blockPairs,
+                               const std::vector<double> & colNorm,
+                               int Ntotal, int B, int m_M_Submarker, float cutoff,
+                               double rawThr, double kappa,
+                               tbb::concurrent_vector< std::pair<int, int> > & output,
+                               std::atomic<long long> & nRescored,
+                               std::atomic<long long> & nGemmDisagree,
+                               std::mutex & diffMutex, double & maxAbsDiff,
+                               omp_get_max_threads_fn ompGet, omp_set_num_threads_fn ompSet)
+    : X(X), blockPairs(blockPairs), colNorm(colNorm), Ntotal(Ntotal), B(B),
+      m_M_Submarker(m_M_Submarker), cutoff(cutoff), rawThr(rawThr), kappa(kappa),
+      output(output), nRescored(nRescored), nGemmDisagree(nGemmDisagree),
+      diffMutex(diffMutex), maxAbsDiff(maxAbsDiff), ompGet(ompGet), ompSet(ompSet) {}
+
+  void operator()(std::size_t begin, std::size_t end) {
+    const arma::uword m = X.n_rows;
+    // An OpenMP-built OpenBLAS (conda-forge osx-64/osx-arm64) takes its thread
+    // count from the CALLING thread's OpenMP ICV -- which a TBB worker inherits
+    // from OMP_NUM_THREADS, all cores when unset -- and re-sets its global
+    // count from it on every call, so openblas_set_num_threads on the main
+    // thread does not reach a worker. Measured 2026-10-18 with
+    // OMP/OPENBLAS_NUM_THREADS unset at --nThreads=1: 4.6 CPU-s in 0.9 s wall
+    // without this, i.e. the sgemm ran multi-threaded. So pin this thread's
+    // ICV for the task and restore it after. The pthreads build (linux-64)
+    // loads no OpenMP runtime, ompSet is NULL, and the caller's global pin is
+    // what applies there.
+    int ompBefore = -1;
+    if (ompGet != NULL && ompSet != NULL) {
+      ompBefore = ompGet();
+      if (ompBefore != 1) ompSet(1);
+    }
+    for (std::size_t t = begin; t < end; t++) {
+      const int bi = blockPairs[t].first;
+      const int bj = blockPairs[t].second;
+      const int i0 = bi * B;
+      const int j0 = bj * B;
+      const int ni = std::min(B, Ntotal - i0);
+      const int nj = std::min(B, Ntotal - j0);
+      // Non-owning column-block views (contiguous columns, no copy).
+      const arma::fmat Xi(const_cast<float*>(X.colptr(i0)), m, ni, false, true);
+      const arma::fmat Xj(const_cast<float*>(X.colptr(j0)), m, nj, false, true);
+      arma::fmat C = Xi.t() * Xj;   // sgemm (trans A), ni x nj
+      long long rescored = 0, disagree = 0;
+      double localMax = 0.0;
+      for (int jj = 0; jj < nj; jj++) {
+        const int j = j0 + jj;
+        const int iiEnd = (bi == bj) ? jj : ni;   // diagonal block: i < j only
+        const float * Ccol = C.colptr(jj);
+        const double nj_norm = colNorm[j];
+        for (int ii = 0; ii < iiEnd; ii++) {
+          const double c = (double)Ccol[ii];
+          if (c < rawThr - kappa * colNorm[i0 + ii] * nj_norm) continue;
+          const int i = i0 + ii;
+          // Exactly indicesRelatedSamples::operator()'s arithmetic.
+          float kinValueTemp = arma::dot(X.col(i), X.col(j));
+          kinValueTemp = kinValueTemp/m_M_Submarker;
+          rescored++;
+          float kinGemm = Ccol[ii];
+          kinGemm = kinGemm/m_M_Submarker;
+          const bool keep = (kinValueTemp >= cutoff);
+          if (keep != (kinGemm >= cutoff)) disagree++;
+          const double d = std::fabs((double)kinGemm - (double)kinValueTemp);
+          if (d > localMax) localMax = d;
+          if (keep) output.push_back(std::pair<int, int>(i, j));
+        }
+      }
+      nRescored += rescored;
+      nGemmDisagree += disagree;
+      if (rescored > 0) {
+        std::lock_guard<std::mutex> lock(diffMutex);
+        if (localMax > maxAbsDiff) maxAbsDiff = localMax;
+      }
+    }
+    if (ompBefore > 1) ompSet(ompBefore);
+  }
+};
+
+
+// [[Rcpp::export]]
+void findIndiceRelatedSampleBlocked(int blockSize){
+  if (blockSize < 1) Rcpp::stop("screenBlockSize must be >= 1, got %d", blockSize);
+  const int Ntotal = geno.getNnomissing();
+  const arma::fmat & X = geno.stdGenoMultiMarkersMat;
+  const int m_M_Submarker = getSubMarkerNum();
+  if ((int)X.n_cols != Ntotal || (int)X.n_rows != m_M_Submarker) {
+    Rcpp::stop("blocked screen: stdGenoMultiMarkersMat is %d x %d, expected %d x %d",
+               (int)X.n_rows, (int)X.n_cols, m_M_Submarker, Ntotal);
+  }
+  const int B = std::max(1, std::min(blockSize, std::max(Ntotal, 1)));
+  const int nBlocks = (Ntotal + B - 1) / B;
+  std::vector< std::pair<int, int> > blockPairs;
+  blockPairs.reserve((size_t)nBlocks * (size_t)(nBlocks + 1) / 2);
+  for (int bj = 0; bj < nBlocks; bj++)
+    for (int bi = 0; bi <= bj; bi++) blockPairs.push_back(std::pair<int, int>(bi, bj));
+
+  // Column norms in double, for the per-pair rounding margin.
+  std::vector<double> colNorm(Ntotal);
+  for (int i = 0; i < Ntotal; i++) {
+    const float * p = X.colptr(i);
+    double s = 0.0;
+    for (int k = 0; k < m_M_Submarker; k++) s += (double)p[k] * (double)p[k];
+    colNorm[i] = std::sqrt(s);
+  }
+  const double u = std::ldexp(1.0, -24);
+  const double mu = (double)m_M_Submarker * u;
+  if (mu >= 0.5) Rcpp::stop("blocked screen: too many screening markers for a float bound (m = %d)", m_M_Submarker);
+  const double gammaM = mu / (1.0 - mu);
+  const float cutoff = geno.relatednessCutoff;
+  const double rawThr = (double)m_M_Submarker * (double)cutoff
+                        - 4.0 * u * (double)m_M_Submarker * std::fabs((double)cutoff);
+  const double kappa = 4.0 * gammaM;
+
+  // One BLAS thread per call: the parallelism is over block pairs. Pin
+  // OpenBLAS for the duration (restored after) so an unset
+  // OPENBLAS_NUM_THREADS cannot oversubscribe the TBB pool.
+  openblas_get_num_threads_fn obGet =
+    (openblas_get_num_threads_fn)dlsym(RTLD_DEFAULT, "openblas_get_num_threads");
+  openblas_set_num_threads_fn obSet =
+    (openblas_set_num_threads_fn)dlsym(RTLD_DEFAULT, "openblas_set_num_threads");
+  omp_get_max_threads_fn ompGet =
+    (omp_get_max_threads_fn)dlsym(RTLD_DEFAULT, "omp_get_max_threads");
+  omp_set_num_threads_fn ompSet =
+    (omp_set_num_threads_fn)dlsym(RTLD_DEFAULT, "omp_set_num_threads");
+  int blasThreadsBefore = -1;
+  if (obGet != NULL && obSet != NULL) {
+    blasThreadsBefore = obGet();
+    obSet(1);
+    std::cout << "Blocked screen: OpenBLAS threads " << blasThreadsBefore
+              << " -> " << obGet() << " for the screen" << std::endl;
+  } else {
+    std::cout << "Blocked screen: OpenBLAS thread control not found; set the BLAS "
+                 "library's thread count to 1 (e.g. OPENBLAS_NUM_THREADS=1)" << std::endl;
+  }
+
+  if (ompGet != NULL && ompSet != NULL) {
+    std::cout << "Blocked screen: OpenMP runtime present; each worker pins its OpenMP "
+                 "thread count to 1 for the screen" << std::endl;
+  }
+  std::cout << "Blocked screen: Ntotal " << Ntotal << ", markers " << m_M_Submarker
+            << ", block size " << B << ", blocks " << nBlocks
+            << ", block pairs " << blockPairs.size() << std::endl;
+
+  std::atomic<long long> nRescored(0), nGemmDisagree(0);
+  std::mutex diffMutex;
+  double maxAbsDiff = 0.0;
+  const size_t nBefore = geno.indiceVec.size();
+  indicesRelatedSamplesBlocked worker(X, blockPairs, colNorm, Ntotal, B, m_M_Submarker,
+                                      cutoff, rawThr, kappa, geno.indiceVec,
+                                      nRescored, nGemmDisagree, diffMutex, maxAbsDiff,
+                                      ompGet, ompSet);
+  auto t0 = std::chrono::steady_clock::now();
+  parallelFor(0, blockPairs.size(), worker, 1);
+  auto t1 = std::chrono::steady_clock::now();
+  if (blasThreadsBefore > 0) obSet(blasThreadsBefore);
+
+  std::cout << "Blocked screen: " << (geno.indiceVec.size() - nBefore) << " pairs kept of "
+            << nRescored.load() << " re-scored with arma::dot (prefilter margin 4*gamma_m*|x_i||x_j|, "
+            << "gamma_m = " << gammaM << "); raw-GEMM decision differs from the pairwise one on "
+            << nGemmDisagree.load() << " re-scored pairs; max |GEMM - dot| / m = "
+            << maxAbsDiff << "; "
+            << std::chrono::duration<double>(t1 - t0).count() << " s" << std::endl;
 }
 
 
