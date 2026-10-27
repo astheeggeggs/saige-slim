@@ -1159,15 +1159,22 @@ SAIGE.Region <- function(mu,
   flexLofAnno <- character(0)
   flexMaxMAF <- 0.001
   nTransformSets <- 0L
+  # which of the file's score lines the run uses (1 when nothing selects: the
+  # column is carried and nothing reads it)
+  scoreSel <- 1L
+  flexScoreName <- character(0)
   if (!is.null(flexRV)) {
     if (length(scoreName) == 0) {
       stop("--flexRV_score=", flexRV$score, " needs a 'score:", flexRV$score,
            "' line in every region of the group file, and ", groupFile, " has no score line\n")
     }
-    if (!identical(scoreName, flexRV$score)) {
-      stop("--flexRV_score=", flexRV$score, " but the group file's score line is named '",
-           scoreName, "'\n")
+    if (!(flexRV$score %in% scoreName)) {
+      stop("--flexRV_score=", flexRV$score, " but the group file's score line",
+           if (length(scoreName) > 1) "s are" else " is", " named ",
+           paste0("'", scoreName, "'", collapse = ", "), "\n")
     }
+    scoreSel <- match(flexRV$score, scoreName)
+    flexScoreName <- scoreName[scoreSel]
     flexMaxMAF <- flexRV$maxMAF
     # LEDGER #142: the in-sample N decides which MAC rungs can differ from
     # unw (every admitted MAC is at most 2 * N * maxMAF, so a rung at or above
@@ -1176,7 +1183,7 @@ SAIGE.Region <- function(mu,
     # handed, so the R-side bound and the C++ ingest bound read one N; a
     # manifest's models share ONE sample set on the region path.
     flexTT <- flexrvTransformTable(flexRV$scoreTransforms, flexRV$MAFTransforms,
-                                   scoreName, maxMAF = flexMaxMAF, N = n)
+                                   flexScoreName, maxMAF = flexMaxMAF, N = n)
     if (length(flexTT$dropped) > 0) {
       warning("FlexRV: at N = ", n, " and --flexRV_maxMAF=", flexMaxMAF,
               " every admitted marker has MAC <= ", flexTT$bound, ", so the MAC ",
@@ -1233,7 +1240,7 @@ SAIGE.Region <- function(mu,
               call. = FALSE, immediate. = TRUE)
     }
     cat("FlexRV: ", nTransformSets, " transform sets (", flexTT$nScore, " score x ",
-        flexTT$nMAF, " MAF) from score '", scoreName, "' at max MAF ", flexMaxMAF, "\n",
+        flexTT$nMAF, " MAF) from score '", flexScoreName, "' at max MAF ", flexMaxMAF, "\n",
         sep = "")
   }
 
@@ -1789,7 +1796,8 @@ SAIGE.Region <- function(mu,
         nWeightSets,
         weightSetNames,
         scoreName,
-        lofAnno = flexLofAnno
+        lofAnno = flexLofAnno,
+        scoreSel = scoreSel
       )
       # print(RegionList)
       cat(
@@ -1814,7 +1822,7 @@ SAIGE.Region <- function(mu,
         # Phase G1 slice 1: the per-region state record (R/RegionState.R)
         S <- regionStateFor(region, regionName, i, nRegions, nModels,
                             legacyNoWeight, nWeightSets, isMultiWeightSchema,
-                            nTransformSets, flexLofAnno, scoreName)
+                            nTransformSets, flexLofAnno, flexScoreName)
         rm(region)
 
         if (!is_fastTest) {
@@ -2040,7 +2048,9 @@ SAIGE.getRegionList_new <- function(marker_group_line,
                                     # FlexRV: annotation labels that mark a
                                     # marker as LoF; ISLOF is carried per region
                                     # only when this is non-empty
-                                    lofAnno = character(0)) {
+                                    lofAnno = character(0),
+                                    # which score line SCORE is taken from
+                                    scoreSel = 1L) {
   if (is.null(nWeightSets)) {
     # legacy callers: infer the weight layout from nline_per_gene
     # (2 -> no weights; 3 -> one bare weight line, set name "WEIGHT")
@@ -2054,8 +2064,11 @@ SAIGE.getRegionList_new <- function(marker_group_line,
       stop("nWeightSets must be provided when nline_per_gene is not 2 or 3\n")
     }
   }
-  # one optional FlexRV score line sits between anno and the weight lines
+  # K >= 0 FlexRV score lines sit between anno and the weight lines
   nScoreSets <- length(scoreName)
+  if (nScoreSets > 0 && (scoreSel < 1 || scoreSel > nScoreSets)) {
+    stop("scoreSel (", scoreSel, ") must name one of the ", nScoreSets, " score lines\n")
+  }
   if (nline_per_gene != 2 + nScoreSets + nWeightSets) {
     # the historical message is kept verbatim when no score line is in play
     # (test-unit-regionlist.R pins it), and only mentions scores when they
@@ -2089,7 +2102,7 @@ SAIGE.getRegionList_new <- function(marker_group_line,
   # the score rides the same sanitized-internal-name path as the weights, for
   # the same reason: it must survive every merge/filter/sort below without
   # colliding with a markerInfo column. Nothing reads it yet (FlexRV F1).
-  scoreColNames <- if (nScoreSets > 0) "SAIGESC_1" else character(0)
+  scoreColNames <- if (nScoreSets > 0) paste0("SAIGESC_", seq_len(nScoreSets)) else character(0)
   chrom_nochr <- gsub("CHR", "", chrom, ignore.case = TRUE)
   # read group file
   ngroup <- length(marker_group_line) / nline_per_gene
@@ -2108,13 +2121,16 @@ SAIGE.getRegionList_new <- function(marker_group_line,
     anno <- marker_group_line_list_anno[3:length(marker_group_line_list_anno)]
     score <- NULL
     if (nScoreSets > 0) {
-      idxScore <- 3 + (i - 1) * nline_per_gene
-      marker_group_line_list_score <- strsplit(marker_group_line[idxScore],
-        split = "[\ \t]+"
-      )[[1]]
-      score <- cbind(
-        marker_group_line_list_score[3:length(marker_group_line_list_score)]
-      )
+      for (k in 1:nScoreSets) {
+        idxScore <- 2 + k + (i - 1) * nline_per_gene
+        marker_group_line_list_score <- strsplit(marker_group_line[idxScore],
+          split = "[\ \t]+"
+        )[[1]]
+        score <- cbind(
+          score,
+          marker_group_line_list_score[3:length(marker_group_line_list_score)]
+        )
+      }
       colnames(score) <- scoreColNames
     }
     if (nWeightSets > 0) {
@@ -2260,8 +2276,8 @@ SAIGE.getRegionList_new <- function(marker_group_line,
           WEIGHT <- as.matrix(RegionData[posSNP, weightColNames, with = FALSE])
         }
         if (nScoreSets > 0) {
-          # one per-marker score, rows aligned to SNP, subset with them below
-          SCORE <- RegionData[posSNP, scoreColNames, with = FALSE][[1]]
+          # the selected per-marker score, rows aligned to SNP, subset with them below
+          SCORE <- RegionData[posSNP, scoreColNames[scoreSel], with = FALSE][[1]]
         }
         if (length(lofAnno) > 0) {
           ISLOF <- as.numeric(RegionData$ANNO[posSNP] %in% lofAnno)

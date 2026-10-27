@@ -287,7 +287,7 @@ test_that("every region must carry the same score, of the same length", {
   expect_error(checkGroupFile(f3), "length of scores")
 })
 
-test_that("only one score line is allowed, and it must precede the weight lines", {
+test_that("several score lines are allowed, together after anno, with distinct names", {
   lines <- readLines(groupfile())
   n1 <- length(strsplit(lines[1], "[ \t]+")[[1]]) - 2
   n2 <- length(strsplit(lines[3], "[ \t]+")[[1]]) - 2
@@ -299,8 +299,15 @@ test_that("only one score line is allowed, and it must precede the weight lines"
            paste(c("GENE2", "score:B", rep("0.5", n2)), collapse = " "))
   f <- tempfile()
   writeLines(two, f)
-  expect_error(checkGroupFile(f), "exactly one score line")
-  # a score line AFTER a weight line is rejected by the same guard
+  d <- checkGroupFile(f, detail = TRUE)
+  expect_identical(d$scoreName, c("A", "B"))
+  expect_identical(d$nWeightSets, 0L)
+  # the same name twice is refused
+  dup <- sub("score:B", "score:A", two, fixed = TRUE)
+  f1 <- tempfile()
+  writeLines(dup, f1)
+  expect_error(checkGroupFile(f1), "Duplicate score name 'A'")
+  # a score line AFTER a weight line is refused
   after <- c(lines[1:2],
              paste(c("GENE1", "weight", rep("1", n1)), collapse = " "),
              paste(c("GENE1", "score:A", rep("0.5", n1)), collapse = " "),
@@ -309,7 +316,7 @@ test_that("only one score line is allowed, and it must precede the weight lines"
              paste(c("GENE2", "score:A", rep("0.5", n2)), collapse = " "))
   f2 <- tempfile()
   writeLines(after, f2)
-  expect_error(checkGroupFile(f2), "exactly one score line")
+  expect_error(checkGroupFile(f2), "score line after a weight line")
 })
 
 test_that("getRegionList_new carries the score into RegionData as SAIGESC_1", {

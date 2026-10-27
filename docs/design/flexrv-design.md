@@ -232,7 +232,9 @@ starts from the right reading.
 - **Score construction is the caller's job.** The paper builds `s` as LoF = 1,
   missense = PrimateAI-3D percentile among all *possible* missense variants in
   the gene, combined by max. SAIGE reads `s` from the group file's
-  `score:NAME` line (F1). We define the transforms, not the score.
+  `score:NAME` line that `--flexRV_score` names (F1; since 2026-10-27 a file may
+  carry several consecutive score lines after `anno`, one per predictor, and the
+  unselected ones are inert). We define the transforms, not the score.
 - **The MAF < 0.1% cohort filter is not a weight.** The paper selects variants
   at MAF < 0.1% before testing (Methods, "Variant annotation": VEP v109.3 most
   severe consequence only, in-frame indels excluded, variants with > 5% missing

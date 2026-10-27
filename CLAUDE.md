@@ -488,8 +488,9 @@ transforms x 12 MAF transforms = up to 192 fixed weight vectors per gene
 (fewer at small N, LEDGER #142 below), a burden
 test each, Cauchy-combined into `p_FlexRV`. On this branch it is a fourth
 weight-set kind of the Phase 5 engine, `SET_TRANSFORM`, expanded inside C++
-from one `GENE score:NAME v1 v2 ...` group-file line (after `anno`, before any
-weight line) and the marker's IN-SAMPLE MAF/MAC after QC. Kernels
+from the `GENE score:NAME v1 v2 ...` group-file line that `--flexRV_score` names
+(a file may carry several consecutive score lines after `anno`, before any weight
+line, since 2026-10-27; the unselected ones change no byte) and the marker's IN-SAMPLE MAF/MAC after QC. Kernels
 `src/FlexRV.cpp`, spec parser and set names `R/FlexRV.R`, the pinned table
 with every closed form and every resolved ambiguity
 `docs/design/flexrv-design.md` (the MAF beta transform is DECREASING,

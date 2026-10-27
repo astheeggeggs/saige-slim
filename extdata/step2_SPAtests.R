@@ -624,7 +624,7 @@ option_list <- list(
     default = NULL,
     help = paste0(
       "FlexRV (Schwartzentruber et al. 2025): the name of the group file's ",
-      "'score:NAME' line, a per-marker pathogenicity score in [0, 1]. When ",
+      "'score:NAME' line (one of several the file may carry), a per-marker pathogenicity score in [0, 1]. When ",
       "given, the FlexRV weight sets (--flexRV_scoreTransforms x ",
       "--flexRV_MAFTransforms, 192 by default, fewer where a mac rung sits at or ",
       "above 2 * N * flexRV_maxMAF and would weight every marker 1, a duplicate ",
