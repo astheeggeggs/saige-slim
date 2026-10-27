@@ -789,6 +789,17 @@ proved byte-reproducible first, as CLAUDE.md requires: two independent
 green again. Nothing else moved -- every step-2 golden and every sparse-GRM
 step-1 golden was byte-identical throughout.
 
+- **Step-2 submission at thousands of traits (owner, 2026-10-27): not now, needed for the
+  scale-up.** `submit()` shells out once per job (a login shell sourcing `aou_dsub.bash`, 5-8 s
+  each): the October fleet's 430-job arms took most of an hour each to submit. Two steps when it
+  matters: (1) `ThreadPoolExecutor(8)` over the planned argument lists (the step-1 notebook already
+  does this; network-bound, ~8x); (2) `dsub --tasks <TSV>`, one call per arm with one row per job,
+  every `IN_*`/`OUT_*`/`--env` value a column and image/machine uniform per call -- needs the
+  registry keyed by job+task, `dstat`/`ddel` and the preemption mop-up per task, and per-chromosome
+  inputs as fixed `IN_BED_1..22` columns (the wrapper reads them already). Independent lever: one
+  job per (trait, bin) running all five step-2 calls in sequence, which divides the job count by
+  five before either. Provenance: runbook 19 (v6 submission ~1 h per 806-job set), section 20.
+
 ## The gate on all of it: profile at realistic N first -- NOW DONE
 
 Every step-2 profile so far is N = 1,000, where `harness/bench/NOTES.md:352-359`
