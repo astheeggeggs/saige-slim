@@ -2852,3 +2852,23 @@ TRUE; FALSE for a partial rerun to be spliced into an older file, whose header c
 extra column). Needs the image built from the column's commit or later. The reading rule, once
 the random-score null has sized it: a FlexRV hit below ~10 effective carriers is reported with
 that caveat or filtered at the meta-analysis stage.
+
+## 20. The October BRaVa release on the v8 pilot traits (2026-10-27)
+
+The consortium files (`brava-reannotation/release/aou_workbench_2026-10_flexrvpct/`, 92 files
+checked on the Workbench): per chromosome `new_rules` (the seven production masks), `am_moderate`,
+`flexrv_AMPCT` and `flexrv_SCALLION`. Checked locally on chr21: both scores lie in [0, 1] (29.3%
+exact zeros, the non-missense sites, identical in both), and the two FlexRV files' `var` and
+`anno` lines are byte-identical, so runs 3 and 4 test the same gene list and differ only by score.
+
+**The FlexRV null control ships with the release**: `rand/aou.chr<N>.flexrv_RAND.txt.gz` (23
+files; chr1 and chr19 split into `part_aa`/`part_ab` for the 9 MiB uploader; `MD5SUMS_RAND.txt`;
+`check_on_workbench_rand.sh` rejoins and checks), built by `flexrv_rand_scores.py` from the AMPCT
+files -- the SCALLION-derived twin is content-identical, as it must be. The value is seeded by the
+variant ID (seed 20261016), so a shared variant carries the same RAND value in every biobank's
+file and in the earlier `annotations_v5_rand`. Run it as `--flexRV_score=RAND` on the
+`synonymous` group (the machinery's null) and, for the score's own control, AM/AMPCT/SCALLION vs
+RAND on the missense-only group `damaging_missense:other_missense:spliceai2_gt040` (19.9). Read
+the 1e-3 / 1e-4 quantiles and the hit count, not the pooled fraction below 0.05 (the Cauchy's
+body) nor lambda (point masses); Height's synonymous inflation is polygenic background (19.10).
+
