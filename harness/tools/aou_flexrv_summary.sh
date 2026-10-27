@@ -11,6 +11,7 @@
 #   FX_DIR, FX_PREFIX   optional: the FlexRV directory under BASE/ANC and the job prefix, for
 #            a control fleet that follows neither naming rule (e.g. FX_DIR=fxr_syn FX_PREFIX=fxr_syn-);
 #   SK_DIR, SK_PREFIX   the same for the SKAT-O arm (the simulated null: SK_DIR=sim_sk SK_PREFIX=sim_sk-)
+#   AM_DIR, AM_PREFIX   the same for the am_moderate arm (the October fleet: oct_sk/oct_am/oct_fxa with oct_*- prefixes)
 #   OUT_DIR  local dir dsub delocalizes (--output-recursive)
 # FlexRV: the final file of a job is, in this order of precedence,
 #   flexrv_v7_checked/<pre>.txt.gz   the complete rerun after LEDGER #172 (binary
@@ -66,6 +67,8 @@ if [[ ${RUNTAG} == "v4" ]]; then PFX_FX="fxv4-"; PFX_SK="skv4-"; PFX_AM="amv4-";
 [[ -n ${FX_PREFIX:-} ]] && PFX_FX="${FX_PREFIX}"
 [[ -n ${SK_DIR:-} ]] && SK="${BASE}/${ANC}/${SK_DIR}"        # the SKAT-O arm's twins (the simulated null: sim_sk / sim_sk-)
 [[ -n ${SK_PREFIX:-} ]] && PFX_SK="${SK_PREFIX}"
+[[ -n ${AM_DIR:-} ]] && AM="${BASE}/${ANC}/${AM_DIR}"        # and the am_moderate arm's (the October fleet: oct_am / oct_am-)
+[[ -n ${AM_PREFIX:-} ]] && PFX_AM="${AM_PREFIX}"
 keep(){ grep -E '\.txt\.gz$' | grep -vE "${SIDECARS}" | awk -v pfx="$1" '{ b=$0; sub(/.*\//, "", b); if (index(b, pfx) == 1) print; else print "excluded (not " pfx "*): " $0 > "/dev/stderr" }'; }
 lsd "${FX}/*.txt.gz"  | keep "${PFX_FX}" > fx.list  2>> excluded.log || true
 lsd "${FXF}/*.txt.gz" | keep "${PFX_FX}" > fxf.list 2>> excluded.log || true

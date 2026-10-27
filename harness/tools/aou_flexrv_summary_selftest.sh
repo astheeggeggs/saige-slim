@@ -121,5 +121,10 @@ cp "base/xx/flexrv_v6/fx6-xx-traita.TraitA.xx.chr1-22.txt.gz" "base/xx/sim_fx/si
 for f in base/xx/skato_v6/sk6-xx-traita.TraitA.xx.chr1-22*.txt.gz; do cp "$f" "base/xx/sim_sk/$(basename "$f" | sed 's/^sk6-/sim_sk-/')"; done
 ANC=xx BASE="${T}/base" OUT_DIR="${T}/outs" RUNTAG=simnull FX_DIR=sim_fx FX_PREFIX=sim_fx- SK_DIR=sim_sk SK_PREFIX=sim_sk- bash "${HERE}/aou_flexrv_summary.sh" > runs.log 2>&1 || { cat runs.log; echo "SELFTEST FAILED: simnull run exited non-zero"; exit 1; }
 if grep -q "^flexrv: 1 v4 files, 0 fixed, 0 v7; skato: 1 files" runs.log && gzip -dc outs/xx.flexrv_vs_skato.simnull.tsv.gz | awk -F'\t' 'NR>1 && $3=="G1" && $5!="NA" && $9!="NA"' | grep -q .; then echo "ok   simnull tag: both arms read through the overrides, joined on the gene"; else echo "FAIL simnull tag: $(grep '^flexrv' runs.log)"; fail=1; fi
+# all three arms under one control tag (the October fleet): AM_DIR/AM_PREFIX beside the other two
+mkdir -p base/xx/oct_am outo
+for f in base/xx/am_v6/am6-xx-traita.TraitA.xx.chr1-22*.txt.gz; do cp "$f" "base/xx/oct_am/$(basename "$f" | sed 's/^am6-/oct_am-/')"; done
+ANC=xx BASE="${T}/base" OUT_DIR="${T}/outo" RUNTAG=oct FX_DIR=sim_fx FX_PREFIX=sim_fx- SK_DIR=sim_sk SK_PREFIX=sim_sk- AM_DIR=oct_am AM_PREFIX=oct_am- bash "${HERE}/aou_flexrv_summary.sh" > runo.log 2>&1 || { cat runo.log; echo "SELFTEST FAILED: oct run exited non-zero"; exit 1; }
+if grep -q "^am_moderate: 1 files" runo.log && gzip -dc outo/xx.skato_cells.oct.tsv.gz | head -1 | grep -q "am_moderate@"; then echo "ok   oct tag: AM_DIR/AM_PREFIX read the am_moderate arm into the cells table"; else echo "FAIL oct tag am arm: $(grep '^am_moderate' runo.log)"; fail=1; fi
 (( fail )) && { echo "SELFTEST FAILED"; exit 1; }
-echo "selftest OK: 34 checks"
+echo "selftest OK: 35 checks"
