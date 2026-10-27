@@ -800,6 +800,18 @@ step-1 golden was byte-identical throughout.
   job per (trait, bin) running all five step-2 calls in sequence, which divides the job count by
   five before either. Provenance: runbook 19 (v6 submission ~1 h per 806-job set), section 20.
 
+- **FlexRV gene-level FDR, empirically (owner, 2026-10-27): to build.** The pooled Cauchy row is
+  anti-conservative in the body (5.4-6.4% below 0.05 and a ~3x excess below 1e-4 on a phenotype with
+  no signal, runbook 19.9/19.10) and exact in the tail; the excess is each gene's set-correlation
+  structure, which no closed form has. Plan: a MATCHED null arm per trait -- the simulated-phenotype
+  draw (`sim_null_pheno.R`) refitted in step 1 and run through FlexRV on the PRODUCTION group files,
+  so genes, sets and correlations are the real arm's -- and plug-in FDR(t) = N_null(t) / N_real(t),
+  per trait or pooled; no splice, no distributional assumption. The synonymous RAND arm is the
+  sanity check, not the calibration null (its set structure differs). Alternative, empirical p
+  calibration + BH, runs out of resolution at ~5e-5 per trait and needs a tail splice. Cost: one
+  refit (~3 min) and one FlexRV pass per trait. Build it into the pipeline (one extra model per
+  trait, the FlexRV arm run twice) rather than ad hoc.
+
 ## The gate on all of it: profile at realistic N first -- NOW DONE
 
 Every step-2 profile so far is N = 1,000, where `harness/bench/NOTES.md:352-359`
