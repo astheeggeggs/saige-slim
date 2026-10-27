@@ -12,7 +12,12 @@ Two runs use it (runbook section 19.7):
                            (p_FlexRV must be uniform: this is the synonymous control FlexRV lacks)
   the score's positive ctl --annotation_in_groupTest=<the production group> --flexRV_score=RAND
                            against the production AM run on the same genes: what the score buys
-Usage: flexrv_rand_scores.py IN.txt.gz OUT.txt.gz [--seed N] [--score-name RAND]
+A percentile score (AMPCT, SCALLION) is uniform on (0, 1] over the SCORED variants, so the twin
+reproduces its weight distribution exactly; the unscored sites carry 0 in the source and a 0 drops
+a variant from every steep set. --keep-zeros keeps a source 0 as 0 (the score's control pair on a
+missense group: same set membership, the information removed); without it every variant draws
+(the synonymous machinery null, where every source value is 0).
+Usage: flexrv_rand_scores.py IN.txt.gz OUT.txt.gz [--seed N] [--score-name RAND] [--keep-zeros]
 Self-test: flexrv_rand_scores_selftest.sh.
 """
 import argparse, gzip, hashlib, sys
@@ -30,6 +35,7 @@ def main():
     ap.add_argument("infile"); ap.add_argument("outfile")
     ap.add_argument("--seed", type=int, default=20261016)
     ap.add_argument("--score-name", default="RAND")
+    ap.add_argument("--keep-zeros", action="store_true", help="a source value of 0 stays 0")
     a = ap.parse_args()
     opener = gzip.open if a.infile.endswith(".gz") else open
     wopener = gzip.open if a.outfile.endswith(".gz") else open
@@ -46,7 +52,9 @@ def main():
                     sys.exit(f"score line for {f[0]} without a preceding var line")
                 if len(f) - 2 != len(cur[1]):
                     sys.exit(f"{f[0]}: score line has {len(f) - 2} values for {len(cur[1])} variants")
-                vals = " ".join(f"{rand_unit(v, a.seed):.6f}" for v in cur[1])
+                src = f[2:]
+                vals = " ".join("0" if (a.keep_zeros and float(src[i]) == 0) else f"{rand_unit(v, a.seed):.6f}"
+                                for i, v in enumerate(cur[1]))
                 fo.write(f"{f[0]} score:{a.score_name} {vals}\n"); n_score += 1
             else:
                 n_other += 1

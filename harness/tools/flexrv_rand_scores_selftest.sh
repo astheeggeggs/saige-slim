@@ -42,5 +42,13 @@ print("ok   var/anno unchanged, score:RAND in (0,1), reproducible, variant-keyed
 PY
 grep -q "2 regions, 2 score lines replaced by score:RAND" log1 && echo "ok   summary line" || { echo "FAIL summary: $(cat log1)"; fail=1; }
 if python3 "${HERE}/flexrv_rand_scores.py" bad.txt.gz outbad.txt.gz > logbad 2>&1; then echo "FAIL a mismatched score line was accepted"; fail=1; else echo "ok   a score line of the wrong length is refused"; fi
+python3 "${HERE}/flexrv_rand_scores.py" a.txt.gz outz.txt.gz --keep-zeros > logz
+python3 - <<'PYZ' && echo "ok   --keep-zeros keeps a source 0 and draws the rest (the same values as without it)" || fail=1
+import gzip
+o = {l.split()[0]: l.split()[2:] for l in gzip.open("out1.txt.gz", "rt").read().splitlines() if " score:" in l}
+z = {l.split()[0]: l.split()[2:] for l in gzip.open("outz.txt.gz", "rt").read().splitlines() if " score:" in l}
+assert z["G2"] == [o["G2"][0], "0"], z["G2"]          # source G2 score line was "0.2 0.0"
+assert z["G1"] == o["G1"], z["G1"]                     # no zeros in G1's source line
+PYZ
 (( fail )) && { echo "SELFTEST FAILED"; exit 1; }
-echo "selftest OK: 8 checks"
+echo "selftest OK: 9 checks"
