@@ -811,6 +811,16 @@ step-1 golden was byte-identical throughout.
   calibration + BH, runs out of resolution at ~5e-5 per trait and needs a tail splice. Cost: one
   refit (~3 min) and one FlexRV pass per trait. Build it into the pipeline (one extra model per
   trait, the FlexRV arm run twice) rather than ad hoc.
+  **And the meta-analysis across (ancestry, biobank) decides WHERE (owner, same day):** combining
+  cohort-level pooled p-values compounds the body excess (Fisher/Stouffer over K anti-conservative
+  inputs) and loses the tail's calibration, and calibrating each cohort first costs the resolution
+  K times. So: meta-analyse PER SET (Stouffer / inverse-variance on each set's signed burden Z,
+  `BETA_Burden`/`SE_Burden`, calibrated), Cauchy-pool ONCE at the meta level, and calibrate ONCE
+  there with the null arms meta-analysed identically (plug-in FDR on the meta-level pooled p).
+  Needs from every cohort: the per-set rows in the shared summary statistics (with `nEff_Burden`,
+  so the sparse-rung filter is applied at the meta level) and a null arm -- the matched simulated
+  null preferred (`sim_null_pheno.R` runs on any SAIGE model + sparse GRM, can ship), the RAND
+  synonymous twins (already shipping) as the fallback a biobank can run with nothing new.
 
 ## The gate on all of it: profile at realistic N first -- NOW DONE
 
