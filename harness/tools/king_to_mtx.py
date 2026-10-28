@@ -22,13 +22,20 @@ change: no code path moves.
             0.05..0.125 band: pairs both keep (real third-degree) against pairs only the old one
             keeps (background); (4) the diagonal of the old one. Counts of pairs below --mask are
             written "<mask" (real data); no sample ID is ever printed.
+  plot      three panels to <out>.png: (a) every pair of the old matrix against KING's value
+            (absent from the KING table = 0) as a 2-D histogram, (b) the pairs both keep against
+            the identity line, (c) the old values split by whether KING keeps the pair. Cells
+            holding fewer than --mask pairs are not drawn, so no small count is readable.
   selftest  fabricated data: three families planted, a background of small GRM-only entries,
-            every claim checked.
+            every claim checked (compare and plot).
 
 Usage:
   king_to_mtx.py convert --king king.kin0 --samples ids.txt --out amr_king [--cutoff 0.05]
   king_to_mtx.py compare --new amr_king.mtx --old old.sparseGRM.mtx --report cmp.tsv [--mask 20]
+  king_to_mtx.py plot --new amr_king.mtx --old old.sparseGRM.mtx --out king_vs_grm [--mask 20]
   king_to_mtx.py selftest
+The old matrix at 0.05 has ~46M entries on amr: compare and plot read it with pandas into flat
+arrays (a few hundred MB), never a per-entry Python object.
 """
 import argparse, gzip, io, os, sys, tempfile
 import numpy as np
@@ -80,6 +87,43 @@ def read_mtx(p):
     return n, ent
 
 
+def read_mtx_frame(p):
+    """A SAIGE .mtx as flat arrays: n, and a DataFrame (i, j, x) with i >= j, 0-based."""
+    import pandas as pd
+    with openr(p) as fh:
+        head = fh.readline()
+        if "symmetric" not in head:
+            raise SystemExit("expected a symmetric coordinate .mtx")
+        n = int(fh.readline().split()[0])
+    df = pd.read_csv(p, sep=r"\s+", skiprows=2, header=None, names=["i", "j", "x"],
+                     dtype={"i": np.int64, "j": np.int64, "x": np.float64}, comment="%")
+    df["i"] -= 1; df["j"] -= 1
+    lo = df["i"] < df["j"]
+    df.loc[lo, ["i", "j"]] = df.loc[lo, ["j", "i"]].values
+    return n, df
+
+
+def pair_tables(new_path, old_path):
+    """Off-diagonal pairs of both matrices on the old matrix's indices, joined on IID:
+    (old off-diagonal frame, new off-diagonal frame re-indexed, old diagonal values, counts)."""
+    import pandas as pd
+    nN, new = read_mtx_frame(new_path); nO, old = read_mtx_frame(old_path)
+    idsN = read_ids(new_path + ".sampleIDs.txt"); idsO = read_ids(old_path + ".sampleIDs.txt")
+    if len(idsN) != nN or len(idsO) != nO:
+        raise SystemExit("an .mtx and its sampleIDs file disagree on the sample count")
+    posO = {s: k for k, s in enumerate(idsO)}
+    remap = np.array([posO.get(s, -1) for s in idsN], dtype=np.int64)
+    offN = new[new["i"] != new["j"]].copy()
+    offN["i"] = remap[offN["i"].values]; offN["j"] = remap[offN["j"].values]
+    offN = offN[(offN["i"] >= 0) & (offN["j"] >= 0)]
+    lo = offN["i"] < offN["j"]
+    offN.loc[lo, ["i", "j"]] = offN.loc[lo, ["j", "i"]].values
+    diagO = old[old["i"] == old["j"]]["x"].values
+    offO = old[old["i"] != old["j"]]
+    common = int((remap >= 0).sum())
+    return offO, offN, diagO, dict(samples_new=nN, samples_old=nO, samples_common=common)
+
+
 def write_mtx(path, n, ent):
     with open(path, "w") as fh:
         fh.write("%%MatrixMarket matrix coordinate real symmetric\n")
@@ -121,32 +165,22 @@ def mask(k, m):
 
 
 def compare(a):
-    nN, new = read_mtx(a.new); nO, old = read_mtx(a.old)
-    idsN = read_ids(a.new + ".sampleIDs.txt"); idsO = read_ids(a.old + ".sampleIDs.txt")
-    if len(idsN) != nN or len(idsO) != nO:
-        raise SystemExit("an .mtx and its sampleIDs file disagree on the sample count")
-    # align on IID: a pair is compared on the samples both matrices carry
-    posO = {s: k for k, s in enumerate(idsO)}
-    common = [s for s in idsN if s in posO]
+    import pandas as pd
+    offO, offN, diagO, cnt = pair_tables(a.new, a.old)
     rows = []
     def note(k, v):
         rows.append((k, str(v))); print(f"{k:48s} {v}")
-    note("samples_new", nN); note("samples_old", nO); note("samples_common", len(common))
-    mapN = {k: s for k, s in enumerate(idsN)}
-    offN = {}
-    for (i, j), x in new.items():
-        if i != j:
-            si, sj = mapN[i], mapN[j]
-            if si in posO and sj in posO:
-                a_, b_ = sorted((posO[si], posO[sj]), reverse=True)
-                offN[(a_, b_)] = x
-    offO = {k: x for k, x in old.items() if k[0] != k[1]}
+    for k in ("samples_new", "samples_old", "samples_common"):
+        note(k, cnt[k])
+    m = offO.merge(offN, on=["i", "j"], how="left", suffixes=("_old", "_new"))
+    m["x_new"] = m["x_new"].fillna(0.0)
     # (1) close relatives agree: the positive control
-    close = [(offN.get(k, 0.0), x) for k, x in offO.items() if x >= 0.4]
-    if close:
-        r = np.array([nv / ov for nv, ov in close if nv > 0]); miss = sum(1 for nv, _ in close if nv == 0)
+    close = m[m["x_old"] >= 0.4]
+    if len(close):
+        present = close[close["x_new"] > 0]
+        r = (present["x_new"] / present["x_old"]).values
         note("old_pairs_at_or_above_0.4", mask(len(close), a.mask))
-        note("  absent_from_new", mask(miss, a.mask))
+        note("  absent_from_new", mask(len(close) - len(present), a.mask))
         if len(r):
             note("  new_over_old_median", f"{np.median(r):.3f}")
             note("  new_over_old_5th_95th", f"{np.percentile(r, 5):.3f} .. {np.percentile(r, 95):.3f}")
@@ -154,24 +188,62 @@ def compare(a):
         note("old_pairs_at_or_above_0.4", "0 (no first-degree pair in the old matrix on the common samples)")
     # (2) how many pairs each keeps at each cutoff
     for c in (0.05, 0.125, 0.25, 0.4):
-        note(f"pairs_at_or_above_{c}_old", mask(sum(1 for x in offO.values() if x >= c), a.mask))
-        note(f"pairs_at_or_above_{c}_new", mask(sum(1 for x in offN.values() if x >= c), a.mask))
+        note(f"pairs_at_or_above_{c}_old", mask(int((offO["x"] >= c).sum()), a.mask))
+        note(f"pairs_at_or_above_{c}_new", mask(int((offN["x"] >= c).sum()), a.mask))
     # (3) the 0.05..0.125 band: real third-degree against background
-    band_old = {k for k, x in offO.items() if 0.05 <= x < 0.125}
-    both = sum(1 for k in band_old if offN.get(k, 0.0) >= 0.05)
-    note("band_0.05_0.125_old_pairs", mask(len(band_old), a.mask))
+    band = m[(m["x_old"] >= 0.05) & (m["x_old"] < 0.125)]
+    both = int((band["x_new"] >= 0.05).sum())
+    note("band_0.05_0.125_old_pairs", mask(len(band), a.mask))
     note("  of which_new_also_at_or_above_0.05", mask(both, a.mask))
-    note("  of which_new_below_0.05_(background)", mask(len(band_old) - both, a.mask))
+    note("  of which_new_below_0.05_(background)", mask(len(band) - both, a.mask))
     # (4) the old diagonal
-    dO = np.array([x for (i, j), x in old.items() if i == j])
-    if len(dO):
-        note("old_diag_mean_min_max", f"{dO.mean():.4f} {dO.min():.4f} {dO.max():.4f}")
-    note("old_diag_entries_missing", mask(nO - len(dO), a.mask))
+    if len(diagO):
+        note("old_diag_mean_min_max", f"{diagO.mean():.4f} {diagO.min():.4f} {diagO.max():.4f}")
+    note("old_diag_entries_missing", mask(cnt["samples_old"] - len(diagO), a.mask))
     with open(a.report, "w") as fh:
         fh.write("key\tvalue\n")
         for k, v in rows:
             fh.write(f"{k.strip()}\t{v}\n")
     print("done")
+
+
+def plot(a):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    offO, offN, diagO, cnt = pair_tables(a.new, a.old)
+    m = offO.merge(offN, on=["i", "j"], how="outer", suffixes=("_old", "_new")).fillna(0.0)
+    fig, ax = plt.subplots(1, 3, figsize=(17, 5.5))
+    top = max(float(m["x_old"].max()), float(m["x_new"].max()), 0.6)
+    # (a) every pair either keeps: cells below the mask are not drawn
+    h = ax[0].hexbin(m["x_old"], m["x_new"], gridsize=60, bins="log", mincnt=a.mask, extent=(0, top, 0, top))
+    ax[0].plot([0, top], [0, top], color="0.3", lw=0.8)
+    ax[0].set_title(f"every pair either matrix keeps (cells below {a.mask} pairs not drawn)", fontsize=10)
+    fig.colorbar(h, ax=ax[0], label="pairs (log10)")
+    # (b) pairs both keep
+    both = m[(m["x_old"] > 0) & (m["x_new"] > 0)]
+    if len(both) >= a.mask:
+        h2 = ax[1].hexbin(both["x_old"], both["x_new"], gridsize=60, bins="log", mincnt=a.mask, extent=(0, top, 0, top))
+        fig.colorbar(h2, ax=ax[1], label="pairs (log10)")
+    ax[1].plot([0, top], [0, top], color="0.3", lw=0.8)
+    for c in (0.05, 0.125, 0.25, 0.5):
+        ax[1].axvline(c, color="r", lw=0.4, ls=":"); ax[1].axhline(c, color="r", lw=0.4, ls=":")
+    ax[1].set_title(f"pairs both keep: {mask(len(both), a.mask)}", fontsize=10)
+    # (c) the old values, split by whether KING keeps the pair
+    old_only = m[(m["x_old"] > 0) & (m["x_new"] < 0.05)]["x_old"]
+    kept = m[(m["x_old"] > 0) & (m["x_new"] >= 0.05)]["x_old"]
+    edges = np.linspace(0, top, 61)
+    for vals, lab, col in ((old_only, "KING below 0.05 (background)", "#7f7f7f"), (kept, "KING at or above 0.05", "#d62728")):
+        cnts, _ = np.histogram(vals, bins=edges)
+        cnts = np.where(cnts < a.mask, 0, cnts)   # bins below the mask are not drawn
+        ax[2].step(edges[:-1], cnts, where="post", color=col, label=f"{lab}: {mask(len(vals), a.mask)} pairs")
+    ax[2].set_yscale("log"); ax[2].legend(fontsize=8); ax[2].set_title("old GRM values by KING's verdict", fontsize=10)
+    for x in ax:
+        x.set_xlabel("step-0 GRM (2 x kinship)"); x.grid(alpha=0.3)
+    ax[0].set_ylabel("KING-robust (2 x kinship)"); ax[1].set_ylabel("KING-robust (2 x kinship)"); ax[2].set_ylabel("pairs")
+    fig.suptitle(f"KING-robust against the step-0 GRM: {cnt['samples_common']:,} shared samples", y=0.995)
+    fig.tight_layout(rect=(0, 0, 1, 0.96)); fig.savefig(a.out + ".png", dpi=110); plt.close(fig)
+    print("wrote", a.out + ".png")
 
 
 def selftest(_):
@@ -230,8 +302,10 @@ def selftest(_):
         sys.stdout = so
     rep2 = dict(l.rstrip("\n").split("\t") for l in open(f"{T}/cmp2.tsv") if not l.startswith("key"))
     assert rep2["old_pairs_at_or_above_0.4"] == "<20" and rep2["pairs_at_or_above_0.05_old"] == "404", rep2
+    plot(argparse.Namespace(new=f"{T}/new.mtx", old=f"{T}/old.mtx", out=f"{T}/king_vs_grm", mask=20))
+    assert os.path.getsize(f"{T}/king_vs_grm.png") > 10000
     print("selftest OK: convert (4 planted pairs on the GRM scale, diagonal 1), compare (positive control "
-          "ratio ~1, 400 background pairs only in the old matrix, the band split, masking)")
+          "ratio ~1, 400 background pairs only in the old matrix, the band split, masking), plot (PNG written)")
 
 
 def main():
@@ -241,6 +315,8 @@ def main():
     c.add_argument("--out", required=True); c.add_argument("--cutoff", type=float, default=0.05); c.set_defaults(fn=convert)
     k = sub.add_parser("compare"); k.add_argument("--new", required=True); k.add_argument("--old", required=True)
     k.add_argument("--report", required=True); k.add_argument("--mask", type=int, default=20); k.set_defaults(fn=compare)
+    g = sub.add_parser("plot"); g.add_argument("--new", required=True); g.add_argument("--old", required=True)
+    g.add_argument("--out", required=True); g.add_argument("--mask", type=int, default=20); g.set_defaults(fn=plot)
     s = sub.add_parser("selftest"); s.set_defaults(fn=selftest)
     a = ap.parse_args(); a.fn(a)
 
