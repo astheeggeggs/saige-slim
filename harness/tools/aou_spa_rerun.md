@@ -3084,3 +3084,11 @@ a diagonal of 0.352: a thinned-GRM eigenvalue near -2.2). eur Height: positive d
 digits. Neither model stores the adjustment matrix. Mechanism measured, not inferred; the
 principled repair is at the source (refuse or clip an indefinite thinned GRM when Sigma is
 built), the owner's call, and it would move every amr result.
+afr, eas and sas Height (thinned at 0.05): positive definite, smallest eigenvalue over the diagonal
+1.034 / 1.065 / 1.002. **amr is the only exposed cohort**; the four others keep the GRM at step 2
+with the guard observing. IMG19 = `1.5.2-dev-e5635873` (both registries, digest 3718c713) carries
+the guard; the measurement run (`p183obs-amr` / `p183obs-eur`, chr14 Height RAND,
+`SAIGE_SIGMA_GUARD_THRESHOLD=1.0` so every band test below ratio 1 is listed) reads the ratio
+distribution, and the amr decision -- drop the GRM at step 2 (`sparse_grm=False`, no image
+needed), clip the blocks at load, or rebuild amr's kinship net of ancestry (KING-robust via
+plink2 as a `.mtx`; upstream has no such option) and refit -- follows from it.
