@@ -3113,3 +3113,17 @@ split into real third-degree and background, and the old diagonal; pair counts b
 Then `aou_sigma_pd_check.R` on the new matrix at 0.05 is the gate for the amr refit. The KING
 run: `plink2 --pfile <pruned amr array> --make-king-table --king-table-filter 0.025` in the
 `plink2` image (the current GRM used 5,000 random markers of that set; KING uses all of them).
+
+**KING-robust against the step-0 GRM, amr (2026-10-28 evening, `king_to_mtx.py`).** plink2
+`--make-king-table --king-table-filter 0.025` on the 71,609-sample, 88,861-variant pruned set
+(`data/saige/run/ld_prune/allofus_array_amr_snp_wise`; the GRM's sample order is the fam's,
+hash-identical). Positive control: all 6,436 old first-degree pairs present, median ratio 1.02,
+5th..95th 0.63..1.20 (the spread is admixture in the OLD values: the figure shows KING's
+first-degree band tight at 0.5 while the old matrix spreads the same pairs 0.25..0.85). Pairs at
+or above 0.05: old 23.1M, KING 329k; at 0.125: old 139k, KING 12k -- the production matrix was
+~90 % background even after the hard cutoff, and the old second-degree cluster's lower tail falls
+below 0.125, so real relatives were dropped while background was kept. Old diagonal 0.57..1.81.
+`amr_king.mtx` (329k pairs, diagonal 1) is tractable at 0.05; the Sigma check on it at 0.05 and
+0.125 (`sigpd-king-*`) is the gate for the amr refit. Normalised-guard measurement (IMG20):
+eur chr14 10,052 band tests, 2,835 below ratio 1, 45 below 0.9, 0 below 0.5 (1st percentile
+0.888): the legitimate relatedness correction is a few percent and the 0.5 default stands.
