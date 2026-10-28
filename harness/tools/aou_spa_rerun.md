@@ -3127,3 +3127,16 @@ below 0.125, so real relatives were dropped while background was kept. Old diago
 0.125 (`sigpd-king-*`) is the gate for the amr refit. Normalised-guard measurement (IMG20):
 eur chr14 10,052 band tests, 2,835 below ratio 1, 45 below 0.9, 0 below 0.5 (1st percentile
 0.888): the legitimate relatedness correction is a few percent and the 0.5 default stands.
+
+**The decision (owner, 2026-10-28 night).** `sigpd-king-0125`: positive definite (10,461 pairs,
+largest family 23, smallest eigenvalue = the diagonal); `sigpd-king-005`: NOT -- third-degree
+links join 37,305 people into one indefinite component, most likely KING-robust's bias on
+admixed pairs of differing ancestry (PC-Relate resolves it; a day job at this N because GENESIS
+returns every pair). amr on the normalised guard (chr14): 4,911 of 19,157 below 1, 30 below 0.5
+(one region, the known gene), 18 negative; eur 0 below 0.5. **So: amr refits on `amr_king.mtx`
+at 0.125** (the same cutoff, on a matrix where it means second-degree relatives, not
+background), step 2 on the same matrix at 0.125, then today's controls again; the October amr
+results stand until then with the guard's verdict attached; no apply-mode patch. The refit goes
+through the step-1 launcher with `--sparseGRMFile`/`--sparseGRMSampleIDFile` pointing at
+`p183/king/amr_king.mtx` and `--relatednessCutoff=0.125`, into a NEW model directory, and the
+parameters table (`docs/state/aou-saige-parameters.md`) then records amr's GRM as KING-robust.
