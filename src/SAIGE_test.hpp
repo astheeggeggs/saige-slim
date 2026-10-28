@@ -54,9 +54,10 @@ struct KernelWorkspace {
         // shadow mode (the bracket is a diagnostic, three passes for one).
         bool gateApplied = false;
         // LEDGER #183 (2026-10-28): the sparse-GRM variance guard. Set by
-        // getMarkerPval on the sparse arm (cleared at every entry): the raw
-        // quadratic form g' Sigma^-1 g the solve returned, the diagonal
-        // (no-GRM) variance of the SAME vector, and their ratio. Flagged when
+        // getMarkerPval on the sparse arm (cleared at every entry): the solve's
+        // g' Sigma^-1 g under the band's sparse variance ratio, the diagonal
+        // (no-GRM) variance of the SAME vector under the band's null ratio --
+        // the two numbers as each would enter a reported p -- and their ratio. Flagged when
         // the solve's value is not positive or the ratio is below the
         // threshold; applied when the diagonal variance was used instead.
         bool sigmaEvaluated = false, sigmaFlagged = false, sigmaNegative = false, sigmaApplied = false;

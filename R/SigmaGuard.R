@@ -13,7 +13,9 @@
 # region without the GRM was smooth at p >= 3e-6.
 #
 # The guard computes the diagonal (no-GRM) variance of the SAME projected
-# vector beside the solve's and flags a test whose solve is not positive or is
+# vector beside the solve's, each under its own band's variance ratio (the
+# two numbers as they would enter a reported p; raw they sit ~1/tau1 apart on
+# a quantitative trait), and flags a test whose solve is not positive or is
 # below the threshold times the diagonal value. By default it OBSERVES: every
 # run prints one `Sigma variance:` line and names the flagged tests in
 # `<SAIGEOutputFile>.sigmaGuard.txt`; with SAIGE_SIGMA_GUARD_APPLY=1 a flagged

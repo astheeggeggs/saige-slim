@@ -909,9 +909,20 @@ if(!t_ctx.useSparseGRM && t_ctx.noadjCov){
           // the no-GRM arm's variance of the SAME projected vector (scoreTest's
           // own formula for !useSparseGRM: P2 = gtilde % mu2 * tau1)
           const double varDiag = arma::dot(t_gtilde % m_mu2 * m_tauvec[0], t_gtilde);
+          // Compared AS THEY WOULD ENTER A REPORTED p: each under its own band's
+          // variance ratio (the solve's value under the sparse ratio, the diagonal
+          // form under the null ratio). Raw, a typical vector's solve sits at
+          // null/sparse ratio times the diagonal form (~1.96x on amr's low band,
+          // measured 2026-10-28 on the first observation run), so a threshold on
+          // the raw ratio is band- and cohort-specific; on the ratio of the two
+          // calibrated variances a typical test reads ~1.
+          // A context not built by contextForMAC carries no null ratio: then the
+          // sparse ratio is used on both and the comparison is raw.
+          const double nullRatio = (t_ctx.nullVarRatioVal > 0.0) ? t_ctx.nullVarRatioVal : t_ctx.varRatioVal;
+          const double varDiag1 = varDiag * nullRatio;
           w.sigmaEvaluated = true;
-          w.sigmaVarGRM = t_var2; w.sigmaVarDiag = varDiag;
-          w.sigmaRatio = (varDiag > 0.0) ? t_var2 / varDiag : std::numeric_limits<double>::quiet_NaN();
+          w.sigmaVarGRM = t_var2 * t_ctx.varRatioVal; w.sigmaVarDiag = varDiag1;
+          w.sigmaRatio = (varDiag1 > 0.0) ? (t_var2 * t_ctx.varRatioVal) / varDiag1 : std::numeric_limits<double>::quiet_NaN();
           w.sigmaNegative = !(t_var2 > 0.0);
           w.sigmaFlagged = w.sigmaNegative || (std::isfinite(w.sigmaRatio) && w.sigmaRatio < sigmaGuardThreshold());
           if(w.sigmaFlagged && sigmaGuardApply() && varDiag > 0.0){
@@ -919,9 +930,8 @@ if(!t_ctx.useSparseGRM && t_ctx.noadjCov){
             // null ratio of the same MAC band (the sparse ratio if the context
             // did not carry one), and the score test's own p/BETA/SE from it
             w.sigmaApplied = true;
-            const double ratio = (t_ctx.nullVarRatioVal > 0.0) ? t_ctx.nullVarRatioVal : t_ctx.varRatioVal;
             t_var2 = varDiag;
-            t_var1 = varDiag * ratio;
+            t_var1 = varDiag1;
             t_P2Vec = t_gtilde % m_mu2 * m_tauvec[0];
             const double stat = t_Tstat * t_Tstat / t_var1;
             pval_noadj = boost::math::cdf(complement(boost::math::chi_squared(1), stat));

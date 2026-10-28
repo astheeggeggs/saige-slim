@@ -92,10 +92,11 @@ test_that("plant 0.1: every test on the band is flagged, listed with the ratio, 
   expect_identical(nrow(side), as.integer(cnt[2]))
   expect_true(all(side$negative == "FALSE"))
   expect_true(all(side$reported == "grm"))
-  # the ratio is the plant times the true ratio, which on the bundled PD Sigma
-  # sits near 1: nowhere near zero
+  # the ratio is the plant times the true ratio (each variance under its own
+  # band's variance ratio), which on the bundled PD Sigma sits near 1: so near
+  # 0.1, nowhere near zero and below the 0.5 line
   ratio <- as.numeric(side$ratio)
-  expect_true(all(ratio > 0.01 & ratio < 0.2))
+  expect_true(all(ratio > 0.02 & ratio < 0.5))
   expect_true(all(as.numeric(side$var_grm) > 0 & as.numeric(side$var_diag) > 0))
   expect_true(all(side$Kind %in% c("ultra_rare", "burden")))
   # the p-values that moved are flagged cells, and some moved: a cell whose p

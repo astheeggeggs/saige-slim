@@ -3092,3 +3092,24 @@ the guard; the measurement run (`p183obs-amr` / `p183obs-eur`, chr14 Height RAND
 distribution, and the amr decision -- drop the GRM at step 2 (`sparse_grm=False`, no image
 needed), clip the blocks at load, or rebuild amr's kinship net of ancestry (KING-robust via
 plink2 as a `.mtx`; upstream has no such option) and refit -- follows from it.
+
+**The first observation run (IMG19, chr14 Height RAND, threshold 1.0).** amr: 19,157 tests on
+the sparse-GRM band, 30 flagged, 18 not positive -- and all 30 are ONE region (the known gene:
+15 sets, each as the pseudo-marker test and as the burden cell; raw ratios of the positive
+ones 0.07 .. 0.975). eur: 10,052 tests, 0 flagged. So on amr the indefinite Sigma touches about
+one gene per chromosome and the no-GRM rerun is disproportionate; the targeted repair is a
+rerun with `SAIGE_SIGMA_GUARD_APPLY=1`. The run also showed the raw ratio's natural level is the
+band's null/sparse ratio (~1.96 on amr's low band), not 1, so the guard now compares the two
+variances EACH UNDER ITS OWN BAND RATIO (as they enter a reported p; `1.5.2-dev-<next>`): a
+typical test reads ~1 and the known cell's unweighted set ~0.5. The sidecar needs
+`OUT_FILE_SIGMAGUARD` in `submit` (re-run its definition cell: the first run's list lacked it).
+
+**Toward a sound amr GRM: `harness/tools/king_to_mtx.py`** (selftest). `convert` turns a plink2
+`--make-king-table` file into SAIGE's `.mtx` (2 x kinship off the diagonal, 1 on it, pairs at or
+above the cutoff on the GRM scale) plus the sample-ID file; `compare` reads it against the
+current `.mtx` on the same samples, positive control first (first-degree pairs agree), then the
+pair counts at each cutoff (the admixture background is the difference), the 0.05..0.125 band
+split into real third-degree and background, and the old diagonal; pair counts below 20 masked.
+Then `aou_sigma_pd_check.R` on the new matrix at 0.05 is the gate for the amr refit. The KING
+run: `plink2 --pfile <pruned amr array> --make-king-table --king-table-filter 0.025` in the
+`plink2` image (the current GRM used 5,000 random markers of that set; KING uses all of them).
