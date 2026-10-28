@@ -3140,3 +3140,13 @@ results stand until then with the guard's verdict attached; no apply-mode patch.
 through the step-1 launcher with `--sparseGRMFile`/`--sparseGRMSampleIDFile` pointing at
 `p183/king/amr_king.mtx` and `--relatednessCutoff=0.125`, into a NEW model directory, and the
 parameters table (`docs/state/aou-saige-parameters.md`) then records amr's GRM as KING-robust.
+
+**Verified (night of 2026-10-28).** The four-bin amr Height RAND pass on IMG21 (repair by default,
+old matrix): the known gene's MAC1 sets read exactly the no-GRM probe's values, pooled p 1.8e-4
+against October's 2.1e-71, 15 sidecar rows `diagonal`. Launched the same night: the amr step-2
+fleet on the KING-refit models (`refleet_amr`: `octk_{sk,am,fxa,fxs,rand}`, 708 tasks, keyed on
+delivered chrStatus files for the mop-up), RAND on every trait for eur/afr/eas/sas (`rand_all`,
+same keying), the 42 amr refits (variance ratios within a percent or two of the old models':
+the average calibration was never the problem). Morning: fleets complete (dry calls read 0),
+summaries on `octk_*` and the full `oct_rand`, scores/cmp, the old-vs-new amr comparison and
+the 0.5..0.9 band measurement, then the docs and the row to FIXED.
