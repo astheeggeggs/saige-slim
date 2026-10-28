@@ -212,6 +212,24 @@ double stretchGateThreshold(){
   return v;
 }
 
+// LEDGER #183: see SAIGE_test.hpp.
+bool sigmaGuardEnabled(){
+  static const bool on = [](){ const char* v = std::getenv("SAIGE_SIGMA_GUARD"); return !(v != nullptr && std::string(v) == "0"); }();
+  return on;
+}
+bool sigmaGuardApply(){
+  static const bool on = [](){ const char* v = std::getenv("SAIGE_SIGMA_GUARD_APPLY"); return v != nullptr && std::string(v) == "1"; }();
+  return on;
+}
+double sigmaGuardThreshold(){
+  static const double v = [](){ const char* s = std::getenv("SAIGE_SIGMA_GUARD_THRESHOLD"); return (s != nullptr && s[0] != '\0') ? std::atof(s) : kSigmaGuardThreshold; }();
+  return v;
+}
+double sigmaPlantRatio(){
+  static const double v = [](){ const char* s = std::getenv("SAIGE_SIGMA_PLANT_RATIO"); return (s != nullptr && s[0] != '\0') ? std::atof(s) : 1.0; }();
+  return v;
+}
+
 // LEDGER #172: see SAIGE_test.hpp.
 void atomDominance(const arma::vec & t_vals, double t_eps, double & t_neff, unsigned int & t_material){
   double s1 = 0.0, s2 = 0.0, vmax = 0.0;
@@ -842,6 +860,7 @@ void SAIGEClass::getMarkerPval(arma::vec & t_GVec,
   ws().spaFallbackNote.clear();
   ws().spaPinnedDropped = 0; ws().spaPinnedMass = 0.0; ws().spaPinnedRefused = false;   // LEDGER #174
   ws().gateEvaluated = false; ws().gateShadow = false; ws().gateApplied = false;   // LEDGER #176
+  ws().sigmaEvaluated = false; ws().sigmaFlagged = false; ws().sigmaNegative = false; ws().sigmaApplied = false;   // LEDGER #183
   //arma::vec adjGVec = getadjGFast(t_GVec);
   std::string t_pval_str;
   double t_var2, t_SPApval;
@@ -873,6 +892,44 @@ if(!t_ctx.useSparseGRM && t_ctx.noadjCov){
 	is_gtilde = true;
         isScoreFast = false;
         scoreTest(t_GVec, t_Beta, t_seBeta, t_pval_noSPA, pval_noadj, ispvallog, t_altFreq, t_Tstat, t_var1, t_var2, t_gtilde, t_P2Vec, t_gy, is_region, iIndex, t_ctx);
+        if(sigmaGuardEnabled()){   // LEDGER #183
+          KernelWorkspace & w = ws();
+          // the plant scales the solve's value, and with it var1 and the p the
+          // score test printed, exactly as an indefinite Sigma would have
+          if(sigmaPlantRatio() != 1.0){
+            t_var2 *= sigmaPlantRatio();
+            t_var1 = t_var2 * t_ctx.varRatioVal;
+            const bool collapsed = !(t_var1 > std::numeric_limits<double>::min());
+            double stat = collapsed ? 0.0 : t_Tstat * t_Tstat / t_var1;
+            pval_noadj = collapsed ? 1.0 : (std::isfinite(stat) ? boost::math::cdf(complement(boost::math::chi_squared(1), stat)) : 1.0);
+            t_pval_noSPA = formatPvalOrLog(pval_noadj, stat, ispvallog);
+            if(collapsed){ t_Beta = NA_REAL; t_seBeta = NA_REAL; }
+            else { t_Beta = t_Tstat / t_var1; t_seBeta = std::fabs(t_Beta) / std::sqrt(std::fabs(stat)); }
+          }
+          // the no-GRM arm's variance of the SAME projected vector (scoreTest's
+          // own formula for !useSparseGRM: P2 = gtilde % mu2 * tau1)
+          const double varDiag = arma::dot(t_gtilde % m_mu2 * m_tauvec[0], t_gtilde);
+          w.sigmaEvaluated = true;
+          w.sigmaVarGRM = t_var2; w.sigmaVarDiag = varDiag;
+          w.sigmaRatio = (varDiag > 0.0) ? t_var2 / varDiag : std::numeric_limits<double>::quiet_NaN();
+          w.sigmaNegative = !(t_var2 > 0.0);
+          w.sigmaFlagged = w.sigmaNegative || (std::isfinite(w.sigmaRatio) && w.sigmaRatio < sigmaGuardThreshold());
+          if(w.sigmaFlagged && sigmaGuardApply() && varDiag > 0.0){
+            // take the other band's number: the diagonal variance under the
+            // null ratio of the same MAC band (the sparse ratio if the context
+            // did not carry one), and the score test's own p/BETA/SE from it
+            w.sigmaApplied = true;
+            const double ratio = (t_ctx.nullVarRatioVal > 0.0) ? t_ctx.nullVarRatioVal : t_ctx.varRatioVal;
+            t_var2 = varDiag;
+            t_var1 = varDiag * ratio;
+            t_P2Vec = t_gtilde % m_mu2 * m_tauvec[0];
+            const double stat = t_Tstat * t_Tstat / t_var1;
+            pval_noadj = boost::math::cdf(complement(boost::math::chi_squared(1), stat));
+            t_pval_noSPA = formatPvalOrLog(pval_noadj, stat, ispvallog);
+            t_Beta = t_Tstat / t_var1;
+            t_seBeta = std::fabs(t_Beta) / std::sqrt(std::fabs(stat));
+          }
+        }
 	//std::cout << "useSparseGRM " << t_ctx.useSparseGRM << std::endl;
 }else{
 	is_gtilde = false;
@@ -1687,8 +1744,10 @@ SAIGE::TestContext SAIGEClass::contextForMAC(double MAC) const {
     ctx.noadjCov = false;
     if(isSingleVarianceRatio()){
         ctx.varRatioVal = selectSingleVarianceRatio(ctx.useSparseGRM, false);
+        ctx.nullVarRatioVal = selectSingleVarianceRatio(false, false);   // LEDGER #183
     }else{
         ctx.varRatioVal = selectVarianceRatio(MAC, ctx.useSparseGRM, false);
+        ctx.nullVarRatioVal = selectVarianceRatio(MAC, false, false);   // LEDGER #183
     }
     return ctx;
 }

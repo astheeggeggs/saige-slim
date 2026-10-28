@@ -1027,6 +1027,7 @@ SAIGE.Region <- function(mu,
   resetExactByWeightRecordsInCPP() # LEDGER #172: per-run accounting, R/ExactByWeight.R
   resetSpaPinnedRecordsInCPP() # LEDGER #174: per-run accounting, R/SpaPinned.R
   resetStretchGateRecordsInCPP() # LEDGER #176: per-run accounting, R/StretchGate.R
+  resetSigmaGuardRecordsInCPP() # LEDGER #183: per-run accounting, R/SigmaGuard.R
   skatoDedupeReset() # identical cells evaluated once: per-run counts, R/SkatoParallel.R
   burdenMemoReset() # identical BURDEN cells evaluated once: per-run counts, R/BurdenMemo.R
   pooledReset() # LEDGER #127: pooled-row provenance, R/PooledRow.R
@@ -2017,6 +2018,7 @@ SAIGE.Region <- function(mu,
   exactByWeightSummary(OutputFile) # LEDGER #172
   exactByWeightAboveCapSummary(OutputFile) # LEDGER #176: observation only
   stretchGateSummary(OutputFile) # LEDGER #176: observation only
+  sigmaGuardSummary(OutputFile) # LEDGER #183: observation only by default
   spaPinnedSummary(OutputFile) # LEDGER #174
   spaRegionNASummary(OutputFile) # LEDGER #181
   skatoDedupeSummary()

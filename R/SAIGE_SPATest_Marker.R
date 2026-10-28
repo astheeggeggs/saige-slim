@@ -100,6 +100,7 @@ SAIGE.Marker <- function(genoType, # nolint: object_name_linter.
     }
     resetSpaFallbackRecordsInCPP() # LEDGER #164: per-run accounting, R/SpaFallbacks.R
     resetSpaPinnedRecordsInCPP() # LEDGER #174: per-run accounting, R/SpaPinned.R
+    resetSigmaGuardRecordsInCPP() # LEDGER #183: per-run accounting, R/SigmaGuard.R
 
 
     cat("Number of all markers to test:\t", length(genoIndex), "\n")
@@ -166,6 +167,7 @@ SAIGE.Marker <- function(genoType, # nolint: object_name_linter.
   } # while(is_marker_test){
   spaFallbackSummary(OutputFile) # LEDGER #164: once per run, R/SpaFallbacks.R
   spaPinnedSummary(OutputFile) # LEDGER #174
+  sigmaGuardSummary(OutputFile) # LEDGER #183: observation only by default
 
   # Flush and close every g_out.singles stream explicitly. This is byte-neutral
   # -- it only moves the flush that static destruction would have done at exit

@@ -53,6 +53,14 @@ struct KernelWorkspace {
         // saddlepoint would have printed. gateLo/gateHi are filled only in
         // shadow mode (the bracket is a diagnostic, three passes for one).
         bool gateApplied = false;
+        // LEDGER #183 (2026-10-28): the sparse-GRM variance guard. Set by
+        // getMarkerPval on the sparse arm (cleared at every entry): the raw
+        // quadratic form g' Sigma^-1 g the solve returned, the diagonal
+        // (no-GRM) variance of the SAME vector, and their ratio. Flagged when
+        // the solve's value is not positive or the ratio is below the
+        // threshold; applied when the diagonal variance was used instead.
+        bool sigmaEvaluated = false, sigmaFlagged = false, sigmaNegative = false, sigmaApplied = false;
+        double sigmaVarGRM = 0.0, sigmaVarDiag = 0.0, sigmaRatio = 0.0;
         arma::mat x, XW2, Q, R;
         arma::vec pi_0, pi, W2, h, ypih;
         void ensureFirth(arma::uword n) {
@@ -125,6 +133,10 @@ struct TestContext {
         // LEDGER #176: evaluate the stretch gate if the binary saddlepoint runs
         // (a weighted set's cell). Observation only: no p-value reads it.
         bool stretchGate = false;
+        // LEDGER #183: the no-GRM ratio of the same MAC band, so a cell whose
+        // sparse variance is refused can take the other band's number without
+        // a second context. 0 when the context was not built by contextForMAC.
+        double nullVarRatioVal = 0.0;
 };
 
 // LEDGER #176 (2026-10-02): q = Tstat/sqrt(VR) + m1 is compared against a CGF
@@ -150,6 +162,30 @@ bool stretchGateEnabled();
 bool stretchGateApply();
 double stretchGateThreshold();
 bool exactConvShadow();
+
+// LEDGER #183 (2026-10-28): the Sigma step 2 solves against on the sparse-GRM
+// band is tau1 I + tau2 K with every GRM entry below the cutoff DELETED, and a
+// thinned GRM is not positive definite in general. The conjugate-gradient solve
+// checks only its residual, so on an indefinite Sigma a vector along a negative
+// direction gets a NEGATIVE g' Sigma^-1 g (the #44 collapse: p = 1, BETA NA) and
+// one near a null direction a tiny one (an inflated Z printed as a valid p).
+// Seen on amr Height (RAND, a pseudo-marker of eleven singletons): var 10.7 ->
+// 0.39 -> -2.9 .. -7.9 across the weight ladder, p 1.4e-73 one step before the
+// collapse, the solve converged, the no-GRM run smooth at p >= 3e-6. The guard
+// computes the diagonal (no-GRM) variance of the same vector beside the solve's
+// and compares them. Each switch is read once per process:
+//   SAIGE_SIGMA_GUARD=0            evaluate, record and print nothing
+//   SAIGE_SIGMA_GUARD_APPLY=1      a flagged cell takes the diagonal variance and
+//                                  the band's null ratio (default: observe only)
+//   SAIGE_SIGMA_GUARD_THRESHOLD    flag below this ratio of solve to diagonal
+//                                  (default kSigmaGuardThreshold)
+//   SAIGE_SIGMA_PLANT_RATIO=<r>    test plant: the solve's value is multiplied
+//                                  by r before the guard sees it
+const double kSigmaGuardThreshold = 0.5;
+bool sigmaGuardEnabled();
+bool sigmaGuardApply();
+double sigmaGuardThreshold();
+double sigmaPlantRatio();
 
 // LEDGER #172: how many atoms carry a vector's weight. Kish's effective count
 // (sum v)^2 / sum v^2 over the carriers' values -- the allele count for equal

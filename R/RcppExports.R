@@ -29,6 +29,14 @@ getStretchGateRecordsInCPP <- function() {
     .Call('_SAIGE_getStretchGateRecordsInCPP', PACKAGE = 'SAIGE')
 }
 
+resetSigmaGuardRecordsInCPP <- function() {
+    invisible(.Call('_SAIGE_resetSigmaGuardRecordsInCPP', PACKAGE = 'SAIGE'))
+}
+
+getSigmaGuardRecordsInCPP <- function() {
+    .Call('_SAIGE_getSigmaGuardRecordsInCPP', PACKAGE = 'SAIGE')
+}
+
 getExactByWeightAboveCapRecordsInCPP <- function() {
     .Call('_SAIGE_getExactByWeightAboveCapRecordsInCPP', PACKAGE = 'SAIGE')
 }

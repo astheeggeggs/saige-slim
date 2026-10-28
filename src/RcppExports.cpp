@@ -87,6 +87,25 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// resetSigmaGuardRecordsInCPP
+void resetSigmaGuardRecordsInCPP();
+RcppExport SEXP _SAIGE_resetSigmaGuardRecordsInCPP() {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    resetSigmaGuardRecordsInCPP();
+    return R_NilValue;
+END_RCPP
+}
+// getSigmaGuardRecordsInCPP
+Rcpp::List getSigmaGuardRecordsInCPP();
+RcppExport SEXP _SAIGE_getSigmaGuardRecordsInCPP() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(getSigmaGuardRecordsInCPP());
+    return rcpp_result_gen;
+END_RCPP
+}
 // getExactByWeightAboveCapRecordsInCPP
 Rcpp::List getExactByWeightAboveCapRecordsInCPP();
 RcppExport SEXP _SAIGE_getExactByWeightAboveCapRecordsInCPP() {
@@ -2449,6 +2468,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_SAIGE_getExactByWeightRecordsInCPP", (DL_FUNC) &_SAIGE_getExactByWeightRecordsInCPP, 0},
     {"_SAIGE_resetStretchGateRecordsInCPP", (DL_FUNC) &_SAIGE_resetStretchGateRecordsInCPP, 0},
     {"_SAIGE_getStretchGateRecordsInCPP", (DL_FUNC) &_SAIGE_getStretchGateRecordsInCPP, 0},
+    {"_SAIGE_resetSigmaGuardRecordsInCPP", (DL_FUNC) &_SAIGE_resetSigmaGuardRecordsInCPP, 0},
+    {"_SAIGE_getSigmaGuardRecordsInCPP", (DL_FUNC) &_SAIGE_getSigmaGuardRecordsInCPP, 0},
     {"_SAIGE_getExactByWeightAboveCapRecordsInCPP", (DL_FUNC) &_SAIGE_getExactByWeightAboveCapRecordsInCPP, 0},
     {"_SAIGE_getSpaPinnedModelInCPP", (DL_FUNC) &_SAIGE_getSpaPinnedModelInCPP, 1},
     {"_SAIGE_recordSpaPinnedInCPP", (DL_FUNC) &_SAIGE_recordSpaPinnedInCPP, 9},

@@ -2872,3 +2872,215 @@ RAND on the missense-only group `damaging_missense:other_missense:spliceai2_gt04
 the 1e-3 / 1e-4 quantiles and the hit count, not the pooled fraction below 0.05 (the Cauchy's
 body) nor lambda (point masses); Height's synonymous inflation is polygenic background (19.10).
 
+
+**Summaries and QQ grids of the October fleet (`<anc>/oct_sk`, `oct_am`, `oct_fxa`, `oct_fxs`,
+`oct_rand`; jobs named `oct_*-`).** The fleet fits neither naming rule of `aou_flexrv_summary.sh`,
+so every arm is named explicitly (the `d213ecbb` tool with `AM_DIR`/`AM_PREFIX`; re-upload it to
+the Workbench first). The tool reads ONE FlexRV arm per run, so one summary per (ancestry,
+FlexRV arm): `oct_fxa` carries the SKAT-O and am_moderate arms, `oct_fxs` and `oct_rand` read
+FlexRV only (their SK/AM directories named absent, 0 files, so the `skato_cells` table of
+`oct_fxa` serves all three QQ jobs). Pass 1, 15 summary jobs:
+
+```python
+ANCS = ["afr", "amr", "eas", "eur", "sas"]
+BASE = f"{BUCKET}/SAIGE_SLIM_TESTING"; CLI = "gcr.io/google.com/cloudsdktool/google-cloud-cli:slim"
+OCT_ARMS = {"oct_fxa": ("oct_sk", "oct_am"), "oct_fxs": ("__none__", "__none__"), "oct_rand": ("__none__", "__none__")}
+for anc in ANCS:
+    for fx, (sk, am) in OCT_ARMS.items():
+        run_dsub(["aou_dsub", "--name", f"sum-{fx}-{anc}", "--image", CLI, "--env", f"ANC={anc}", "--env", f"BASE={BASE}",
+                  "--env", f"RUNTAG={fx}", "--env", f"FX_DIR={fx}", "--env", f"FX_PREFIX={fx}-",
+                  "--env", f"SK_DIR={sk}", "--env", f"SK_PREFIX={sk}-", "--env", f"AM_DIR={am}", "--env", f"AM_PREFIX={am}-",
+                  "--output-recursive", f"OUT_DIR={BASE}/summary_oct", "--machine-type", "n2-standard-2", "--disk-size", "20",
+                  "--script", "aou_flexrv_summary.sh"])
+```
+
+Read each log's `flexrv: N ... skato: M files` / `am_moderate: K files` line against the registry
+(eur: 10 bins x 43 traits per arm; eas/sas: one file per trait) before pass 2. Pass 2, the QQ
+grids per (ancestry, arm) and the October-vs-v6 comparison (the `aou_v6_vs_v4.py` script; its
+labels read "v6"/"v4" but the inputs are whichever tables it is given, here October as NEW and v6
+as OLD):
+
+```python
+SO = f"{BASE}/summary_oct"; SV6 = f"{BASE}/summary_v6"; PYPLOT = "gcr.io/weighty-elf-452116-c7/pyplot:20260928"
+for anc in ANCS:
+    for fx in OCT_ARMS:
+        run_dsub(["aou_dsub", "--name", f"qq-{fx}-{anc}", "--image", PYPLOT, "--env", f"ANC={anc}",
+                  "--input", f"IN_SUMMARY={SO}/{anc}.flexrv_vs_skato.{fx}.tsv.gz", "--input", f"IN_CELLS={SO}/{anc}.skato_cells.oct_fxa.tsv.gz",
+                  "--output-recursive", f"OUT_DIR={SO}/qq/{fx}/{anc}", "--machine-type", "n2-standard-2", "--disk-size", "20",
+                  "--script", "aou_flexrv_qq.py"])
+    run_dsub(["aou_dsub", "--name", f"cmp-oct-{anc}", "--image", PYPLOT, "--env", f"ANC={anc}",
+              "--input", f"IN_SUM_NEW={SO}/{anc}.flexrv_vs_skato.oct_fxa.tsv.gz", "--input", f"IN_CELLS_NEW={SO}/{anc}.skato_cells.oct_fxa.tsv.gz",
+              "--input", f"IN_FLOOR_NEW={SO}/{anc}.floor.oct_fxa.tsv.gz",
+              "--input", f"IN_SUM_OLD={SV6}/{anc}.flexrv_vs_skato.v6.tsv.gz", "--input", f"IN_CELLS_OLD={SV6}/{anc}.skato_cells.v6.tsv.gz",
+              "--output-recursive", f"OUT_DIR={SO}/cmp/{anc}", "--machine-type", "n2-standard-2", "--disk-size", "20",
+              "--script", "aou_v6_vs_v4.py"])
+```
+
+Reading order (19.9/19.10 rules: 1e-3/1e-4 quantiles and hit counts, never the pooled fraction
+below 0.05 or lambda): the `cmp` text report's controls first (synonymous per mask against v6,
+pLoF gene for gene), then `oct_rand`'s synonymous QQ (the machinery's null), then `oct_fxa`
+against `oct_fxs` against `oct_rand` on the missense group (the score's own control), then the
+contrasts. The `rand` per-ancestry runs cover only `RAND_TRAITS`, so its tables are smaller.
+
+**The scores against each other and their null (`aou_oct_scores.py`, 2026-10-27).** None of the
+above puts AMPCT, SCALLION and RAND side by side: the comparison script takes ONE FlexRV table
+and the QQ grids draw one FlexRV series each, so SCALLION appeared only in its own grids. This
+one, per ancestry, prints the controls first (RAND-on-synonymous and the SKAT-O synonymous burden
+as pooled tails: observed p at the expected 1e-1..1e-5 points and hits), then AMPCT against
+SCALLION gene for gene (Spearman, moves, hits both/only) and each score's pooled tail beside
+RAND's. RAND ran on another group, so it is never compared gene for gene. Self-test
+`aou_oct_scores_selftest.sh python3` (15 checks). After pass 1:
+
+```python
+for anc in ANCS:
+    run_dsub(["aou_dsub", "--name", f"scores-{anc}", "--image", PYPLOT, "--env", f"ANC={anc}", "--env", "RAND_LEAK=1e-6",
+              "--input", f"IN_AMPCT={SO}/{anc}.flexrv_vs_skato.oct_fxa.tsv.gz", "--input", f"IN_SCALLION={SO}/{anc}.flexrv_vs_skato.oct_fxs.tsv.gz",
+              "--input", f"IN_RAND={SO}/{anc}.flexrv_vs_skato.oct_rand.tsv.gz", "--input", f"IN_CELLS={SO}/{anc}.skato_cells.oct_fxa.tsv.gz",
+              "--output-recursive", f"OUT_DIR={SO}/scores/{anc}", "--machine-type", "n2-standard-2", "--disk-size", "20",
+              "--script", "aou_oct_scores.py"])
+```
+
+Delivers `<anc>.scores.txt` (read first), `<anc>.scores.tsv` (per trait) and `<anc>.scores.png`
+(the nulls; AMPCT against SCALLION; the two scores and RAND on one QQ). Upload the script to the
+Workbench beside the others.
+
+**Pass 1 trap (2026-10-27 evening): `am_moderate: 0 files` in every `sum-oct_fxa` log.** The
+Workbench copy of `aou_flexrv_summary.sh` predated `AM_DIR` (`grep -c AM_DIR` read 0). Check that
+before trusting a count; the fix was to upload the current copy, cancel the running eur job
+(`ddel`, its job id from `dstat --names sum-oct_fxa-eur`) and rerun the five. The rerun's row
+counts were identical to the first pass's, so the am fold changes nothing else. Note dstat prints
+job names with `_` turned into `-` (`sum-oct-fxa-eur`) and `--names` takes exact names, no globs.
+
+### 20.1 The RAND control read per trait (2026-10-28): Height carries it
+
+Pooled over its 9 traits, RAND-on-synonymous read 1.4x at 1e-3 and 1.5-2.4x at 1e-4 on afr and
+amr while the SKAT-O synonymous burden at 0.001 sat on the line (1e-3 quantile 9.4e-4 / 9.7e-4,
+1e-4 quantile 8.9e-5 / 9.9e-5, 1-2 hits per ancestry). Per trait (`<anc>.scores.tsv`, ~18,400
+genes a trait, so the 1e-3 quantile is the 19th order statistic with a null range of about 5.5e-4
+to 1.5e-3 and the 1e-4 quantile the 2nd, read as noise) it is ONE trait:
+
+| | Height | the other 8 traits x 5 ancestries |
+|---|---|---|
+| 1e-3 quantile | below the null range in 4 of 5 ancestries (1.5e-4 .. 5.5e-4) | median 7.3e-4 (a 1.35x shift) |
+| 1e-4 quantile | 1.2e-9 (eas), 1.5e-8 (eur), 4.5e-7 (sas), 2e-6 (afr), 7e-6 (amr) | around the line, eas above it |
+| hits past 2.5e-6 | 14 of the 18 RAND hits | 4 against ~1.8 expected |
+
+Why Height: the 12 unweighted-score sets (the MAC rungs and the MAF beta weights) ignore the
+score and are a genuine synonymous burden under the MAF ladder, and polygenic Height shows through
+them whatever the 14 score transforms do with their random numbers. This is the "Height inflates
+synonymous everywhere" of the release note, inherited by RAND, and it is diluted 42:9 in the
+SKAT-O pool, which is why the two controls read differently. The residual 1.35x at 1e-3 across the
+other traits matches the body excess (`below 0.05` 0.057 against SKAT-O's 0.047): the Cauchy over
+100-180 positively dependent sets, anti-conservative in the body, valid in the tail (19.9/19.10).
+It does not reach the hit threshold.
+
+The `lof` score transform is empty on RAND: `--flexRV_lofAnno pLoF` is fixed in the launcher, the
+file-level check passes on the pan-ancestry file, and inside the synonymous mask no marker carries
+the label, so the 12 `lof_*` sets keep no marker and are refused in every region. Dropped, not
+duplicated; the same on every trait, so not a source of the Height pattern.
+
+Consequences. (1) `aou_oct_scores.py` now names LEAKY RAND traits (any gene below `RAND_LEAK`,
+default 1e-8; 1e-6 on this data, since afr's and amr's Height hits sit at 2e-6 and 7e-6 and would
+escape 1e-8) with their min p and gene count, pools the null WITHOUT them (`READ THIS ONE`) beside
+the all-traits pool, draws the null panels from the clean pool, and writes `rand_min_p` and
+`rand_leaky` per trait -- the collection of "null" traits that carry signal is that column.
+(2) Height's real-arm hits carry 2-5 polygenic genes per ancestry; read them against Height's own
+RAND row, not the pool. (3) p_FlexRV between 1e-2 and 1e-4 is not calibrated; hits past 2.5e-6
+are. (4) RAND on ALL traits is NOT the AoU plan -- the matched simulated null is the calibration
+null (next.md, the FDR item) and RAND the sanity check; the cheap addition worth making is RAND on
+the binary traits near the case-count gate, where the few-case tail (LEDGER #159) is unmeasured
+for the pooled p. (5) For the consortium template: a biobank that runs only RAND must run the twin
+on EVERY submitted trait and read it per trait, since Height shows a 9-trait pool misleads about a
+trait outside it; the twins (`rand/`, 23 files, seeded by variant ID) already ship.
+
+**The one point at -log10 p 71 on amr's RAND null QQ is LEDGER #183 (2026-10-28)**, not Height's
+polygenicity: a pseudo-marker-only cell (all singletons, MAC `<20`) on the sparse-GRM band whose
+burden Z walks 5 -> 8.5 -> 18 across the cube-root transforms of the MAC1 rung and then collapses
+to `p = 1, BETA NA` (the #44 guard) on every steeper set. The 1e-73 row is unflagged and makes the
+pooled p; `nEff_Burden` is 8.8 there, so the carrier filter would not catch it. Counted over the
+three largest cohorts' RAND Height tables it is this one cell (amr), none in eur or afr. The
+hypothesis (cancellation between the PCG solve and the covariate adjustment on related carriers)
+and the two probes are on the row. The gene is not named anywhere in the repo.
+
+**Read with `RAND_LEAK=1e-6` on all five (2026-10-28 afternoon).** Height is the only leaky trait
+everywhere (amr adds HbA1c and LDLC at one gene each); the clean pool and the model's null, pooled
+over traits (observed p at the expected 1e-3 / 1e-4 points; hits past 2.5e-6):
+
+| cohort | leaky RAND traits (genes below 1e-6) | clean RAND pool 1e-3 / 1e-4, hits | SKAT-O synonymous 1e-3 / 1e-4, hits | AMPCT vs SCALLION hits (shared) |
+|---|---|---|---|---|
+| eur | Height (3) | 7.3e-4 / 5.7e-5, 1 | 9.9e-4 / 7.9e-5, 1 | 149 vs 156 (141) |
+| afr | Height (1) | 7.3e-4 / 7.7e-5, 0 | 9.4e-4 / 8.9e-5, 1 | 43 vs 47 (40) |
+| amr | Height, HbA1c, LDLC (1 each) | 1.0e-3 / 8.9e-5, 0 | 9.7e-4 / 9.9e-5, 2 | 42 vs 43 (37) |
+| eas | Height (4) | 7.8e-4 / 1.4e-4, 0 | 9.3e-4 / 9.1e-5, 2 | 11 vs 7 (7) |
+| sas | Height (2) | 6.4e-4 / 4.9e-5, 1 | 9.1e-4 / 7.2e-5, 1 | 2 vs 2 (2) |
+
+The clean pool is calibrated at 1e-4 and at the hit threshold in every cohort (2 hits over
+670k clean cells against ~1.7 expected) and carries the Cauchy body's ~1.3x at 1e-3 except on
+amr, where the pool reads 1.0e-3 once Height and the #183 cell are out. The two percentile scores
+find the same genes: Spearman 0.73-0.78 over the shared (trait, gene) cells, 0.4-0.6 % of cells
+moved by more than a decade, SCALLION a few hits ahead in the three large cohorts and AMPCT ahead
+in eas (4 AMPCT-only hits of 11; a per-gene look is the next step there). Figures and per-trait
+tables under `summary_oct/scores/<anc>/`.
+
+**`cmp-oct` controls (2026-10-28): the October SKAT-O arm IS v6.** Synonymous below 0.05 equal
+to v6 to three digits in every cohort (0.051 / 0.051 / 0.051 / 0.048 / 0.048 for eur, afr, amr,
+eas, sas), pLoF gene for gene Spearman 1.0000, zero cells moved, identical hits (85, 27, 27, 5,
+1). The release change is confined to the FlexRV files; the contrasts after question 2 repeat
+19.7 and were not re-read.
+
+### 20.2 LEDGER #183 located and instrumented (2026-10-28, evening)
+
+**The probes** (`p183-grm` / `p183-nogrm`: the one region rerun alone through the wrapper's
+`REGIONS` subset, amr Height, RAND file, `SINGLE_IN_GROUP=TRUE`, with and without the GRM;
+`submit(..., sparse_grm=False)` is the no-GRM switch -- `None` means ON). Without the GRM the
+MAC1 rung walks smoothly, Z 3.7 -> 4.7, p never below 3e-6; with it the fleet's rows come back
+to the digit. `Tstat` is identical in both; `var` reads 10.7 vs 21.6 unweighted, 0.39 on
+`cbrt0.5`, then **negative** on every steeper set, with the solve converged (zero
+`did not converge` lines in any amr/eur/afr RAND Height task log: the 100-iteration cap is NOT
+it). The adjustment matrix is stored only under `skipVarianceRatioEstimation`, so the printed
+`var` is the raw `g' Sigma^-1 g`, and a negative one says **Sigma is indefinite** -- the thinned
+GRM's family blocks, which 19.10 had already measured at min eigenvalue -0.145 on eur Height.
+Exposure is genome-wide, effect is not: a vector feels it only when its heavy carriers sit in such
+a block, hence the walk with weight steepness and one cell in 8.6M rows.
+
+**The direct check**, `harness/tools/aou_sigma_pd_check.R` (CHOLMOD on the whole Sigma plus the
+eigenvalues of every family block; prints theta and whether the adjustment matrix is stored;
+drilled: positive definite on the bundled models, not on a planted star of four), as a dsub job
+per model with the wrapper `sigma_pd_check.sh` (`Rscript "${IN_SCRIPT}" --modelFile=... --label
+--reportFile="${OUT_FILE}"`), inputs the model, the GRM and its IDs, env `RELCUTOFF`, `LABEL`:
+
+```python
+for anc in ["amr", "eur"]:
+    grm = GRM.format(pop=anc); s1_root, relcut = STEP1[anc]
+    run_dsub(["aou_dsub", "--name", f"sigpd-{anc}", "--image", IMG18,
+              "--input", f"IN_SCRIPT={BASE}/scripts/aou_sigma_pd_check.R",
+              "--input", f"IN_MODELFILE={s1_root}/{anc}_Height.rda",
+              "--input", f"IN_SPARSEGRM={grm}", "--input", f"IN_SPARSEGRMID={grm}.sampleIDs.txt",
+              "--env", f"RELCUTOFF={relcut}", "--env", f"LABEL={anc}_Height",
+              "--output", f"OUT_FILE={BASE}/p183/sigpd.{anc}_Height.tsv",
+              "--machine-type", "n2-highmem-4", "--disk-size", "20", "--script", "sigma_pd_check.sh"])
+```
+
+(The first submission died at localisation: the R script must be copied to `scripts/` first.)
+
+**The instrument** (`src/SAIGE_test.cpp`, `R/SigmaGuard.R`; LEDGER #183's row has the detail):
+on the sparse-GRM band the diagonal (no-GRM) variance of the same projected vector is computed
+beside the solve's; a test whose solve is not positive or below `SAIGE_SIGMA_GUARD_THRESHOLD`
+(0.5) times it is flagged, counted in the `Sigma variance:` line of every step-2 run and named in
+`<SAIGEOutputFile>.sigmaGuard.txt`. Observation only by default (no byte moves);
+`SAIGE_SIGMA_GUARD_APPLY=1` makes a flagged test take the diagonal variance under the band's
+null ratio. Wiring for AoU: the wrapper's sidecar loop takes one more pair,
+`"sigmaGuard:${OUT_FILE_SIGMAGUARD:-}"`, with `OUT_FILE_SIGMAGUARD="${OUT_FILE_SIGMAGUARD:-}"`
+declared at the top; `submit()`'s sidecar block one more line,
+`"--output", f"OUT_FILE_SIGMAGUARD={od}/{pre}.sigmaGuard.txt.gz",`; the summary tool's
+`SIDECARS` regex already lists it. **First measurement to make with the image**: one amr
+chromosome (chr14, Height, RAND) and one eur, read the `Sigma variance:` line and the ratio
+column's distribution -- that sets the threshold, which is a placeholder until then.
+
+**The check's answer (same evening).** amr Height: Cholesky FAILS; every family block up to
+2,000 samples is positive definite, so the negative direction is in the one block above the cap
+(3,255 samples), and the evaluated blocks are unhealthy anyway (worst Sigma eigenvalue 0.023 on
+a diagonal of 0.352: a thinned-GRM eigenvalue near -2.2). eur Height: positive definite to four
+digits. Neither model stores the adjustment matrix. Mechanism measured, not inferred; the
+principled repair is at the source (refuse or clip an indefinite thinned GRM when Sigma is
+built), the owner's call, and it would move every amr result.

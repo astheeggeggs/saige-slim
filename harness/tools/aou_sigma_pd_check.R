@@ -1,0 +1,193 @@
+#!/usr/bin/env Rscript
+# Is the Sigma step 2 solves against positive definite? (LEDGER #183, 2026-10-28)
+#
+# Step 2 builds Sigma = tau1 I + tau2 K_thinned (quantitative; binary: 1/W on the diagonal),
+# where K_thinned is the sparse GRM with every entry below --relatednessCutoff DELETED
+# (R/SAIGE_SPATest_Region.R setSparseSigma_new). Deleting entries from a positive-definite
+# matrix does not keep it positive definite, and the sparse-GRM variance of a test vector is
+# g' Sigma^-1 g from a conjugate-gradient solve that checks only its residual -- so on an
+# indefinite Sigma a vector in a negative-eigenvalue direction gets a NEGATIVE variance, which
+# the LEDGER #44 guard prints as p 1 and a missing BETA, while a vector near a null direction
+# gets a tiny variance and an inflated Z printed as a valid p. Found on an amr Height FlexRV
+# cell whose variance walked from 10.7 through 0.39 to minus 2.9 and minus 7.9 across the
+# weight sets with the solve converged.
+#
+# This script asks the question directly, with nothing N x N formed: the thinned GRM is cut
+# into connected components (families), each component's Sigma block is eigendecomposed up to
+# --maxDenseComponent samples, and the report counts the components whose smallest eigenvalue
+# is at or below zero, the most negative one, and how many samples sit in such components
+# (people counts below --mask written "<mask": real data). The whole sparse Sigma is also
+# handed to CHOLMOD once: a failed Cholesky is the one-bit answer.
+#
+# Usage (inside the saige-slim image or any R with Matrix):
+#   Rscript aou_sigma_pd_check.R --modelFile=M.rda --sparseGRMFile=K.mtx \
+#     --sparseGRMSampleIDFile=K.ids --relatednessCutoff=0.125 --reportFile=report.tsv \
+#     [--label=amr_Height] [--maxDenseComponent=2000] [--mask=20]
+suppressPackageStartupMessages({
+  library(optparse)
+  library(Matrix)
+})
+opts <- list(
+  make_option("--modelFile", type = "character"),
+  make_option("--sparseGRMFile", type = "character"),
+  make_option("--sparseGRMSampleIDFile", type = "character"),
+  make_option("--relatednessCutoff", type = "double", default = 0,
+              help = "entries below this are deleted, as step 2 does [default %default]"),
+  make_option("--reportFile", type = "character"),
+  make_option("--label", type = "character", default = "model"),
+  make_option("--maxDenseComponent", type = "integer", default = 2000L),
+  make_option("--mask", type = "integer", default = 20L),
+  make_option("--plantIndefinite", action = "store_true", default = FALSE,
+              help = "positive control: overwrite one family's block with an indefinite pattern")
+)
+opt <- parse_args(OptionParser(option_list = opts))
+for (k in c("modelFile", "sparseGRMFile", "sparseGRMSampleIDFile", "reportFile")) {
+  if (is.null(opt[[k]])) stop("--", k, " is required")
+}
+report <- new.env()
+report$rows <- list()
+note <- function(k, v) {
+  report$rows[[length(report$rows) + 1]] <-
+    data.frame(label = opt$label, key = k, value = as.character(v))
+  cat(sprintf("%-34s %s\n", k, as.character(v)))
+}
+showCount <- function(k) if (k > 0 && k < opt$mask) paste0("<", opt$mask) else as.character(k)
+
+e <- new.env()
+load(opt$modelFile, envir = e)
+m <- get("modglmm", envir = e)
+ids <- as.character(m$sampleID)
+n <- length(ids)
+tau1 <- as.numeric(m$theta[1])
+tau2 <- as.numeric(m$theta[2])
+binary <- identical(m$traitType, "binary")
+note("trait_type", if (binary) "binary" else "quantitative")
+note("samples", showCount(n))
+note("tau1", sprintf("%.6g", tau1))
+note("tau2", sprintf("%.6g", tau2))
+# the covariate adjustment term is subtracted from the sparse variance only when step 1 stored
+# this matrix (skipVarianceRatioEstimation & useSparseGRMtoFitNULL); without it var is the raw
+# quadratic form, so a negative value is Sigma's alone
+note("has_Sigma_iXXSigma_iX", !is.null(m$Sigma_iXXSigma_iX))
+mu <- as.numeric(m$fitted.values)   # readInGLMM's mu; mu2 = mu (1 - mu) on a binary trait
+# 1/W on the diagonal, as setSparseSigma_new
+diagS <- if (binary) 1 / (mu * (1 - mu)) else rep(tau1, n)
+note("diag_min", sprintf("%.6g", min(diagS)))
+
+if (tau2 <= 0) {
+  note("verdict", "tau2 = 0: Sigma is diagonal, positive definite by construction")
+} else {
+  K <- readMM(opt$sparseGRMFile)
+  kid <- as.character(readLines(opt$sparseGRMSampleIDFile))
+  kid <- kid[nzchar(kid)]
+  if (length(kid) != nrow(K)) stop("GRM has ", nrow(K), " rows but ", length(kid), " sample IDs")
+  pos <- match(ids, kid)
+  if (anyNA(pos)) stop(sum(is.na(pos)), " model samples are absent from the GRM")
+  K <- as(K[pos, pos, drop = FALSE], "TsparseMatrix")
+  i <- K@i + 1L
+  j <- K@j + 1L
+  x <- K@x
+  # step 2's thinning: `which(sparseGRM@x < relatednessCutoff)` removed -- the DIAGONAL too if it
+  # were below, which it never is at any cutoff in use
+  keep <- x >= opt$relatednessCutoff
+  i <- i[keep]
+  j <- j[keep]
+  x <- x[keep]
+  off <- i != j
+  if (opt$plantIndefinite) {
+    # positive control: a star of four -- one sample related at 0.9 to three others that are
+    # unrelated to each other. K's smallest eigenvalue is 1 - 0.9 sqrt 3 = -0.559, so Sigma's
+    # block goes indefinite once tau2 exceeds 1.79 tau1 (the bundled quant model: 2.15). The
+    # four are cut out of their family first, so the block is exactly that; ONE triangle is
+    # stored, as readMM's symmetric triplets are, and mirrored with the rest below.
+    pairs <- which(off)
+    a <- i[pairs[1]]
+    rel <- setdiff(unique(c(j[off & i == a], i[off & j == a])), a)
+    if (length(rel) < 3) stop("--plantIndefinite needs a sample with three kept relatives")
+    leaves <- rel[1:3]
+    drop <- off & ((i %in% c(a, leaves)) | (j %in% c(a, leaves)))
+    i <- c(i[!drop], rep(a, 3))
+    j <- c(j[!drop], leaves)
+    x <- c(x[!drop], rep(0.9, 3))
+    off <- i != j
+    note("planted_indefinite_block", "a star of 4 at 0.9: K min eigenvalue 1 - 0.9 sqrt 3")
+  }
+  note("grm_offdiag_pairs_kept", sum(off))
+  diagK <- numeric(n)
+  diagK[i[!off]] <- x[!off]
+  if (any(diagK <= 0)) stop(sum(diagK <= 0), " GRM diagonal entries are missing or non-positive")
+  # Sigma as a general sparse matrix (both triangles)
+  S <- sparseMatrix(i = c(i, j[off]), j = c(j, i[off]), x = tau2 * c(x, x[off]), dims = c(n, n))
+  S <- S + Diagonal(n, diagS)
+  S <- forceSymmetric(S)
+  # the one-bit answer: CHOLMOD reports an indefinite matrix as a WARNING with a partial factor
+  chol_ok <- tryCatch({
+    withCallingHandlers(Cholesky(S, LDL = FALSE, perm = TRUE),
+                        warning = function(w) stop(conditionMessage(w)))
+    TRUE
+  }, error = function(err) FALSE)
+  note("sparse_cholesky_succeeds", chol_ok)
+  # components of the thinned GRM (label propagation over the kept pairs, as sim_null_pheno.R)
+  lab <- seq_len(n)
+  if (any(off)) {
+    ei <- i[off]
+    ej <- j[off]
+    repeat {
+      a <- pmin(lab[ei], lab[ej])
+      mi <- tapply(a, ei, min)
+      mj <- tapply(a, ej, min)
+      new <- lab
+      ki <- as.integer(names(mi))
+      new[ki] <- pmin(new[ki], as.integer(mi))
+      kj <- as.integer(names(mj))
+      new[kj] <- pmin(new[kj], as.integer(mj))
+      if (identical(new, lab)) break
+      lab <- new
+    }
+  }
+  comp <- split(seq_len(n), lab)
+  sizes <- lengths(comp)
+  multi <- comp[sizes > 1]
+  note("components_multi", length(multi))
+  note("largest_component", showCount(max(sizes)))
+  note("components_above_dense_cap", sum(sizes > opt$maxDenseComponent))
+  n_indef <- 0L
+  n_people_indef <- 0L
+  min_eig <- Inf
+  worst_size <- NA
+  n_eval <- 0L
+  n_nearnull <- 0L   # smallest eigenvalue below 1e-3 of the diagonal scale: a near-null direction
+  for (idx in multi) {
+    if (length(idx) > opt$maxDenseComponent) next
+    n_eval <- n_eval + 1L
+    ev <- eigen(as.matrix(S[idx, idx]), symmetric = TRUE, only.values = TRUE)$values
+    lo <- min(ev)
+    if (lo <= 0) {
+      n_indef <- n_indef + 1L
+      n_people_indef <- n_people_indef + length(idx)
+    }
+    if (lo > 0 && lo < 1e-3 * mean(diagS[idx])) n_nearnull <- n_nearnull + 1L
+    if (lo < min_eig) {
+      min_eig <- lo
+      worst_size <- length(idx)
+    }
+  }
+  note("components_evaluated", n_eval)
+  note("components_indefinite", n_indef)
+  note("samples_in_indefinite_components", showCount(n_people_indef))
+  note("components_near_null", n_nearnull)
+  note("min_eigenvalue_sigma", sprintf("%.6g", min_eig))
+  note("min_eigenvalue_component_size", showCount(worst_size))
+  note("min_eigenvalue_over_diag", sprintf("%.6g", min_eig / mean(diagS)))
+  verdict <- if (!chol_ok || n_indef > 0) {
+    "Sigma is NOT positive definite"
+  } else if (n_nearnull > 0) {
+    "positive definite with near-null directions"
+  } else {
+    "positive definite"
+  }
+  note("verdict", verdict)
+}
+out <- do.call(rbind, report$rows)
+write.table(out, opt$reportFile, sep = "\t", quote = FALSE, row.names = FALSE)
+cat("done\n")

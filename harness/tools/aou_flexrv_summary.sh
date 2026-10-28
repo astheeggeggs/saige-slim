@@ -53,7 +53,7 @@ AM="${BASE}/${ANC}/am_${RUNTAG}"
 # file; a new one that is not listed here is counted as a results file and the
 # `K v7` provenance line reads STALE (2026-10-04: spaPinned, exactByWeightAboveCap
 # and stretchGate were missing once flexrv_v8_checked carried them)
-SIDECARS='\.(singleAssoc|markerList|pooledTests|skatoMethod|skatFailures|spaFallbacks|chrStatus|exactByWeight|exactByWeightAboveCap|spaPinned|stretchGate|spaRegionNA|spliceStatId|splice)\.txt(\.gz)?$'
+SIDECARS='\.(singleAssoc|markerList|pooledTests|skatoMethod|skatFailures|spaFallbacks|chrStatus|exactByWeight|exactByWeightAboveCap|spaPinned|stretchGate|spaRegionNA|sigmaGuard|spliceStatId|splice)\.txt(\.gz)?$'
 # Only the run's own job files are results files (2026-10-16: a stray fxv5-* filtered rerun
 # sat in sas/flexrv_v6 and would have been summarised as a second BenIntNeo). v4 jobs were
 # named fxv4-/skv4-, later tags fx<N>-/sk<N>-/am<N>-; anything else in the directory is listed

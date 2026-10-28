@@ -432,6 +432,40 @@ static void recordStretchGate(const std::string & t_kind, const std::string & t_
   rec.applied = t_ws.gateApplied;
   g_stretchGate.push_back(rec);
 }
+// LEDGER #183 (2026-10-28): the sparse-GRM variance guard's per-run accounting
+// (R/SigmaGuard.R). Every test on the sparse-GRM band is evaluated; a cell is
+// recorded when the solve's g' Sigma^-1 g is not positive or is below the
+// threshold times the diagonal (no-GRM) variance of the same vector. The
+// sidecar names genes and carries variances and p-values, no carrier quantity.
+struct SigmaGuardRecord {
+  unsigned int model = 1;
+  std::string kind, region, group, maxMAF, weight, marker, pval;
+  double MAC = 0.0, varGRM = 0.0, varDiag = 0.0, ratio = 0.0;
+  bool negative = false, applied = false;
+};
+static std::vector<SigmaGuardRecord> g_sigmaGuard;
+static std::mutex g_sigmaGuardMutex;
+static unsigned long long g_sigmaGuardCounts[4] = {0, 0, 0, 0};   // evaluated, flagged, negative, applied
+static void recordSigmaGuard(const std::string & t_kind, const std::string & t_region,
+                             const std::string & t_group, const std::string & t_maxMAF,
+                             const std::string & t_weight, const std::string & t_marker, double t_MAC,
+                             const std::string & t_pval, const SAIGE::SAIGEClass & t_model,
+                             const SAIGE::KernelWorkspace & t_ws){
+  if(!t_ws.sigmaEvaluated) return;
+  std::lock_guard<std::mutex> lock(g_sigmaGuardMutex);
+  g_sigmaGuardCounts[0] += 1;
+  if(!t_ws.sigmaFlagged) return;
+  g_sigmaGuardCounts[1] += 1;
+  if(t_ws.sigmaNegative) g_sigmaGuardCounts[2] += 1;
+  if(t_ws.sigmaApplied) g_sigmaGuardCounts[3] += 1;
+  SigmaGuardRecord rec;
+  for(std::size_t km = 0; km < g_models.size(); km++){ if(g_models[km].get() == &t_model){ rec.model = (unsigned int)km + 1; break; } }
+  rec.kind = t_kind; rec.region = t_region; rec.group = t_group; rec.maxMAF = t_maxMAF; rec.weight = t_weight;
+  rec.marker = t_marker; rec.MAC = t_MAC; rec.pval = t_pval;
+  rec.varGRM = t_ws.sigmaVarGRM; rec.varDiag = t_ws.sigmaVarDiag; rec.ratio = t_ws.sigmaRatio;
+  rec.negative = t_ws.sigmaNegative; rec.applied = t_ws.sigmaApplied;
+  g_sigmaGuard.push_back(rec);
+}
 static bool exactByWeightEnabled(){
   static const bool on = [](){ const char* v = std::getenv("SAIGE_EXACT_BY_WEIGHT"); return !(v != nullptr && std::string(v) == "0"); }();
   return on;
@@ -504,6 +538,41 @@ Rcpp::List getStretchGateRecordsInCPP(){
                             Rcpp::Named("gate") = gate, Rcpp::Named("z") = z, Rcpp::Named("p_spa") = pSpa,
                             Rcpp::Named("shadow") = shadow, Rcpp::Named("applied") = applied, Rcpp::Named("p_exact") = pExact,
                             Rcpp::Named("lo") = lo, Rcpp::Named("hi") = hi, Rcpp::Named("ms") = ms);
+}
+
+// LEDGER #183: the sparse-GRM variance guard's per-run accounting (R/SigmaGuard.R).
+// [[Rcpp::export]]
+void resetSigmaGuardRecordsInCPP(){
+  std::lock_guard<std::mutex> lock(g_sigmaGuardMutex);
+  g_sigmaGuard.clear();
+  for(int b = 0; b < 4; b++) g_sigmaGuardCounts[b] = 0;
+}
+
+// [[Rcpp::export]]
+Rcpp::List getSigmaGuardRecordsInCPP(){
+  std::lock_guard<std::mutex> lock(g_sigmaGuardMutex);
+  const unsigned int n = g_sigmaGuard.size();
+  std::vector<std::string> kind(n), region(n), group(n), maxMAF(n), weight(n), marker(n), pval(n);
+  Rcpp::NumericVector model(n), MAC(n), varGRM(n), varDiag(n), ratio(n);
+  Rcpp::LogicalVector negative(n), applied(n);
+  for(unsigned int k = 0; k < n; k++){
+    const SigmaGuardRecord & r = g_sigmaGuard[k];
+    kind[k] = r.kind; region[k] = r.region; group[k] = r.group; maxMAF[k] = r.maxMAF; weight[k] = r.weight;
+    marker[k] = r.marker; pval[k] = r.pval; model[k] = (double)r.model; MAC[k] = r.MAC;
+    varGRM[k] = r.varGRM; varDiag[k] = r.varDiag; ratio[k] = r.ratio; negative[k] = r.negative; applied[k] = r.applied;
+  }
+  Rcpp::NumericVector counts(4);
+  for(int b = 0; b < 4; b++) counts[b] = (double)g_sigmaGuardCounts[b];
+  return Rcpp::List::create(Rcpp::Named("enabled") = SAIGE::sigmaGuardEnabled(),
+                            Rcpp::Named("apply_mode") = SAIGE::sigmaGuardApply(),
+                            Rcpp::Named("threshold") = SAIGE::sigmaGuardThreshold(),
+                            Rcpp::Named("plant_ratio") = SAIGE::sigmaPlantRatio(),
+                            Rcpp::Named("counts") = counts,
+                            Rcpp::Named("model") = model, Rcpp::Named("kind") = kind, Rcpp::Named("region") = region,
+                            Rcpp::Named("group") = group, Rcpp::Named("maxMAF") = maxMAF, Rcpp::Named("weight") = weight,
+                            Rcpp::Named("marker") = marker, Rcpp::Named("MAC") = MAC, Rcpp::Named("p_reported") = pval,
+                            Rcpp::Named("var_grm") = varGRM, Rcpp::Named("var_diag") = varDiag, Rcpp::Named("ratio") = ratio,
+                            Rcpp::Named("negative") = negative, Rcpp::Named("applied") = applied);
 }
 
 // LEDGER #176: the same list for the cells the cap excluded. A separate export
@@ -1659,6 +1728,7 @@ static void testOneModel(const SAIGE::SAIGEClass & t_model,
     recordSpaFallback("marker", "", "", "", "", t_res.marker, MAC, pval_noSPA, pval, t_scratch.ws.spaFallbackNote);
   }
   recordSpaPinned("marker", "", "", "", "", t_res.marker, t_model, t_scratch.ws);   // LEDGER #174
+  recordSigmaGuard("marker", "", "", "", "", t_res.marker, MAC, pval, t_model, t_scratch.ws);   // LEDGER #183
   const double pval_num = parsePrintedPval(pval); // the one guarded parse (LEDGER #72)
 
   if((t_traitType == "binary" && MAC > g_cfg.MACCutoffforER) || t_traitType != "binary"){
@@ -3493,6 +3563,7 @@ Rcpp::List mainRegionInCPP(
           recordSpaFallback("single_in_group", regionName, "", "", "", pr.marker, MAC, prm.pval_noSPA, prm.pval, sc.ws.spaFallbackNote);
         }
         recordSpaPinned("single_in_group", regionName, "", "", "", pr.marker, model, sc.ws);   // LEDGER #174
+        recordSigmaGuard("single_in_group", regionName, "", "", "", pr.marker, MAC, prm.pval, model, sc.ws);   // LEDGER #183
         rpTest.stop();
 
         if(isCondition){
@@ -4568,6 +4639,9 @@ if(t_regionTestType != "BURDEN" || t_isSingleinGroupTest){
                         (q_weight > 1) ? t_weightNames.at(rP) : std::string(""), markerVec.at(c.i), model, sc.ws);
         recordStretchGate("ultra_rare", regionName, annoStringVec.at(jP), maxMAFLabel(maxMAFVec.at(mP)),
                           (q_weight > 1) ? t_weightNames.at(rP) : std::string(""), model, sc.ws);   // LEDGER #176
+        recordSigmaGuard("ultra_rare", regionName, annoStringVec.at(jP), maxMAFLabel(maxMAFVec.at(mP)),
+                         (q_weight > 1) ? t_weightNames.at(rP) : std::string(""), markerVec.at(c.i),
+                         genoSumcount_noweight(jmrP), cm.pval, model, sc.ws);   // LEDGER #183
       }
       rpUrTest.stop();
       // (urGuard clears sc.urScratch at scope exit, throw or not; nothing below
@@ -4937,6 +5011,9 @@ if(t_regionTestType == "BURDEN"){
                            (q_weight > 1) ? t_weightNames.at(rP) : std::string(""), std::string(""), model, sc.ws);
            recordStretchGate("burden", regionName, annoStringVec.at(jP), maxMAFLabel(maxMAFVec.at(mP)),
                              (q_weight > 1) ? t_weightNames.at(rP) : std::string(""), model, sc.ws);   // LEDGER #176
+           recordSigmaGuard("burden", regionName, annoStringVec.at(jP), maxMAFLabel(maxMAFVec.at(mP)),
+                            (q_weight > 1) ? t_weightNames.at(rP) : std::string(""), std::string(""),
+                            genoSumcount_noweight(jmrT), cm.pval, model, sc.ws);   // LEDGER #183
          }
          // (sumGuard clears sc.sumScratch at scope exit, throw or not)
        };
