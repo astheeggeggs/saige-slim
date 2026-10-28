@@ -16,13 +16,15 @@
 # vector beside the solve's, each under its own band's variance ratio (the
 # two numbers as they would enter a reported p; raw they sit ~1/tau1 apart on
 # a quantitative trait), and flags a test whose solve is not positive or is
-# below the threshold times the diagonal value. By default it OBSERVES: every
-# run prints one `Sigma variance:` line and names the flagged tests in
-# `<SAIGEOutputFile>.sigmaGuard.txt`; with SAIGE_SIGMA_GUARD_APPLY=1 a flagged
-# test takes the diagonal variance under the band's null ratio instead, and
-# the sidecar says so. Settings, each read once per process:
+# below the threshold times the diagonal value. By DEFAULT a flagged test takes
+# the diagonal variance under the band's null ratio (decided 2026-10-28: on two
+# sound cohorts nothing sits below 0.5 and on the broken one exactly the
+# pathological cells do, and a default is the only setting that reaches a
+# biobank running its own GRM); every run prints one `Sigma variance:` line and
+# names the flagged tests in `<SAIGEOutputFile>.sigmaGuard.txt` with what was
+# reported. SAIGE_SIGMA_GUARD_APPLY=0 observes only. Settings, each read once:
 #   SAIGE_SIGMA_GUARD=0            evaluate, print and write nothing
-#   SAIGE_SIGMA_GUARD_APPLY=1      flagged tests take the diagonal variance
+#   SAIGE_SIGMA_GUARD_APPLY=0      observe only: flagged tests keep the solve's variance
 #   SAIGE_SIGMA_GUARD_THRESHOLD    flag below this ratio (0.5)
 #   SAIGE_SIGMA_PLANT_RATIO=<r>    test plant: the solve's value times r
 # The sidecar names genes and markers; it carries variances, a ratio and the
@@ -45,7 +47,7 @@ sigmaGuardSummary <- function(OutputFile) {
       " flagged (solve below ", signif(rec$threshold, 3),
       " x the diagonal variance, or not positive), ", n_neg, " not positive, ",
       n_app, " took the diagonal variance",
-      if (isTRUE(rec$apply_mode)) " (SAIGE_SIGMA_GUARD_APPLY=1)" else " (observation only)",
+      if (isTRUE(rec$apply_mode)) " (repaired: the default)" else " (observation only: SAIGE_SIGMA_GUARD_APPLY=0)",
       if (rec$plant_ratio != 1) paste0(" [PLANT: solve x ", rec$plant_ratio, "]"),
       " (LEDGER #183).\n", sep = "")
   if (n_flag == 0) {

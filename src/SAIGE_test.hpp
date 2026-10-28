@@ -176,8 +176,14 @@ bool exactConvShadow();
 // computes the diagonal (no-GRM) variance of the same vector beside the solve's
 // and compares them. Each switch is read once per process:
 //   SAIGE_SIGMA_GUARD=0            evaluate, record and print nothing
-//   SAIGE_SIGMA_GUARD_APPLY=1      a flagged cell takes the diagonal variance and
-//                                  the band's null ratio (default: observe only)
+//   SAIGE_SIGMA_GUARD_APPLY=0      observe only: a flagged cell keeps the solve's
+//                                  variance (the DEFAULT is to repair it: the
+//                                  diagonal variance under the band's null ratio.
+//                                  Decided 2026-10-28 after the measurement: on
+//                                  two sound cohorts nothing sits below 0.5, on
+//                                  the broken one exactly the pathological cells
+//                                  do -- and the default is the only setting
+//                                  that reaches a biobank running its own GRM)
 //   SAIGE_SIGMA_GUARD_THRESHOLD    flag below this ratio of solve to diagonal
 //                                  (default kSigmaGuardThreshold)
 //   SAIGE_SIGMA_PLANT_RATIO=<r>    test plant: the solve's value is multiplied

@@ -921,11 +921,15 @@ declarations sit at the top of `src/Main.cpp`.
   solve converged, printing p 1.4e-73 one step before the #44 collapse. The guard computes the
   diagonal (no-GRM) variance of the same vector beside the solve's, prints `Sigma variance: N
   test(s) on the sparse-GRM band; K flagged ...` at the end of every step-2 run and names the
-  flagged tests in `<SAIGEOutputFile>.sigmaGuard.txt`; `SAIGE_SIGMA_GUARD_APPLY=1` makes them
-  take the diagonal variance, `SAIGE_SIGMA_GUARD=0` is the kill switch,
-  `SAIGE_SIGMA_PLANT_RATIO` the plant (`test-step2-sigma-guard.R`). The threshold (0.5) is a
-  placeholder until a real chromosome's ratio distribution is read; `harness/tools/
-  aou_sigma_pd_check.R` asks a model's Sigma directly.
+  flagged tests in `<SAIGEOutputFile>.sigmaGuard.txt`. **A flagged test takes the diagonal
+  variance BY DEFAULT** (decided 2026-10-28: on eur and amr chromosome 14 nothing legitimate
+  sits below ratio 0.5 -- the 1st percentile is 0.85-0.89 -- and the broken cohort's
+  pathological cells all do; a default is the only setting that reaches a biobank running its
+  own GRM); `SAIGE_SIGMA_GUARD_APPLY=0` observes only, `SAIGE_SIGMA_GUARD=0` is the kill
+  switch, `SAIGE_SIGMA_PLANT_RATIO` the plant (`test-step2-sigma-guard.R`). The two variances
+  are compared each under its own band ratio. amr's step-0 GRM was ~90 % admixture background
+  even at 0.125; its replacement is KING-robust (`harness/tools/king_to_mtx.py`), positive
+  definite at 0.125; `harness/tools/aou_sigma_pd_check.R` asks any model's Sigma directly.
 - **A SKAT kernel failure is counted, not hidden** (LEDGER #57): the cell's
   rows stay NA, the run prints `SKAT failures: N ...` before `Analysis done!`,
   and `<SAIGEOutputFile>.skatFailures.txt` names each failed cell with the

@@ -218,7 +218,7 @@ bool sigmaGuardEnabled(){
   return on;
 }
 bool sigmaGuardApply(){
-  static const bool on = [](){ const char* v = std::getenv("SAIGE_SIGMA_GUARD_APPLY"); return v != nullptr && std::string(v) == "1"; }();
+  static const bool on = [](){ const char* v = std::getenv("SAIGE_SIGMA_GUARD_APPLY"); return !(v != nullptr && std::string(v) == "0"); }();
   return on;
 }
 double sigmaGuardThreshold(){

@@ -15,12 +15,13 @@
 # indefinite Sigma would have:
 #   1. guard on (the default): every golden byte stays, the run REPORTS the
 #      count of evaluated tests and 0 flagged;
-#   2. the plant at 0.1: every test on the band is flagged and listed, the
-#      ratio column reads the plant, nothing negative, p-values moved;
-#   3. the plant at -1: every test is negative and the results carry the #44
-#      collapse (p 1, BETA NA) on exactly those cells;
-#   4. the plant at 0.1 with SAIGE_SIGMA_GUARD_APPLY=1: the flagged tests take
-#      the diagonal variance, the sidecar says so, and their reported p is the
+#   2. the plant at 0.1 in observation mode (SAIGE_SIGMA_GUARD_APPLY=0): every
+#      test on the band is flagged and listed, the ratio column reads the
+#      plant, nothing negative, p-values moved;
+#   3. the plant at -1 in observation mode: every test is negative and the
+#      results carry the #44 collapse (p 1, BETA NA) on exactly those cells;
+#   4. the plant at 0.1 under the DEFAULT (repair): the flagged tests take the
+#      diagonal variance, the sidecar says so, and their reported p is the
 #      sidecar's;
 #   5. the kill switch: golden bytes, nothing evaluated, the line says off.
 skip_if_no_goldens()
@@ -76,18 +77,19 @@ test_that("guard on by default: golden bytes, the run reports the band's tests a
   expect_gt(cnt[1], 0)                      # tests on the sparse-GRM band were evaluated
   expect_identical(cnt[2:4], c(0, 0, 0))
   expect_false(file.exists(paste0(r$out, ".sigmaGuard.txt")))
-  expect_match(sg_line(r$log), "observation only")
+  expect_match(sg_line(r$log), "repaired: the default", fixed = TRUE)
 })
 
-test_that("plant 0.1: every test on the band is flagged, listed with the ratio, and moved", {
+test_that("plant 0.1, observing: every test on the band is flagged, listed with the ratio, and moved", {
   skip_unless_level("standard")
   base <- sg_run()
-  r <- sg_run(env = c(SAIGE_SIGMA_PLANT_RATIO = "0.1"))
+  r <- sg_run(env = c(SAIGE_SIGMA_PLANT_RATIO = "0.1", SAIGE_SIGMA_GUARD_APPLY = "0"))
   cnt <- sg_counts(r$log)
   expect_identical(cnt[1], sg_counts(base$log)[1])
   expect_identical(cnt[2], cnt[1])          # all flagged at 0.1 < 0.5
   expect_identical(cnt[3:4], c(0, 0))
   expect_match(sg_line(r$log), "PLANT: solve x 0.1", fixed = TRUE)
+  expect_match(sg_line(r$log), "observation only", fixed = TRUE)
   side <- sg_side(r$out)
   expect_identical(nrow(side), as.integer(cnt[2]))
   expect_true(all(side$negative == "FALSE"))
@@ -118,9 +120,9 @@ test_that("plant 0.1: every test on the band is flagged, listed with the ratio, 
   }
 })
 
-test_that("plant -1: every test is negative and reads the #44 collapse in the results", {
+test_that("plant -1, observing: every test is negative and reads the #44 collapse in the results", {
   skip_unless_level("standard")
-  r <- sg_run(env = c(SAIGE_SIGMA_PLANT_RATIO = "-1"))
+  r <- sg_run(env = c(SAIGE_SIGMA_PLANT_RATIO = "-1", SAIGE_SIGMA_GUARD_APPLY = "0"))
   cnt <- sg_counts(r$log)
   expect_identical(cnt[2], cnt[1])
   expect_identical(cnt[3], cnt[1])
@@ -143,14 +145,14 @@ test_that("plant -1: every test is negative and reads the #44 collapse in the re
   expect_gt(n_one, 0L)
 })
 
-test_that("plant 0.1 with APPLY=1: flagged tests take the diagonal variance and report it", {
+test_that("plant 0.1 under the default: flagged tests take the diagonal variance and report it", {
   skip_unless_level("standard")
-  obs <- sg_run(env = c(SAIGE_SIGMA_PLANT_RATIO = "0.1"))
-  r <- sg_run(env = c(SAIGE_SIGMA_PLANT_RATIO = "0.1", SAIGE_SIGMA_GUARD_APPLY = "1"))
+  obs <- sg_run(env = c(SAIGE_SIGMA_PLANT_RATIO = "0.1", SAIGE_SIGMA_GUARD_APPLY = "0"))
+  r <- sg_run(env = c(SAIGE_SIGMA_PLANT_RATIO = "0.1"))
   cnt <- sg_counts(r$log)
   expect_identical(cnt[2], cnt[1])
-  expect_identical(cnt[4], cnt[2])          # every flagged test applied
-  expect_match(sg_line(r$log), "SAIGE_SIGMA_GUARD_APPLY=1", fixed = TRUE)
+  expect_identical(cnt[4], cnt[2])          # every flagged test repaired
+  expect_match(sg_line(r$log), "repaired: the default", fixed = TRUE)
   side <- sg_side(r$out)
   expect_true(all(side$reported == "diagonal"))
   # the reported p is no longer the planted one: it is the diagonal variance's,
