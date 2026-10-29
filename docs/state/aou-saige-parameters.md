@@ -34,10 +34,10 @@ Read off the GRM file names and `docs/state/handoff-2026-09-25-aou-production-st
 | flag | value | source |
 |---|---|---|
 | input | array genotypes, per ancestry (`allofus_array_<pop>`) | file name |
-| `--relatednessCutoff` | 0.05 (all); amr also rebuilt at 0.125, the production amr models use that | file name; handoff 09-25 |
+| `--relatednessCutoff` | 0.05 (all); amr 0.125. **amr's GRM is KING-robust since 2026-10-28** (LEDGER #183): the step-0 matrix thinned at 0.125 was ~90 % admixture background and its Sigma was not positive definite; the replacement is plink2 `--make-king-table` on the pruned array set, converted by `harness/tools/king_to_mtx.py` (2 x kinship off-diagonal, 1 on it, pairs at or above 0.05 kept in the file; 0.125 applied by steps 1 and 2) | file name; handoff 09-25; runbook 20.2 |
 | `--numRandomMarkerforSparseKin` | 5000 | file name (`5000_randomMarkersUsed`) |
 | marker selection | SNP-wise (`snp_wise` in the name) | file name |
-| output | `run/make_sparse_grm/allofus_array_<pop>_snp_wise_relatednessCutoff_<c>_5000_randomMarkersUsed.sparseGRM.mtx` (+ `.sampleIDs.txt`) | notebook `GRM` |
+| output | `run/make_sparse_grm/allofus_array_<pop>_snp_wise_relatednessCutoff_<c>_5000_randomMarkersUsed.sparseGRM.mtx` (+ `.sampleIDs.txt`); amr: `run/make_sparse_grm/allofus_array_amr_king_robust_relatednessCutoff_0.05.sparseGRM.mtx` (+ `.sampleIDs.txt`) | notebook `GRM`, `GRM_BY_POP` |
 
 The `step0/` copies of the GRMs are TRUNCATED for four of five cohorts and
 must not be used (memory note `aou-sparse-grm-two-locations`).
@@ -51,11 +51,11 @@ female-only). The two amr logs are the 0.05 jobs run before amr moved to 0.125.
 
 | flag | value | source |
 |---|---|---|
-| model directory | `<bucket>/data/saige/run/nullglmm_v4/<anc>_<TRAIT>.rda` (+ `.varianceRatio.txt`), ONE directory for afr, eas, eur and sas; amr in `<bucket>/data/saige/run/nullglmm_v4_rc0.125/`. Not under `SAIGE_SLIM_TESTING/`, which holds step-2 output only. File counts 42 / 25 / 43 / 15 / 42 for afr / eas / eur / sas / amr, read from the bucket 2026-09-29 | notebook `STEP1` (a dict: ancestry to directory and relatedness cutoff), printed 2026-09-29 |
+| model directory | `<bucket>/data/saige/run/nullglmm_v4/<anc>_<TRAIT>.rda` (+ `.varianceRatio.txt`), ONE directory for afr, eas, eur and sas; amr in `<bucket>/data/saige/run/nullglmm_v4_king_rc0.125/` (refitted 2026-10-28 on the KING-robust GRM; the earlier `nullglmm_v4_rc0.125/` models on the step-0 matrix are superseded, LEDGER #183). Not under `SAIGE_SLIM_TESTING/`, which holds step-2 output only. File counts 42 / 25 / 43 / 15 / 42 for afr / eas / eur / sas / amr, read from the bucket 2026-09-29 | notebook `STEP1` (a dict: ancestry to directory and relatedness cutoff), printed 2026-09-29 |
 | genotypes (variance ratio) | `--bedFile/--bimFile/--famFile` `data/saige/run/nullglmm/allofus_array_<anc>_for_vr.{bed,bim,fam}` | logs |
-| sparse GRM | `data/saige/run/make_sparse_grm/allofus_array_<anc>_snp_wise_relatednessCutoff_0.05_5000_randomMarkersUsed.sparseGRM.mtx` (+ `.sampleIDs.txt`); NOT the truncated `data/saige/step0/` copies | logs |
+| sparse GRM | `data/saige/run/make_sparse_grm/allofus_array_<anc>_snp_wise_relatednessCutoff_0.05_5000_randomMarkersUsed.sparseGRM.mtx` (+ `.sampleIDs.txt`); amr the KING-robust file above; NOT the truncated `data/saige/step0/` copies | logs |
 | `--useSparseGRMtoFitNULL`, `--useSparseGRMforVarRatio` | TRUE, TRUE (the variance-ratio files carry `sparse` rows; step 2 given the GRM REFUSES a file without them) | logs; the step-2 option/VR dump |
-| `--relatednessCutoff` | 0.05; amr 0.125 (must match step 2's, nothing checks it) | logs (0.05); amr: handoff 09-25, and the rerun at 0.125 confirmed by the analyst 2026-10-07 |
+| `--relatednessCutoff` | 0.05; amr 0.125 (must match step 2's, nothing checks it; on the KING matrix 0.125 means second-degree relatives, on the old one it meant background) | logs (0.05); amr: handoff 09-25, the rerun at 0.125 confirmed by the analyst 2026-10-07, the KING refit 2026-10-28 |
 | `--phenoFile` | `data/phenotypes/brava_pilot_v1.collapsed.with_covariates.txt.gz` | logs |
 | `--sampleIDColinphenoFile` | `eid` | logs |
 | `--traitType` | binary / quantitative per trait (`TRAIT_TYPE` in the notebook) | logs; notebook |
@@ -88,7 +88,7 @@ Common to both arms (the wrapper's fixed flags plus the notebook's `submit()` va
 | `--is_fastTest` | FALSE (`FASTTEST="FALSE"` in the launch; the wrapper's `auto` would give TRUE for variant tests only) |
 | `--is_Firth_beta` | FALSE (`FIRTH="FALSE"` in the launch) |
 | `--GMMATmodelFile`, `--varianceRatioFile` | the step-1 pair above |
-| `--sparseGRMFile`, `--sparseGRMSampleIDFile` | the step-0 GRM of the ancestry, every ancestry (the earlier "none for amr" is void) |
+| `--sparseGRMFile`, `--sparseGRMSampleIDFile` | the step-0 GRM of the ancestry, every ancestry (the earlier "none for amr" is void); amr the KING-robust matrix its models were fitted on (`GRM_BY_POP`). The sparse-GRM variance guard (LEDGER #183) is on by default in every image from `66b80710`: a flagged test takes the diagonal variance, the run prints `Sigma variance:` and the wrapper delivers `.sigmaGuard.txt` (`OUT_FILE_SIGMAGUARD`) |
 | `--relatednessCutoff` | 0.05; amr 0.125 (`RELCUTOFF`, required by the wrapper when a GRM is given) |
 | `--is_single_in_groupTest` | TRUE in v4. **From 2026-10-08 the wrapper takes `SINGLE_IN_GROUP` (default TRUE); set FALSE for FlexRV runs**: the file was 80% of a FlexRV job (LEDGER #179; afr chr20 431/465/601 s -> 55/55/75 s with it off, gene-level rows identical), its real-marker rows are the SKAT-O run's and its pseudo-marker rows were read only by the splice control's twin rule. The wrapper then delivers a one-line placeholder; `aou_spa_scan.sh` and `aou_spa_splice.sh` recognise it. SKAT-O runs keep TRUE. |
 | `--is_output_nEff` | absent before 2026-10-16. **The wrapper takes `NEFF` (default TRUE)**: `nEff_Burden` after `SE_Burden`, Kish's effective carrier count of each cell's burden vector, for the meta-analysis to filter sparse-rung FlexRV hits on (runbook 19.8/19.10). FALSE for a partial rerun to be spliced. |
@@ -156,7 +156,7 @@ rows, VCF input). The branch, as of 2026-10-07:
 | 1 | `--tol`, `--invNormalize` | 0.02; TRUE quantitative, FALSE binary | same |
 | 1 | covariates | the analyst's; templates `age,age2,age_sex,age2_sex,sex,PC1..PC20`, categorical `sex` | same set |
 | 1 | sex-specific | `--sex F/M` -> `--FemaleOnly/--MaleOnly --sexCol sex`; numeric codes default 0 female, 1 male (BRaVa's coding, the opposite of this file's), checked against genetic sex | `--FemaleOnly/--MaleOnly`, `--FemaleCode=1` |
-| 1 | dense GRM | refused above 100 relatives per sample (amr at 0.05: ~644) unless `--forceDenseGRM` | amr refitted at 0.125 |
+| 1 | dense GRM | refused above 100 relatives per sample (amr at 0.05: ~644) unless `--forceDenseGRM` | amr refitted at 0.125, on a KING-robust GRM since 2026-10-28 |
 | 2 | genotypes | PGEN or PLINK 1; no VCF | PGEN |
 | 2 | `--minMAC`, `--minMAF` | 4 variant, 0.5 group; 0 | same |
 | 2 | Firth, fastTest, `--LOCO` | FALSE, FALSE, FALSE | same (`FIRTH=FALSE`, `FASTTEST=FALSE` in the launch) |

@@ -913,8 +913,8 @@ declarations sit at the top of `src/Main.cpp`.
   in R outside the per-cell catch must be total**: three chromosomes have now died on an
   `if` over NA (#170, the IMG14 log10 defect, #181). `R/SpaRegionNA.R`;
   `SAIGE_SPA_PLANT_NA_R=1` is the plant.
-- **The sparse-GRM variance can be negative, and the guard that sees it is observation only
-  (LEDGER #183, 2026-10-28).** On the sparse-GRM band the variance is `g' Sigma^-1 g` by a
+- **The sparse-GRM variance can be negative, and the guard that sees it repairs by default
+  (LEDGER #183, FIXED 2026-10-29).** On the sparse-GRM band the variance is `g' Sigma^-1 g` by a
   conjugate-gradient solve against `tau1 I + tau2 K` with every GRM entry below the cutoff
   DELETED, and a thinned GRM is not positive definite in general: on amr Height a pseudo-marker's
   variance walked from 10.7 through 0.39 to below zero across the FlexRV weight ladder with the
@@ -929,7 +929,7 @@ declarations sit at the top of `src/Main.cpp`.
   switch, `SAIGE_SIGMA_PLANT_RATIO` the plant (`test-step2-sigma-guard.R`). The two variances
   are compared each under its own band ratio. amr's step-0 GRM was ~90 % admixture background
   even at 0.125; its replacement is KING-robust (`harness/tools/king_to_mtx.py`), positive
-  definite at 0.125; `harness/tools/aou_sigma_pd_check.R` asks any model's Sigma directly.
+  definite at 0.125; `harness/tools/aou_sigma_pd_check.R` asks any model's Sigma directly. Measured on the KING fleet (2026-10-29): 0 flagged rows across 672 real-arm tasks, 48 benign rows (ratio 0.41-0.50, p 0.27-0.71) in the RAND arm.
 - **A SKAT kernel failure is counted, not hidden** (LEDGER #57): the cell's
   rows stay NA, the run prints `SKAT failures: N ...` before `Analysis done!`,
   and `<SAIGEOutputFile>.skatFailures.txt` names each failed cell with the

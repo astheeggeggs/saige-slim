@@ -3150,3 +3150,69 @@ same keying), the 42 amr refits (variance ratios within a percent or two of the 
 the average calibration was never the problem). Morning: fleets complete (dry calls read 0),
 summaries on `octk_*` and the full `oct_rand`, scores/cmp, the old-vs-new amr comparison and
 the 0.5..0.9 band measurement, then the docs and the row to FIXED.
+
+### 20.3 The morning after (2026-10-29): fleets complete, the KING fleet's guard count, LEDGER #183 closed
+
+**Fleets.** The dry calls read 0 everywhere: `refleet_amr` 708 of 708 delivered; `rand_all` 15 /
+25 / 36 / 419 delivered for sas / eas / afr / eur. Two things the dry call cannot see and the
+summaries check instead: afr's `oct_fxa` jobs have aged out of dstat, so its 36 was verified by
+the delivered files alone; eur reports 419 delivered against 417 found (two late Spot deliveries
+beside their on-demand twins, most likely -- the summary's `flexrv: N files` line and its
+excluded-file list say whether any trait has two).
+
+**The known gene on the KING models (`octk_rand`, Height, the chr14 bin):** pooled p 0.16, the
+lowest of its 150 sets 0.011. Beside 1.8e-4 (the repair on the old matrix) and 2.1e-71 (October)
+that is the right order: the repair uses the diagonal (no-GRM) variance, a positive-definite GRM
+sees the relatedness among the carriers, and singletons shared within families should read
+WEAKER under the GRM than without it. No sigmaGuard row names it.
+
+**The guard on the KING fleet** (sidecar rows counted per arm; every task delivers a placeholder
+file, so files are not the count):
+
+| arm | tasks | flagged rows | genes | negative |
+|---|---|---|---|---|
+| `octk_sk`, `octk_am`, `octk_fxa`, `octk_fxs` | 168 each | 0 | 0 | 0 |
+| `octk_rand` | 36 | 48 | 2 | 0 |
+
+The 48 rows are one cell flagged across its whole 46-set ladder (ratio 0.41..0.50 on every set,
+reported p 0.60..0.71) plus one two-row cell at 0.46..0.49, p 0.27: a ratio that does not move
+with the weights is a fixed relatedness structure among the carriers, which is exactly what a
+sound GRM should see and the diagonal cannot. So on a positive-definite Sigma the 0.5 line costs
+a few cells per fleet, each swapping a legitimate variance for one at most 2.4x smaller, in
+cells nowhere near a hit; on the broken matrix the same line caught 18 negative solves and the
+1e-71. **The four-bin amr Height pass on the OLD matrix** (`amr/p183_wg`) repaired 5 genes
+genome-wide (38 rows, 0 negative): a handful per trait, not hundreds. The row is FIXED on these
+numbers; the old-vs-new amr comparison (`cmp-octk-amr`, below) is the gene-level count of what
+moved between the two matrices, and is read as a change of GRM, not as the repair.
+
+**Summaries and scores on the delivered fleets.** Pass 1 (`sum-octk_{fxa,fxs,rand}-amr` into
+`summary_octk`; `sum-oct_rand-{afr,eas,eur,sas}` into `summary_oct`, overwriting the
+`RAND_TRAITS`-only `oct_rand` tables since RAND now ran on every trait); pass 2 the scores for
+all five (`scores_full/` for the four, `summary_octk/scores/amr`) and `cmp-octk-amr` with `octk`
+as NEW and October as OLD (the script's labels still read v6/v4). Re-upload
+`aou_flexrv_summary.sh` first: the 2026-10-28 copy adds `sigmaGuard` to its sidecar list, and
+without it every `.sigmaGuard.txt.gz` is counted as a results file.
+
+**What the consortium template must carry (from LEDGER #183 and section 20.1):**
+
+1. **The Sigma check is a required pre-step.** `harness/tools/aou_sigma_pd_check.R` on every
+   null model's GRM at the cutoff step 2 will use, before any step 2: a `verdict` of
+   `not positive definite` means the sparse-GRM band's variances are the thinning's artefact and
+   the GRM must be rebuilt, not the results filtered. The check is minutes per model.
+2. **A GRM thinned by a hard cutoff must be a kinship estimate, not a background.** A step-0
+   matrix on an admixed cohort kept ~90 % background pairs at 0.125 and was indefinite; the
+   KING-robust rebuild (`harness/tools/king_to_mtx.py convert`, plink2 `--make-king-table` on the
+   pruned array set) was positive definite at 0.125 and the `compare` subcommand's positive
+   control (first-degree pairs agree) is the check that it is the same relatedness. KING-robust
+   itself is biased on admixed pairs of differing ancestry at the third-degree band, so a
+   consortium recipe that needs 0.05 wants PC-Relate; at 0.125 KING suffices.
+3. **The guard is on by default and its sidecar ships with the results.** Every image from
+   `1.5.2-dev-66b80710` prints `Sigma variance: ...` and delivers `<out>.sigmaGuard.txt`; the
+   template passes `OUT_FILE_SIGMAGUARD` through the wrapper like the other sidecars. A biobank
+   that cannot rebuild its GRM still gets the pathological cells repaired and named.
+4. **RAND runs on every submitted trait and is read per trait** (20.1): a pooled null over a
+   trait subset misleads about a trait outside it (Height), and `aou_oct_scores.py` names the
+   leaky traits. The twins in `rand/` ship with the release.
+5. Unchanged from 20: `--is_output_log10P` and `--is_output_nEff` on; `--relatednessCutoff`
+   identical between steps 1 and 2 (nothing checks it); the matched cutoff written beside the
+   GRM's provenance in the submission.
