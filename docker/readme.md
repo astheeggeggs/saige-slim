@@ -40,6 +40,7 @@ docker tag saige-slim:dev astheeggeggs/saige-slim:1.5.2-dev-<commit>            
 
 Push the same commit's image to both when it is a production candidate;
 `universal-saige` pins the Docker Hub tag in its `download_resources.sh`.
+The image also carries `aou_sigma_pd_check.R` (LEDGER #183), the positive-definiteness check of a null model's Sigma that universal-saige runs before step 2.
 
 ## Using it
 

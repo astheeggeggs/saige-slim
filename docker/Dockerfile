@@ -70,6 +70,10 @@ COPY --from=build /app/.pixi/envs/runtime /app/.pixi/envs/runtime
 COPY --from=build /app/.pixi/envs/default/lib/libplink2_includes.a /app/.pixi/envs/default/lib/
 COPY --from=build /app/extdata/createSparseGRM.R /app/extdata/step1_fitNULLGLMM.R \
                   /app/extdata/step2_SPAtests.R /app/extdata/extractNglmm.R /usr/local/bin/
+# The Sigma check (LEDGER #183): is the Sigma step 2 will solve against positive
+# definite? Needs only Matrix and optparse, both in the runtime env. A biobank
+# runs it on every null model before step 2 (universal-saige 05_sigma_check.sh).
+COPY harness/tools/aou_sigma_pd_check.R /usr/local/bin/
 # The scripts' shebang runs them through `pixi run` against the repo
 # manifest, which serves the dev checkout; there is no pixi here, so it
 # becomes the environment's own Rscript (first on PATH above).
@@ -78,5 +82,6 @@ RUN sed -i '1s|^#!.*$|#!/usr/bin/env Rscript|' /usr/local/bin/*.R \
     && createSparseGRM.R --help > /dev/null \
     && step1_fitNULLGLMM.R --help > /dev/null \
     && step2_SPAtests.R --help > /dev/null \
-    && extractNglmm.R --help > /dev/null
+    && extractNglmm.R --help > /dev/null \
+    && aou_sigma_pd_check.R --help > /dev/null
 WORKDIR /data

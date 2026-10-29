@@ -6,6 +6,9 @@ pixi.lock.bak
 plink-ng/
 harness/*
 !harness/build.sh
+!harness/tools/
+harness/tools/*
+!harness/tools/aou_sigma_pd_check.R
 tests/
 docs/
 man/
