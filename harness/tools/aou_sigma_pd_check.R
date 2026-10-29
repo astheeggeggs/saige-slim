@@ -44,7 +44,11 @@ opts <- list(
   make_option("--plantIndefinite", action = "store_true", default = FALSE,
               help = "positive control: overwrite one family's block with an indefinite pattern"),
   make_option("--grmOnly", action = "store_true", default = FALSE,
-              help = "no model: is the GRM thinned at the cutoff itself positive semidefinite?")
+              help = "no model: is the GRM thinned at the cutoff itself positive semidefinite?"),
+  make_option("--modelDir", type = "character", default = NULL,
+              help = paste("with --grmOnly: a directory of step-1 .rda models; each is judged",
+                           "against the thinned GRM's block eigenvalues (exact for a quantitative",
+                           "model, Weyl's bound for a binary one) without further eigen work"))
 )
 opt <- parse_args(OptionParser(option_list = opts))
 for (k in c("sparseGRMFile", "sparseGRMSampleIDFile", "reportFile")) {
@@ -130,6 +134,9 @@ if (tau2 <= 0) {
     four <- ord[1:4]
     dmax <- max(diagS[four])
     r <- max(0.9, 1.1 * (1.05 * dmax / tau2 + 1) / sqrt(3))
+    # under --grmOnly there is no model to size r from: plant a block no model could sit on
+    # (K eigenvalue -172, i.e. a tau2/tau1 bound of 0.006), so --modelDir must refuse every model
+    if (opt$grmOnly) r <- 100
     a <- four[1L]
     leaves <- four[2:4]
     drop <- off & ((i %in% four) | (j %in% four))
@@ -189,11 +196,13 @@ if (tau2 <= 0) {
   worst_size <- NA
   n_eval <- 0L
   n_nearnull <- 0L   # smallest eigenvalue below 1e-3 of the diagonal scale: a near-null direction
+  block_lo <- list()   # per evaluated block: smallest eigenvalue and samples (for --modelDir)
   for (idx in multi) {
     if (length(idx) > opt$maxDenseComponent) next
     n_eval <- n_eval + 1L
     ev <- eigen(as.matrix(S[idx, idx]), symmetric = TRUE, only.values = TRUE)$values
     lo <- min(ev)
+    block_lo[[length(block_lo) + 1L]] <- list(lo = lo, idx = idx)
     if (lo <= 0) {
       n_indef <- n_indef + 1L
       n_people_indef <- n_people_indef + length(idx)
@@ -211,12 +220,78 @@ if (tau2 <= 0) {
   note("min_eigenvalue_sigma", sprintf("%.6g", min_eig))
   note("min_eigenvalue_component_size", showCount(worst_size))
   note("min_eigenvalue_over_diag", sprintf("%.6g", min_eig / mean(diagRef)))
-  verdict <- if (!chol_ok || n_indef > 0) {
-    "Sigma is NOT positive definite"
-  } else if (n_nearnull > 0) {
-    "positive definite with near-null directions"
+  if (opt$grmOnly && (!chol_ok || n_indef > 0)) {
+    # The thinned GRM is indefinite, which is NOT by itself a refusal: Sigma = tau1 I + tau2 K
+    # (or D + tau2 K, D = 1/W >= 4 on a binary trait) is positive definite whenever
+    # tau2 |lambda_min(K)| < tau1 (resp. < min D). eur's thinned GRM at 0.05 carries blocks at
+    # -0.145 (runbook 19.10) while every eur model's Sigma is positive definite. So: the bound,
+    # and -- with --modelDir -- each model judged against the blocks it was evaluated on.
+    if (n_indef > 0 && is.finite(min_eig)) {
+      note("tau2_over_tau1_bound_quantitative", sprintf("%.6g", 1 / abs(min_eig)))
+      note("tau2_bound_binary", sprintf("%.6g", 4 / abs(min_eig)))
+    }
+    # chol_ok FALSE with no evaluated block indefinite: the negative direction sits in a block
+    # above the dense cap, so no bound can be stated and only a per-model Cholesky decides
+    if (!chol_ok && n_indef == 0) {
+      verdict <- "GRM indefinite in a block above --maxDenseComponent: bound unknown, run per model"
+    } else if (is.null(opt$modelDir)) {
+      verdict <- paste("GRM indefinite: positive definite for every model within the tau bound",
+                       "(pass --modelDir)")
+    } else {
+      rdas <- list.files(opt$modelDir, pattern = "\\.rda$", full.names = TRUE)
+      if (length(rdas) == 0) stop("--modelDir ", opt$modelDir, " holds no .rda")
+      n_bad <- 0L
+      for (f in rdas) {
+        em <- new.env()
+        load(f, envir = em)
+        mm <- get("modglmm", envir = em)
+        t1 <- as.numeric(mm$theta[1])
+        t2 <- as.numeric(mm$theta[2])
+        bin <- identical(mm$traitType, "binary")
+        mids <- as.character(mm$sampleID)
+        # the model's samples in GRM order; a sample the model drops leaves its block, which
+        # can only raise the block's smallest eigenvalue (interlacing), so the full-block
+        # eigenvalue is a conservative bound for the model's own block
+        margin <- Inf
+        if (t2 > 0) {
+          if (bin) {
+            mu <- as.numeric(mm$fitted.values)
+            d <- 1 / (mu * (1 - mu))
+            dmin_all <- min(d)
+            dpos <- match(mids, kid)
+            dmin_by_sample <- rep(NA_real_, n)
+            dmin_by_sample[dpos[!is.na(dpos)]] <- d[!is.na(dpos)]
+          }
+          for (b in block_lo) {
+            if (b$lo >= 0) next
+            dmin <- if (bin) min(dmin_by_sample[b$idx], na.rm = TRUE) else t1
+            if (!is.finite(dmin)) dmin <- if (bin) dmin_all else t1
+            margin <- min(margin, dmin + t2 * b$lo)
+          }
+        }
+        ok <- margin > 0
+        if (!ok) n_bad <- n_bad + 1L
+        note(paste0("model_", sub("\\.rda$", "", basename(f))),
+             sprintf("%s tau1 %.4g tau2 %.4g min(Sigma block eigenvalue bound) %.4g: %s",
+                     if (bin) "binary" else "quantitative", t1, t2, margin,
+                     if (ok) "positive definite" else "NOT positive definite"))
+      }
+      note("models_checked", length(rdas))
+      note("models_not_positive_definite", n_bad)
+      verdict <- if (n_bad == 0) {
+        "GRM indefinite: Sigma positive definite for every model in --modelDir"
+      } else {
+        "Sigma is NOT positive definite for some model in --modelDir"
+      }
+    }
   } else {
-    "positive definite"
+    verdict <- if (!chol_ok || n_indef > 0) {
+      "Sigma is NOT positive definite"
+    } else if (n_nearnull > 0) {
+      "positive definite with near-null directions"
+    } else {
+      "positive definite"
+    }
   }
   note("verdict", verdict)
 }
