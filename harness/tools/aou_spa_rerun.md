@@ -3216,3 +3216,30 @@ without it every `.sigmaGuard.txt.gz` is counted as a results file.
 5. Unchanged from 20: `--is_output_log10P` and `--is_output_nEff` on; `--relatednessCutoff`
    identical between steps 1 and 2 (nothing checks it); the matched cutoff written beside the
    GRM's provenance in the submission.
+
+**Later the same morning (2026-10-29): the amr comparison, the scores on the full RAND fleets, two gaps, and
+the consortium package.** `cmp-octk-amr` (KING as NEW, October as OLD): pLoF cells at max MAF 0.001, 684k shared,
+Spearman 0.996, 31 cells moved by more than a decade, hits 27 -> 28 with 25 shared; synonymous below 0.05 0.051 ->
+0.052. The GRM change moved the artefact and little else. amr's scores on KING: Height no longer leaky (RAND min
+3.3e-6 against 2.1e-71), HbA1c and LDLC leaky at 2e-7 / 3e-7 (one gene each, as before), the clean 7-trait pool
+8.0e-4 / 4.7e-5 / 3.3e-6 at 1e-3 / 1e-4 / 1e-5 (the same mild tail as sas, ALT at 1.9e-6), SKAT-O synonymous on the
+line. The four cohorts on the full-trait RAND: clean pools on the expected line (afr 7.3e-4 / 7.7e-5 / 5.8e-6, eas
+9.0e-4 / 9.4e-5 / 9.7e-6, eur 8.6e-4 / 7.4e-5 / 8.2e-6, sas 6.5e-4 / 2.2e-5 / 2.5e-6); Height leaky everywhere, eas
+adds FemInf and WHRBMI at just under 1e-6, sas's 1e-4 tail is BMI and WHRBMI (one gene each above the leak line).
+**Two gaps.** (1) afr's RAND was still the 9-trait set: `rand_all("afr")` keyed on dstat, and dstat returns NO job for
+afr's `oct_fxa` names under any filter (the 168 files were delivered under other job names), so it submitted 0 and the
+dry call read "0 to submit" for the wrong reason. `rand_afr` (notebook) takes afr's grid from the bucket's `oct_fxa`
+chrStatus files and the per-trait settings from eur's dstat records (the only ancestry-specific inputs are what
+`submit` builds from `anc`/`pheno`; checked on the dry run: afr model, GRM, genotypes, `RELCUTOFF=0.05`); 132 tasks
+on demand, n2-standard-2 (eur's n2-highmem-2 is not needed: 566 MB measured on afr chr20). (2) amr's `octk_rand`
+is also the 9-trait set, because `refleet_amr` reproduced the October task list; the same recipe with `octk_fxa` as the
+grid closes it. **The consortium package** (universal-saige branch `sigma-check`, image `1.5.2-dev-41d78ae3`):
+`05_sigma_check.sh` runs `aou_sigma_pd_check.R --grmOnly` ONCE per GRM and cutoff, after step 0 and before any step 1
+-- the owner objected to a per-phenotype check, and the maths agrees: if the thinned GRM is positive semidefinite,
+`tau1 I + tau2 K` is positive definite for every model, so the per-model form is a diagnosis, not a requirement.
+The plant was also strengthened on the way: the star of four at 0.9 (K eigenvalue -0.559) only makes Sigma indefinite
+when `tau2 > 1.79 tau1`, false of the e2e model (0.22) and of every binary model (1/W diagonals of 4 and above), so the
+positive control read "positive definite" on the first e2e; the planted value is now chosen from the model (or from
+nothing, under `--grmOnly`) so the block is indefinite by construction. The step-2 template's run 5 is the RAND twin on
+every phenotype with `--flexRVpartialMask` (the twin's scores sit on every variant, so the synonymous mask would
+otherwise be refused by the driver's own guard). e2e 255 checks, 0 failed. Pins and pushes are the owner's.
