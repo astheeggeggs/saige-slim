@@ -3243,3 +3243,19 @@ positive control read "positive definite" on the first e2e; the planted value is
 nothing, under `--grmOnly`) so the block is indefinite by construction. The step-2 template's run 5 is the RAND twin on
 every phenotype with `--flexRVpartialMask` (the twin's scores sit on every variant, so the synonymous mask would
 otherwise be refused by the driver's own guard). e2e 255 checks, 0 failed. Pins and pushes are the owner's.
+
+**Afternoon (2026-10-29): the GRM-only check must not refuse an indefinite GRM.** GRM-only positive
+semidefiniteness is strictly stronger than per-model positive definiteness (`tau1 I + tau2 K` is PD whenever
+`tau2 |lambda_min(K)| < tau1`, binary `< min 1/W`), and eur's thinned GRM at 0.05 has blocks at -0.145 (19.10) while
+every eur model's Sigma passed -- so the version pushed at noon would have refused eur. `aou_sigma_pd_check.R
+--grmOnly` (commit `10fe4c84`, image `1.5.2-dev-10fe4c84`) now prints the tau bound on an indefinite GRM and,
+with `--modelDir`, judges every `.rda` against the per-block eigenvalues in seconds (exact for a quantitative
+model, Weyl for a binary one, interlacing for dropped samples; the GRM-only plant is a block no model could sit on,
+K eigenvalue -172). Three verdicts, and the consortium driver exits 0 / 3 (pass `--modelDir` after step 1) / 2.
+And the owner's reading of `cmp-octk-amr` stands as the policy: a NOT verdict RECOMMENDS the KING rebuild and does
+not block, because the repaired-on-the-old-matrix and the rebuilt amr runs agree gene for gene (Spearman 0.996,
+31 of 684k cells moved) -- the guard is the net, KING removes the residual 0.5-0.9 band. PR #16 on
+universal-saige (261 e2e checks). TO RUN on AoU: `sigpd-grm-*` (the notebook cell: GRM-only on the four step-0
+matrices, amr KING at 0.125 and amr's old 0.125 matrix; expected: amr_old NOT, amr_king PSD, the others either
+PSD or indefinite-within-bound) and then, where indefinite, `--modelDir` -- which needs a model-name filter
+first, since `nullglmm_v4/` holds every ancestry's models in one directory.
