@@ -95,22 +95,32 @@ if (tau2 <= 0) {
   x <- x[keep]
   off <- i != j
   if (opt$plantIndefinite) {
-    # positive control: a star of four -- one sample related at 0.9 to three others that are
-    # unrelated to each other. K's smallest eigenvalue is 1 - 0.9 sqrt 3 = -0.559, so Sigma's
-    # block goes indefinite once tau2 exceeds 1.79 tau1 (the bundled quant model: 2.15). The
-    # four are cut out of their family first, so the block is exactly that; ONE triangle is
-    # stored, as readMM's symmetric triplets are, and mirrored with the rest below.
-    pairs <- which(off)
-    a <- i[pairs[1]]
-    rel <- setdiff(unique(c(j[off & i == a], i[off & j == a])), a)
-    if (length(rel) < 3) stop("--plantIndefinite needs a sample with three kept relatives")
-    leaves <- rel[1:3]
-    drop <- off & ((i %in% c(a, leaves)) | (j %in% c(a, leaves)))
+    # positive control: a star of four -- one hub related at r to three leaves that are
+    # unrelated to each other. K's block has smallest eigenvalue 1 - r sqrt(3), so Sigma's block
+    # is indefinite once tau2 (r sqrt(3) - 1) exceeds the largest diagonal entry among the four.
+    # r is chosen FROM THE MODEL so that holds with a 10 % margin: the first version planted
+    # r = 0.9 (K eigenvalue -0.559), which needs tau2 > 1.79 tau1 -- false of universal-saige's
+    # e2e model (0.22) and of every bundled binary model (1/W diagonals of 4 and above), where
+    # the plant read "positive definite" (2026-10-29). r above 1 is not a kinship, and need not
+    # be: the control asks whether an indefinite Sigma is DETECTED, and any indefinite block
+    # answers it. The four samples with the smallest diagonal are used, cut out of their
+    # families first, so the block is exactly the star; ONE triangle is stored, as readMM's
+    # symmetric triplets are, and mirrored with the rest below.
+    ord <- order(diagS)
+    four <- ord[1:4]
+    dmax <- max(diagS[four])
+    r <- max(0.9, 1.1 * (1.05 * dmax / tau2 + 1) / sqrt(3))
+    a <- four[1L]
+    leaves <- four[2:4]
+    drop <- off & ((i %in% four) | (j %in% four))
     i <- c(i[!drop], rep(a, 3))
     j <- c(j[!drop], leaves)
-    x <- c(x[!drop], rep(0.9, 3))
+    x <- c(x[!drop], rep(r, 3))
     off <- i != j
-    note("planted_indefinite_block", "a star of 4 at 0.9: K min eigenvalue 1 - 0.9 sqrt 3")
+    note("planted_indefinite_block",
+         sprintf(paste0("a star of 4 at %.4g: K block min eigenvalue 1 - %.4g sqrt(3) = %.4g, ",
+                        "Sigma block min %.4g against a diagonal of at most %.4g"),
+                 r, r, 1 - r * sqrt(3), dmax + tau2 * (1 - r * sqrt(3)), dmax))
   }
   note("grm_offdiag_pairs_kept", sum(off))
   diagK <- numeric(n)
