@@ -23,6 +23,10 @@
 #   Rscript aou_sigma_pd_check.R --modelFile=M.rda --sparseGRMFile=K.mtx \
 #     --sparseGRMSampleIDFile=K.ids --relatednessCutoff=0.125 --reportFile=report.tsv \
 #     [--label=amr_Height] [--maxDenseComponent=2000] [--mask=20]
+# or, ONCE PER GRM AND CUTOFF with no model (--grmOnly): Sigma = the thinned GRM itself. If
+# that is positive semidefinite, tau1 I + tau2 K is positive definite for EVERY model fitted on
+# it, so one check per cohort replaces one per phenotype; if it is not, the GRM is the thing
+# to rebuild whatever the model. The per-model form remains for a diagnosis of one fit.
 suppressPackageStartupMessages({
   library(optparse)
   library(Matrix)
@@ -38,12 +42,15 @@ opts <- list(
   make_option("--maxDenseComponent", type = "integer", default = 2000L),
   make_option("--mask", type = "integer", default = 20L),
   make_option("--plantIndefinite", action = "store_true", default = FALSE,
-              help = "positive control: overwrite one family's block with an indefinite pattern")
+              help = "positive control: overwrite one family's block with an indefinite pattern"),
+  make_option("--grmOnly", action = "store_true", default = FALSE,
+              help = "no model: is the GRM thinned at the cutoff itself positive semidefinite?")
 )
 opt <- parse_args(OptionParser(option_list = opts))
-for (k in c("modelFile", "sparseGRMFile", "sparseGRMSampleIDFile", "reportFile")) {
+for (k in c("sparseGRMFile", "sparseGRMSampleIDFile", "reportFile")) {
   if (is.null(opt[[k]])) stop("--", k, " is required")
 }
+if (!opt$grmOnly && is.null(opt$modelFile)) stop("--modelFile is required (or --grmOnly)")
 report <- new.env()
 report$rows <- list()
 note <- function(k, v) {
@@ -53,34 +60,47 @@ note <- function(k, v) {
 }
 showCount <- function(k) if (k > 0 && k < opt$mask) paste0("<", opt$mask) else as.character(k)
 
-e <- new.env()
-load(opt$modelFile, envir = e)
-m <- get("modglmm", envir = e)
-ids <- as.character(m$sampleID)
-n <- length(ids)
-tau1 <- as.numeric(m$theta[1])
-tau2 <- as.numeric(m$theta[2])
-binary <- identical(m$traitType, "binary")
-note("trait_type", if (binary) "binary" else "quantitative")
-note("samples", showCount(n))
-note("tau1", sprintf("%.6g", tau1))
-note("tau2", sprintf("%.6g", tau2))
-# the covariate adjustment term is subtracted from the sparse variance only when step 1 stored
-# this matrix (skipVarianceRatioEstimation & useSparseGRMtoFitNULL); without it var is the raw
-# quadratic form, so a negative value is Sigma's alone
-note("has_Sigma_iXXSigma_iX", !is.null(m$Sigma_iXXSigma_iX))
-mu <- as.numeric(m$fitted.values)   # readInGLMM's mu; mu2 = mu (1 - mu) on a binary trait
-# 1/W on the diagonal, as setSparseSigma_new
-diagS <- if (binary) 1 / (mu * (1 - mu)) else rep(tau1, n)
-note("diag_min", sprintf("%.6g", min(diagS)))
+K <- readMM(opt$sparseGRMFile)
+kid <- as.character(readLines(opt$sparseGRMSampleIDFile))
+kid <- kid[nzchar(kid)]
+if (length(kid) != nrow(K)) stop("GRM has ", nrow(K), " rows but ", length(kid), " sample IDs")
+if (opt$grmOnly) {
+  # Sigma = K thinned at the cutoff: tau1 = 0, tau2 = 1, every GRM sample
+  ids <- kid
+  n <- length(ids)
+  tau1 <- 0
+  tau2 <- 1
+  binary <- FALSE
+  note("mode", paste("grmOnly: Sigma = the GRM thinned at the cutoff (tau1 0, tau2 1);",
+                     "PSD here means PD for every model"))
+  note("samples", showCount(n))
+  diagS <- rep(0, n)
+} else {
+  e <- new.env()
+  load(opt$modelFile, envir = e)
+  m <- get("modglmm", envir = e)
+  ids <- as.character(m$sampleID)
+  n <- length(ids)
+  tau1 <- as.numeric(m$theta[1])
+  tau2 <- as.numeric(m$theta[2])
+  binary <- identical(m$traitType, "binary")
+  note("trait_type", if (binary) "binary" else "quantitative")
+  note("samples", showCount(n))
+  note("tau1", sprintf("%.6g", tau1))
+  note("tau2", sprintf("%.6g", tau2))
+  # the covariate adjustment term is subtracted from the sparse variance only when step 1 stored
+  # this matrix (skipVarianceRatioEstimation & useSparseGRMtoFitNULL); without it var is the raw
+  # quadratic form, so a negative value is Sigma's alone
+  note("has_Sigma_iXXSigma_iX", !is.null(m$Sigma_iXXSigma_iX))
+  mu <- as.numeric(m$fitted.values)   # readInGLMM's mu; mu2 = mu (1 - mu) on a binary trait
+  # 1/W on the diagonal, as setSparseSigma_new
+  diagS <- if (binary) 1 / (mu * (1 - mu)) else rep(tau1, n)
+  note("diag_min", sprintf("%.6g", min(diagS)))
+}
 
 if (tau2 <= 0) {
   note("verdict", "tau2 = 0: Sigma is diagonal, positive definite by construction")
 } else {
-  K <- readMM(opt$sparseGRMFile)
-  kid <- as.character(readLines(opt$sparseGRMSampleIDFile))
-  kid <- kid[nzchar(kid)]
-  if (length(kid) != nrow(K)) stop("GRM has ", nrow(K), " rows but ", length(kid), " sample IDs")
   pos <- match(ids, kid)
   if (anyNA(pos)) stop(sum(is.na(pos)), " model samples are absent from the GRM")
   K <- as(K[pos, pos, drop = FALSE], "TsparseMatrix")
@@ -126,6 +146,8 @@ if (tau2 <= 0) {
   diagK <- numeric(n)
   diagK[i[!off]] <- x[!off]
   if (any(diagK <= 0)) stop(sum(diagK <= 0), " GRM diagonal entries are missing or non-positive")
+  # the scale the eigenvalues are read against: Sigma's diagonal, or K's own under --grmOnly
+  diagRef <- if (opt$grmOnly) diagK else diagS
   # Sigma as a general sparse matrix (both triangles)
   S <- sparseMatrix(i = c(i, j[off]), j = c(j, i[off]), x = tau2 * c(x, x[off]), dims = c(n, n))
   S <- S + Diagonal(n, diagS)
@@ -176,7 +198,7 @@ if (tau2 <= 0) {
       n_indef <- n_indef + 1L
       n_people_indef <- n_people_indef + length(idx)
     }
-    if (lo > 0 && lo < 1e-3 * mean(diagS[idx])) n_nearnull <- n_nearnull + 1L
+    if (lo > 0 && lo < 1e-3 * mean(diagRef[idx])) n_nearnull <- n_nearnull + 1L
     if (lo < min_eig) {
       min_eig <- lo
       worst_size <- length(idx)
@@ -188,7 +210,7 @@ if (tau2 <= 0) {
   note("components_near_null", n_nearnull)
   note("min_eigenvalue_sigma", sprintf("%.6g", min_eig))
   note("min_eigenvalue_component_size", showCount(worst_size))
-  note("min_eigenvalue_over_diag", sprintf("%.6g", min_eig / mean(diagS)))
+  note("min_eigenvalue_over_diag", sprintf("%.6g", min_eig / mean(diagRef)))
   verdict <- if (!chol_ok || n_indef > 0) {
     "Sigma is NOT positive definite"
   } else if (n_nearnull > 0) {
