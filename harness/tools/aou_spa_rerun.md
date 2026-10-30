@@ -3009,7 +3009,7 @@ over traits (observed p at the expected 1e-3 / 1e-4 points; hits past 2.5e-6):
 | cohort | leaky RAND traits (genes below 1e-6) | clean RAND pool 1e-3 / 1e-4, hits | SKAT-O synonymous 1e-3 / 1e-4, hits | AMPCT vs SCALLION hits (shared) |
 |---|---|---|---|---|
 | eur | Height (3) | 7.3e-4 / 5.7e-5, 1 | 9.9e-4 / 7.9e-5, 1 | 149 vs 156 (141) |
-| afr | Height (1) | 7.3e-4 / 7.7e-5, 0 | 9.4e-4 / 8.9e-5, 1 | 43 vs 47 (40) |
+| afr | Height (1) | 7.3e-4 / 7.7e-5, 0 (9 traits; full 42-trait read below, 2026-10-30: 8.8e-4 / 1.0e-4, 2) | 9.4e-4 / 8.9e-5, 1 | 43 vs 47 (40) |
 | amr | Height, HbA1c, LDLC (1 each) | 1.0e-3 / 8.9e-5, 0 | 9.7e-4 / 9.9e-5, 2 | 42 vs 43 (37) |
 | eas | Height (4) | 7.8e-4 / 1.4e-4, 0 | 9.3e-4 / 9.1e-5, 2 | 11 vs 7 (7) |
 | sas | Height (2) | 6.4e-4 / 4.9e-5, 1 | 9.1e-4 / 7.2e-5, 1 | 2 vs 2 (2) |
@@ -3259,3 +3259,12 @@ universal-saige (261 e2e checks). TO RUN on AoU: `sigpd-grm-*` (the notebook cel
 matrices, amr KING at 0.125 and amr's old 0.125 matrix; expected: amr_old NOT, amr_king PSD, the others either
 PSD or indefinite-within-bound) and then, where indefinite, `--modelDir` -- which needs a model-name filter
 first, since `nullglmm_v4/` holds every ancestry's models in one directory.
+
+**Morning (2026-10-30): afr's full-trait RAND closes gap (1).** The 132 on-demand tasks delivered (168 files = 42
+traits x 4 bins, 0 failed chromosomes; `sum-oct_rand-afr-full`, `scores-oct-afr` -- a resubmitted job name reuses
+its log directory, so `fetch_log` returns the OLDER run until the new one writes; read the `/20261030/` log). Clean
+pool over 41 traits (n 754,016): 8.8e-4 / 1.0e-4 / 7.3e-6 at the expected 1e-3 / 1e-4 / 1e-5, hits past 2.5e-6: 2
+(BenIntNeo 1.9e-6, VTE 1.2e-6; ~1.9 expected of 754k), below 0.05 0.052; Height the only leaky trait (one gene,
+1.7e-7); SKAT-O synonymous 9.4e-4 / 8.9e-5 / 1.3e-5. So all four sound cohorts' FlexRV nulls are on the line on the
+full trait set, and the 9-trait afr numbers in the table above are superseded. Gap (2), amr's 33 remaining RAND
+traits, is still open.
