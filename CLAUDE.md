@@ -929,7 +929,8 @@ declarations sit at the top of `src/Main.cpp`.
   switch, `SAIGE_SIGMA_PLANT_RATIO` the plant (`test-step2-sigma-guard.R`). The two variances
   are compared each under its own band ratio. amr's step-0 GRM was ~90 % admixture background
   even at 0.125; its replacement is KING-robust (`harness/tools/king_to_mtx.py`), positive
-  definite at 0.125; `harness/tools/aou_sigma_pd_check.R` asks any model's Sigma directly. Measured on the KING fleet (2026-10-29): 0 flagged rows across 672 real-arm tasks, 48 benign rows (ratio 0.41-0.50, p 0.27-0.71) in the RAND arm.
+  definite at 0.125, and PC-Relate is the next rung for a cohort KING fails on
+  (`harness/tools/pcrelate_to_mtx.py`, 2026-10-31: native numpy, 22x GENESIS, reconciled against it); `harness/tools/aou_sigma_pd_check.R` asks any model's Sigma directly. Measured on the KING fleet (2026-10-29): 0 flagged rows across 672 real-arm tasks, 48 benign rows (ratio 0.41-0.50, p 0.27-0.71) in the RAND arm.
 - **A SKAT kernel failure is counted, not hidden** (LEDGER #57): the cell's
   rows stay NA, the run prints `SKAT failures: N ...` before `Analysis done!`,
   and `<SAIGEOutputFile>.skatFailures.txt` names each failed cell with the
