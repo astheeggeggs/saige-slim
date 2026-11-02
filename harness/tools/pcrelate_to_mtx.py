@@ -259,7 +259,8 @@ def pcrelate_blocks(get_block, n_markers, X, train, cutoff, maf=0.01, block_mark
         R -= 2 * mu
         R[~valid] = 0
         A = mu * (1 - mu)
-        np.sqrt(A, out=A)
+        with np.errstate(invalid="ignore"):     # mu outside (0, 1) gives NaN here; the mask zeroes it next
+            np.sqrt(A, out=A)
         A[~valid] = 0
         return R, A, g, mu, valid, int(use.sum())
 
