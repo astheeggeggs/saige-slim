@@ -40,8 +40,11 @@ king_to_mtx.py convert (off-diagonal = 2 x kinship, symmetric coordinate, lower 
             change nothing material, and the .mtx round-trips.
 
 Memory at N samples: two float32 accumulators of block_samples x N, sized by default to
---memory-gb (16 GB at N = 80k gives a tile of 25k, 4 passes), plus the marker block
-(N x block_markers x 4 B x 3). The genotypes are decoded and prepared once per sample tile, so
+--memory-gb (16 GB at N = 80k gives a tile of 25k, 4 passes), plus one more tile-sized array
+while a GEMM result is added (peak ~1.5x --memory-gb), plus the marker block
+(N x block_markers x 4 B x 3); the pair extraction walks the tile in ~256 MB row chunks and
+adds nothing tile-sized (2026-11-02: it used to add four, and OOM-killed the AoU amr run at
+--memory-gb 64 on 128 GB). The genotypes are decoded and prepared once per sample tile, so
 a larger budget means fewer passes. Flops 4 N^2 M: at N = 80k, M = 100k that is ~2.6e15, tens of
 minutes on a 32-core BLAS. --threads sets OPENBLAS/OMP/MKL_NUM_THREADS before numpy loads; do
 NOT source harness/env.sh first (it pins one thread for the goldens).
@@ -211,7 +214,7 @@ def open_genotypes(a):
 # ----------------------------------------------------------------------------- estimator
 
 def pcrelate_blocks(get_block, n_markers, X, train, cutoff, maf=0.01, block_markers=2048,
-                    block_samples=4096, log=print, keep_all=False):
+                    block_samples=4096, log=print, keep_all=False, extract_bytes=256e6):
     """PC-Relate over markers delivered by get_block(start, count) -> int8 (count x N).
 
     X: N x (k+1) design (intercept + PCs), train: bool mask of the regression samples.
@@ -299,20 +302,31 @@ def pcrelate_blocks(get_block, n_markers, X, train, cutoff, maf=0.01, block_mark
                 f_den += (2 * mm * (1 - mm)).sum(axis=1)
         if n_used_total is None:
             n_used_total = n_used
-        with np.errstate(divide="ignore", invalid="ignore"):
-            kin = np.where(den > 0, num / (4 * den), 0)
-        grm = 2 * kin
-        # lower triangle only: row i (global ts + r) against column j (global ts + c), i > j
-        rows, cols = np.nonzero(grm >= cutoff) if not keep_all else np.nonzero(np.ones_like(grm, dtype=bool))
-        for r, c in zip(rows.tolist(), cols.tolist()):
-            i, j = ts + r, ts + c
-            if i == j:
-                continue
-            if i < j:
-                i, j = j, i
-            if (i, j) in pairs:
-                continue
-            pairs[(i, j)] = float(grm[r, c])
+        # Extraction in row chunks of ~256 MB: done over the whole tile it allocated four more
+        # tile-sized float32 temporaries (4 * den, the quotient, the where() result, 2 * kin) on
+        # top of the two accumulators, a peak of ~2.5x --memory-gb, which OOM-killed the AoU amr
+        # run (N 96,117, --memory-gb 64 on 128 GB) at the end of its first tile. The arithmetic
+        # per element is unchanged (the power-of-two scalings are exact in float32), so the pairs
+        # and their values are bit-identical to the whole-tile extraction, in the same order.
+        chunk_rows = max(1, int(extract_bytes // (4 * (N - ts))))
+        for r0 in range(0, te - ts, chunk_rows):
+            r1 = min(r0 + chunk_rows, te - ts)
+            d = den[r0:r1]
+            with np.errstate(divide="ignore", invalid="ignore"):
+                grm = np.where(d > 0, num[r0:r1] / (4 * d), 0)
+            grm *= 2
+            # lower triangle only: row i (global ts + r) against column j (global ts + c), i > j
+            rows, cols = np.nonzero(grm >= cutoff) if not keep_all else np.nonzero(np.ones_like(grm, dtype=bool))
+            for r, c in zip(rows.tolist(), cols.tolist()):
+                i, j = ts + r0 + r, ts + c
+                if i == j:
+                    continue
+                if i < j:
+                    i, j = j, i
+                if (i, j) in pairs:
+                    continue
+                pairs[(i, j)] = float(grm[r, c])
+            del grm
         log(f"tile {ti + 1}/{len(tiles)}: samples {ts}..{te - 1}, pairs kept so far {len(pairs)}, "
             f"{time.time() - t0:.0f}s")
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -707,7 +721,9 @@ def main():
     r.add_argument("--block-samples", type=int, default=None,
                    help="sample tile; default: the largest that keeps the two accumulators within --memory-gb")
     r.add_argument("--memory-gb", type=float, default=16.0,
-                   help="budget for the two float32 accumulators (2 x tile x N x 4 B) [%(default)s]")
+                   help="budget for the two float32 accumulators (2 x tile x N x 4 B); peak RSS is ~1.5x this "
+                        "(each GEMM's result is a third tile-sized array before it is added) plus the "
+                        "marker block [%(default)s]")
     r.add_argument("--threads", type=int, default=os.cpu_count() or 1)
     r.add_argument("--mask", type=int, default=20)
     s = sub.add_parser("selftest")
