@@ -3294,13 +3294,15 @@ loaded laptop]. **The v9 amr run (N 96,117, 107,390 markers, the same `--memory-
 OOM-killed at the end of tile 1 of 2 (2026-11-02)**: the budget sized the two accumulators, and the
 pair extraction then allocated four more tile-sized arrays. Since the tool's commit of that day (the
 image tag after `155f23ea`) the extraction and the inbreeding sums walk the tile in ~256 MB row chunks
-(byte-identical output, `cmp`-checked at several tilings) and `--memory-gb` bounds the THREE tile-sized
-arrays that remain (two accumulators and a GEMM result before it is added -- a row-chunked GEMM is not
-bit-identical on OpenBLAS, probed on the image, so that one stays): at 64 the v9 tile is 55k, 2 passes,
-peak ~64 GB plus the marker block (~3 GB) plus the kept pairs. Measured on a 12k x 2k synthetic bed:
-peak RSS 3.33 -> 2.50 GB at a 1.15 GB accumulator budget. The same `--memory-gb` now means a smaller
-default tile, so a rerun at the same flags is NOT byte-identical to a matrix the old image made with the
-default tile; `--block-samples` pins the tile and then it is. **Progress:** the tool prints `progress P %: tile t/T, markers m/M, elapsed Ns, ETA Ns` at every ~5 % of the work (weighted by tile area, so the ETA is honest across unequal tiles) and at least every 10 minutes, so `fetch_log` on the running job shows where it is; the one-pass run here prints ~20 lines then `tile 1/1`. Prep cell (notebook; counts printed are cohort sizes):
+and the GEMMs land in a ~64 MB row-chunk buffer, so the two accumulators ARE the peak bar the marker
+block: at 64 the v9 tile is 83k, 2 passes, peak ~64 GB plus the marker block (~5 GB) plus the kept pairs;
+48 keeps the same two passes (anything above ~37 GB does) with more margin. Measured on a 12k x 2k
+synthetic bed at a 1.15 GB accumulator budget: peak RSS 3.40 -> 1.97 GB (default marker block, 1.2M
+pairs kept), 2.56 -> 1.39 GB (small block, few pairs). The row-chunked GEMM is NOT bit-identical to the
+whole-tile one on OpenBLAS (probed on the image): max 6.7e-8 on the GRM scale, 96 % of entries bit-equal,
+no pair gained or lost -- the float32 ULP drift a different `--block-samples` already causes, so a rerun
+is not `cmp`-identical to a matrix the old image made; the extraction and inbreeding chunking alone were
+byte-identical, and that build is commit `bf35bad6` if a byte-identical rerun is ever wanted. **Progress:** the tool prints `progress P %: tile t/T, markers m/M, elapsed Ns, ETA Ns` at every ~5 % of the work (weighted by tile area, so the ETA is honest across unequal tiles) and at least every 10 minutes, so `fetch_log` on the running job shows where it is; the one-pass run here prints ~20 lines then `tile 1/1`. Prep cell (notebook; counts printed are cohort sizes):
 
 ```python
 import os, pandas as pd, subprocess

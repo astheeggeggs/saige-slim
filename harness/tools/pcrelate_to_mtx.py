@@ -39,13 +39,15 @@ king_to_mtx.py convert (off-diagonal = 2 x kinship, symmetric coordinate, lower 
             pair (null), tiny blocks reproduce one block (two ways agree), 2 % missing genotypes
             change nothing material, and the .mtx round-trips.
 
-Memory at N samples: three float32 arrays of block_samples x N (two accumulators and a GEMM
-result before it is added -- a row-chunked GEMM is not bit-identical on OpenBLAS, so it
-stays), sized by default to --memory-gb (16 GB at N = 80k gives a tile of 16.7k, 5 passes),
-plus the marker block (N x block_markers x 4 B x 3); the pair extraction and the inbreeding
-sums walk the tile and the block in ~256 MB row chunks and add nothing of their size
-(2026-11-02: the extraction used to add four tile-sized arrays and the budget covered two, and
-the AoU amr run was OOM-killed at --memory-gb 64 on 128 GB). The genotypes are decoded and prepared once per sample tile, so
+Memory at N samples: two float32 accumulators of block_samples x N, sized by default to
+--memory-gb (16 GB at N = 80k gives a tile of 25k, 4 passes), plus the marker block
+(N x block_markers x 4 B x 3) and a ~64 MB row-chunk buffer; the GEMMs, the pair extraction
+and the inbreeding sums all walk in small row chunks (64 / 32 / 32 MB) and add nothing
+tile-sized, so the accumulators are the peak (measured on 12k x 2k at a 1.15 GB budget:
+1.35 GB, against 2.40 before any of this) (2026-11-02: the extraction used to add four tile-sized arrays and a
+whole-tile GEMM a fifth, and the AoU amr run was OOM-killed at --memory-gb 64 on 128 GB). The
+row-chunked GEMM is not bit-identical to a whole-tile one on OpenBLAS (probed), a float32 ULP
+drift of the kind the sample tile already causes; the selftest's blocking check bounds it. The genotypes are decoded and prepared once per sample tile, so
 a larger budget means fewer passes. Flops 4 N^2 M: at N = 80k, M = 100k that is ~2.6e15, tens of
 minutes on a 32-core BLAS. --threads sets OPENBLAS/OMP/MKL_NUM_THREADS before numpy loads; do
 NOT source harness/env.sh first (it pins one thread for the goldens).
@@ -215,7 +217,7 @@ def open_genotypes(a):
 # ----------------------------------------------------------------------------- estimator
 
 def pcrelate_blocks(get_block, n_markers, X, train, cutoff, maf=0.01, block_markers=2048,
-                    block_samples=4096, log=print, keep_all=False, extract_bytes=256e6):
+                    block_samples=4096, log=print, keep_all=False, extract_bytes=32e6, gemm_bytes=64e6):
     """PC-Relate over markers delivered by get_block(start, count) -> int8 (count x N).
 
     X: N x (k+1) design (intercept + PCs), train: bool mask of the regression samples.
@@ -281,13 +283,25 @@ def pcrelate_blocks(get_block, n_markers, X, train, cutoff, maf=0.01, block_mark
         te = min(ts + block_samples, N)
         num = np.zeros((te - ts, N - ts), dtype=np.float32)   # tile rows x columns from ts on
         den = np.zeros((te - ts, N - ts), dtype=np.float32)
+        # each GEMM lands in a reused ~64 MB row-chunk buffer and is added from there, so the
+        # two accumulators ARE the peak (a whole-tile product was a third tile-sized array). A
+        # row-chunked GEMM is not bit-identical to the whole-tile one on OpenBLAS (probed on the
+        # host and the x86 image, 2026-11-02): the drift is the float32 ULP kind that the sample
+        # tile itself already causes, bounded by the selftest's blocking check, not a reporting
+        # difference; at least 256 rows a call so BLAS still runs at full efficiency
+        gemm_rows = max(256, min(te - ts, int(gemm_bytes // (4 * (N - ts)))))
+        buf = np.empty((gemm_rows, N - ts), dtype=np.float32)
         n_used = 0
         for ms in range(0, n_markers, block_markers):
             mc = min(block_markers, n_markers - ms)
             R, A, g, mu, valid, used = prepared(ms, mc)
             n_used += used
-            num += R[ts:te] @ R[ts:].T
-            den += A[ts:te] @ A[ts:].T
+            for r0 in range(0, te - ts, gemm_rows):
+                r1 = min(r0 + gemm_rows, te - ts)
+                np.matmul(R[ts + r0:ts + r1], R[ts:].T, out=buf[:r1 - r0])
+                num[r0:r1] += buf[:r1 - r0]
+                np.matmul(A[ts + r0:ts + r1], A[ts:].T, out=buf[:r1 - r0])
+                den[r0:r1] += buf[:r1 - r0]
             work_done += (te - ts) * (N - ts) * mc
             frac, now = work_done / work_total, time.time()
             if frac >= next_report or now - last_report_t >= 600:
@@ -310,10 +324,11 @@ def pcrelate_blocks(get_block, n_markers, X, train, cutoff, maf=0.01, block_mark
                 del gm, mm
         if n_used_total is None:
             n_used_total = n_used
-        # Extraction in row chunks of ~256 MB: done over the whole tile it allocated four more
+        # Extraction in row chunks of ~32 MB: done over the whole tile it allocated four more
         # tile-sized float32 temporaries (4 * den, the quotient, the where() result, 2 * kin) on
-        # top of the two accumulators, a peak of ~2.5x --memory-gb, which OOM-killed the AoU amr
-        # run (N 96,117, --memory-gb 64 on 128 GB) at the end of its first tile. The arithmetic
+        # top of the two accumulators, a peak of ~2x --memory-gb, which OOM-killed the AoU amr
+        # run (N 96,117, --memory-gb 64 on 128 GB) at the end of its first tile; a chunk costs
+        # ~2.25x its size at peak (mask, quotient, where() result), measured, hence 32 MB. The arithmetic
         # per element is unchanged (the power-of-two scalings are exact in float32), so the pairs
         # and their values are bit-identical to the whole-tile extraction, in the same order.
         chunk_rows = max(1, int(extract_bytes // (4 * (N - ts))))
@@ -398,14 +413,12 @@ def run(a):
         return bed.block(start, count)[:, keep_arr]
 
     if a.block_samples is None:
-        # three tile-sized float32 arrays live at once: the two accumulators and a GEMM's result
-        # before it is added (a row-chunked GEMM is NOT bit-identical on OpenBLAS, probed
-        # 2026-11-02, so that third array stays); sizing on two of them is what OOM-killed the
-        # AoU amr run, so --memory-gb now bounds all three
-        a.block_samples = int(max(256, min(N, a.memory_gb * 1e9 / (12.0 * N))))
+        # the two accumulators are the only tile-sized arrays (the GEMMs land in a row-chunk
+        # buffer, the extraction and the inbreeding sums walk in row chunks), so the budget IS
+        # their size; before 2026-11-02 the extraction added four more and OOM-killed the AoU amr run
+        a.block_samples = int(max(256, min(N, a.memory_gb * 1e9 / (8.0 * N))))
     print(f"sample tile {a.block_samples} ({-(-N // a.block_samples)} pass(es) over the genotypes, "
-          f"accumulators {8.0 * a.block_samples * N / 1e9:.1f} GB, tile arrays at peak "
-          f"{12.0 * a.block_samples * N / 1e9:.1f} GB)")
+          f"accumulators {8.0 * a.block_samples * N / 1e9:.1f} GB, the peak bar the marker block)")
     print(f"samples: {N} of {len(fam)} in the {'.psam' if a.pgen else '.fam'} have PCs; regression set {int(train.sum())}"
           + (f" ({missing} --unrelated IDs not in the data)" if missing else "")
           + f"; PCs {X.shape[1] - 1}; markers {M}", flush=True)
@@ -734,8 +747,8 @@ def main():
     r.add_argument("--block-samples", type=int, default=None,
                    help="sample tile; default: the largest that keeps the two accumulators within --memory-gb")
     r.add_argument("--memory-gb", type=float, default=16.0,
-                   help="budget for the three tile-sized float32 arrays (two accumulators and a GEMM result, "
-                        "3 x tile x N x 4 B); peak RSS is this plus the marker block [%(default)s]")
+                   help="budget for the two float32 accumulators (2 x tile x N x 4 B), which are the peak "
+                        "bar the marker block and the kept pairs [%(default)s]")
     r.add_argument("--threads", type=int, default=os.cpu_count() or 1)
     r.add_argument("--mask", type=int, default=20)
     s = sub.add_parser("selftest")
