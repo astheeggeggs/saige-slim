@@ -3327,14 +3327,27 @@ run_dsub(["aou_dsub", "--name", "pcrelate-amr-2", "--image", PCREL_IMG,
           "--cutoff 0.05 --memory-gb 64 --threads 16 --out ${OUT_DIR}/amr_pcrelate && "
           "python3 /usr/local/bin/king_to_mtx.py compare --new ${OUT_DIR}/amr_pcrelate.mtx --old ${IN_KING} "
           "--report ${OUT_DIR}/cmp_pcrelate_vs_king.tsv && "
-          "python3 /usr/local/bin/king_to_mtx.py plot --new ${OUT_DIR}/amr_pcrelate.mtx --old ${IN_KING} --out ${OUT_DIR}/pcrelate_vs_king"])
+          "python3 /usr/local/bin/king_to_mtx.py plot --new ${OUT_DIR}/amr_pcrelate.mtx --old ${IN_KING} "
+          "--old-label KING-robust --new-label PC-Relate --out ${OUT_DIR}/pcrelate_vs_king"])
 ARMED = False
 ```
 
 `compare` matches the two `.mtx` by sample ID (`samples_common` is its first line: expect 71,605 against
 KING's 71,609). The first submission (`pcrelate-amr`, 2026-11-02) died in localisation: the KING
 matrix is the PRODUCTION copy under `make_sparse_grm/` (the `p183/king/` duplicate was deleted after its
-md5 matched), so the cell above names that; resubmitted as `pcrelate-amr-2`. Then `sigpd-grm` on
+md5 matched), so the cell above names that; resubmitted as `pcrelate-amr-2`, which ran in 57 min (kinship
+pass; 16 vCPU, one tile) and delivered. **The read (2026-11-02, 11:58):** positive control: KING's 7,172
+first-degree pairs all present but fewer than 20, median ratio 1.007, 5th..95th 0.977..1.065 -- the same
+relatives, tighter than KING-vs-old was (0.63..1.20). Pairs at or above 0.05: KING 328,767, PC-Relate
+31,704; of KING's 316,603 pairs in the 0.05..0.125 band, 308,049 fall below 0.05 under PC-Relate -- 97 %
+of that band was KING's bias on admixed pairs of differing ancestry, the mechanism the KING decision night
+named for its indefinite 0.05 matrix. At 0.125 and above PC-Relate keeps slightly MORE (13,101 vs 12,164
+at 0.125; 8,936 vs 8,452 at 0.25; 7,191 vs 7,172 at 0.4): KING-robust underestimates kinship across
+ancestry, so real second/third-degree admixed pairs that sat just under KING's cutoff come back. The new
+matrix is 103,309 entries (71,605 diagonal + 31,704 pairs): step 1 at 0.05 is tractable on amr for the
+first time. `pcrelate_vs_king.png` as the job wrote it carries the plot's FIRST-USE axis labels (x
+"step-0 GRM", y "KING-robust"; read x as KING, y as PC-Relate); `plot` now takes `--old-label`/`--new-label`
+and the cell above passes them. Then `sigpd-grm` on
 `p183/pcrelate/amr_pcrelate.mtx` at 0.05 and 0.125. **What to read, predicted before the run:** the
 positive control (first-degree pairs agree with KING, median ratio ~1, tight); at 0.125 nearly the same
 pairs as KING and positive definite; at 0.05 FEWER pairs than KING's 329k and the 37,305-person component
