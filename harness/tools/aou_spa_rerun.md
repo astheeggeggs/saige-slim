@@ -3285,7 +3285,7 @@ ones) and the unrelated training set (the amr psam minus AoU's `relatedness_flag
 `--unrelated` the tool regresses on everyone, a small bias not an error). Sizing: 4 N^2 M ~ 1.8e15 flops
 on 71,609 x 88,861; `n2-highmem-16` with `--memory-gb 64` keeps both accumulators in one sample tile
 (one pass over the genotypes) and `--threads 16`; expect 1-3 h [scaled from 499 s for 20k x 50k on a
-loaded laptop]. Prep cell (notebook; counts printed are cohort sizes):
+loaded laptop]. **Progress:** the tool prints `progress P %: tile t/T, markers m/M, elapsed Ns, ETA Ns` at every ~5 % of the work (weighted by tile area, so the ETA is honest across unequal tiles) and at least every 10 minutes, so `fetch_log` on the running job shows where it is; the one-pass run here prints ~20 lines then `tile 1/1`. Prep cell (notebook; counts printed are cohort sizes):
 
 ```python
 import os, pandas as pd, subprocess

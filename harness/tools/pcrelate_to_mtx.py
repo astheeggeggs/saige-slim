@@ -267,6 +267,11 @@ def pcrelate_blocks(get_block, n_markers, X, train, cutoff, maf=0.01, block_mark
     n_used_total = None
     tiles = list(range(0, N, block_samples))
     t0 = time.time()
+    # progress: a tile's cost is (its rows) x (columns from ts on) x markers, so the ETA weights
+    # the marker blocks by the tile's area rather than counting them; one line per ~5 % of the
+    # work and at least every 10 minutes, so a dsub log shows where a multi-hour job is
+    work_total = sum((min(ts + block_samples, N) - ts) * (N - ts) for ts in tiles) * n_markers
+    work_done, next_report, last_report_t = 0, 0.05, t0
     for ti, ts in enumerate(tiles):
         te = min(ts + block_samples, N)
         num = np.zeros((te - ts, N - ts), dtype=np.float32)   # tile rows x columns from ts on
@@ -278,6 +283,13 @@ def pcrelate_blocks(get_block, n_markers, X, train, cutoff, maf=0.01, block_mark
             n_used += used
             num += R[ts:te] @ R[ts:].T
             den += A[ts:te] @ A[ts:].T
+            work_done += (te - ts) * (N - ts) * mc
+            frac, now = work_done / work_total, time.time()
+            if frac >= next_report or now - last_report_t >= 600:
+                el = now - t0
+                log(f"progress {100 * frac:5.1f} %: tile {ti + 1}/{len(tiles)}, markers {ms + mc}/{n_markers}, "
+                    f"elapsed {el:.0f}s, ETA {el / frac * (1 - frac):.0f}s")
+                next_report, last_report_t = (int(frac / 0.05) + 1) * 0.05, now
             if ti == 0:
                 # inbreeding: f_i = sum (g^2 - (1 + 2 mu) g + 2 mu^2) / sum 2 mu (1 - mu)
                 gm = np.where(valid, g, 0).astype(np.float64)
