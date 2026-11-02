@@ -41,10 +41,11 @@ king_to_mtx.py convert (off-diagonal = 2 x kinship, symmetric coordinate, lower 
 
 Memory at N samples: two float32 accumulators of block_samples x N, sized by default to
 --memory-gb (16 GB at N = 80k gives a tile of 25k, 4 passes), plus the marker block
-(N x block_markers x 4 B x 3) and a ~64 MB row-chunk buffer; the GEMMs, the pair extraction
-and the inbreeding sums all walk in small row chunks (64 / 32 / 32 MB) and add nothing
-tile-sized, so the accumulators are the peak (measured on 12k x 2k at a 1.15 GB budget:
-1.35 GB, against 2.40 before any of this) (2026-11-02: the extraction used to add four tile-sized arrays and a
+(N x block_markers x 4 B x 3) and a ~64 MB row-chunk buffer; the products, the pair
+extraction and the inbreeding sums all walk in small row chunks (64 / 32 / 32 MB) and add
+nothing tile-sized, so the accumulators are the peak (measured on 12k x 2k at a 1.15 GB
+budget: 1.39 GB, against 2.56 before any of this), and only the lower triangle of each
+tile's square part is computed (the diagonal blocks through BLAS syrk) (2026-11-02: the extraction used to add four tile-sized arrays and a
 whole-tile GEMM a fifth, and the AoU amr run was OOM-killed at --memory-gb 64 on 128 GB). The
 row-chunked GEMM is not bit-identical to a whole-tile one on OpenBLAS (probed), a float32 ULP
 drift of the kind the sample tile already causes; the selftest's blocking check bounds it. The genotypes are decoded and prepared once per sample tile, so
@@ -283,25 +284,39 @@ def pcrelate_blocks(get_block, n_markers, X, train, cutoff, maf=0.01, block_mark
         te = min(ts + block_samples, N)
         num = np.zeros((te - ts, N - ts), dtype=np.float32)   # tile rows x columns from ts on
         den = np.zeros((te - ts, N - ts), dtype=np.float32)
-        # each GEMM lands in a reused ~64 MB row-chunk buffer and is added from there, so the
-        # two accumulators ARE the peak (a whole-tile product was a third tile-sized array). A
-        # row-chunked GEMM is not bit-identical to the whole-tile one on OpenBLAS (probed on the
-        # host and the x86 image, 2026-11-02): the drift is the float32 ULP kind that the sample
-        # tile itself already causes, bounded by the selftest's blocking check, not a reporting
-        # difference; at least 256 rows a call so BLAS still runs at full efficiency
-        gemm_rows = max(256, min(te - ts, int(gemm_bytes // (4 * (N - ts)))))
+        # The products land in a reused ~64 MB row-chunk buffer and are added from there, so the
+        # two accumulators ARE the peak (a whole-tile product was a third tile-sized array), and
+        # only the LOWER triangle of the tile's square part (columns ts..te) is computed: a row
+        # chunk's diagonal block is `X @ X.T` on one buffer, which numpy hands to BLAS syrk at
+        # half the flops, the blocks left of it and the rectangle (columns te..N) are gemm. A
+        # whole-tile product was syrk only when the tile was the whole remainder (one pass), and
+        # gemm over the full square otherwise, so this is the same flops on one pass and ~half
+        # on several; a row-chunked product is not bit-identical to the whole-tile one on
+        # OpenBLAS (probed on the host and the x86 image, 2026-11-02) -- the float32 ULP drift
+        # the sample tile itself already causes, bounded by the selftest's blocking check. The
+        # upper triangle of the square stays zero (num and den both, so it extracts as 0 and
+        # sits below any positive cutoff); keep_all mirrors it before extracting. At least 256
+        # rows a chunk so BLAS still runs at full efficiency.
+        sq = te - ts
+        gemm_rows = max(256, min(sq, int(gemm_bytes // (4 * (N - ts)))))
         buf = np.empty((gemm_rows, N - ts), dtype=np.float32)
         n_used = 0
         for ms in range(0, n_markers, block_markers):
             mc = min(block_markers, n_markers - ms)
             R, A, g, mu, valid, used = prepared(ms, mc)
             n_used += used
-            for r0 in range(0, te - ts, gemm_rows):
-                r1 = min(r0 + gemm_rows, te - ts)
-                np.matmul(R[ts + r0:ts + r1], R[ts:].T, out=buf[:r1 - r0])
-                num[r0:r1] += buf[:r1 - r0]
-                np.matmul(A[ts + r0:ts + r1], A[ts:].T, out=buf[:r1 - r0])
-                den[r0:r1] += buf[:r1 - r0]
+            for acc, Z in ((num, R), (den, A)):
+                for r0 in range(0, sq, gemm_rows):
+                    r1 = min(r0 + gemm_rows, sq)
+                    rows = Z[ts + r0:ts + r1]
+                    if r0 > 0:                                   # blocks left of the diagonal block
+                        np.matmul(rows, Z[ts:ts + r0].T, out=buf[:r1 - r0, :r0])
+                        acc[r0:r1, :r0] += buf[:r1 - r0, :r0]
+                    np.matmul(rows, rows.T, out=buf[:r1 - r0, r0:r1])   # the diagonal block: syrk
+                    acc[r0:r1, r0:r1] += buf[:r1 - r0, r0:r1]
+                    if te < N:                                   # the rectangle, columns te..N
+                        np.matmul(rows, Z[te:].T, out=buf[:r1 - r0, sq:])
+                        acc[r0:r1, sq:] += buf[:r1 - r0, sq:]
             work_done += (te - ts) * (N - ts) * mc
             frac, now = work_done / work_total, time.time()
             if frac >= next_report or now - last_report_t >= 600:
@@ -324,6 +339,12 @@ def pcrelate_blocks(get_block, n_markers, X, train, cutoff, maf=0.01, block_mark
                 del gm, mm
         if n_used_total is None:
             n_used_total = n_used
+        if keep_all or cutoff <= 0:
+            # mirror the lower triangle of the square part into the upper, in row chunks
+            for r0 in range(0, sq, gemm_rows):
+                r1 = min(r0 + gemm_rows, sq)
+                for acc in (num, den):
+                    acc[:r0, r0:r1] = acc[r0:r1, :r0].T
         # Extraction in row chunks of ~32 MB: done over the whole tile it allocated four more
         # tile-sized float32 temporaries (4 * den, the quotient, the where() result, 2 * kin) on
         # top of the two accumulators, a peak of ~2x --memory-gb, which OOM-killed the AoU amr

@@ -3294,8 +3294,10 @@ loaded laptop]. **The v9 amr run (N 96,117, 107,390 markers, the same `--memory-
 OOM-killed at the end of tile 1 of 2 (2026-11-02)**: the budget sized the two accumulators, and the
 pair extraction then allocated four more tile-sized arrays. Since the tool's commit of that day (the
 image tag after `155f23ea`) the extraction and the inbreeding sums walk the tile in ~256 MB row chunks
-and the GEMMs land in a ~64 MB row-chunk buffer, so the two accumulators ARE the peak bar the marker
-block: at 64 the v9 tile is 83k, 2 passes, peak ~64 GB plus the marker block (~5 GB) plus the kept pairs;
+and the products land in a ~64 MB row-chunk buffer with only the lower triangle of each tile's square
+part computed (diagonal blocks through BLAS syrk, which is what the old one-pass whole-tile product got
+and a multi-pass one did not: 10.9 vs 13.8 s CPU on one pass of 12k x 2k, single thread, three
+interleaved repeats), so the two accumulators ARE the peak bar the marker block: at 64 the v9 tile is 83k, 2 passes, peak ~64 GB plus the marker block (~5 GB) plus the kept pairs;
 48 keeps the same two passes (anything above ~37 GB does) with more margin. Measured on a 12k x 2k
 synthetic bed at a 1.15 GB accumulator budget: peak RSS 3.40 -> 1.97 GB (default marker block, 1.2M
 pairs kept), 2.56 -> 1.39 GB (small block, few pairs). The row-chunked GEMM is NOT bit-identical to the
