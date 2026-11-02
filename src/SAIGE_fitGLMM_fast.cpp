@@ -14,6 +14,8 @@
 #include <cstring>   // std::memcmp, for the GetTrace probe-cache check
 #include <boost/date_time.hpp> // for gettimeofday and timeval
 #include <oneapi/tbb/concurrent_vector.h>
+#include <oneapi/tbb/enumerable_thread_specific.h>
+#include <memory>
 #include <atomic>
 #include <mutex>
 #include <algorithm>
@@ -48,6 +50,13 @@ public:
         // t_markerIdx as a PLINK-1 .bed record.
         virtual void fill(size_t t_markerIdx, std::vector<unsigned char> & t_out) = 0;
         virtual void close() = 0;
+        // LEDGER #185 (2026-11-02): a second, independent reader onto the same
+        // files, for one worker thread of the parallel genotype load. A BED
+        // clone is another ifstream; a PGEN clone is another decode handle over
+        // the shared file info. Clones are read-only on the shared state.
+        virtual std::unique_ptr<MarkerByteSource> clone() const = 0;
+        // Dosage genotypes this source rounded to a hard call (PGEN only).
+        virtual unsigned long long numDosageHardCalled() const { return 0; }
 };
 
 // The original path: count fam/bim lines, seek+read one .bed record.
@@ -55,11 +64,24 @@ class BedByteSource : public MarkerByteSource {
 private:
         std::ifstream m_bed;
         size_t m_N, m_M, m_nbyte;
+        std::string m_bedfile;
+        // clone: the counts are known, only the stream is opened again
+        BedByteSource(const std::string & t_bedfile, size_t t_N, size_t t_M)
+          : m_N(t_N), m_M(t_M), m_nbyte(ceil(float(t_N)/4)), m_bedfile(t_bedfile)
+        {
+                m_bed.open(t_bedfile.c_str(), ios::binary);
+                if (!m_bed.is_open()){
+                        Rcpp::stop("Failed to open the .bed file (" + t_bedfile + ") for a reader thread.");
+                }
+        }
 public:
+        std::unique_ptr<MarkerByteSource> clone() const {
+                return std::unique_ptr<MarkerByteSource>(new BedByteSource(m_bedfile, m_N, m_M));
+        }
         BedByteSource(const std::string & t_bedfile,
                       const std::string & t_bimfile,
                       const std::string & t_famfile)
-          : m_N(0), m_M(0), m_nbyte(0)
+          : m_N(0), m_M(0), m_nbyte(0), m_bedfile(t_bedfile)
         {
                 std::string junk;
                 std::ifstream test_famfile;
@@ -219,6 +241,17 @@ public:
             m_nDosageHardCalled(0)
         {
                 m_buf.resize(m_N);
+        }
+        PgenByteSource(std::shared_ptr<PGEN::PgenShared> t_shared)
+          : m_pgen(t_shared),
+            m_N(m_pgen.getN()), m_M(m_pgen.getM()),
+            m_nbyte(ceil(float(m_pgen.getN())/4)),
+            m_nDosageHardCalled(0)
+        {
+                m_buf.resize(m_N);
+        }
+        std::unique_ptr<MarkerByteSource> clone() const {
+                return std::unique_ptr<MarkerByteSource>(new PgenByteSource(m_pgen.shared()));
         }
         size_t numSamples() const { return m_N; }
         size_t numMarkers() const { return m_M; }
@@ -542,11 +575,21 @@ public:
        }
 
 
-	void Get_OneSNP_Geno_atBeginning(size_t SNPIdx, vector<int> & indexNA, vector<unsigned char> & genoVecOneMarkerOld, float & altFreq, float & missingRate, int & mac,  int & alleleCount, bool & passQC, size_t SNPIdx_new, bool & passVarRatio , size_t SNPIdx_vr){
+	// One marker's QC and re-pack (LEDGER #185, 2026-11-02: PURE -- reads the
+	// class's read-only configuration, writes only its arguments). It used to
+	// write the packed record straight into the store slot SNPIdx_new /
+	// SNPIdx_vr and allocate the VR slot itself, which tied every marker to the
+	// serial loop; now the record goes to t_packed and the caller places it,
+	// so setGenoObjFromSource can run the QC of many markers at once. The
+	// arithmetic and the byte order of the record are unchanged. passVRcommon
+	// reports that passVarRatio came from the random common-marker draw
+	// (the caller counts numberofMarkers_varRatio_common from it).
+	void Get_OneSNP_Geno_atBeginning(size_t SNPIdx, vector<int> & indexNA, vector<unsigned char> & genoVecOneMarkerOld, float & altFreq, float & missingRate, int & mac,  int & alleleCount, bool & passQC, bool & passVarRatio, bool & passVRcommon, std::vector<unsigned char> & t_packed){
 
 		arma::ivec m_OneSNP_GenoTemp;
 		m_OneSNP_GenoTemp.zeros(N);
-		m_OneSNP_Geno.zeros(Nnomissing);
+		t_packed.clear();
+		passVRcommon = false;
 		int m_size_of_esi_temp = (N+3)/4;
 		size_t ind= 0;
 		unsigned char geno1;
@@ -723,8 +766,6 @@ public:
 			if(g_maxMACVarRatio != -1){ //if estimating categorical variance ratios
 			   if(mac >= g_minMACVarRatio && mac < g_maxMACVarRatio){
 				passVarRatio = true;
-				genoVecofPointers_forVarRatio[SNPIdx_vr] = new vector<unsigned char>;
-				genoVecofPointers_forVarRatio[SNPIdx_vr]->reserve(numMarkersofEachArray*ceil(float(Nnomissing)/4));
 			   }else if(mac >= g_maxMACVarRatio){
 				   //randomly select 200 markers for estimating the variance ratio for the last MAC category	
 				   //if(numberofMarkers_varRatio_common < 200){
@@ -736,9 +777,7 @@ public:
 				   	passVarRatio = arma::any(g_randMarkerIndforVR == static_cast<int>(SNPIdx));
 					if(passVarRatio){
 						//std::cout << "SNPIdx " << SNPIdx << std::endl;
-						genoVecofPointers_forVarRatio[SNPIdx_vr] = new vector<unsigned char>;
-						genoVecofPointers_forVarRatio[SNPIdx_vr]->reserve(numMarkersofEachArray*ceil(float(Nnomissing)/4));
-				  		numberofMarkers_varRatio_common = numberofMarkers_varRatio_common + 1;
+				  		passVRcommon = true;
 						//passVarRatio = false;
 					}
 				  //} 
@@ -756,9 +795,7 @@ public:
                                         passVarRatio = arma::any(g_randMarkerIndforVR == static_cast<int>(SNPIdx));
                                         if(passVarRatio){
                                                 //std::cout << "SNPIdx " << SNPIdx << std::endl;
-                                                genoVecofPointers_forVarRatio[SNPIdx_vr] = new vector<unsigned char>;
-                                                genoVecofPointers_forVarRatio[SNPIdx_vr]->reserve(numMarkersofEachArray*ceil(float(Nnomissing)/4));
-                                                numberofMarkers_varRatio_common = numberofMarkers_varRatio_common + 1;
+                                                passVRcommon = true;
                                                 //passVarRatio = false;
                                         }
                                   //}
@@ -790,12 +827,7 @@ public:
                                         setGenotype(&geno2, u, HOM_REF);
                               }
 			      if(u == 3 || indx == (Nnomissing-1)){
-				       if(passVarRatio){
-						genoVecofPointers_forVarRatio[SNPIdx_vr/numMarkersofEachArray]->push_back(geno2); //avoid large continuous memory usage
-					}
-				        if(passQC){
-						genoVecofPointers[SNPIdx_new/numMarkersofEachArray]->push_back(geno2);
-					}	
+					t_packed.push_back(geno2);
                                         geno2 = 0;
                               }
 			}
@@ -942,8 +974,8 @@ public:
   	void setGenoObj_pgen(std::string pgenfile, std::string pvarfile, std::string psamfile, std::vector<int> & subSampleInGeno, std::vector<bool> & indicatorGenoSamplesWithPheno, float memoryChunk, bool  isDiagofKinSetAsOne){
 		PgenByteSource src(pgenfile, pvarfile, psamfile);
 		setGenoObjFromSource(src, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne);
-		if(src.numDosageHardCalled() > 0){
-			Rcpp::warning("The pgen file carries dosages, which the GRM genotype store cannot hold: %s genotype(s) were hard-called to the nearest of 0/1/2.", std::to_string(src.numDosageHardCalled()));
+		if(src.numDosageHardCalled() + m_nDosageHardCalledClones > 0){
+			Rcpp::warning("The pgen file carries dosages, which the GRM genotype store cannot hold: %s genotype(s) were hard-called to the nearest of 0/1/2.", std::to_string(src.numDosageHardCalled() + m_nDosageHardCalledClones));
 		}
 	}
 
@@ -968,7 +1000,9 @@ public:
 		numofGenoArray = 0;
 	}
 
+	unsigned long long m_nDosageHardCalledClones = 0;
   	void setGenoObjFromSource(MarkerByteSource & t_src, std::vector<int> & subSampleInGeno, std::vector<bool> & indicatorGenoSamplesWithPheno, float memoryChunk, bool  isDiagofKinSetAsOne){
+		m_nDosageHardCalledClones = 0;
 		//cout << "OK1\n";
 		setKinDiagtoOne = isDiagofKinSetAsOne;   
 		ptrsubSampleInGeno = subSampleInGeno;
@@ -1102,8 +1136,8 @@ public:
 		//alleleFreqVec.zeros(M);
 		//invstdvVec.zeros(M);
 		//MACVec.zeros(M);
-        	float freq, Std, invStd, missingRate;
-        	int alleleCount, mac;
+        	float freq, Std, invStd;
+        	int mac;
 		std::vector<int> indexNA;
         	int lengthIndexNA;
         	int indexGeno;
@@ -1124,22 +1158,69 @@ public:
 		size_t SNPIdx_new = 0;
 		size_t SNPIdx_vr = 0;
 		//Mmafge1perc = 0;
+		// LEDGER #185 (2026-11-02): the per-marker decode + QC + re-pack runs
+		// over marker ranges in parallel (RcppParallel's pool, the thread
+		// count createSparseGRM / fitNULLGLMM pinned), each worker thread on
+		// its own clone of the byte source, into one MarkerQC record per
+		// marker. The placement into the store and every push_back of a
+		// statistic then run SERIALLY in marker order below, exactly the
+		// sequence the single loop performed, so the store and the vectors
+		// are the same bytes at any thread count. On All of Us eur (N 283,695,
+		// M 99,900) the serial loop was 780 s of a 4,199 s step 0.
+		struct MarkerQC {
+			float freq = 0, missingRate = 0;
+			int mac = 0, alleleCount = 0;
+			bool passQC = false, passVR = false, passVRcommon = false;
+			std::vector<unsigned char> packed;
+		};
+		std::vector<MarkerQC> qc((size_t)M);
+		{
+			struct ReadQCWorker : public Worker {
+				genoClass & gc;
+				MarkerByteSource & src;
+				std::vector<MarkerQC> & qc;
+				size_t nbyteOld;
+				tbb::enumerable_thread_specific< std::unique_ptr<MarkerByteSource> > & tls;
+				ReadQCWorker(genoClass & t_gc, MarkerByteSource & t_src, std::vector<MarkerQC> & t_qc, size_t t_nbyteOld,
+				             tbb::enumerable_thread_specific< std::unique_ptr<MarkerByteSource> > & t_tls)
+					: gc(t_gc), src(t_src), qc(t_qc), nbyteOld(t_nbyteOld), tls(t_tls) {}
+				void operator()(std::size_t begin, std::size_t end) {
+					std::unique_ptr<MarkerByteSource> & mine = tls.local();
+					if (!mine) mine = src.clone();
+					std::vector<unsigned char> raw(nbyteOld);
+					std::vector<int> indexNA;
+					for (std::size_t i = begin; i < end; i++) {
+						std::fill(raw.begin(), raw.end(), (unsigned char)0);
+						mine->fill(i, raw);
+						indexNA.clear();
+						MarkerQC & q = qc[i];
+						gc.Get_OneSNP_Geno_atBeginning(i, indexNA, raw, q.freq, q.missingRate, q.mac,
+						                                 q.alleleCount, q.passQC, q.passVR, q.passVRcommon, q.packed);
+					}
+				}
+			};
+			tbb::enumerable_thread_specific< std::unique_ptr<MarkerByteSource> > tls;
+			ReadQCWorker w(*this, t_src, qc, nbyteOld, tls);
+			parallelFor(0, (size_t)M, w, 64);
+			for (auto & c : tls) {
+				if (c) { m_nDosageHardCalledClones += c->numDosageHardCalled(); c->close(); }
+			}
+		}
 		for(int i = 0; i < M; i++){
-			genoVecOneMarkerOld.clear();
-			genoVecOneMarkerOld.reserve(nbyteOld);
-                        genoVecOneMarkerOld.resize(nbyteOld);
+			MarkerQC & q = qc[i];
+			freq = q.freq; mac = q.mac;   // missingRate / alleleCount: QC-only, judged inside the routine
+			isPassQC = q.passQC; isPass_vr = q.passVR;
+			if(isPassQC){
+				genoVecofPointers[SNPIdx_new/numMarkersofEachArray]->swap(q.packed);
+			}else if(isPass_vr){
+				genoVecofPointers_forVarRatio[SNPIdx_vr] = new vector<unsigned char>;
+				genoVecofPointers_forVarRatio[SNPIdx_vr]->swap(q.packed);
+				if(q.passVRcommon){
+					numberofMarkers_varRatio_common = numberofMarkers_varRatio_common + 1;
+				}
+			}
+			std::vector<unsigned char>().swap(q.packed);
 
-			t_src.fill(i, genoVecOneMarkerOld);
- 			//printf("\nFile read is done: M: %zu, N: %zu, TotalByte %zu\n", M, N, genoVecTemp.size());
-			//cout << "Imputing missing genotypes and extracting the subset of samples with nonmissing genotypes and phenotypes\n";  
-	//		cout << "i is " << i << endl;  
-
-      			indexNA.clear();
-		//}	
-        		Get_OneSNP_Geno_atBeginning(i, indexNA, genoVecOneMarkerOld, freq, missingRate, mac, alleleCount, isPassQC, SNPIdx_new, isPass_vr, SNPIdx_vr);
-
-			//std::cout << "freq " << freq << std::endl;
-			//std::cout << "isPassQC " << isPassQC << std::endl;
 			if(isPassQC){
 
       				Std = std::sqrt(2*freq*(1-freq));
@@ -1151,8 +1232,8 @@ public:
       				invstdvVec0.push_back(invStd);
 				alleleFreqVec0.push_back(freq);
 				numberofMarkerswithMAFge_minMAFtoConstructGRM = numberofMarkerswithMAFge_minMAFtoConstructGRM + 1;
-		
-				MACVec0.push_back(mac);	
+
+				MACVec0.push_back(mac);
 				MarkerswithMAFge_minMAFtoConstructGRM_indVec.push_back(true);
 				SNPIdx_new = SNPIdx_new + 1;
 			}else{
@@ -1174,11 +1255,7 @@ public:
 					SNPIdx_vr = SNPIdx_vr + 1;
 					numberofMarkers_varRatio = numberofMarkers_varRatio + 1;
 				}
-			}	
-
-
-			//m_OneSNP_Geno.clear();
-
+			}
     		}//end for(int i = 0; i < M; i++){
 
 		if( minMAFtoConstructGRM > 0 | maxMissingRate < 1){
@@ -4837,6 +4914,93 @@ double innerProduct(NumericVector x, NumericVector y) {
 //Rcpp::List refineKin(std::vector<unsigned int> &iIndexVec, std::vector<unsigned int> & jIndexVec, float relatednessCutoff, arma::fvec& wVec,  arma::fvec& tauVec){
 //Rcpp::List refineKin(arma::imat &iMat, float relatednessCutoff, arma::fvec& wVec,  arma::fvec& tauVec){
 
+// Pair-major refine (2026-11-02, LEDGER #185). The marker-major loop below
+// decodes every sample of a marker serially and then launches one parallel
+// pass over the screened pairs per marker, adding a 3 x 3 lookup value to each
+// pair's running float sum: ni x M random lookups into a 4-byte-per-sample
+// vector, two thread-pool launches per marker. On All of Us eur (N 283,695,
+// M 99,900, 33.8M screened pairs of which 44k survive) that was 3,121 s of a
+// 4,199 s step 0 at 64 cores, ~20 ns of CPU per (pair, marker).
+//
+// Here the markers are taken in blocks: a block is transposed once into a
+// sample-major byte matrix (one row of mb genotypes per sample, parallel over
+// samples), and each pair then walks its two rows sequentially, in marker
+// order, adding the same per-marker lookup value to the same float sum. The
+// per-pair sum is therefore the identical sequence of float additions the
+// marker-major loop performs (kin = table + kin, marker by marker, blocks in
+// order), so the .mtx is byte-identical; the lookup table is the one
+// setSparseKinLookUpArr fills, copied per marker. SAIGE_REFINE_PAIRMAJOR=0
+// restores the marker-major loop; SAIGE_REFINE_BLOCK sets the block length
+// (default 1024 markers: Nnomissing KB of transpose buffer).
+struct RefineTransposeWorker : public Worker {
+	size_t m0;
+	size_t mb;
+	std::vector<unsigned char> & T;
+	RefineTransposeWorker(size_t t_m0, size_t t_mb, std::vector<unsigned char> & t_T)
+		: m0(t_m0), mb(t_mb), T(t_T) {}
+	void operator()(std::size_t begin, std::size_t end) {
+		const genoClass::ByteCodes & bc = genoClass::byteCodes();
+		for (std::size_t s = begin; s < end; s++) {
+			unsigned char * row = &T[s * mb];
+			const size_t byteIdx = s >> 2;
+			const int sh = s & 3;
+			for (size_t k = 0; k < mb; k++) {
+				row[k] = bc.c[(*geno.genoVecofPointers[m0 + k])[byteIdx]][sh];
+			}
+		}
+	}
+};
+
+struct RefinePairWorker : public Worker {
+	size_t mb;
+	const std::vector<unsigned char> & T;
+	const std::vector<float> & tab;   // 9 floats per marker of the block, [gi * 3 + gj]
+	RefinePairWorker(size_t t_mb, const std::vector<unsigned char> & t_T, const std::vector<float> & t_tab)
+		: mb(t_mb), T(t_T), tab(t_tab) {}
+	void operator()(std::size_t begin, std::size_t end) {
+		for (std::size_t p = begin; p < end; p++) {
+			const unsigned char * ri = &T[(size_t)(geno.indiceVec)[p].first * mb];
+			const unsigned char * rj = &T[(size_t)(geno.indiceVec)[p].second * mb];
+			float kin = geno.kinValueVecFinal[p];
+			for (size_t k = 0; k < mb; k++) {
+				kin = tab[k * 9 + ri[k] * 3 + rj[k]] + kin;
+			}
+			geno.kinValueVecFinal[p] = kin;
+		}
+	}
+};
+
+static void refineKinPairMajor(size_t ni, size_t Mmarker) {
+	size_t mb = 1024;
+	if (const char * e = std::getenv("SAIGE_REFINE_BLOCK")) {
+		long v = std::atol(e);
+		if (v > 0) mb = (size_t)v;
+	}
+	if (mb > Mmarker) mb = Mmarker;
+	const size_t Nn = geno.getNnomissing();
+	const size_t nblocks = mb > 0 ? (Mmarker + mb - 1) / mb : 0;
+	std::cout << "refine: pair-major, " << Mmarker << " markers in " << nblocks
+	          << " block(s) of " << mb << ", " << ni << " pairs" << std::endl;
+	if (ni == 0 || Mmarker == 0) return;
+	std::vector<unsigned char> T((size_t)Nn * mb);
+	std::vector<float> tab(9 * mb);
+	for (size_t m0 = 0; m0 < Mmarker; m0 += mb) {
+		const size_t len = std::min(mb, Mmarker - m0);
+		for (size_t k = 0; k < len; k++) {
+			geno.setSparseKinLookUpArr(geno.alleleFreqVec[m0 + k], geno.invstdvVec[m0 + k]);
+			for (int gi = 0; gi < 3; gi++) {
+				for (int gj = 0; gj < 3; gj++) {
+					tab[k * 9 + gi * 3 + gj] = geno.sKinLookUpArr[gi][gj];
+				}
+			}
+		}
+		RefineTransposeWorker tw(m0, len, T);
+		parallelFor(0, Nn, tw, 256);
+		RefinePairWorker pw(len, T, tab);
+		parallelFor(0, ni, pw, 1024);
+	}
+}
+
 // [[Rcpp::export]]
 Rcpp::List refineKin(float relatednessCutoff){
         std::vector<unsigned int>     iIndexVec2;
@@ -4872,7 +5036,14 @@ Rcpp::List refineKin(float relatednessCutoff){
 	arma::fvec GRMvec;
 	GRMvec.set_size(ni);
 	//int Mmarker_mafgr1perc = 0;
-  	for(size_t i=0; i< Mmarker; i++){
+	const char * refineEnv = std::getenv("SAIGE_REFINE_PAIRMAJOR");
+	const bool refinePairMajor = !(refineEnv != nullptr && std::string(refineEnv) == "0");
+	if (refinePairMajor) {
+		refineKinPairMajor(ni, (size_t)Mmarker);
+	} else {
+		std::cout << "refine: marker-major (SAIGE_REFINE_PAIRMAJOR=0)" << std::endl;
+	}
+  	for(size_t i=0; refinePairMajor ? false : (i< Mmarker); i++){
 //		std::cout << "OKKK: "  << std::endl;
 //		std::cout << "Mmarker: " << std::endl;
 
