@@ -19,6 +19,16 @@
 # (people counts below --mask written "<mask": real data). The whole sparse Sigma is also
 # handed to CHOLMOD once: a failed Cholesky is the one-bit answer.
 #
+# A component above --maxDenseComponent is NOT evaluated, and a bound or a verdict that rests on
+# the evaluated blocks alone is a statement about part of the matrix (2026-11-02, LEDGER #184: on
+# All of Us amr the 10,003-sample component held the -19.9 eigenvalue while the small blocks
+# printed a bound of 1e15 and "within the tau bound"). So: when the Cholesky fails and any
+# multi-sample component was skipped, the verdict is "bound unknown", no bound is printed and no
+# model is judged; the report says how many components and samples were skipped. A successful
+# Cholesky of the whole matrix is complete on its own and needs no block. The default cap is
+# 12,000 (a 10,003-sample dense eigendecomposition is ~3 min and 0.8 GB), and the memory of every
+# dense block above 1,000 samples is logged before it is decomposed.
+#
 # Usage (inside the saige-slim image or any R with Matrix):
 #   Rscript aou_sigma_pd_check.R --modelFile=M.rda --sparseGRMFile=K.mtx \
 #     --sparseGRMSampleIDFile=K.ids --relatednessCutoff=0.125 --reportFile=report.tsv \
@@ -39,7 +49,10 @@ opts <- list(
               help = "entries below this are deleted, as step 2 does [default %default]"),
   make_option("--reportFile", type = "character"),
   make_option("--label", type = "character", default = "model"),
-  make_option("--maxDenseComponent", type = "integer", default = 2000L),
+  make_option("--maxDenseComponent", type = "integer", default = 12000L,
+              help = paste("largest family component eigendecomposed densely (n^2 x 8 bytes);",
+                           "a larger one is NOT evaluated and leaves the verdict undecided",
+                           "[default %default]")),
   make_option("--mask", type = "integer", default = 20L),
   make_option("--plantIndefinite", action = "store_true", default = FALSE,
               help = "positive control: overwrite one family's block with an indefinite pattern"),
@@ -195,11 +208,25 @@ if (tau2 <= 0) {
   min_eig <- Inf
   worst_size <- NA
   n_eval <- 0L
+  n_skip <- 0L          # components above the cap: NOT evaluated
+  n_people_skip <- 0L
   n_nearnull <- 0L   # smallest eigenvalue below 1e-3 of the diagonal scale: a near-null direction
   block_lo <- list()   # per evaluated block: smallest eigenvalue and samples (for --modelDir)
+  gb_max <- 0
   for (idx in multi) {
-    if (length(idx) > opt$maxDenseComponent) next
+    if (length(idx) > opt$maxDenseComponent) {
+      n_skip <- n_skip + 1L
+      n_people_skip <- n_people_skip + length(idx)
+      cat(sprintf("component of %s samples is above --maxDenseComponent %d: NOT evaluated\n",
+                  showCount(length(idx)), opt$maxDenseComponent))
+      next
+    }
     n_eval <- n_eval + 1L
+    gb <- length(idx)^2 * 8 / 1e9
+    gb_max <- max(gb_max, gb)
+    if (length(idx) > 1000L) {
+      cat(sprintf("dense block of %s samples: %.2f GB, decomposing\n", showCount(length(idx)), gb))
+    }
     ev <- eigen(as.matrix(S[idx, idx]), symmetric = TRUE, only.values = TRUE)$values
     lo <- min(ev)
     block_lo[[length(block_lo) + 1L]] <- list(lo = lo, idx = idx)
@@ -214,30 +241,49 @@ if (tau2 <= 0) {
     }
   }
   note("components_evaluated", n_eval)
+  note("components_not_evaluated", n_skip)
+  note("samples_not_evaluated", showCount(n_people_skip))
+  note("largest_dense_block_gb", sprintf("%.3f", gb_max))
   note("components_indefinite", n_indef)
   note("samples_in_indefinite_components", showCount(n_people_indef))
   note("components_near_null", n_nearnull)
   note("min_eigenvalue_sigma", sprintf("%.6g", min_eig))
   note("min_eigenvalue_component_size", showCount(worst_size))
   note("min_eigenvalue_over_diag", sprintf("%.6g", min_eig / mean(diagRef)))
-  if (opt$grmOnly && (!chol_ok || n_indef > 0)) {
+  if (opt$grmOnly && chol_ok) {
+    # the whole thinned GRM factorises: positive (semi)definite, complete whatever was skipped
+    verdict <- if (n_nearnull > 0) {
+      "positive definite with near-null directions"
+    } else {
+      "positive definite"
+    }
+  } else if (opt$grmOnly) {
     # The thinned GRM is indefinite, which is NOT by itself a refusal: Sigma = tau1 I + tau2 K
     # (or D + tau2 K, D = 1/W >= 4 on a binary trait) is positive definite whenever
     # tau2 |lambda_min(K)| < tau1 (resp. < min D). eur's thinned GRM at 0.05 carries blocks at
     # -0.145 (runbook 19.10) while every eur model's Sigma is positive definite. So: the bound,
     # and -- with --modelDir -- each model judged against the blocks it was evaluated on.
-    if (n_indef > 0 && is.finite(min_eig)) {
+    # BOTH need every multi-sample component evaluated: a skipped component can hold the
+    # negative direction (LEDGER #184), so with one skipped nothing is stated or judged.
+    if (n_skip > 0) {
+      verdict <- sprintf(paste("GRM indefinite: bound unknown, %d component(s) (%s samples) above",
+                               "--maxDenseComponent %d not evaluated; raise it or run per model"),
+                         n_skip, showCount(n_people_skip), opt$maxDenseComponent)
+      if (!is.null(opt$modelDir)) note("models_checked", "0 (bound unknown: no model judged)")
+    } else if (n_indef == 0) {
+      # chol_ok FALSE with every component evaluated and none indefinite: a factorisation
+      # failure the blocks cannot explain (rounding at a zero eigenvalue); only a per-model
+      # Cholesky decides
+      verdict <- paste("GRM indefinite: bound unknown, every block positive but the Cholesky",
+                       "failed; run per model")
+    } else if (is.null(opt$modelDir)) {
       note("tau2_over_tau1_bound_quantitative", sprintf("%.6g", 1 / abs(min_eig)))
       note("tau2_bound_binary", sprintf("%.6g", 4 / abs(min_eig)))
-    }
-    # chol_ok FALSE with no evaluated block indefinite: the negative direction sits in a block
-    # above the dense cap, so no bound can be stated and only a per-model Cholesky decides
-    if (!chol_ok && n_indef == 0) {
-      verdict <- "GRM indefinite in a block above --maxDenseComponent: bound unknown, run per model"
-    } else if (is.null(opt$modelDir)) {
       verdict <- paste("GRM indefinite: positive definite for every model within the tau bound",
                        "(pass --modelDir)")
     } else {
+      note("tau2_over_tau1_bound_quantitative", sprintf("%.6g", 1 / abs(min_eig)))
+      note("tau2_bound_binary", sprintf("%.6g", 4 / abs(min_eig)))
       rdas <- list.files(opt$modelDir, pattern = "\\.rda$", full.names = TRUE)
       if (length(rdas) == 0) stop("--modelDir ", opt$modelDir, " holds no .rda")
       n_bad <- 0L
