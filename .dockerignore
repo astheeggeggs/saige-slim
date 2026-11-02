@@ -9,6 +9,8 @@ harness/*
 !harness/tools/
 harness/tools/*
 !harness/tools/aou_sigma_pd_check.R
+!harness/tools/pcrelate_to_mtx.py
+!harness/tools/king_to_mtx.py
 tests/
 docs/
 man/
