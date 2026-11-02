@@ -3290,7 +3290,17 @@ file, hence from every null model: the tool drops them and `compare` matches by 
 `samples_common`), 20 PC columns, 63,777 in the training set. Sizing: 4 N^2 M ~ 1.8e15 flops
 on 71,609 x 88,861; `n2-highmem-16` with `--memory-gb 64` keeps both accumulators in one sample tile
 (one pass over the genotypes) and `--threads 16`; expect 1-3 h [scaled from 499 s for 20k x 50k on a
-loaded laptop]. **Progress:** the tool prints `progress P %: tile t/T, markers m/M, elapsed Ns, ETA Ns` at every ~5 % of the work (weighted by tile area, so the ETA is honest across unequal tiles) and at least every 10 minutes, so `fetch_log` on the running job shows where it is; the one-pass run here prints ~20 lines then `tile 1/1`. Prep cell (notebook; counts printed are cohort sizes):
+loaded laptop]. **The v9 amr run (N 96,117, 107,390 markers, the same `--memory-gb 64` on 128 GB) was
+OOM-killed at the end of tile 1 of 2 (2026-11-02)**: the budget sized the two accumulators, and the
+pair extraction then allocated four more tile-sized arrays. Since the tool's commit of that day (the
+image tag after `155f23ea`) the extraction and the inbreeding sums walk the tile in ~256 MB row chunks
+(byte-identical output, `cmp`-checked at several tilings) and `--memory-gb` bounds the THREE tile-sized
+arrays that remain (two accumulators and a GEMM result before it is added -- a row-chunked GEMM is not
+bit-identical on OpenBLAS, probed on the image, so that one stays): at 64 the v9 tile is 55k, 2 passes,
+peak ~64 GB plus the marker block (~3 GB) plus the kept pairs. Measured on a 12k x 2k synthetic bed:
+peak RSS 3.33 -> 2.50 GB at a 1.15 GB accumulator budget. The same `--memory-gb` now means a smaller
+default tile, so a rerun at the same flags is NOT byte-identical to a matrix the old image made with the
+default tile; `--block-samples` pins the tile and then it is. **Progress:** the tool prints `progress P %: tile t/T, markers m/M, elapsed Ns, ETA Ns` at every ~5 % of the work (weighted by tile area, so the ETA is honest across unequal tiles) and at least every 10 minutes, so `fetch_log` on the running job shows where it is; the one-pass run here prints ~20 lines then `tile 1/1`. Prep cell (notebook; counts printed are cohort sizes):
 
 ```python
 import os, pandas as pd, subprocess

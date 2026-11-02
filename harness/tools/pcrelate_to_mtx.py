@@ -39,12 +39,13 @@ king_to_mtx.py convert (off-diagonal = 2 x kinship, symmetric coordinate, lower 
             pair (null), tiny blocks reproduce one block (two ways agree), 2 % missing genotypes
             change nothing material, and the .mtx round-trips.
 
-Memory at N samples: two float32 accumulators of block_samples x N, sized by default to
---memory-gb (16 GB at N = 80k gives a tile of 25k, 4 passes), plus one more tile-sized array
-while a GEMM result is added (peak ~1.5x --memory-gb), plus the marker block
-(N x block_markers x 4 B x 3); the pair extraction walks the tile in ~256 MB row chunks and
-adds nothing tile-sized (2026-11-02: it used to add four, and OOM-killed the AoU amr run at
---memory-gb 64 on 128 GB). The genotypes are decoded and prepared once per sample tile, so
+Memory at N samples: three float32 arrays of block_samples x N (two accumulators and a GEMM
+result before it is added -- a row-chunked GEMM is not bit-identical on OpenBLAS, so it
+stays), sized by default to --memory-gb (16 GB at N = 80k gives a tile of 16.7k, 5 passes),
+plus the marker block (N x block_markers x 4 B x 3); the pair extraction and the inbreeding
+sums walk the tile and the block in ~256 MB row chunks and add nothing of their size
+(2026-11-02: the extraction used to add four tile-sized arrays and the budget covered two, and
+the AoU amr run was OOM-killed at --memory-gb 64 on 128 GB). The genotypes are decoded and prepared once per sample tile, so
 a larger budget means fewer passes. Flops 4 N^2 M: at N = 80k, M = 100k that is ~2.6e15, tens of
 minutes on a 32-core BLAS. --threads sets OPENBLAS/OMP/MKL_NUM_THREADS before numpy loads; do
 NOT source harness/env.sh first (it pins one thread for the goldens).
@@ -295,11 +296,18 @@ def pcrelate_blocks(get_block, n_markers, X, train, cutoff, maf=0.01, block_mark
                     f"elapsed {el:.0f}s, ETA {el / frac * (1 - frac):.0f}s")
                 next_report, last_report_t = (int(frac / 0.05) + 1) * 0.05, now
             if ti == 0:
-                # inbreeding: f_i = sum (g^2 - (1 + 2 mu) g + 2 mu^2) / sum 2 mu (1 - mu)
-                gm = np.where(valid, g, 0).astype(np.float64)
-                mm = np.where(valid, mu, 0).astype(np.float64)
-                f_num += (gm * gm - (1 + 2 * mm) * gm + 2 * mm * mm).sum(axis=1)
-                f_den += (2 * mm * (1 - mm)).sum(axis=1)
+                # inbreeding: f_i = sum (g^2 - (1 + 2 mu) g + 2 mu^2) / sum 2 mu (1 - mu), in row
+                # chunks (each row's sum is its own, so the chunking changes no bit -- probed on
+                # both OpenBLAS builds): over the whole block the float64 temporaries were ~5 x N x
+                # block_markers x 8 B, 8 GB at N 96k and the default block
+                f_rows = max(1, int(extract_bytes // (40 * mc)))
+                for a in range(0, N, f_rows):
+                    b = min(a + f_rows, N)
+                    gm = np.where(valid[a:b], g[a:b], 0).astype(np.float64)
+                    mm = np.where(valid[a:b], mu[a:b], 0).astype(np.float64)
+                    f_num[a:b] += (gm * gm - (1 + 2 * mm) * gm + 2 * mm * mm).sum(axis=1)
+                    f_den[a:b] += (2 * mm * (1 - mm)).sum(axis=1)
+                del gm, mm
         if n_used_total is None:
             n_used_total = n_used
         # Extraction in row chunks of ~256 MB: done over the whole tile it allocated four more
@@ -390,9 +398,14 @@ def run(a):
         return bed.block(start, count)[:, keep_arr]
 
     if a.block_samples is None:
-        a.block_samples = int(max(256, min(N, a.memory_gb * 1e9 / (8.0 * N))))
+        # three tile-sized float32 arrays live at once: the two accumulators and a GEMM's result
+        # before it is added (a row-chunked GEMM is NOT bit-identical on OpenBLAS, probed
+        # 2026-11-02, so that third array stays); sizing on two of them is what OOM-killed the
+        # AoU amr run, so --memory-gb now bounds all three
+        a.block_samples = int(max(256, min(N, a.memory_gb * 1e9 / (12.0 * N))))
     print(f"sample tile {a.block_samples} ({-(-N // a.block_samples)} pass(es) over the genotypes, "
-          f"accumulators {8.0 * a.block_samples * N / 1e9:.1f} GB)")
+          f"accumulators {8.0 * a.block_samples * N / 1e9:.1f} GB, tile arrays at peak "
+          f"{12.0 * a.block_samples * N / 1e9:.1f} GB)")
     print(f"samples: {N} of {len(fam)} in the {'.psam' if a.pgen else '.fam'} have PCs; regression set {int(train.sum())}"
           + (f" ({missing} --unrelated IDs not in the data)" if missing else "")
           + f"; PCs {X.shape[1] - 1}; markers {M}", flush=True)
@@ -721,9 +734,8 @@ def main():
     r.add_argument("--block-samples", type=int, default=None,
                    help="sample tile; default: the largest that keeps the two accumulators within --memory-gb")
     r.add_argument("--memory-gb", type=float, default=16.0,
-                   help="budget for the two float32 accumulators (2 x tile x N x 4 B); peak RSS is ~1.5x this "
-                        "(each GEMM's result is a third tile-sized array before it is added) plus the "
-                        "marker block [%(default)s]")
+                   help="budget for the three tile-sized float32 arrays (two accumulators and a GEMM result, "
+                        "3 x tile x N x 4 B); peak RSS is this plus the marker block [%(default)s]")
     r.add_argument("--threads", type=int, default=os.cpu_count() or 1)
     r.add_argument("--mask", type=int, default=20)
     s = sub.add_parser("selftest")
