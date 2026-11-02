@@ -3281,8 +3281,13 @@ is an input, so the compare report lands beside the new matrix), (3) the `sigpd-
 matrix at 0.05 and 0.125. The job needs two inputs KING did not: a PC file (header with an `IID`-like
 column and `PC1..`; the production step-1 phenotype file's `PC1..PC20` with `eid` renamed, until a
 within-amr PC-AiR set exists -- PCs computed within amr remove the background better than All-of-Us-wide
-ones) and the unrelated training set (the amr psam minus AoU's `relatedness_flagged_samples.tsv`; without
-`--unrelated` the tool regresses on everyone, a small bias not an error). Sizing: 4 N^2 M ~ 1.8e15 flops
+ones) and the unrelated training set (the amr fam minus AoU's `relatedness_flagged_samples.tsv`, a copy
+of which sits beside the pruned sets in `ld_prune/`; without `--unrelated` the tool regresses on everyone,
+a small bias not an error). The pruned sets are PLINK 1 `.bed/.bim/.fam` (the KING paragraph's `--pfile`
+was prose; `gsutil ls ld_prune/` is the authority), so the job takes the tool's `--bed` arm. Measured on
+the prep (2026-11-02): amr 71,609 in the fam, 71,605 with PCs (four samples absent from the phenotype
+file, hence from every null model: the tool drops them and `compare` matches by ID, reporting
+`samples_common`), 20 PC columns, 63,777 in the training set. Sizing: 4 N^2 M ~ 1.8e15 flops
 on 71,609 x 88,861; `n2-highmem-16` with `--memory-gb 64` keeps both accumulators in one sample tile
 (one pass over the genotypes) and `--threads 16`; expect 1-3 h [scaled from 499 s for 20k x 50k on a
 loaded laptop]. **Progress:** the tool prints `progress P %: tile t/T, markers m/M, elapsed Ns, ETA Ns` at every ~5 % of the work (weighted by tile area, so the ETA is honest across unequal tiles) and at least every 10 minutes, so `fetch_log` on the running job shows where it is; the one-pass run here prints ~20 lines then `tile 1/1`. Prep cell (notebook; counts printed are cohort sizes):
@@ -3292,9 +3297,9 @@ import os, pandas as pd, subprocess
 PRUNED  = f"{BUCKET}/data/saige/run/ld_prune/allofus_array_amr_snp_wise"      # the set KING ran on
 P183    = f"{BUCKET}/SAIGE_SLIM_TESTING/p183"                                   # king/amr_king.mtx lives here
 PHENO   = f"{BUCKET}/data/phenotypes/brava_pilot_v1.collapsed.with_covariates.txt.gz"
-FLAGGED = "gs://fc-aou-datasets-controlled/v8/wgs/short_read/snpindel/aux/relatedness/relatedness_flagged_samples.tsv"
-psam = pd.read_csv(f"{PRUNED}.psam", sep="\t", dtype=str)
-iid = psam.iloc[:, 1] if psam.columns[0].lstrip("#") == "FID" else psam.iloc[:, 0]
+FLAGGED = f"{BUCKET}/data/saige/run/ld_prune/relatedness_flagged_samples.tsv"
+fam = pd.read_csv(f"{PRUNED}.fam", sep=r"\s+", header=None, dtype=str)
+iid = fam.iloc[:, 1]
 ph = pd.read_csv(PHENO, sep="\t", dtype=str, usecols=lambda c: c == "eid" or (c.startswith("PC") and c[2:].isdigit()))
 ph = ph[ph.eid.isin(set(iid))].rename(columns={"eid": "IID"})
 ph.to_csv("amr_pcs.tsv", sep="\t", index=False)
@@ -3307,17 +3312,18 @@ subprocess.run(["gsutil", "cp", "amr_pcs.tsv", "amr_unrelated.txt", f"{P183}/pcr
 The job (the `run_dsub` of 19.10; `ARMED` as always):
 
 ```python
-PCREL_IMG = "gcr.io/weighty-elf-452116-c7/pcrelate:<hash>"
+PCREL_IMG = "gcr.io/weighty-elf-452116-c7/pcrelate:155f23ea"      # the tools' commit
+KING = f"{BUCKET}/data/saige/run/make_sparse_grm/allofus_array_amr_king_robust_relatednessCutoff_0.05.sparseGRM.mtx"
 ARMED = True
-run_dsub(["aou_dsub", "--name", "pcrelate-amr", "--image", PCREL_IMG,
-          "--input", f"IN_PGEN={PRUNED}.pgen", "--input", f"IN_PVAR={PRUNED}.pvar", "--input", f"IN_PSAM={PRUNED}.psam",
+run_dsub(["aou_dsub", "--name", "pcrelate-amr-2", "--image", PCREL_IMG,
+          "--input", f"IN_BED={PRUNED}.bed", "--input", f"IN_BIM={PRUNED}.bim", "--input", f"IN_FAM={PRUNED}.fam",
           "--input", f"IN_PCS={P183}/pcrelate/amr_pcs.tsv", "--input", f"IN_UNREL={P183}/pcrelate/amr_unrelated.txt",
-          "--input", f"IN_KING={P183}/king/amr_king.mtx", "--input", f"IN_KING_IDS={P183}/king/amr_king.mtx.sampleIDs.txt",
+          "--input", f"IN_KING={KING}", "--input", f"IN_KING_IDS={KING}.sampleIDs.txt",
           "--output-recursive", f"OUT_DIR={P183}/pcrelate",
           "--machine-type", "n2-highmem-16", "--disk-size", "50", "--boot-disk-size", "30",
           "--command",
-          "set -euo pipefail; P=$(dirname ${IN_PGEN})/$(basename ${IN_PGEN} .pgen); "
-          "python3 /usr/local/bin/pcrelate_to_mtx.py run --pgen $P --pcs ${IN_PCS} --npcs 20 --unrelated ${IN_UNREL} "
+          "set -euo pipefail; P=$(dirname ${IN_BED})/$(basename ${IN_BED} .bed); "
+          "python3 /usr/local/bin/pcrelate_to_mtx.py run --bed $P --pcs ${IN_PCS} --npcs 20 --unrelated ${IN_UNREL} "
           "--cutoff 0.05 --memory-gb 64 --threads 16 --out ${OUT_DIR}/amr_pcrelate && "
           "python3 /usr/local/bin/king_to_mtx.py compare --new ${OUT_DIR}/amr_pcrelate.mtx --old ${IN_KING} "
           "--report ${OUT_DIR}/cmp_pcrelate_vs_king.tsv && "
@@ -3325,9 +3331,10 @@ run_dsub(["aou_dsub", "--name", "pcrelate-amr", "--image", PCREL_IMG,
 ARMED = False
 ```
 
-`compare` wants the two `.mtx` on the SAME samples: both come from the same psam, so the orders match
-(the tool drops a sample without PCs and says so in `amr_pcrelate.report.tsv` -- if that count is not
-0, the compare's sample matching is the first thing to read). Then `sigpd-grm` on
+`compare` matches the two `.mtx` by sample ID (`samples_common` is its first line: expect 71,605 against
+KING's 71,609). The first submission (`pcrelate-amr`, 2026-11-02) died in localisation: the KING
+matrix is the PRODUCTION copy under `make_sparse_grm/` (the `p183/king/` duplicate was deleted after its
+md5 matched), so the cell above names that; resubmitted as `pcrelate-amr-2`. Then `sigpd-grm` on
 `p183/pcrelate/amr_pcrelate.mtx` at 0.05 and 0.125. **What to read, predicted before the run:** the
 positive control (first-degree pairs agree with KING, median ratio ~1, tight); at 0.125 nearly the same
 pairs as KING and positive definite; at 0.05 FEWER pairs than KING's 329k and the 37,305-person component
