@@ -3353,3 +3353,26 @@ positive control (first-degree pairs agree with KING, median ratio ~1, tight); a
 pairs as KING and positive definite; at 0.05 FEWER pairs than KING's 329k and the 37,305-person component
 broken up. PC-Relate positive definite at 0.05 is the rung the consortium recipe needs; still NOT means
 the third-degree band itself is the problem and a dense GRM is the next step.
+
+**LEDGER #184 (2026-11-02, afternoon): the Sigma check could state a bound from part of the matrix.** Reported by
+the owner from CDR v9: with `--grmOnly`, a family component above `--maxDenseComponent` (then 2000) was skipped in the
+eigen loop, and `bound unknown` fired only when the Cholesky failed AND no evaluated block was indefinite -- so a small
+block at -7.9e-16 (rounding counts as indefinite) plus a skipped 10,003-sample component printed a bound of 1.26e15
+and `within the tau bound` on amr at 0.125, where `--maxDenseComponent 11000` finds -19.9 in that component (bound
+0.0496: the v8 amr failure, missed at the default). afr/eas/eur (components 8,510 / 2,487 / 5,071) had printed partial
+bounds too; evaluated, their minima are -0.0021 / -0.0020 / -0.0035. **Today's amr PC-Relate 0.05 verdict
+(`sigpd-grm-amr-pcrel-005`) has exactly this shape** -- `components_above_dense_cap 1` (the 4,334-sample component)
+beside a bound of 14.2 from the small blocks -- so that bound is NOT a statement about the matrix; the rerun at
+`MAXDENSE=5000` (`sigpd-grm-amr-pcrel-005-d5k`) is the one to read, and the 0.125 verdict (largest component 65,
+nothing skipped) stands. Fixed in `df5dd875`: with the Cholesky failed and any multi-sample component skipped the
+verdict is `GRM indefinite: bound unknown, K component(s) (N samples) above --maxDenseComponent C not evaluated`, no
+bound row, `--modelDir` judges nothing; a successful Cholesky stays complete on its own; default cap 12000; the
+report carries `components_not_evaluated`, `samples_not_evaluated`, `largest_dense_block_gb`, and each dense block
+above 1,000 samples logs its n^2 x 8 bytes first. Drilled on a synthetic fixture (`tests/testthat/test-tools-sigma-pd-check.R`):
+5 failures against the unpatched script, 46 green after, the bound referenced against a dense eigen of the whole
+matrix. Image `1.5.2-dev-df5dd875` built locally (549 MB, carries the new rows), NOT pushed; universal-saige branch
+`sigma-check-skipped` (`00a_sigma_check.sh` default 12000 and the `bound unknown` case, README, migration doc,
+`download_resources.sh` pin) committed, NOT pushed -- both wait on the owner. **For every AoU verdict already filed:
+a report with `components_above_dense_cap` > 0 and a bound printed is void; re-run with `MAXDENSE` above its largest
+component** (the `sigpd-grm-*` cell with `MAXDENSE=12000`: the 10,003 dense eigen is ~3 min and 0.8 GB on
+`n2-highmem-4`).
