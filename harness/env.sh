@@ -31,3 +31,14 @@ export OPENBLAS_NUM_THREADS=1
 # sets SAIGE_FIT_GATES=1 per run and is the only place the shipped defaults
 # are exercised.
 export SAIGE_FIT_GATES=0
+
+# A UTF-8 locale, pinned (2026-11-02). R writes the native encoding into the
+# header of every .rda it saves ("UTF-8", 5 bytes), and in the C locale that
+# string is "US-ASCII" (8 bytes): every step-1 rda golden then differs by a
+# three-byte header while its content is identical, which is exactly what the
+# full gate reported after a reboot left the tool shell without LANG (six
+# step-1 failures, every step-2 golden green). A shell with no LANG is a C
+# locale, not a UTF-8 one.
+if [[ -z "${LC_ALL:-}" && "${LANG:-}" != *UTF-8* && "${LANG:-}" != *utf8* ]]; then
+  export LANG=en_US.UTF-8
+fi

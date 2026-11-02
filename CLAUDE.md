@@ -142,6 +142,7 @@ Standing facts that have each cost at least one session. One line of why each.
 - **A golden that reproduces P1 gates nothing.** `--max_MAC_for_ER=25` (and 20,
   50, 100) is byte-identical to P1; the ER resampling arm needs 200 on this
   fixture (P33). Check that a new golden actually differs.
+- **A step-1 `.rda` golden is byte-identical only under a UTF-8 locale (2026-11-02).** R writes the native encoding into every `.rda`'s serialization header: `UTF-8` (5 bytes) or, in the C locale, `US-ASCII` (8). A tool shell without `LANG` (the state after a reboot) fails every step-1 rda byte test with the content strictly identical -- six failures, every step-2 golden green -- and the pre-change build fails them too. `harness/env.sh` now pins `LANG=en_US.UTF-8` when the shell has no UTF-8 locale; decompress the two files and `cmp` the streams before blaming a code change (the difference sits at byte 23, inside the header).
 - **`createSparseGRM` is not self-reproducing without a seed**: the
   `set.seed(1)` is in `extdata/createSparseGRM.R`, not the function, so a
   step-0 comparison that bypasses the CLI measures the RNG.
