@@ -262,3 +262,63 @@ test_that("--dosage_zerod_MAC_cutoff moves exactly the markers it admits", {
   expect_equal(differing_markers(base, wide),
                sort(base$MarkerID[mac > 10 & mac <= 100]))
 })
+
+# The GROUP path has its own --maxMissing gate (src/Main.cpp, the region
+# marker loop: `missingRate > g_cfg.missingRate_cutoff`), separate from the
+# single-variant one pinned above, and nothing else tested it. One group of all
+# 100 fixture markers, max MAF 0.5 so the MAF cap removes nothing, with the
+# per-group marker list written: the list is the set that entered the test.
+miss_group_run <- function(key, extra = character()) {
+  if (!is.null(miss_cache[[key]])) return(miss_cache[[key]])
+  dir <- tempfile("missgrp_"); dir.create(dir, recursive = TRUE)
+  ids <- paste0("rs", 1:100)
+  grp <- file.path(dir, "group.txt")
+  writeLines(c(paste("GALL var", paste(ids, collapse = " ")),
+               paste("GALL anno", paste(rep("lof", 100), collapse = " "))), grp)
+  out <- file.path(dir, paste0(key, ".txt"))
+  status <- run_saige_cli("step2_SPAtests.R",
+                          c(MISS_ARGS(), miss_model(), MISS_COMMON, extra,
+                            paste0("--groupFile=", grp),
+                            "--annotation_in_groupTest=lof",
+                            "--maxMAF_in_groupTest=0.5",
+                            "--is_output_markerList_in_groupTest=TRUE",
+                            paste0("--SAIGEOutputFile=", out)))
+  expect_cli_ok(status)
+  ml <- read_saige_table(paste0(out, ".markerList.txt"))
+  split_ids <- function(s) { s <- strsplit(s, ",", fixed = TRUE)[[1]]; s[nzchar(s)] }
+  res <- list(region = read_saige_table(out),
+              rare = split_ids(ml$Rare_Variants[1]),
+              ultra = split_ids(ml$Ultra_Rare_Variants[1]))
+  miss_cache[[key]] <- res
+  res
+}
+
+test_that("the GROUP test applies --maxMissing too, to rare markers and the ultra-rare collapse", {
+  skip_unless_level("standard")
+  skip_if_no_goldens()
+  rate <- function(d) setNames(as.numeric(d$MissingRate), d$MarkerID)
+  r <- rate(miss_run("maxmiss1", "--maxMissing=1"))   # every polymorphic marker's rate
+  g  <- miss_group_run("grp_base")
+  gw <- miss_group_run("grp_maxmiss1", "--maxMissing=1")
+  inc  <- c(g$rare, g$ultra)
+  incw <- c(gw$rare, gw$ultra)
+  expect_true(all(inc %in% names(r)))
+  expect_true(all(incw %in% names(r)))
+  # the default admits nothing above the cutoff, and the marker exactly at
+  # 0.15 is admitted (strict >, as in the single-variant gate)
+  expect_true(all(r[inc] <= 0.15))
+  expect_true(any(r[inc] == 0.15))
+  # nothing at or below the cutoff is lost: the filter does not over-drop
+  expect_setequal(inc, names(r)[r <= 0.15])
+  # --maxMissing=1 adds back exactly the markers above the cutoff -- and there
+  # are some, so the check above cannot hold vacuously
+  gained <- setdiff(incw, inc)
+  expect_gt(length(gained), 0)
+  expect_setequal(gained, names(r)[r > 0.15])
+  expect_length(setdiff(inc, incw), 0)
+  # the ultra-rare markers are filtered BEFORE they are collapsed
+  expect_true(all(r[g$ultra] <= 0.15))
+  expect_gt(length(setdiff(gw$ultra, g$ultra)), 0)
+  # and the filter reaches the statistic, not just the list
+  expect_false(identical(g$region$MAC, gw$region$MAC))
+})
